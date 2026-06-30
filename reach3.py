@@ -31,10 +31,8 @@ import time
 from collections import deque
 from pathlib import Path
 
-import psycopg2.extras
-
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect, die
+from db import connect, die, execute_values
 
 
 # ---------------------------------------------------------------------------
@@ -42,9 +40,8 @@ from db import connect, die
 # ---------------------------------------------------------------------------
 
 def bulk_insert(cursor, sql, rows):
-    """Run psycopg2 execute_values for a batch of rows. No-op on empty list."""
-    if rows:
-        psycopg2.extras.execute_values(cursor, sql, rows, page_size=2000)
+    """Bulk-insert rows using execute_values. No-op on empty list."""
+    execute_values(cursor, sql, rows, page_size=2000)
 
 
 # ---------------------------------------------------------------------------

@@ -27,15 +27,12 @@ import sys
 import time
 from pathlib import Path
 
-_HERE    = Path(__file__).parent
-_SCRIPTS = _HERE.parent / "scripts"
-sys.path.insert(0, str(_SCRIPTS))
+_HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
 
-import machxo2_lift as mx
+from lifters import machxo2_lift as mx
 from db import connect, die, EFB_JF, JF_RE
-
-import psycopg2  # kept for executemany (psycopg2 is faster than pg8000 for bulk inserts)
+import schema
 
 # EFB ports that MUST appear in the recovered bitstream for LCMXO2 with SPI enabled
 REQUIRED_EFB_PORTS = {"JTCK", "JTDI", "JUPDATE", "JRSTN", "JSHIFTDR", "JTDO"}
@@ -215,8 +212,8 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         assert_ge("nets",  n_nets, 500)
 
     # ── connect to DB and ALWAYS drop + recreate the label ─────────────────
-    DSN  = os.environ.get("PLURIBUS_DSN", "dbname=fpga_re")
-    conn = psycopg2.connect(DSN)
+    schema.init()   # create tables if this is a fresh DB
+    conn = connect()
     cur  = conn.cursor()
 
     # Upsert the bitstream row — keep the existing id stable so concurrent reach.py

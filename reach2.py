@@ -36,10 +36,8 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-import psycopg2.extras
-
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect, die
+from db import BACKEND, connect, die, execute_values
 
 
 # ── 1. Reverse reachability ───────────────────────────────────────────────────
@@ -149,7 +147,7 @@ def pass_ff_cones(bs_id, n_workers):
                         rows.append((bs_id, cell, 'output', dst, h))
 
             if rows:
-                psycopg2.extras.execute_values(wcur, """
+                execute_values(wcur, """
                     INSERT INTO ff_cones (bitstream, ff_cell, cone_type, net, min_hops)
                     VALUES %s ON CONFLICT DO NOTHING
                 """, rows)
@@ -202,14 +200,15 @@ def pass_critical_paths(bs_id):
     cur  = conn.cursor()
     cur.execute("DELETE FROM critical_paths WHERE bitstream=%s", (bs_id,))
 
-    cur.execute("""
+    array_expr = "ARRAY[fa.q, r.dst]" if BACKEND == "postgres" else "json_array(fa.q, r.dst)"
+    cur.execute(f"""
         INSERT INTO critical_paths (bitstream, src_ff, dst_ff, hops, path_nets)
         SELECT
             r.bitstream,
             fa.cell  AS src_ff,
             fb.cell  AS dst_ff,
             r.min_hops,
-            ARRAY[fa.q, r.dst]
+            {array_expr}
         FROM reachability r
         JOIN ffs fa ON fa.bitstream=r.bitstream AND fa.q=r.src
         JOIN ffs fb ON fb.bitstream=r.bitstream AND (fb.d=r.dst OR fb.ce=r.dst)

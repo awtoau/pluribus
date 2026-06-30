@@ -28,10 +28,9 @@ import sys
 import time
 from pathlib import Path
 
-import psycopg2.extras
-
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect, die
+from db import connect, die, execute_values
+import schema
 
 
 # ---------------------------------------------------------------------------
@@ -39,9 +38,8 @@ from db import connect, die
 # ---------------------------------------------------------------------------
 
 def bulk_insert(cursor, sql, rows):
-    """Run psycopg2 execute_values for a batch of rows. No-op on empty list."""
-    if rows:
-        psycopg2.extras.execute_values(cursor, sql, rows, page_size=2000)
+    """Bulk-insert rows using execute_values. No-op on empty list."""
+    execute_values(cursor, sql, rows, page_size=2000)
 
 
 # ---------------------------------------------------------------------------
@@ -863,26 +861,6 @@ def pass_lut_naming(bs_id, conn):
 # Pass 9: CDC synchroniser detection
 # ---------------------------------------------------------------------------
 
-_CREATE_CDC_TABLE = """
-CREATE TABLE IF NOT EXISTS cdc_synchronisers (
-    id         BIGSERIAL PRIMARY KEY,
-    bitstream  INT  NOT NULL REFERENCES bitstreams(id) ON DELETE CASCADE,
-    src_ff     TEXT NOT NULL,
-    src_clk    TEXT NOT NULL,
-    stage1_ff  TEXT NOT NULL,
-    stage2_ff  TEXT NOT NULL,
-    dst_clk    TEXT NOT NULL,
-    UNIQUE(bitstream, stage1_ff)
-)
-"""
-
-
-def _create_cdc_table(conn):
-    """Create cdc_synchronisers table if it does not yet exist."""
-    cur = conn.cursor()
-    cur.execute(_CREATE_CDC_TABLE)
-    conn.commit()
-    cur.close()
 
 
 def pass_cdc_synchronisers(bs_id, conn):
@@ -903,7 +881,7 @@ def pass_cdc_synchronisers(bs_id, conn):
 
     confidence='estimate', source='auto_cdc'.
     """
-    _create_cdc_table(conn)
+    schema.init()   # ensure cdc_synchronisers exists
     cur = conn.cursor()
 
     # Load net names for clock labelling
@@ -1016,7 +994,7 @@ def pass_cdc_synchronisers(bs_id, conn):
         cdc_rows.append((bs_id, src_ff, src_clk, stage1_ff, stage2_ff, dst_clk))
 
     if cdc_rows:
-        psycopg2.extras.execute_values(cur, """
+        execute_values(cur, """
             INSERT INTO cdc_synchronisers
                 (bitstream, src_ff, src_clk, stage1_ff, stage2_ff, dst_clk)
             VALUES %s

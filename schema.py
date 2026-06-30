@@ -371,6 +371,19 @@ clock_domain_summary = Table("clock_domain_summary", metadata,
 Index("idx_cds_track", clock_domain_summary.c.bitstream, clock_domain_summary.c.hpbx_track)
 
 
+# ── CDC synchroniser table (reach4) ──────────────────────────────────────────
+
+cdc_synchronisers = Table("cdc_synchronisers", metadata,
+    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("src_ff",    Text, nullable=False),
+    Column("src_clk",   Text, nullable=False),
+    Column("stage1_ff", Text, nullable=False),
+    Column("stage2_ff", Text, nullable=False),
+    Column("dst_clk",   Text, nullable=False),
+    UniqueConstraint("bitstream", "stage1_ff"),
+)
+
 # ── Schema management ─────────────────────────────────────────────────────────
 
 def init(eng=None):
