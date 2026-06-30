@@ -8,3 +8,4 @@ build/
 *.db-shm
 *.db-wal
 docs/issues/
+diamond-fuzz/results/
