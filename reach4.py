@@ -40,22 +40,18 @@ from sqlalchemy import select, insert, delete, update, func, and_, or_, text
 
 def _net_names_insert():
     """Return an insert statement for net_names with ON CONFLICT DO NOTHING."""
-    tbl = schema.net_names
-    stmt = insert(tbl)
-    if BACKEND == "postgres":
-        return stmt.on_conflict_do_nothing(index_elements=["bitstream", "net"])
-    else:
-        return stmt.prefix_with("OR IGNORE")
+    if BACKEND == "sqlite":
+        return insert(schema.net_names).prefix_with("OR IGNORE")
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    return pg_insert(schema.net_names).on_conflict_do_nothing()
 
 
 def _cell_names_insert():
     """Return an insert statement for cell_names with ON CONFLICT DO NOTHING."""
-    tbl = schema.cell_names
-    stmt = insert(tbl)
-    if BACKEND == "postgres":
-        return stmt.on_conflict_do_nothing(index_elements=["bitstream", "cell"])
-    else:
-        return stmt.prefix_with("OR IGNORE")
+    if BACKEND == "sqlite":
+        return insert(schema.cell_names).prefix_with("OR IGNORE")
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    return pg_insert(schema.cell_names).on_conflict_do_nothing()
 
 
 def bulk_insert_nets(conn, rows):
@@ -1109,11 +1105,11 @@ def pass_cdc_synchronisers(bs_id, conn):
             }
             for src_ff, src_clk, stage1_ff, stage2_ff, dst_clk in synchronisers
         ]
-        cdc_stmt = insert(cdc)
-        if BACKEND == "postgres":
-            cdc_stmt = cdc_stmt.on_conflict_do_nothing(index_elements=["bitstream", "stage1_ff"])
+        if BACKEND == "sqlite":
+            cdc_stmt = insert(cdc).prefix_with("OR IGNORE")
         else:
-            cdc_stmt = cdc_stmt.prefix_with("OR IGNORE")
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+            cdc_stmt = pg_insert(cdc).on_conflict_do_nothing()
         conn.execute(cdc_stmt, cdc_rows)
 
     # Name stage1 and stage2 FF cells

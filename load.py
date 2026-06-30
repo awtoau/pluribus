@@ -56,7 +56,14 @@ def _insert_or_ignore(table):
     if BACKEND == "sqlite":
         return insert(table).prefix_with("OR IGNORE")
     else:
-        return insert(table).on_conflict_do_nothing()
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        return pg_insert(table).on_conflict_do_nothing()
+
+
+def _pg_insert(table):
+    """Return a PostgreSQL dialect insert (for on_conflict_do_update)."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    return pg_insert(table)
 
 
 # ── TSV pin file ─────────────────────────────────────────────────────────────
@@ -242,24 +249,37 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                 select(schema.bitstreams.c.id).where(schema.bitstreams.c.label == label)
             ).scalar()
         else:
-            bs_id = conn.execute(
-                insert(schema.bitstreams)
-                .values(
-                    label=label,
-                    filename=os.path.basename(config_path),
-                    device=device,
-                    package=package,
-                )
-                .on_conflict_do_update(
-                    index_elements=["label"],
-                    set_=dict(
+            if BACKEND == "sqlite":
+                conn.execute(
+                    insert(schema.bitstreams).prefix_with("OR REPLACE").values(
+                        label=label,
                         filename=os.path.basename(config_path),
                         device=device,
                         package=package,
-                    ),
+                    )
                 )
-                .returning(schema.bitstreams.c.id)
-            ).scalar()
+                bs_id = conn.execute(
+                    select(schema.bitstreams.c.id).where(schema.bitstreams.c.label == label)
+                ).scalar()
+            else:
+                bs_id = conn.execute(
+                    _pg_insert(schema.bitstreams)
+                    .values(
+                        label=label,
+                        filename=os.path.basename(config_path),
+                        device=device,
+                        package=package,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["label"],
+                        set_=dict(
+                            filename=os.path.basename(config_path),
+                            device=device,
+                            package=package,
+                        ),
+                    )
+                    .returning(schema.bitstreams.c.id)
+                ).scalar()
 
         if bs_id is None:
             die("INSERT INTO bitstreams returned NULL id")

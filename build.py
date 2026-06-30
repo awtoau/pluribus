@@ -238,7 +238,8 @@ def cmd_annotate_only(label, pins, out_dir):
             if BACKEND == "sqlite":
                 stmt = insert(schema.net_names).prefix_with("OR IGNORE")
             else:
-                stmt = insert(schema.net_names).on_conflict_do_nothing()
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                stmt = pg_insert(schema.net_names).on_conflict_do_nothing()
             r2 = conn.execute(stmt.values(
                 bitstream=bs_id,
                 net=net,

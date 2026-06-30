@@ -42,11 +42,11 @@ from sqlalchemy import select, insert, delete, update, func, and_, or_, text
 # ---------------------------------------------------------------------------
 
 def _insert_ignore(table):
-    """Return an INSERT statement that silently ignores duplicate-key conflicts."""
+    """Return an INSERT that silently ignores duplicate-key conflicts on both backends."""
     if BACKEND == "sqlite":
         return insert(table).prefix_with("OR IGNORE")
-    else:
-        return insert(table).on_conflict_do_nothing()
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    return pg_insert(table).on_conflict_do_nothing()
 
 
 # ---------------------------------------------------------------------------
@@ -633,7 +633,11 @@ def pass_clock_crossings(bs_id):
         if BACKEND == "sqlite":
             stmt = stmt.prefix_with("OR IGNORE")
         else:
-            stmt = stmt.on_conflict_do_update(
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+            stmt = pg_insert(t_cc).from_select(
+                ["bitstream", "dst_ff", "dst_clk", "src_ff", "src_clk", "hops"],
+                subq,
+            ).on_conflict_do_update(
                 index_elements=["bitstream", "dst_ff", "src_ff"],
                 set_={"hops": text("excluded.hops")},
             )

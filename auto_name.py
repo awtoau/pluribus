@@ -283,7 +283,8 @@ def apply_expr_rules(lut_rows, existing_names, inserts):
 def _ins(t):
     if BACKEND == "sqlite":
         return insert(t).prefix_with("OR IGNORE")
-    return insert(t).on_conflict_do_nothing()
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    return pg_insert(t).on_conflict_do_nothing()
 
 
 # ---------------------------------------------------------------------------

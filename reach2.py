@@ -43,15 +43,11 @@ import schema
 
 
 def _insert_or_ignore(table):
-    """Return an INSERT statement that silently skips duplicate rows.
-
-    SQLite requires the OR IGNORE prefix; PostgreSQL uses ON CONFLICT DO NOTHING.
-    Both produce the same semantics: ignore rows that violate a unique constraint.
-    """
+    """Return an INSERT that silently skips duplicates on both backends."""
     if BACKEND == "sqlite":
         return insert(table).prefix_with("OR IGNORE")
-    else:
-        return insert(table).on_conflict_do_nothing()
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    return pg_insert(table).on_conflict_do_nothing()
 
 
 # ── 1. Reverse reachability ───────────────────────────────────────────────────
