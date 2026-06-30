@@ -140,6 +140,8 @@ def main():
 
         patterns_by_type = {}
         for ptype, lbl, detail in pattern_rows:
+            if isinstance(detail, str):
+                detail = _json.loads(detail)
             patterns_by_type.setdefault(ptype, []).append((lbl, detail))
 
     # ── build report text ──────────────────────────────────────────────────────

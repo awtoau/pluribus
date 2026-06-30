@@ -20,7 +20,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect, die
+from db import engine, die
+from sqlalchemy import text
 
 
 # ---------------------------------------------------------------------------
@@ -99,45 +100,37 @@ def resolve_cell(cell: str, cell_name_map: dict,
 
 def load_data(conn, bs_id: int) -> dict:
     """Fetch all tables needed for Verilog emission into a dict of lists/maps."""
-    cur = conn.cursor()
 
-    def q(sql, *args):
-        cur.execute(sql, args)
-        return cur.fetchall()
+    def q(sql):
+        return conn.execute(text(sql), {"bs_id": bs_id}).fetchall()
 
     # FFs: (cell, clk, ce, d, q, lsr)
-    ffs = q("SELECT cell, clk, ce, d, q, lsr FROM ffs WHERE bitstream=%s ORDER BY cell", bs_id)
+    ffs = q("SELECT cell, clk, ce, d, q, lsr FROM ffs WHERE bitstream=:bs_id ORDER BY cell")
 
     # LUTs: (cell, init, a, b, c, d, z, fn)
-    luts = q("SELECT cell, init, a, b, c, d, z, fn FROM luts WHERE bitstream=%s ORDER BY cell", bs_id)
+    luts = q("SELECT cell, init, a, b, c, d, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
 
     # Pad map: (pin, label, direction, net_in, net_out)
-    pads = q("""
-        SELECT pin, label, direction, net_in, net_out
-        FROM pad_map WHERE bitstream=%s ORDER BY pin
-    """, bs_id)
+    pads = q("SELECT pin, label, direction, net_in, net_out FROM pad_map WHERE bitstream=:bs_id ORDER BY pin")
 
     # EFB ports: (port_name, net)
-    efb_ports = q("SELECT port_name, net FROM efb_ports WHERE bitstream=%s ORDER BY port_name", bs_id)
+    efb_ports = q("SELECT port_name, net FROM efb_ports WHERE bitstream=:bs_id ORDER BY port_name")
 
     # Net names: net → (name, description)
-    net_name_rows = q("SELECT net, name, description FROM net_names WHERE bitstream=%s", bs_id)
+    net_name_rows = q("SELECT net, name, description FROM net_names WHERE bitstream=:bs_id")
     net_name_map = {net: name for net, name, _desc in net_name_rows}
     net_desc_map = {net: desc for net, _name, desc in net_name_rows if desc}
 
     # Cell names: cell → (name, description)
-    cell_name_rows = q("SELECT cell, name, description FROM cell_names WHERE bitstream=%s", bs_id)
+    cell_name_rows = q("SELECT cell, name, description FROM cell_names WHERE bitstream=:bs_id")
     cell_name_map  = {cell: name for cell, name, _desc in cell_name_rows}
 
     # Const nets: net → const_value ('0' or '1')
-    const_net_rows = q("SELECT net, const_value FROM const_nets WHERE bitstream=%s", bs_id)
+    const_net_rows = q("SELECT net, const_value FROM const_nets WHERE bitstream=:bs_id")
     const_net_map  = {net: val for net, val in const_net_rows}
 
     # Net stats: net → (fanout, fanin, is_clock, is_const, is_boundary)
-    net_stat_rows = q("""
-        SELECT net, fanout, fanin, is_clock, is_const, is_boundary
-        FROM net_stats WHERE bitstream=%s
-    """, bs_id)
+    net_stat_rows = q("SELECT net, fanout, fanin, is_clock, is_const, is_boundary FROM net_stats WHERE bitstream=:bs_id")
     net_stats_map = {
         net: {"fanout": fanout, "fanin": fanin,
               "is_clock": is_clk, "is_const": is_const, "is_boundary": is_bnd}
@@ -145,18 +138,17 @@ def load_data(conn, bs_id: int) -> dict:
     }
 
     # Clock domains: clk_net → [ff_cell, ...]
-    clk_domain_rows = q("SELECT clk_net, ff_cell FROM clock_domains WHERE bitstream=%s", bs_id)
+    clk_domain_rows = q("SELECT clk_net, ff_cell FROM clock_domains WHERE bitstream=:bs_id")
     clock_domains: dict[str, list[str]] = {}
     for clk_net, ff_cell in clk_domain_rows:
         clock_domains.setdefault(clk_net, []).append(ff_cell)
 
     # All nets
-    all_nets = [row[0] for row in q("SELECT name FROM nets WHERE bitstream=%s ORDER BY name", bs_id)]
+    all_nets = [row[0] for row in q("SELECT name FROM nets WHERE bitstream=:bs_id ORDER BY name")]
 
     # Bitstream label / device / package
-    meta = q("SELECT label, device, package FROM bitstreams WHERE id=%s", bs_id)[0]
+    meta = q("SELECT label, device, package FROM bitstreams WHERE id=:bs_id")[0]
 
-    cur.close()
     # Build clock-derived cell name map: cell → resolved clock name (for unnamed FFs)
     # Used by emit_ffs and emit_wires to give unnamed FF regs a clock-prefixed name.
     # Only populated when the clock net itself has a human name (not a bare nNNNN).
@@ -708,17 +700,15 @@ def main():
                     help="Verilog module name (default: top)")
     args = ap.parse_args()
 
-    conn = connect()
-    cur  = conn.cursor()
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (args.bitstream,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {args.bitstream!r} not found in DB — run load.py first")
-    bs_id = row[0]
-    cur.close()
-
-    data = load_data(conn, bs_id)
-    conn.close()
+    with engine().connect() as conn:
+        row = conn.execute(
+            text("SELECT id FROM bitstreams WHERE label=:label"),
+            {"label": args.bitstream},
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {args.bitstream!r} not found in DB — run load.py first")
+        bs_id = row[0]
+        data = load_data(conn, bs_id)
 
     # Assemble all sections
     sections = [
