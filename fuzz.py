@@ -41,7 +41,7 @@ _BUILD  = _HERE / "build.py"
 
 import sys as _sys
 _sys.path.insert(0, str(_HERE))
-from db import die
+from db import connect, die
 
 
 def run_test(name, test_dir, out_dir, device):
@@ -95,9 +95,7 @@ def run_test(name, test_dir, out_dir, device):
         return {"name": name, "status": "FAIL", "error": "build failed"}
 
     # Verify expectations from manifest
-    import psycopg2
-    DSN  = os.environ.get("PLURIBUS_DSN", "dbname=fpga_re")
-    conn = psycopg2.connect(DSN)
+    conn = connect()
     cur  = conn.cursor()
     cur.execute("SELECT id FROM bitstreams WHERE label=%s", (label,))
     row = cur.fetchone()

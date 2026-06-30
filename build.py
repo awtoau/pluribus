@@ -58,7 +58,7 @@ TRELLIS_PYPATH = os.environ.get(
 
 def cmd_init(config, out_path, device):
     """Scan bitstream and write a template pins.tsv."""
-    import machxo2_lift as mx
+    from lifters import machxo2_lift as mx
 
     print(f"Scanning {config} for {device}…")
     lift   = mx.MachXO2Lift(device)
@@ -138,7 +138,7 @@ def cmd_init(config, out_path, device):
 
 
 def _resolve_net(design, lift, row, col, wire):
-    import machxo2_lift as mx
+    from lifters import machxo2_lift as mx
     key = lift.gkey(row, col, wire)
     if key is None or key not in design.dsu.p:
         return None
@@ -165,35 +165,10 @@ def run_stage(name, cmd, env_extra=None, timings=None):
 
 def reset_db():
     """Drop and recreate all tables. Called before every build."""
-    schema = Path(_HERE / "schema.sql").read_text()
-    conn = connect()
-    conn.autocommit = True
-    cur = conn.cursor()
-    # Drop all user tables in dependency order
-    cur.execute("""
-        DO $$ DECLARE r RECORD;
-        BEGIN
-            FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public'
-            LOOP
-                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """)
-    # Drop all views
-    cur.execute("""
-        DO $$ DECLARE r RECORD;
-        BEGIN
-            FOR r IN SELECT table_name FROM information_schema.views WHERE table_schema='public'
-            LOOP
-                EXECUTE 'DROP VIEW IF EXISTS ' || quote_ident(r.table_name) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """)
-    # Re-apply schema
-    cur.execute(schema)
-    cur.close()
-    conn.close()
-    print("DB reset: all tables dropped and recreated from schema.sql")
+    import schema as _schema
+    _schema.drop_all()
+    _schema.init()
+    print("DB reset: all tables dropped and recreated")
 
 
 def cmd_annotate_only(label, pins, out_dir):
@@ -527,7 +502,7 @@ def main():
     args = ap.parse_args()
 
     if args.cmd == "init":
-        import machxo2_lift  # validates pytrellis available before proceeding
+        from lifters import machxo2_lift  # validates pytrellis available before proceeding
         cmd_init(args.config, args.out, args.device)
     elif args.cmd == "build":
         cmd_build(args.label, args.config, args.pins,

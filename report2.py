@@ -23,7 +23,7 @@ _SCRIPTS = _HERE.parent / "scripts"
 sys.path.insert(0, str(_SCRIPTS))
 sys.path.insert(0, str(_HERE))
 
-import machxo2_lift as mx
+from lifters import machxo2_lift as mx
 from db import connect, die
 
 DEVICE = os.environ.get("TRELLIS_DEVICE", "LCMXO2-1200")
