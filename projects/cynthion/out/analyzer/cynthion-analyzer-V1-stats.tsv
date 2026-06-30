@@ -1,0 +1,9 @@
+metric	value
+bitstream	cynthion-analyzer-V1
+ffs	2755
+luts	7366
+nets	11960
+fanout_edges	22865
+reach_pairs	182730
+named_nets	3293
+clock_domains	701
