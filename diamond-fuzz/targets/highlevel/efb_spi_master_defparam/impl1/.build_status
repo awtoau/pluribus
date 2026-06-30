@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BuildStatus>
+    <Strategy name="Strategy1">
+        <Milestone name="Export" build_result="0" build_time="0">
+            <Task name="IBIS" build_result="0" update_result="3" update_time="0"/>
+            <Task name="TimingSimFileVlg" build_result="0" update_result="3" update_time="0"/>
+            <Task name="TimingSimFileVHD" build_result="0" update_result="3" update_time="0"/>
+            <Task name="Bitgen" build_result="2" update_result="0" update_time="1782741545"/>
+            <Task name="Jedecgen" build_result="0" update_result="3" update_time="0"/>
+        </Milestone>
+        <Milestone name="Map" build_result="2" build_time="1782741542">
+            <Task name="Map" build_result="2" update_result="0" update_time="1782741542"/>
+            <Task name="MapTrace" build_result="0" update_result="3" update_time="0"/>
+            <Task name="MapVerilogSimFile" build_result="0" update_result="3" update_time="0"/>
+            <Task name="MapVHDLSimFile" build_result="0" update_result="3" update_time="0"/>
+        </Milestone>
+        <Milestone name="PAR" build_result="2" build_time="1782741545">
+            <Task name="PAR" build_result="2" update_result="0" update_time="1782741545"/>
+            <Task name="PARTrace" build_result="2" update_result="0" update_time="1782741545"/>
+            <Task name="IOTiming" build_result="0" update_result="3" update_time="0"/>
+        </Milestone>
+        <Milestone name="Synthesis" build_result="2" build_time="1782741541">
+            <Task name="Lattice_Synthesis" build_result="2" update_result="0" update_time="1782741541"/>
+            <Task name="LSE_Compile" build_result="2" update_result="0" update_time="1782741545"/>
+        </Milestone>
+        <Report name=".vdbs/fuzz_impl1_map.vdb" last_build_time="1782741542" last_build_size="32715"/>
+        <Report name="fuzz_impl1.bgn" last_build_time="1782741545" last_build_size="4291"/>
+        <Report name="fuzz_impl1.bit" last_build_time="1782741545" last_build_size="6192"/>
+        <Report name="fuzz_impl1.lsedata" last_build_time="1782741541" last_build_size="6814"/>
+        <Report name="fuzz_impl1.ncd" last_build_time="1782741545" last_build_size="15305"/>
+        <Report name="fuzz_impl1.ngd" last_build_time="1782741541" last_build_size="11594"/>
+        <Report name="fuzz_impl1.twr" last_build_time="1782741545" last_build_size="36818"/>
+        <Report name="fuzz_impl1_map.ncd" last_build_time="1782741541" last_build_size="12175"/>
+    </Strategy>
+</BuildStatus>

@@ -1,0 +1,13 @@
+----------------------------------------------------------------------
+Report for cell fuzz.TECH
+Register bits:  0 of 1520 (0.000%)
+I/O cells:      4
+                                  Cell usage:
+                               cell     count   Res Usage(%)
+                            CLKDIVC         1          100.0
+                          ECLKSYNCA         1          100.0
+                                GSR         1          100.0
+                                 IB         3          100.0
+                                 OB         1          100.0
+                            ODDRX2E         1          100.0
+                              TOTAL         8

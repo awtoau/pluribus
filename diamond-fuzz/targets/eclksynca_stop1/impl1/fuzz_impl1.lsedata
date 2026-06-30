@@ -1,0 +1,97 @@
+<top name = "fuzz"  library = "work"  arch = ""  entry = "Verilog">
+
+<clocks>
+    <clockitem name = "clk"  type = "port" />
+    <clockitem name = "ecsout_w"  type = "net" />
+</clocks>
+
+<!--
+    //=============================================================
+    //  Number of Clocks processed: 2
+    //
+    //  If a clock cannot be found in the top level pins section,
+    //  that means it is an internal clock.
+    //
+    //=============================================================
+-->
+
+<library name = "work">
+
+<unit name = "fuzz">
+
+    <!--
+        Top Level Pins: 2
+    -->
+
+    <pins>
+        <pitem  name = "clk"  direction = "in"  />
+        <pitem  name = "out0"  direction = "out"  />
+    </pins>
+
+    <!--
+        Instances in netlist: 3
+    -->
+
+    <instance  name = "u0"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "ECLKI"  direction = "in"  />
+        <pitem  name = "STOP"  direction = "in"  />
+        <pitem  name = "ECLKO"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "clk"  />
+        <nitem  name = "pwr"  />
+        <nitem  name = "ecsout_w"  />
+        </nets>
+    </instance>
+
+    <instance  name = "out0_I_0"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "i"  direction = "in"  />
+        <pitem  name = "o"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "out0"  />
+        <nitem  name = "out0_N_2"  />
+        </nets>
+    </instance>
+
+    <instance  name = "out0_r_6"  library = "work"  arch = ""  type = "reg">
+        <pins>
+        <pitem  name = "d"  direction = "in"  />
+        <pitem  name = "clk"  direction = "in"  />
+        <pitem  name = "s"  direction = "in"  />
+        <pitem  name = "r"  direction = "in"  />
+        <pitem  name = "q"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "out0_N_2"  />
+        <nitem  name = "ecsout_w"  />
+        <nitem  name = "n2"  />
+        <nitem  name = "out0"  />
+        </nets>
+    </instance>
+
+    <!--
+        REG instances in netlist: 1
+    -->
+
+    <regs>
+        <reg  name = "out0_r_6"  />
+    </regs>
+
+    <!--
+        Views in design "fuzz": 0
+    -->
+
+    <views>
+    </views>
+
+</unit>
+
+</library>
+
+</top>

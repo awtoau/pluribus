@@ -1,0 +1,519 @@
+
+Loading design for application trce from file fuzz_impl1.ncd.
+Design name: fuzz
+NCD version: 3.3
+Vendor:      LATTICE
+Device:      LCMXO2-1200HC
+Package:     TQFP100
+Performance: 5
+Loading device for application trce from file 'xo2c1200.nph' in environment: /home/dan/lscc/diamond/3.14/ispfpga.
+Package Status:                     Final          Version 1.44.
+Performance Hardware Data Status:   Final          Version 36.4.
+Setup and Hold Report
+
+--------------------------------------------------------------------------------
+Lattice TRACE Report - Setup, Version Diamond (64-bit) 3.14.0.75.2
+Mon Jun 29 23:03:58 2026
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+
+Report Information
+------------------
+Command line:    trce -v 10 -gt -sethld -sp 5 -sphld m -o fuzz_impl1.twr fuzz_impl1.ncd fuzz_impl1.prf 
+Design file:     fuzz_impl1.ncd
+Preference file: fuzz_impl1.prf
+Device,speed:    LCMXO2-1200HC,5
+Report level:    verbose report, limited to 10 items per preference
+--------------------------------------------------------------------------------
+
+BLOCK ASYNCPATHS
+BLOCK RESETPATHS
+--------------------------------------------------------------------------------
+
+
+
+================================================================================
+Preference: FREQUENCY PORT "clk" 100.000000 MHz ;
+            4 items scored, 0 timing errors detected.
+--------------------------------------------------------------------------------
+
+
+Passed:  The following path meets requirements by 3.340ns
+         The internal maximum frequency of the following component is 150.150 MHz
+
+ Logical Details:  Cell type  Pin name       Component name
+
+   Destination:    PIO        PAD            clk
+
+   Delay:               6.660ns -- based on Minimum Pulse Width
+
+
+Passed: The following path meets requirements by 4.009ns
+
+ Logical Details:  Cell type  Pin type       Cell/ASIC name  (clock net +/-)
+
+   Source:         DP8KC      Port           u0(ASIC)  (from clk_c +)
+   Destination:    FF         Data in        out0_r_6  (to clk_c +)
+
+   Delay:               6.446ns  (77.1% logic, 22.9% route), 2 logic levels.
+
+ Constraint Details:
+
+      6.446ns physical path delay u0 to SLICE_0 meets
+     10.000ns delay constraint less
+     -0.605ns skew and
+      0.150ns DIN_SET requirement (totaling 10.455ns) by 4.009ns
+
+ Physical Path Details:
+
+      Data path u0 to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+C2Q_DEL     ---     4.518 EBR_R6C14.CLKA to EBR_R6C14.DOA2 u0 (from clk_c)
+ROUTE         1     1.476 EBR_R6C14.DOA2 to      R5C16A.B0 doa_w_2
+CTOF_DEL    ---     0.452      R5C16A.B0 to      R5C16A.F0 SLICE_0
+ROUTE         1     0.000      R5C16A.F0 to     R5C16A.DI0 out0_N_1 (to clk_c)
+                  --------
+                    6.446   (77.1% logic, 22.9% route), 2 logic levels.
+
+ Clock Skew Details: 
+
+      Source Clock Path clk to u0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     2.174       88.PADDI to EBR_R6C14.CLKA clk_c
+                  --------
+                    2.174   (0.0% logic, 100.0% route), 0 logic levels.
+
+      Destination Clock Path clk to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     2.779       88.PADDI to     R5C16A.CLK clk_c
+                  --------
+                    2.779   (0.0% logic, 100.0% route), 0 logic levels.
+
+
+Passed: The following path meets requirements by 4.103ns
+
+ Logical Details:  Cell type  Pin type       Cell/ASIC name  (clock net +/-)
+
+   Source:         DP8KC      Port           u0(ASIC)  (from clk_c +)
+   Destination:    FF         Data in        out0_r_6  (to clk_c +)
+
+   Delay:               6.352ns  (78.2% logic, 21.8% route), 2 logic levels.
+
+ Constraint Details:
+
+      6.352ns physical path delay u0 to SLICE_0 meets
+     10.000ns delay constraint less
+     -0.605ns skew and
+      0.150ns DIN_SET requirement (totaling 10.455ns) by 4.103ns
+
+ Physical Path Details:
+
+      Data path u0 to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+C2Q_DEL     ---     4.518 EBR_R6C14.CLKA to EBR_R6C14.DOA0 u0 (from clk_c)
+ROUTE         1     1.382 EBR_R6C14.DOA0 to      R5C16A.D0 doa_w_0
+CTOF_DEL    ---     0.452      R5C16A.D0 to      R5C16A.F0 SLICE_0
+ROUTE         1     0.000      R5C16A.F0 to     R5C16A.DI0 out0_N_1 (to clk_c)
+                  --------
+                    6.352   (78.2% logic, 21.8% route), 2 logic levels.
+
+ Clock Skew Details: 
+
+      Source Clock Path clk to u0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     2.174       88.PADDI to EBR_R6C14.CLKA clk_c
+                  --------
+                    2.174   (0.0% logic, 100.0% route), 0 logic levels.
+
+      Destination Clock Path clk to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     2.779       88.PADDI to     R5C16A.CLK clk_c
+                  --------
+                    2.779   (0.0% logic, 100.0% route), 0 logic levels.
+
+
+Passed: The following path meets requirements by 4.143ns
+
+ Logical Details:  Cell type  Pin type       Cell/ASIC name  (clock net +/-)
+
+   Source:         DP8KC      Port           u0(ASIC)  (from clk_c +)
+   Destination:    FF         Data in        out0_r_6  (to clk_c +)
+
+   Delay:               6.312ns  (78.7% logic, 21.3% route), 2 logic levels.
+
+ Constraint Details:
+
+      6.312ns physical path delay u0 to SLICE_0 meets
+     10.000ns delay constraint less
+     -0.605ns skew and
+      0.150ns DIN_SET requirement (totaling 10.455ns) by 4.143ns
+
+ Physical Path Details:
+
+      Data path u0 to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+C2Q_DEL     ---     4.518 EBR_R6C14.CLKA to EBR_R6C14.DOA3 u0 (from clk_c)
+ROUTE         1     1.342 EBR_R6C14.DOA3 to      R5C16A.A0 doa_w_3
+CTOF_DEL    ---     0.452      R5C16A.A0 to      R5C16A.F0 SLICE_0
+ROUTE         1     0.000      R5C16A.F0 to     R5C16A.DI0 out0_N_1 (to clk_c)
+                  --------
+                    6.312   (78.7% logic, 21.3% route), 2 logic levels.
+
+ Clock Skew Details: 
+
+      Source Clock Path clk to u0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     2.174       88.PADDI to EBR_R6C14.CLKA clk_c
+                  --------
+                    2.174   (0.0% logic, 100.0% route), 0 logic levels.
+
+      Destination Clock Path clk to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     2.779       88.PADDI to     R5C16A.CLK clk_c
+                  --------
+                    2.779   (0.0% logic, 100.0% route), 0 logic levels.
+
+
+Passed: The following path meets requirements by 4.338ns
+
+ Logical Details:  Cell type  Pin type       Cell/ASIC name  (clock net +/-)
+
+   Source:         DP8KC      Port           u0(ASIC)  (from clk_c +)
+   Destination:    FF         Data in        out0_r_6  (to clk_c +)
+
+   Delay:               6.117ns  (81.2% logic, 18.8% route), 2 logic levels.
+
+ Constraint Details:
+
+      6.117ns physical path delay u0 to SLICE_0 meets
+     10.000ns delay constraint less
+     -0.605ns skew and
+      0.150ns DIN_SET requirement (totaling 10.455ns) by 4.338ns
+
+ Physical Path Details:
+
+      Data path u0 to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+C2Q_DEL     ---     4.518 EBR_R6C14.CLKA to EBR_R6C14.DOA1 u0 (from clk_c)
+ROUTE         1     1.147 EBR_R6C14.DOA1 to      R5C16A.C0 doa_w_1
+CTOF_DEL    ---     0.452      R5C16A.C0 to      R5C16A.F0 SLICE_0
+ROUTE         1     0.000      R5C16A.F0 to     R5C16A.DI0 out0_N_1 (to clk_c)
+                  --------
+                    6.117   (81.2% logic, 18.8% route), 2 logic levels.
+
+ Clock Skew Details: 
+
+      Source Clock Path clk to u0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     2.174       88.PADDI to EBR_R6C14.CLKA clk_c
+                  --------
+                    2.174   (0.0% logic, 100.0% route), 0 logic levels.
+
+      Destination Clock Path clk to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     2.779       88.PADDI to     R5C16A.CLK clk_c
+                  --------
+                    2.779   (0.0% logic, 100.0% route), 0 logic levels.
+
+Report:  150.150MHz is the maximum frequency for this preference.
+
+Report Summary
+--------------
+----------------------------------------------------------------------------
+Preference                              |   Constraint|       Actual|Levels
+----------------------------------------------------------------------------
+                                        |             |             |
+FREQUENCY PORT "clk" 100.000000 MHz ;   |  100.000 MHz|  150.150 MHz|   0  
+                                        |             |             |
+----------------------------------------------------------------------------
+
+
+All preferences were met.
+
+
+Clock Domains Analysis
+------------------------
+
+Found 1 clocks:
+
+Clock Domain: clk_c   Source: clk.PAD   Loads: 3
+   Covered under: FREQUENCY PORT "clk" 100.000000 MHz ;
+
+
+Timing summary (Setup):
+---------------
+
+Timing errors: 0  Score: 0
+Cumulative negative slack: 0
+
+Constraints cover 4 paths, 1 nets, and 8 connections (88.89% coverage)
+
+--------------------------------------------------------------------------------
+Lattice TRACE Report - Hold, Version Diamond (64-bit) 3.14.0.75.2
+Mon Jun 29 23:03:58 2026
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+
+Report Information
+------------------
+Command line:    trce -v 10 -gt -sethld -sp 5 -sphld m -o fuzz_impl1.twr fuzz_impl1.ncd fuzz_impl1.prf 
+Design file:     fuzz_impl1.ncd
+Preference file: fuzz_impl1.prf
+Device,speed:    LCMXO2-1200HC,m
+Report level:    verbose report, limited to 10 items per preference
+--------------------------------------------------------------------------------
+
+BLOCK ASYNCPATHS
+BLOCK RESETPATHS
+--------------------------------------------------------------------------------
+
+
+
+================================================================================
+Preference: FREQUENCY PORT "clk" 100.000000 MHz ;
+            4 items scored, 0 timing errors detected.
+--------------------------------------------------------------------------------
+
+
+Passed: The following path meets requirements by 1.697ns
+
+ Logical Details:  Cell type  Pin type       Cell/ASIC name  (clock net +/-)
+
+   Source:         DP8KC      Port           u0(ASIC)  (from clk_c +)
+   Destination:    FF         Data in        out0_r_6  (to clk_c +)
+
+   Delay:               1.933ns  (85.6% logic, 14.4% route), 2 logic levels.
+
+ Constraint Details:
+
+      1.933ns physical path delay u0 to SLICE_0 meets
+     -0.013ns DIN_HLD and
+      0.000ns delay constraint less
+     -0.249ns skew requirement (totaling 0.236ns) by 1.697ns
+
+ Physical Path Details:
+
+      Data path u0 to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+C2Q_DEL     ---     1.553 EBR_R6C14.CLKA to EBR_R6C14.DOA1 u0 (from clk_c)
+ROUTE         1     0.279 EBR_R6C14.DOA1 to      R5C16A.C0 doa_w_1
+CTOF_DEL    ---     0.101      R5C16A.C0 to      R5C16A.F0 SLICE_0
+ROUTE         1     0.000      R5C16A.F0 to     R5C16A.DI0 out0_N_1 (to clk_c)
+                  --------
+                    1.933   (85.6% logic, 14.4% route), 2 logic levels.
+
+ Clock Skew Details: 
+
+      Source Clock Path clk to u0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     0.763       88.PADDI to EBR_R6C14.CLKA clk_c
+                  --------
+                    0.763   (0.0% logic, 100.0% route), 0 logic levels.
+
+      Destination Clock Path clk to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     1.012       88.PADDI to     R5C16A.CLK clk_c
+                  --------
+                    1.012   (0.0% logic, 100.0% route), 0 logic levels.
+
+
+Passed: The following path meets requirements by 1.771ns
+
+ Logical Details:  Cell type  Pin type       Cell/ASIC name  (clock net +/-)
+
+   Source:         DP8KC      Port           u0(ASIC)  (from clk_c +)
+   Destination:    FF         Data in        out0_r_6  (to clk_c +)
+
+   Delay:               2.007ns  (82.4% logic, 17.6% route), 2 logic levels.
+
+ Constraint Details:
+
+      2.007ns physical path delay u0 to SLICE_0 meets
+     -0.013ns DIN_HLD and
+      0.000ns delay constraint less
+     -0.249ns skew requirement (totaling 0.236ns) by 1.771ns
+
+ Physical Path Details:
+
+      Data path u0 to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+C2Q_DEL     ---     1.553 EBR_R6C14.CLKA to EBR_R6C14.DOA3 u0 (from clk_c)
+ROUTE         1     0.353 EBR_R6C14.DOA3 to      R5C16A.A0 doa_w_3
+CTOF_DEL    ---     0.101      R5C16A.A0 to      R5C16A.F0 SLICE_0
+ROUTE         1     0.000      R5C16A.F0 to     R5C16A.DI0 out0_N_1 (to clk_c)
+                  --------
+                    2.007   (82.4% logic, 17.6% route), 2 logic levels.
+
+ Clock Skew Details: 
+
+      Source Clock Path clk to u0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     0.763       88.PADDI to EBR_R6C14.CLKA clk_c
+                  --------
+                    0.763   (0.0% logic, 100.0% route), 0 logic levels.
+
+      Destination Clock Path clk to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     1.012       88.PADDI to     R5C16A.CLK clk_c
+                  --------
+                    1.012   (0.0% logic, 100.0% route), 0 logic levels.
+
+
+Passed: The following path meets requirements by 1.805ns
+
+ Logical Details:  Cell type  Pin type       Cell/ASIC name  (clock net +/-)
+
+   Source:         DP8KC      Port           u0(ASIC)  (from clk_c +)
+   Destination:    FF         Data in        out0_r_6  (to clk_c +)
+
+   Delay:               2.041ns  (81.0% logic, 19.0% route), 2 logic levels.
+
+ Constraint Details:
+
+      2.041ns physical path delay u0 to SLICE_0 meets
+     -0.013ns DIN_HLD and
+      0.000ns delay constraint less
+     -0.249ns skew requirement (totaling 0.236ns) by 1.805ns
+
+ Physical Path Details:
+
+      Data path u0 to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+C2Q_DEL     ---     1.553 EBR_R6C14.CLKA to EBR_R6C14.DOA2 u0 (from clk_c)
+ROUTE         1     0.387 EBR_R6C14.DOA2 to      R5C16A.B0 doa_w_2
+CTOF_DEL    ---     0.101      R5C16A.B0 to      R5C16A.F0 SLICE_0
+ROUTE         1     0.000      R5C16A.F0 to     R5C16A.DI0 out0_N_1 (to clk_c)
+                  --------
+                    2.041   (81.0% logic, 19.0% route), 2 logic levels.
+
+ Clock Skew Details: 
+
+      Source Clock Path clk to u0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     0.763       88.PADDI to EBR_R6C14.CLKA clk_c
+                  --------
+                    0.763   (0.0% logic, 100.0% route), 0 logic levels.
+
+      Destination Clock Path clk to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     1.012       88.PADDI to     R5C16A.CLK clk_c
+                  --------
+                    1.012   (0.0% logic, 100.0% route), 0 logic levels.
+
+
+Passed: The following path meets requirements by 1.805ns
+
+ Logical Details:  Cell type  Pin type       Cell/ASIC name  (clock net +/-)
+
+   Source:         DP8KC      Port           u0(ASIC)  (from clk_c +)
+   Destination:    FF         Data in        out0_r_6  (to clk_c +)
+
+   Delay:               2.041ns  (81.0% logic, 19.0% route), 2 logic levels.
+
+ Constraint Details:
+
+      2.041ns physical path delay u0 to SLICE_0 meets
+     -0.013ns DIN_HLD and
+      0.000ns delay constraint less
+     -0.249ns skew requirement (totaling 0.236ns) by 1.805ns
+
+ Physical Path Details:
+
+      Data path u0 to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+C2Q_DEL     ---     1.553 EBR_R6C14.CLKA to EBR_R6C14.DOA0 u0 (from clk_c)
+ROUTE         1     0.387 EBR_R6C14.DOA0 to      R5C16A.D0 doa_w_0
+CTOF_DEL    ---     0.101      R5C16A.D0 to      R5C16A.F0 SLICE_0
+ROUTE         1     0.000      R5C16A.F0 to     R5C16A.DI0 out0_N_1 (to clk_c)
+                  --------
+                    2.041   (81.0% logic, 19.0% route), 2 logic levels.
+
+ Clock Skew Details: 
+
+      Source Clock Path clk to u0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     0.763       88.PADDI to EBR_R6C14.CLKA clk_c
+                  --------
+                    0.763   (0.0% logic, 100.0% route), 0 logic levels.
+
+      Destination Clock Path clk to SLICE_0:
+
+   Name    Fanout   Delay (ns)          Site               Resource
+ROUTE         3     1.012       88.PADDI to     R5C16A.CLK clk_c
+                  --------
+                    1.012   (0.0% logic, 100.0% route), 0 logic levels.
+
+Report Summary
+--------------
+----------------------------------------------------------------------------
+Preference(MIN Delays)                  |   Constraint|       Actual|Levels
+----------------------------------------------------------------------------
+                                        |             |             |
+FREQUENCY PORT "clk" 100.000000 MHz ;   |            -|            -|   2  
+                                        |             |             |
+----------------------------------------------------------------------------
+
+
+All preferences were met.
+
+
+Clock Domains Analysis
+------------------------
+
+Found 1 clocks:
+
+Clock Domain: clk_c   Source: clk.PAD   Loads: 3
+   Covered under: FREQUENCY PORT "clk" 100.000000 MHz ;
+
+
+Timing summary (Hold):
+---------------
+
+Timing errors: 0  Score: 0
+Cumulative negative slack: 0
+
+Constraints cover 4 paths, 1 nets, and 8 connections (88.89% coverage)
+
+
+
+Timing summary (Setup and Hold):
+---------------
+
+Timing errors: 0 (setup), 0 (hold)
+Score: 0 (setup), 0 (hold)
+Cumulative negative slack: 0 (0+0)
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+

@@ -1,0 +1,11 @@
+NOTE Copyright (C), 1992-2010, Lattice Semiconductor Corporation *
+NOTE All Rights Reserved *
+NOTE DATE CREATED: Tue Jun 30 08:24:07 2026 *
+NOTE DESIGN NAME: fuzz *
+NOTE DEVICE NAME: LCMXO2-1200HC-5TQFP100 *
+NOTE PIN ASSIGNMENTS *
+NOTE PINS out0 : 59 : out *
+NOTE PINS d : 62 : in *
+NOTE PINS clk : 63 : in *
+NOTE CONFIGURATION MODE: NONE *
+NOTE COMPRESSION: on *

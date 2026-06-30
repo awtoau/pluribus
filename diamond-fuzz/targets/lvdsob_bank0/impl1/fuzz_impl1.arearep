@@ -1,0 +1,11 @@
+----------------------------------------------------------------------
+Report for cell fuzz.TECH
+Register bits:  0 of 1520 (0.000%)
+I/O cells:      2
+                                  Cell usage:
+                               cell     count   Res Usage(%)
+                                GSR         1          100.0
+                                 IB         1          100.0
+                             LVDSOB         1          100.0
+                                 OB         1          100.0
+                              TOTAL         4

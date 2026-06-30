@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BaliProject version="3.2" title="fuzz" device="LCMXO2-1200HC-5TG100C" default_implementation="impl1">
+    <Options/>
+    <Implementation title="impl1" dir="impl1" description="impl1" synthesis="lse" default_strategy="Strategy1">
+        <Options/>
+        <Source name="fuzz.v" type="Verilog" type_short="Verilog"><Options/></Source>
+        <Source name="fuzz.lpf" type="Logic Preference" type_short="LPF"><Options/></Source>
+    </Implementation>
+    <Strategy name="Strategy1" file="../../aw21.sty"/>
+</BaliProject>

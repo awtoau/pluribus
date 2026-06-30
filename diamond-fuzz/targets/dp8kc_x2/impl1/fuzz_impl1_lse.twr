@@ -1,0 +1,115 @@
+--------------------------------------------------------------------------------
+Lattice Synthesis Timing Report, Version  
+Mon Jun 29 23:03:50 2026
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+
+Report Information
+------------------
+Design:     fuzz
+Constraint file:  
+Report level:    verbose report, limited to 3 items per constraint
+--------------------------------------------------------------------------------
+
+
+
+================================================================================
+Constraint: create_clock -period 5.000000 -name clk0 [get_nets clk_c]
+            2 items scored, 2 timing errors detected.
+--------------------------------------------------------------------------------
+
+
+Error:  The following path violates requirements by 1.632ns
+
+ Logical Details:  Cell type  Pin type       Cell name  (clock net +/-)
+
+   Source:         DP8KC      CLKA           u0  (from clk_c +)
+   Destination:    FD1S3AX    D              out0_r_6  (to clk_c +)
+
+   Delay:                   6.486ns  (75.7% logic, 24.3% route), 2 logic levels.
+
+ Constraint Details:
+
+      6.486ns data_path u0 to out0_r_6 violates
+      5.000ns delay constraint less
+      0.146ns L_S requirement (totaling 4.854ns) by 1.632ns
+
+ Path Details: u0 to out0_r_6
+
+   Name    Fanout   Delay (ns)          Pins               Resource(Cell.Net)
+EBSR_CO     ---     4.462           CLKA to DOA[9]         u0 (from clk_c)
+Route         1   e 0.788                                  doa_w[0]
+LUT4        ---     0.448              A to Z              doa_w_1__I_0_i1_2_lut
+Route         1   e 0.788                                  out0_N_1
+                  --------
+                    6.486  (75.7% logic, 24.3% route), 2 logic levels.
+
+
+Error:  The following path violates requirements by 1.632ns
+
+ Logical Details:  Cell type  Pin type       Cell name  (clock net +/-)
+
+   Source:         DP8KC      CLKA           u0  (from clk_c +)
+   Destination:    FD1S3AX    D              out0_r_6  (to clk_c +)
+
+   Delay:                   6.486ns  (75.7% logic, 24.3% route), 2 logic levels.
+
+ Constraint Details:
+
+      6.486ns data_path u0 to out0_r_6 violates
+      5.000ns delay constraint less
+      0.146ns L_S requirement (totaling 4.854ns) by 1.632ns
+
+ Path Details: u0 to out0_r_6
+
+   Name    Fanout   Delay (ns)          Pins               Resource(Cell.Net)
+EBSR_CO     ---     4.462           CLKA to DOA[9]         u0 (from clk_c)
+Route         1   e 0.788                                  doa_w[1]
+LUT4        ---     0.448              B to Z              doa_w_1__I_0_i1_2_lut
+Route         1   e 0.788                                  out0_N_1
+                  --------
+                    6.486  (75.7% logic, 24.3% route), 2 logic levels.
+
+Warning: 6.632 ns is the maximum delay for this constraint.
+
+
+Timing Report Summary
+--------------
+--------------------------------------------------------------------------------
+Constraint                              |   Constraint|       Actual|Levels
+--------------------------------------------------------------------------------
+                                        |             |             |
+create_clock -period 5.000000 -name     |             |             |
+clk0 [get_nets clk_c]                   |     5.000 ns|     6.632 ns|     2 *
+                                        |             |             |
+--------------------------------------------------------------------------------
+
+
+1 constraints not met.
+
+--------------------------------------------------------------------------------
+Critical Nets                           |   Loads|  Errors| % of total
+--------------------------------------------------------------------------------
+out0_N_1                                |       1|       2|     99.00%
+                                        |        |        |
+doa_w[0]                                |       1|       1|     50.00%
+                                        |        |        |
+doa_w[1]                                |       1|       1|     50.00%
+                                        |        |        |
+--------------------------------------------------------------------------------
+
+
+Timing summary:
+---------------
+
+Timing errors: 2  Score: 3264
+
+Constraints cover  2 paths, 4 nets, and 6 connections (85.7% coverage)
+
+
+Peak memory: 181432320 bytes, TRCE: 864256 bytes, DLYMAN: 0 bytes
+CPU_TIME_REPORT: 0 secs 

@@ -1,0 +1,6 @@
+---------------------------------------------------
+Report for cell fuzz
+   Instance path: fuzz
+                     Cell usage:
+                                  cell	      count    Res Usage(%)
+                                 IOBUF	          2        100.0

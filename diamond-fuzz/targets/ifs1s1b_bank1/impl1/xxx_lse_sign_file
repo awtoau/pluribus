@@ -1,0 +1,5 @@
+LSE_CPS_ID_1 "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/ifs1s1b_bank1/fuzz.v:3[17:21]"
+LSE_CPS_ID_2 "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/ifs1s1b_bank1/fuzz.v:8[9] 13[2]"
+LSE_CPS_ID_3 "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/ifs1s1b_bank1/fuzz.v:2[16:19]"
+LSE_CPS_ID_4 "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/ifs1s1b_bank1/fuzz.v:2[32:34]"
+LSE_CPS_ID_5 "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/ifs1s1b_bank1/fuzz.v:15[8:36]"

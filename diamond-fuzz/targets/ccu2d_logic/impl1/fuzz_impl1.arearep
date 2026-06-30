@@ -1,0 +1,13 @@
+----------------------------------------------------------------------
+Report for cell fuzz.TECH
+Register bits:  2 of 1520 (0.132%)
+I/O cells:      5
+                                  Cell usage:
+                               cell     count   Res Usage(%)
+                              CCU2D         2          100.0
+                            FD1S3AX         2          100.0
+                                GSR         1          100.0
+                                 IB         3          100.0
+                               LUT4         2          100.0
+                                 OB         2          100.0
+                              TOTAL        12

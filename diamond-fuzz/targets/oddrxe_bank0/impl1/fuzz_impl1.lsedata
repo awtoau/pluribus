@@ -1,0 +1,65 @@
+<top name = "fuzz"  library = "work"  arch = ""  entry = "Verilog">
+
+<clocks>
+    <clockitem name = "clk"  type = "port" />
+</clocks>
+
+<!--
+    //=============================================================
+    //  Number of Clocks processed: 1
+    //
+    //  If a clock cannot be found in the top level pins section,
+    //  that means it is an internal clock.
+    //
+    //=============================================================
+-->
+
+<library name = "work">
+
+<unit name = "fuzz">
+
+    <!--
+        Top Level Pins: 4
+    -->
+
+    <pins>
+        <pitem  name = "clk"  direction = "in"  />
+        <pitem  name = "d0"  direction = "in"  />
+        <pitem  name = "d1"  direction = "in"  />
+        <pitem  name = "out0"  direction = "out"  />
+    </pins>
+
+    <!--
+        Instances in netlist: 1
+    -->
+
+    <instance  name = "u0"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "D0"  direction = "in"  />
+        <pitem  name = "D1"  direction = "in"  />
+        <pitem  name = "SCLK"  direction = "in"  />
+        <pitem  name = "RST"  direction = "in"  />
+        <pitem  name = "Q"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "d0"  />
+        <nitem  name = "d1"  />
+        <nitem  name = "clk"  />
+        <nitem  name = "n2"  />
+        <nitem  name = "out0"  />
+        </nets>
+    </instance>
+
+    <!--
+        Views in design "fuzz": 0
+    -->
+
+    <views>
+    </views>
+
+</unit>
+
+</library>
+
+</top>

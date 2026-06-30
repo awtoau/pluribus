@@ -1,0 +1,157 @@
+synthesis:  version Diamond (64-bit) 3.14.0.75.2
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+Tue Jun 30 08:41:04 2026
+
+
+Command Line:  synthesis -f fuzz_impl1_lattice.synproj 
+
+Synthesis options:
+The -a option is MachXO2.
+The -s option is 5.
+The -t option is TQFP100.
+The -d option is LCMXO2-1200HC.
+Using package TQFP100.
+Using performance grade 5.
+                                                          
+
+##########################################################
+
+### Lattice Family : MachXO2
+
+### Device  : LCMXO2-1200HC
+
+### Package : TQFP100
+
+### Speed   : 5
+
+##########################################################
+
+                                                          
+
+INFO - synthesis: User-Selected Strategy Settings
+Optimization goal = Balanced
+The -top option is not used.
+Target frequency = 200.000000 MHz.
+Maximum fanout = 1000.
+Timing path count = 3
+BRAM utilization = 100.000000 %
+DSP usage = true
+DSP utilization = 100.000000 %
+fsm_encoding_style = auto
+resolve_mixed_drivers = 0
+fix_gated_clocks = 1
+
+Mux style = Auto
+Use Carry Chain = true
+carry_chain_length = 0
+Loop Limit = 1950.
+Use IO Insertion = TRUE
+Use IO Reg = AUTO
+
+Resource Sharing = TRUE
+Propagate Constants = TRUE
+Remove Duplicate Registers = TRUE
+force_gsr = auto
+ROM style = auto
+RAM style = auto
+The -comp option is FALSE.
+The -syn option is FALSE.
+-p /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pcntr_stdbyUSER_CFG_wakecfg_tocounter_portrue_bgfalse (searchpath added)
+-p /home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data (searchpath added)
+-p /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pcntr_stdbyUSER_CFG_wakecfg_tocounter_portrue_bgfalse/impl1 (searchpath added)
+-p /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pcntr_stdbyUSER_CFG_wakecfg_tocounter_portrue_bgfalse (searchpath added)
+Verilog design file = /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pcntr_stdbyUSER_CFG_wakecfg_tocounter_portrue_bgfalse/fuzz.v
+NGD file = fuzz_impl1.ngd
+-sdc option: SDC file input not used.
+-lpf option: Output file option is ON.
+Hardtimer checking is enabled (default). The -dt option is not used.
+The -r option is OFF. [ Remove LOC Properties is OFF. ]
+WARNING - synthesis: Setting fuzz as the top-level module. To specify the top-level module explicitly, use the -top option.
+Technology check ok...
+
+Analyzing Verilog file /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v. VERI-1482
+Compile design.
+Compile Design Begin
+Analyzing Verilog file /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pcntr_stdbyUSER_CFG_wakecfg_tocounter_portrue_bgfalse/fuzz.v. VERI-1482
+Analyzing Verilog file /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v. VERI-1482
+Top module name (Verilog): fuzz
+INFO - synthesis: /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pcntr_stdbyUSER_CFG_wakecfg_tocounter_portrue_bgfalse/fuzz.v(1): compiling module fuzz. VERI-1018
+INFO - synthesis: /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v(1694): compiling module PCNTR(TIMEOUT="COUNTER",WAKEUP="CFG",POROFF="TRUE"). VERI-1018
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00a/data/xo2alib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data/xo2clib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/mg5g00/data/mg5glib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/or5g00/data/orc5glib.ngl'...
+Loading device for application map from file 'xo2c1200.nph' in environment: /home/dan/lscc/diamond/3.14/ispfpga.
+Package Status:                     Final          Version 1.44.
+Top-level module name = fuzz.
+
+
+
+GSR will not be inferred because no asynchronous signal was found in the netlist.
+Applying 200.000000 MHz constraint to all clocks
+
+WARNING - synthesis: No user .sdc file.
+Results of NGD DRC are available in fuzz_drc.log.
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00a/data/xo2alib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data/xo2clib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/mg5g00/data/mg5glib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/or5g00/data/orc5glib.ngl'...
+All blocks are expanded and NGD expansion is successful.
+Writing NGD file fuzz_impl1.ngd.
+
+################### Begin Area Report (fuzz)######################
+Number of register bits => 1 of 1520 (0 % )
+FD1S3AX => 1
+GSR => 1
+IB => 2
+LUT4 => 1
+OB => 1
+PCNTR => 1
+################### End Area Report ##################
+
+################### Begin BlackBox Report ######################
+TSALL => 1
+################### End BlackBox Report ##################
+
+################### Begin Clock Report ######################
+Clock Nets
+Number of Clocks: 1
+  Net : clk_c, loads : 2
+Clock Enable Nets
+Number of Clock Enables: 0
+Top 0 highest fanout Clock Enables:
+Highest fanout non-clock nets
+Top 10 highest fanout non-clock nets:
+  Net : d_c, loads : 3
+  Net : out0_c, loads : 1
+  Net : stdby_w, loads : 1
+  Net : stop_w, loads : 1
+  Net : out0_N_1, loads : 1
+  Net : out0, loads : 0
+################### End Clock Report ##################
+
+Timing Report Summary
+--------------
+--------------------------------------------------------------------------------
+Constraint                              |   Constraint|       Actual|Levels
+--------------------------------------------------------------------------------
+                                        |             |             |
+create_clock -period 5.000000 -name     |             |             |
+clk0 [get_nets clk_c]                   |            -|            -|     0  
+                                        |             |             |
+--------------------------------------------------------------------------------
+
+
+All constraints were met.
+
+
+Peak Memory Usage: 174.887  MB
+
+--------------------------------------------------------------
+Elapsed CPU time for LSE flow : 0.113  secs
+--------------------------------------------------------------

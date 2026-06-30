@@ -1,0 +1,158 @@
+<top name = "fuzz"  library = "work"  arch = ""  entry = "Verilog">
+
+<clocks>
+    <clockitem name = "clk"  type = "port" />
+</clocks>
+
+<!--
+    //=============================================================
+    //  Number of Clocks processed: 1
+    //
+    //  If a clock cannot be found in the top level pins section,
+    //  that means it is an internal clock.
+    //
+    //=============================================================
+-->
+
+<library name = "work">
+
+<unit name = "fuzz">
+
+    <!--
+        Top Level Pins: 5
+    -->
+
+    <pins>
+        <pitem  name = "clk"  direction = "in"  />
+        <pitem  name = "a"  direction = "in"  />
+        <pitem  name = "b"  direction = "in"  />
+        <pitem  name = "out_s"  direction = "out"  />
+        <pitem  name = "out_co"  direction = "out"  />
+    </pins>
+
+    <!--
+        Instances in netlist: 5
+    -->
+
+    <instance  name = "u0"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "CIN"  direction = "in"  />
+        <pitem  name = "A0"  direction = "in"  />
+        <pitem  name = "B0"  direction = "in"  />
+        <pitem  name = "C0"  direction = "in"  />
+        <pitem  name = "D0"  direction = "in"  />
+        <pitem  name = "A1"  direction = "in"  />
+        <pitem  name = "B1"  direction = "in"  />
+        <pitem  name = "C1"  direction = "in"  />
+        <pitem  name = "D1"  direction = "in"  />
+        <pitem  name = "S0"  direction = "out"  />
+        <pitem  name = "S1"  direction = "out"  />
+        <pitem  name = "COUT"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "n2"  />
+        <nitem  name = "a"  />
+        <nitem  name = "b"  />
+        <nitem  name = "s0_w"  />
+        <nitem  name = "s1_w"  />
+        <nitem  name = "cout_w"  />
+        </nets>
+    </instance>
+
+    <instance  name = "u1"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "CIN"  direction = "in"  />
+        <pitem  name = "A0"  direction = "in"  />
+        <pitem  name = "B0"  direction = "in"  />
+        <pitem  name = "C0"  direction = "in"  />
+        <pitem  name = "D0"  direction = "in"  />
+        <pitem  name = "A1"  direction = "in"  />
+        <pitem  name = "B1"  direction = "in"  />
+        <pitem  name = "C1"  direction = "in"  />
+        <pitem  name = "D1"  direction = "in"  />
+        <pitem  name = "S0"  direction = "out"  />
+        <pitem  name = "S1"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "cout_w"  />
+        <nitem  name = "a"  />
+        <nitem  name = "b"  />
+        <nitem  name = "n2"  />
+        <nitem  name = "s2_w"  />
+        <nitem  name = "s3_w"  />
+        </nets>
+    </instance>
+
+    <instance  name = "s3_w_I_0"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "a0"  direction = "in"  />
+        <pitem  name = "a1"  direction = "in"  />
+        <pitem  name = "o"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "s3_w"  />
+        <nitem  name = "s2_w"  />
+        <nitem  name = "out_s_N_1"  />
+        </nets>
+    </instance>
+
+    <instance  name = "s1_w_I_0"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "a0"  direction = "in"  />
+        <pitem  name = "a1"  direction = "in"  />
+        <pitem  name = "o"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "s1_w"  />
+        <nitem  name = "s0_w"  />
+        <nitem  name = "out_s_N_2"  />
+        </nets>
+    </instance>
+
+    <instance  name = "q"  library = "work"  arch = ""  type = "reg">
+        <pins>
+        <pitem  name = "d[1]"  direction = "in"  />
+        <pitem  name = "d[0]"  direction = "in"  />
+        <pitem  name = "set[1]"  direction = "in"  />
+        <pitem  name = "set[0]"  direction = "in"  />
+        <pitem  name = "reset[1]"  direction = "in"  />
+        <pitem  name = "reset[0]"  direction = "in"  />
+        <pitem  name = "clock"  direction = "in"  />
+        <pitem  name = "q[1]"  direction = "out"  />
+        <pitem  name = "q[0]"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "out_s_N_1"  />
+        <nitem  name = "out_s_N_2"  />
+        <nitem  name = "n2"  />
+        <nitem  name = "clk"  />
+        <nitem  name = "out_co"  />
+        <nitem  name = "out_s"  />
+        </nets>
+    </instance>
+
+    <!--
+        REG instances in netlist: 1
+    -->
+
+    <regs>
+        <reg  name = "q"  />
+    </regs>
+
+    <!--
+        Views in design "fuzz": 0
+    -->
+
+    <views>
+    </views>
+
+</unit>
+
+</library>
+
+</top>

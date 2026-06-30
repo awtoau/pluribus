@@ -1,0 +1,129 @@
+<top name = "fuzz"  library = "work"  arch = ""  entry = "Verilog">
+
+<clocks>
+    <clockitem name = "clk"  type = "port" />
+</clocks>
+
+<!--
+    //=============================================================
+    //  Number of Clocks processed: 1
+    //
+    //  If a clock cannot be found in the top level pins section,
+    //  that means it is an internal clock.
+    //
+    //=============================================================
+-->
+
+<library name = "work">
+
+<unit name = "fuzz">
+
+    <!--
+        Top Level Pins: 7
+    -->
+
+    <pins>
+        <pitem  name = "clk"  direction = "in"  />
+        <pitem  name = "d0"  direction = "in"  />
+        <pitem  name = "d1"  direction = "in"  />
+        <pitem  name = "out0"  direction = "out"  />
+        <pitem  name = "out1"  direction = "out"  />
+        <pitem  name = "out2"  direction = "out"  />
+        <pitem  name = "out3"  direction = "out"  />
+    </pins>
+
+    <!--
+        Instances in netlist: 3
+    -->
+
+    <instance  name = "u0"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "D"  direction = "in"  />
+        <pitem  name = "SCLK"  direction = "in"  />
+        <pitem  name = "RST"  direction = "in"  />
+        <pitem  name = "Q0"  direction = "out"  />
+        <pitem  name = "Q1"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "d0"  />
+        <nitem  name = "clk"  />
+        <nitem  name = "n2"  />
+        <nitem  name = "q0a"  />
+        <nitem  name = "q1a"  />
+        </nets>
+    </instance>
+
+    <instance  name = "u1"  library = "work"  arch = ""  type = "comb">
+        <pins>
+        <pitem  name = "D"  direction = "in"  />
+        <pitem  name = "SCLK"  direction = "in"  />
+        <pitem  name = "RST"  direction = "in"  />
+        <pitem  name = "Q0"  direction = "out"  />
+        <pitem  name = "Q1"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "d1"  />
+        <nitem  name = "clk"  />
+        <nitem  name = "n2"  />
+        <nitem  name = "q0b"  />
+        <nitem  name = "q1b"  />
+        </nets>
+    </instance>
+
+    <instance  name = "q"  library = "work"  arch = ""  type = "reg">
+        <pins>
+        <pitem  name = "d[3]"  direction = "in"  />
+        <pitem  name = "d[2]"  direction = "in"  />
+        <pitem  name = "d[1]"  direction = "in"  />
+        <pitem  name = "d[0]"  direction = "in"  />
+        <pitem  name = "set[3]"  direction = "in"  />
+        <pitem  name = "set[2]"  direction = "in"  />
+        <pitem  name = "set[1]"  direction = "in"  />
+        <pitem  name = "set[0]"  direction = "in"  />
+        <pitem  name = "reset[3]"  direction = "in"  />
+        <pitem  name = "reset[2]"  direction = "in"  />
+        <pitem  name = "reset[1]"  direction = "in"  />
+        <pitem  name = "reset[0]"  direction = "in"  />
+        <pitem  name = "clock"  direction = "in"  />
+        <pitem  name = "q[3]"  direction = "out"  />
+        <pitem  name = "q[2]"  direction = "out"  />
+        <pitem  name = "q[1]"  direction = "out"  />
+        <pitem  name = "q[0]"  direction = "out"  />
+        </pins>
+
+        <nets>
+        <nitem  name = "q1b"  />
+        <nitem  name = "q0b"  />
+        <nitem  name = "q1a"  />
+        <nitem  name = "q0a"  />
+        <nitem  name = "n2"  />
+        <nitem  name = "clk"  />
+        <nitem  name = "out3"  />
+        <nitem  name = "out2"  />
+        <nitem  name = "out1"  />
+        <nitem  name = "out0"  />
+        </nets>
+    </instance>
+
+    <!--
+        REG instances in netlist: 1
+    -->
+
+    <regs>
+        <reg  name = "q"  />
+    </regs>
+
+    <!--
+        Views in design "fuzz": 0
+    -->
+
+    <views>
+    </views>
+
+</unit>
+
+</library>
+
+</top>
