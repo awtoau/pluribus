@@ -1,9 +1,0 @@
-metric	value
-bitstream	cynthion-selftest-V1
-ffs	328
-luts	502
-nets	1094
-fanout_edges	2054
-reach_pairs	12099
-named_nets	375
-clock_domains	72
