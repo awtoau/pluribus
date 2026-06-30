@@ -46,6 +46,7 @@ def engine():
             dbapi_conn.execute("PRAGMA journal_mode=WAL")
             dbapi_conn.execute("PRAGMA synchronous=NORMAL")
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
+            dbapi_conn.execute("PRAGMA busy_timeout=30000")
     return _engine
 
 
@@ -60,10 +61,11 @@ def connect_threadsafe():
         return pg8000.native.Connection(database=_DB, user=_USR, unix_sock=_SOCK)
     else:
         import sqlite3
-        conn = sqlite3.connect(_SQPATH, check_same_thread=False)
+        conn = sqlite3.connect(_SQPATH, check_same_thread=False, timeout=30)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=30000")
         return conn
 
 
