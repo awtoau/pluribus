@@ -37,25 +37,44 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from db import BACKEND, connect, die, execute_values
+from db import BACKEND, die, engine
+from sqlalchemy import select, insert, delete, func, and_, or_, text
+import schema
+
+
+def _insert_or_ignore(table):
+    """Return an INSERT statement that silently skips duplicate rows.
+
+    SQLite requires the OR IGNORE prefix; PostgreSQL uses ON CONFLICT DO NOTHING.
+    Both produce the same semantics: ignore rows that violate a unique constraint.
+    """
+    if BACKEND == "sqlite":
+        return insert(table).prefix_with("OR IGNORE")
+    else:
+        return insert(table).on_conflict_do_nothing()
 
 
 # ── 1. Reverse reachability ───────────────────────────────────────────────────
 
 def pass_reverse(bs_id, conn):
     """Invert reachability into reachability_rev via SQL."""
-    cur = conn.cursor()
-    cur.execute("DELETE FROM reachability_rev WHERE bitstream=%s", (bs_id,))
-    cur.execute("""
-        INSERT INTO reachability_rev (bitstream, dst, src, min_hops)
-        SELECT bitstream, dst, src, min_hops
-        FROM reachability
-        WHERE bitstream=%s
-        ON CONFLICT DO NOTHING
-    """, (bs_id,))
-    n = cur.rowcount
-    conn.commit()
-    cur.close()
+    conn.execute(
+        delete(schema.reachability_rev).where(
+            schema.reachability_rev.c.bitstream == bs_id
+        )
+    )
+    r = schema.reachability
+    rr = schema.reachability_rev
+    sel = (
+        select(r.c.bitstream, r.c.dst, r.c.src, r.c.min_hops)
+        .where(r.c.bitstream == bs_id)
+    )
+    result = conn.execute(
+        _insert_or_ignore(rr).from_select(
+            ["bitstream", "dst", "src", "min_hops"], sel
+        )
+    )
+    n = result.rowcount
     return n
 
 
@@ -73,52 +92,63 @@ def pass_ff_cones(bs_id, n_workers):
       at any net that is another FF's Q (a register output is a cone boundary)
     - output cone: reachability where src = Q_net, truncate at FF D/CE inputs
     """
-    conn = connect()
-    cur  = conn.cursor()
+    with engine().connect() as conn:
+        rows_ffs = conn.execute(
+            select(
+                schema.ffs.c.cell,
+                schema.ffs.c.d,
+                schema.ffs.c.ce,
+                schema.ffs.c.q,
+            ).where(schema.ffs.c.bitstream == bs_id)
+        ).fetchall()
 
-    cur.execute("SELECT cell, d, ce, q FROM ffs WHERE bitstream=%s", (bs_id,))
-    ffs = cur.fetchall()
+        # Build set of all FF Q nets (register outputs = cone boundaries for input cones)
+        ff_q_nets = set()
+        for _cell, _d, _ce, q in rows_ffs:
+            if q and not q.startswith("1'b"):
+                ff_q_nets.add(q)
 
-    # Build set of all FF Q nets (register outputs = cone boundaries for input cones)
-    ff_q_nets = set()
-    for _cell, _d, _ce, q in ffs:
-        if q and not q.startswith("1'b"):
-            ff_q_nets.add(q)
+        # Build set of all FF D/CE nets (register inputs = cone boundaries for output cones)
+        ff_d_nets = set()
+        for _cell, d, ce, _q in rows_ffs:
+            if d and not d.startswith("1'b"):   ff_d_nets.add(d)
+            if ce and not ce.startswith("1'b"): ff_d_nets.add(ce)
 
-    # Build set of all FF D/CE nets (register inputs = cone boundaries for output cones)
-    ff_d_nets = set()
-    for _cell, d, ce, _q in ffs:
-        if d and not d.startswith("1'b"):   ff_d_nets.add(d)
-        if ce and not ce.startswith("1'b"): ff_d_nets.add(ce)
+        # Load full reachability_rev (used for input cones)
+        rev_rows = conn.execute(
+            select(
+                schema.reachability_rev.c.dst,
+                schema.reachability_rev.c.src,
+                schema.reachability_rev.c.min_hops,
+            ).where(schema.reachability_rev.c.bitstream == bs_id)
+        ).fetchall()
+        rev_index = defaultdict(list)
+        for dst, src, h in rev_rows:
+            # Exclude paths that cross a FF Q boundary — src that is another FF's Q
+            # is a register output and should not be included in the combinational cone
+            if src not in ff_q_nets:
+                rev_index[dst].append((src, h))
 
-    # Load full reachability_rev (used for input cones)
-    cur.execute("""
-        SELECT dst, src, min_hops FROM reachability_rev
-        WHERE bitstream=%s
-    """, (bs_id,))
-    rev_index = defaultdict(list)
-    for dst, src, h in cur.fetchall():
-        # Exclude paths that cross a FF Q boundary — src that is another FF's Q
-        # is a register output and should not be included in the combinational cone
-        if src not in ff_q_nets:
-            rev_index[dst].append((src, h))
+        # Load full reachability (used for output cones)
+        fwd_rows = conn.execute(
+            select(
+                schema.reachability.c.src,
+                schema.reachability.c.dst,
+                schema.reachability.c.min_hops,
+            ).where(schema.reachability.c.bitstream == bs_id)
+        ).fetchall()
+        fwd_index = defaultdict(list)
+        for src, dst, h in fwd_rows:
+            # Exclude paths that cross a FF D/CE boundary
+            if dst not in ff_d_nets:
+                fwd_index[src].append((dst, h))
 
-    # Load full reachability (used for output cones)
-    cur.execute("""
-        SELECT src, dst, min_hops FROM reachability
-        WHERE bitstream=%s
-    """, (bs_id,))
-    fwd_index = defaultdict(list)
-    for src, dst, h in cur.fetchall():
-        # Exclude paths that cross a FF D/CE boundary
-        if dst not in ff_d_nets:
-            fwd_index[src].append((dst, h))
+        conn.execute(
+            delete(schema.ff_cones).where(schema.ff_cones.c.bitstream == bs_id)
+        )
+        conn.commit()
 
-    cur.execute("DELETE FROM ff_cones WHERE bitstream=%s", (bs_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
-
+    ffs = rows_ffs
     total      = len(ffs)
     done       = [0]
     lock       = threading.Lock()
@@ -126,9 +156,7 @@ def pass_ff_cones(bs_id, n_workers):
 
     def worker_chunk(chunk):
         try:
-            wconn = connect()
-            wcur  = wconn.cursor()
-            rows  = []
+            rows = []
             for cell, d, ce, q in chunk:
                 # Input cone: union of rev[d] and rev[ce]
                 seen = {}
@@ -139,21 +167,28 @@ def pass_ff_cones(bs_id, n_workers):
                         if src not in seen or h < seen[src]:
                             seen[src] = h
                 for net, h in seen.items():
-                    rows.append((bs_id, cell, 'input', net, h))
+                    rows.append({
+                        "bitstream": bs_id,
+                        "ff_cell":   cell,
+                        "cone_type": "input",
+                        "net":       net,
+                        "min_hops":  h,
+                    })
 
                 # Output cone: fwd[q]
                 if q and not q.startswith("1'b"):
                     for dst, h in fwd_index.get(q, []):
-                        rows.append((bs_id, cell, 'output', dst, h))
+                        rows.append({
+                            "bitstream": bs_id,
+                            "ff_cell":   cell,
+                            "cone_type": "output",
+                            "net":       dst,
+                            "min_hops":  h,
+                        })
 
             if rows:
-                execute_values(wcur, """
-                    INSERT INTO ff_cones (bitstream, ff_cell, cone_type, net, min_hops)
-                    VALUES %s ON CONFLICT DO NOTHING
-                """, rows)
-                wconn.commit()
-            wcur.close()
-            wconn.close()
+                with engine().begin() as wconn:
+                    wconn.execute(_insert_or_ignore(schema.ff_cones), rows)
 
             with lock:
                 done[0] += len(chunk)
@@ -175,12 +210,12 @@ def pass_ff_cones(bs_id, n_workers):
         die(f"ff_cones worker(s) failed: {error_msgs[0]}")
 
     # Count result
-    conn2 = connect()
-    cur2  = conn2.cursor()
-    cur2.execute("SELECT count(*) FROM ff_cones WHERE bitstream=%s", (bs_id,))
-    n = cur2.fetchone()[0]
-    cur2.close()
-    conn2.close()
+    with engine().connect() as conn:
+        n = conn.execute(
+            select(func.count()).select_from(schema.ff_cones).where(
+                schema.ff_cones.c.bitstream == bs_id
+            )
+        ).scalar()
     return n
 
 
@@ -196,38 +231,85 @@ def pass_critical_paths(bs_id):
     dst=FF.d/ce — any path in the table that starts at a register output and
     ends at a register input is a combinational chain.
     """
-    conn = connect()
-    cur  = conn.cursor()
-    cur.execute("DELETE FROM critical_paths WHERE bitstream=%s", (bs_id,))
+    r  = schema.reachability
+    fa = schema.ffs.alias("fa")
+    fb = schema.ffs.alias("fb")
+    cp = schema.critical_paths
 
-    array_expr = "ARRAY[fa.q, r.dst]" if BACKEND == "postgres" else "json_array(fa.q, r.dst)"
-    cur.execute(f"""
-        INSERT INTO critical_paths (bitstream, src_ff, dst_ff, hops, path_nets)
-        SELECT
-            r.bitstream,
-            fa.cell  AS src_ff,
-            fb.cell  AS dst_ff,
-            r.min_hops,
-            {array_expr}
-        FROM reachability r
-        JOIN ffs fa ON fa.bitstream=r.bitstream AND fa.q=r.src
-        JOIN ffs fb ON fb.bitstream=r.bitstream AND (fb.d=r.dst OR fb.ce=r.dst)
-        WHERE r.bitstream=%s
-        ON CONFLICT (bitstream, src_ff, dst_ff)
-            DO UPDATE SET hops=EXCLUDED.hops, path_nets=EXCLUDED.path_nets
-            WHERE critical_paths.hops < EXCLUDED.hops
-    """, (bs_id,))
-    n = cur.rowcount
-    conn.commit()
+    # Build path_nets as a JSON list — SQLAlchemy func.json_array works on
+    # SQLite; for PostgreSQL we use a text() fragment for ARRAY[] → cast to JSON.
+    if BACKEND == "sqlite":
+        path_nets_expr = func.json_array(fa.c.q, r.c.dst)
+    else:
+        path_nets_expr = text("ARRAY[fa.q, r.dst]")
+
+    sel = (
+        select(
+            r.c.bitstream,
+            fa.c.cell.label("src_ff"),
+            fb.c.cell.label("dst_ff"),
+            r.c.min_hops,
+            path_nets_expr.label("path_nets"),
+        )
+        .join(fa, and_(fa.c.bitstream == r.c.bitstream, fa.c.q == r.c.src))
+        .join(fb, and_(
+            fb.c.bitstream == r.c.bitstream,
+            or_(fb.c.d == r.c.dst, fb.c.ce == r.c.dst),
+        ))
+        .where(r.c.bitstream == bs_id)
+    )
+
+    with engine().begin() as conn:
+        conn.execute(delete(cp).where(cp.c.bitstream == bs_id))
+
+        # For ON CONFLICT DO UPDATE (upsert keeping max hops) we need raw SQL
+        # because SQLAlchemy Core's on_conflict_do_update differs between backends.
+        if BACKEND == "sqlite":
+            stmt = text("""
+                INSERT OR REPLACE INTO critical_paths
+                    (bitstream, src_ff, dst_ff, hops, path_nets)
+                SELECT
+                    r.bitstream,
+                    fa.cell  AS src_ff,
+                    fb.cell  AS dst_ff,
+                    r.min_hops,
+                    json_array(fa.q, r.dst)
+                FROM reachability r
+                JOIN ffs fa ON fa.bitstream=r.bitstream AND fa.q=r.src
+                JOIN ffs fb ON fb.bitstream=r.bitstream
+                           AND (fb.d=r.dst OR fb.ce=r.dst)
+                WHERE r.bitstream=:bs_id
+            """)
+        else:
+            stmt = text("""
+                INSERT INTO critical_paths (bitstream, src_ff, dst_ff, hops, path_nets)
+                SELECT
+                    r.bitstream,
+                    fa.cell  AS src_ff,
+                    fb.cell  AS dst_ff,
+                    r.min_hops,
+                    ARRAY[fa.q, r.dst]
+                FROM reachability r
+                JOIN ffs fa ON fa.bitstream=r.bitstream AND fa.q=r.src
+                JOIN ffs fb ON fb.bitstream=r.bitstream
+                           AND (fb.d=r.dst OR fb.ce=r.dst)
+                WHERE r.bitstream=:bs_id
+                ON CONFLICT (bitstream, src_ff, dst_ff)
+                    DO UPDATE SET hops=EXCLUDED.hops, path_nets=EXCLUDED.path_nets
+                    WHERE critical_paths.hops < EXCLUDED.hops
+            """)
+        result = conn.execute(stmt, {"bs_id": bs_id})
+        n = result.rowcount
 
     # Report the deepest chains
-    cur.execute("""
-        SELECT src_ff, dst_ff, hops FROM critical_paths
-        WHERE bitstream=%s ORDER BY hops DESC LIMIT 5
-    """, (bs_id,))
-    top = cur.fetchall()
-    cur.close()
-    conn.close()
+    with engine().connect() as conn:
+        top = conn.execute(
+            select(cp.c.src_ff, cp.c.dst_ff, cp.c.hops)
+            .where(cp.c.bitstream == bs_id)
+            .order_by(cp.c.hops.desc())
+            .limit(5)
+        ).fetchall()
+
     return n, top
 
 
@@ -242,68 +324,120 @@ def pass_dominators(bs_id):
     Uses full reachability table — no stop_at filter.  Pad boundary is enforced
     by joining against pad_map (src must be a pad net_in).
     """
-    conn = connect()
-    cur  = conn.cursor()
-    cur.execute("DELETE FROM dominators WHERE bitstream=%s", (bs_id,))
+    dom = schema.dominators
 
-    cur.execute("""
-        WITH
-        -- pads that reach each FF D/CE net (pad boundary: src must be pad net_in)
-        pad_to_ff AS (
-            SELECT
-                f.cell      AS ff_cell,
-                pm.label    AS pad_label,
-                r.src       AS pad_net
-            FROM ffs f
-            JOIN reachability r  ON r.bitstream=f.bitstream
-                                AND (r.dst=f.d OR r.dst=f.ce)
-            JOIN pad_map pm      ON pm.bitstream=f.bitstream
-                                AND pm.net_in=r.src
-            WHERE f.bitstream=%s
-              AND f.d IS NOT NULL
-        ),
-        pad_counts AS (
-            SELECT ff_cell, count(DISTINCT pad_label) AS n_pads
-            FROM pad_to_ff GROUP BY ff_cell
-        ),
-        -- intermediate nets reachable from pad that also reach FF.D/CE
-        net_on_path AS (
-            SELECT
-                ptf.ff_cell,
-                r_fwd.dst   AS via_net,
-                ptf.pad_label
-            FROM pad_to_ff ptf
-            JOIN reachability r_fwd ON r_fwd.bitstream=%s
-                                   AND r_fwd.src=ptf.pad_net
-            JOIN ffs f2 ON f2.cell=ptf.ff_cell AND f2.bitstream=%s
-            JOIN reachability r_back ON r_back.bitstream=%s
-                                    AND r_back.src=r_fwd.dst
-                                    AND (r_back.dst=f2.d OR r_back.dst=f2.ce)
-        ),
-        via_counts AS (
-            SELECT ff_cell, via_net, count(DISTINCT pad_label) AS n_paths
-            FROM net_on_path GROUP BY ff_cell, via_net
-        )
-        INSERT INTO dominators (bitstream, ff_cell, net, n_paths)
-        SELECT %s, vc.ff_cell, vc.via_net, vc.n_paths
-        FROM via_counts vc
-        JOIN pad_counts pc ON pc.ff_cell=vc.ff_cell
-        WHERE vc.n_paths = pc.n_pads
-          AND pc.n_pads > 0
-        ON CONFLICT DO NOTHING
-    """, (bs_id, bs_id, bs_id, bs_id, bs_id))
-    n = cur.rowcount
-    conn.commit()
+    # This is a multi-CTE analytics query that cannot be cleanly expressed in
+    # SQLAlchemy Core without becoming harder to read than the raw SQL, so we
+    # use text() here as permitted by the rewrite rules.
+    if BACKEND == "sqlite":
+        stmt = text("""
+            WITH
+            pad_to_ff AS (
+                SELECT
+                    f.cell      AS ff_cell,
+                    pm.label    AS pad_label,
+                    r.src       AS pad_net
+                FROM ffs f
+                JOIN reachability r  ON r.bitstream=f.bitstream
+                                    AND (r.dst=f.d OR r.dst=f.ce)
+                JOIN pad_map pm      ON pm.bitstream=f.bitstream
+                                    AND pm.net_in=r.src
+                WHERE f.bitstream=:bs_id
+                  AND f.d IS NOT NULL
+            ),
+            pad_counts AS (
+                SELECT ff_cell, count(DISTINCT pad_label) AS n_pads
+                FROM pad_to_ff GROUP BY ff_cell
+            ),
+            net_on_path AS (
+                SELECT
+                    ptf.ff_cell,
+                    r_fwd.dst   AS via_net,
+                    ptf.pad_label
+                FROM pad_to_ff ptf
+                JOIN reachability r_fwd ON r_fwd.bitstream=:bs_id
+                                       AND r_fwd.src=ptf.pad_net
+                JOIN ffs f2 ON f2.cell=ptf.ff_cell AND f2.bitstream=:bs_id
+                JOIN reachability r_back ON r_back.bitstream=:bs_id
+                                        AND r_back.src=r_fwd.dst
+                                        AND (r_back.dst=f2.d OR r_back.dst=f2.ce)
+            ),
+            via_counts AS (
+                SELECT ff_cell, via_net, count(DISTINCT pad_label) AS n_paths
+                FROM net_on_path GROUP BY ff_cell, via_net
+            )
+            INSERT OR IGNORE INTO dominators (bitstream, ff_cell, net, n_paths)
+            SELECT :bs_id, vc.ff_cell, vc.via_net, vc.n_paths
+            FROM via_counts vc
+            JOIN pad_counts pc ON pc.ff_cell=vc.ff_cell
+            WHERE vc.n_paths = pc.n_pads
+              AND pc.n_pads > 0
+        """)
+    else:
+        stmt = text("""
+            WITH
+            pad_to_ff AS (
+                SELECT
+                    f.cell      AS ff_cell,
+                    pm.label    AS pad_label,
+                    r.src       AS pad_net
+                FROM ffs f
+                JOIN reachability r  ON r.bitstream=f.bitstream
+                                    AND (r.dst=f.d OR r.dst=f.ce)
+                JOIN pad_map pm      ON pm.bitstream=f.bitstream
+                                    AND pm.net_in=r.src
+                WHERE f.bitstream=:bs_id
+                  AND f.d IS NOT NULL
+            ),
+            pad_counts AS (
+                SELECT ff_cell, count(DISTINCT pad_label) AS n_pads
+                FROM pad_to_ff GROUP BY ff_cell
+            ),
+            net_on_path AS (
+                SELECT
+                    ptf.ff_cell,
+                    r_fwd.dst   AS via_net,
+                    ptf.pad_label
+                FROM pad_to_ff ptf
+                JOIN reachability r_fwd ON r_fwd.bitstream=:bs_id
+                                       AND r_fwd.src=ptf.pad_net
+                JOIN ffs f2 ON f2.cell=ptf.ff_cell AND f2.bitstream=:bs_id
+                JOIN reachability r_back ON r_back.bitstream=:bs_id
+                                        AND r_back.src=r_fwd.dst
+                                        AND (r_back.dst=f2.d OR r_back.dst=f2.ce)
+            ),
+            via_counts AS (
+                SELECT ff_cell, via_net, count(DISTINCT pad_label) AS n_paths
+                FROM net_on_path GROUP BY ff_cell, via_net
+            )
+            INSERT INTO dominators (bitstream, ff_cell, net, n_paths)
+            SELECT :bs_id, vc.ff_cell, vc.via_net, vc.n_paths
+            FROM via_counts vc
+            JOIN pad_counts pc ON pc.ff_cell=vc.ff_cell
+            WHERE vc.n_paths = pc.n_pads
+              AND pc.n_pads > 0
+            ON CONFLICT DO NOTHING
+        """)
+
+    with engine().begin() as conn:
+        conn.execute(delete(dom).where(dom.c.bitstream == bs_id))
+        result = conn.execute(stmt, {"bs_id": bs_id})
+        n = result.rowcount
 
     # Top dominators by n_paths
-    cur.execute("""
-        SELECT net, count(distinct ff_cell) AS ff_count, max(n_paths) AS max_paths
-        FROM dominators WHERE bitstream=%s
-        GROUP BY net ORDER BY ff_count DESC LIMIT 5
-    """, (bs_id,))
-    top = cur.fetchall()
-    cur.close()
-    conn.close()
+    with engine().connect() as conn:
+        top = conn.execute(
+            select(
+                dom.c.net,
+                func.count(func.distinct(dom.c.ff_cell)).label("ff_count"),
+                func.max(dom.c.n_paths).label("max_paths"),
+            )
+            .where(dom.c.bitstream == bs_id)
+            .group_by(dom.c.net)
+            .order_by(func.count(func.distinct(dom.c.ff_cell)).desc())
+            .limit(5)
+        ).fetchall()
+
     return n, top
 
 
@@ -316,15 +450,15 @@ def main():
     ap.add_argument("--workers",   type=int, default=24)
     args = ap.parse_args()
 
-    conn = connect()
-    cur  = conn.cursor()
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (args.bitstream,))
-    row = cur.fetchone()
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(schema.bitstreams.c.id).where(
+                schema.bitstreams.c.label == args.bitstream
+            )
+        ).fetchone()
     if not row:
         die(f"Bitstream {args.bitstream!r} not in DB — run load.py + reach.py first")
     bs_id = row[0]
-    cur.close()
-    conn.close()
 
     t0 = time.time()
     timings = []
@@ -332,9 +466,8 @@ def main():
     # ── 1. Reverse reachability ──
     print("Pass 1: reverse reachability…", flush=True)
     t = time.time()
-    conn1 = connect()
-    n = pass_reverse(bs_id, conn1)
-    conn1.close()
+    with engine().begin() as conn:
+        n = pass_reverse(bs_id, conn)
     elapsed = time.time() - t
     timings.append(("reverse",   elapsed))
     print(f"  {n} rows  ({elapsed:.2f}s)")

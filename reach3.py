@@ -32,107 +32,21 @@ from collections import deque
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect, die, execute_values
+import schema
+from db import engine, die, BACKEND
+from sqlalchemy import select, insert, delete, update, func, and_, or_, text
 
 
 # ---------------------------------------------------------------------------
-# Shared insert helper
+# ON CONFLICT helper
 # ---------------------------------------------------------------------------
 
-def bulk_insert(cursor, sql, rows):
-    """Bulk-insert rows using execute_values. No-op on empty list."""
-    execute_values(cursor, sql, rows, page_size=2000)
-
-
-# ---------------------------------------------------------------------------
-# DDL for the six new tables created by this stage
-# ---------------------------------------------------------------------------
-
-NEW_TABLES_DDL = """
-CREATE TABLE IF NOT EXISTS lut_symbolic (
-    id         BIGSERIAL PRIMARY KEY,
-    bitstream  INT  NOT NULL REFERENCES bitstreams(id) ON DELETE CASCADE,
-    lut_cell   TEXT NOT NULL,
-    -- Full boolean expression with input nets substituted in.
-    -- Example: "AND(n307, XOR(JUPDATE, n1047))"
-    expr       TEXT NOT NULL,
-    -- How many LUT levels deep the expansion went (0 = leaf LUT)
-    depth      INT  NOT NULL DEFAULT 0,
-    UNIQUE (bitstream, lut_cell)
-);
-
-CREATE TABLE IF NOT EXISTS clock_crossings (
-    id        BIGSERIAL PRIMARY KEY,
-    bitstream INT  NOT NULL REFERENCES bitstreams(id) ON DELETE CASCADE,
-    -- The FF that receives a signal from a different clock domain
-    dst_ff    TEXT NOT NULL,
-    dst_clk   TEXT NOT NULL,
-    -- The FF whose Q output is the crossing source
-    src_ff    TEXT NOT NULL,
-    src_clk   TEXT NOT NULL,
-    hops      INT  NOT NULL,
-    UNIQUE (bitstream, dst_ff, src_ff)
-);
-CREATE INDEX IF NOT EXISTS idx_cc_dst ON clock_crossings(bitstream, dst_ff);
-CREATE INDEX IF NOT EXISTS idx_cc_src ON clock_crossings(bitstream, src_ff);
-
-CREATE TABLE IF NOT EXISTS ebr_buses (
-    id        SERIAL PRIMARY KEY,
-    bitstream INT  NOT NULL REFERENCES bitstreams(id) ON DELETE CASCADE,
-    -- EBR block identifier, e.g. "R6C1"
-    block     TEXT NOT NULL,
-    -- Which logical bus this port belongs to
-    bus_role  TEXT NOT NULL,  -- 'write_data','read_data','write_addr','read_addr','ctrl'
-    bit_index INT  NOT NULL,
-    port      TEXT NOT NULL,  -- raw port name, e.g. "JA3"
-    net       TEXT,           -- connected fabric net (may be NULL if unconnected)
-    UNIQUE (bitstream, block, bus_role, bit_index)
-);
-
-CREATE TABLE IF NOT EXISTS net_stats (
-    id          SERIAL  PRIMARY KEY,
-    bitstream   INT     NOT NULL REFERENCES bitstreams(id) ON DELETE CASCADE,
-    net         TEXT    NOT NULL,
-    -- How many cell inputs this net drives (0 = dead net)
-    fanout      INT     NOT NULL DEFAULT 0,
-    -- How many cells produce this net (normally 0 or 1; >1 = problem)
-    fanin       INT     NOT NULL DEFAULT 0,
-    is_clock    BOOLEAN NOT NULL DEFAULT FALSE,
-    -- TRUE if the net is driven by a constant source (CONST LUT or stuck FF)
-    is_const    BOOLEAN NOT NULL DEFAULT FALSE,
-    -- TRUE if the net connects to a physical pad or EFB port
-    is_boundary BOOLEAN NOT NULL DEFAULT FALSE,
-    UNIQUE (bitstream, net)
-);
-
-CREATE TABLE IF NOT EXISTS cone_hashes (
-    id         SERIAL PRIMARY KEY,
-    bitstream  INT  NOT NULL REFERENCES bitstreams(id) ON DELETE CASCADE,
-    ff_cell    TEXT NOT NULL,
-    -- SHA1 of the topological cone structure (init values + connectivity, no net names)
-    cone_hash  TEXT NOT NULL,
-    -- Number of LUTs in this FF's input cone
-    cone_size  INT  NOT NULL,
-    UNIQUE (bitstream, ff_cell)
-);
-CREATE INDEX IF NOT EXISTS idx_cone_hash ON cone_hashes(bitstream, cone_hash);
-
-CREATE TABLE IF NOT EXISTS const_nets (
-    id          SERIAL PRIMARY KEY,
-    bitstream   INT  NOT NULL REFERENCES bitstreams(id) ON DELETE CASCADE,
-    net         TEXT NOT NULL,
-    const_value TEXT NOT NULL,  -- '0' or '1'
-    UNIQUE (bitstream, net)
-);
-"""
-
-
-def create_new_tables(conn):
-    """Apply the DDL for tables this stage owns. Safe to re-run (IF NOT EXISTS)."""
-    cur = conn.cursor()
-    cur.execute(NEW_TABLES_DDL)
-    conn.commit()
-    cur.close()
+def _insert_ignore(table):
+    """Return an INSERT statement that silently ignores duplicate-key conflicts."""
+    if BACKEND == "sqlite":
+        return insert(table).prefix_with("OR IGNORE")
+    else:
+        return insert(table).on_conflict_do_nothing()
 
 
 # ---------------------------------------------------------------------------
@@ -344,34 +258,40 @@ def _expand_lut_expressions(lut_rows, max_depth):
     return {cell: expand_cell(cell, max_depth) for cell in lut_details}
 
 
-def pass_lut_symbolic(bs_id, conn, max_depth):
-    cur = conn.cursor()
-    cur.execute("SELECT cell, fn, a, b, c, d, z, init FROM luts WHERE bitstream=%s", (bs_id,))
-    lut_rows = cur.fetchall()
-    cur.close()
+def pass_lut_symbolic(bs_id, max_depth):
+    t  = schema.luts
+    ls = schema.lut_symbolic
 
-    if not lut_rows:
+    with engine().begin() as conn:
+        rows = conn.execute(
+            select(t.c.cell, t.c.fn, t.c.a, t.c.b, t.c.c, t.c.d, t.c.z, t.c.init)
+            .where(t.c.bitstream == bs_id)
+        ).fetchall()
+
+    if not rows:
         die(f"No LUTs for bitstream {bs_id} — was load.py run?")
 
+    lut_rows = [(r.cell, r.fn, r.a, r.b, r.c, r.d, r.z, r.init) for r in rows]
     expanded = _expand_lut_expressions(lut_rows, max_depth)
 
-    cur = conn.cursor()
-    cur.execute("DELETE FROM lut_symbolic WHERE bitstream=%s", (bs_id,))
-    rows = [(bs_id, cell, expr, depth) for cell, (expr, depth) in expanded.items()]
-    bulk_insert(cur, """
-        INSERT INTO lut_symbolic (bitstream, lut_cell, expr, depth)
-        VALUES %s ON CONFLICT DO NOTHING
-    """, rows)
-    conn.commit()
-    cur.close()
-    return len(rows)
+    insert_rows = [
+        {"bitstream": bs_id, "lut_cell": cell, "expr": expr, "depth": depth}
+        for cell, (expr, depth) in expanded.items()
+    ]
+
+    with engine().begin() as conn:
+        conn.execute(delete(ls).where(ls.c.bitstream == bs_id))
+        if insert_rows:
+            conn.execute(_insert_ignore(ls), insert_rows)
+
+    return len(insert_rows)
 
 
 # ---------------------------------------------------------------------------
 # Pass 2: ff_d_functions — symbolic D-input expression per FF
 # ---------------------------------------------------------------------------
 
-def pass_ff_d_functions(bs_id, conn):
+def pass_ff_d_functions(bs_id):
     """
     For every FF, express its D input as a human-readable formula.
 
@@ -384,64 +304,86 @@ def pass_ff_d_functions(bs_id, conn):
     pad_inputs is filled from pad_ff_influence: which physical pads can
     transitively reach this FF (regardless of how the D path is expressed).
     """
-    cur = conn.cursor()
+    ffd   = schema.ff_d_functions
+    t_ffs = schema.ffs
+    t_ls  = schema.lut_symbolic
+    t_lut = schema.luts
+    t_pad = schema.pad_map
+    t_pfi = schema.pad_ff_influence
 
-    # Load FFs
-    cur.execute("SELECT cell, d, ce FROM ffs WHERE bitstream=%s", (bs_id,))
-    all_ffs = cur.fetchall()
+    with engine().begin() as conn:
+        # Load FFs
+        all_ffs = conn.execute(
+            select(t_ffs.c.cell, t_ffs.c.d, t_ffs.c.ce)
+            .where(t_ffs.c.bitstream == bs_id)
+        ).fetchall()
 
-    # Load symbolic expressions from pass 1
-    cur.execute("SELECT lut_cell, expr, depth FROM lut_symbolic WHERE bitstream=%s", (bs_id,))
-    symbolic_by_lut = {lut_cell: (expr, depth) for lut_cell, expr, depth in cur.fetchall()}
+        # Load symbolic expressions from pass 1
+        sym_rows = conn.execute(
+            select(t_ls.c.lut_cell, t_ls.c.expr, t_ls.c.depth)
+            .where(t_ls.c.bitstream == bs_id)
+        ).fetchall()
+        symbolic_by_lut = {r.lut_cell: (r.expr, r.depth) for r in sym_rows}
 
-    # Which LUT cell produces each net
-    cur.execute("SELECT cell, z FROM luts WHERE bitstream=%s AND z IS NOT NULL", (bs_id,))
-    lut_driving = {out_z: cell for cell, out_z in cur.fetchall()}
+        # Which LUT cell produces each net
+        lut_z_rows = conn.execute(
+            select(t_lut.c.cell, t_lut.c.z)
+            .where(and_(t_lut.c.bitstream == bs_id, t_lut.c.z != None))
+        ).fetchall()
+        lut_driving = {r.z: r.cell for r in lut_z_rows}
 
-    # Pad label by the net that comes in from that pad
-    cur.execute("""
-        SELECT net_in, label FROM pad_map
-        WHERE bitstream=%s AND net_in IS NOT NULL
-    """, (bs_id,))
-    pad_label_by_net = {net_in: label for net_in, label in cur.fetchall()}
+        # Pad label by the net that comes in from that pad
+        pad_rows = conn.execute(
+            select(t_pad.c.net_in, t_pad.c.label)
+            .where(and_(t_pad.c.bitstream == bs_id, t_pad.c.net_in != None))
+        ).fetchall()
+        pad_label_by_net = {r.net_in: r.label for r in pad_rows}
 
-    # Which pads transitively reach each FF (from pad_ff_influence)
-    cur.execute("""
-        SELECT ff_cell, array_agg(pad_label ORDER BY pad_label)
-        FROM pad_ff_influence WHERE bitstream=%s
-        GROUP BY ff_cell
-    """, (bs_id,))
-    pad_inputs_by_ff = {ff_cell: pads for ff_cell, pads in cur.fetchall()}
+        # Which pads transitively reach each FF (from pad_ff_influence)
+        pfi_rows = conn.execute(
+            select(t_pfi.c.ff_cell, t_pfi.c.pad_label)
+            .where(t_pfi.c.bitstream == bs_id)
+            .order_by(t_pfi.c.ff_cell, t_pfi.c.pad_label)
+        ).fetchall()
+        pad_inputs_by_ff = {}
+        for r in pfi_rows:
+            pad_inputs_by_ff.setdefault(r.ff_cell, []).append(r.pad_label)
 
-    cur.execute("DELETE FROM ff_d_functions WHERE bitstream=%s", (bs_id,))
+        conn.execute(delete(ffd).where(ffd.c.bitstream == bs_id))
 
-    output_rows = []
-    for ff_cell, d_net, _ce in all_ffs:
-        if d_net is None or d_net == "1'b0":
-            fn_expr    = '0'
-            expr_depth = 0
-        elif d_net == "1'b1":
-            fn_expr    = '1'
-            expr_depth = 0
-        elif d_net in lut_driving:
-            driving_lut        = lut_driving[d_net]
-            fn_expr, expr_depth = symbolic_by_lut.get(driving_lut, (d_net, 0))
-        elif d_net in pad_label_by_net:
-            fn_expr    = pad_label_by_net[d_net]
-            expr_depth = 0
-        else:
-            fn_expr    = d_net   # raw net name (another FF's Q or unresolved)
-            expr_depth = 0
+        output_rows = []
+        for ff_row in all_ffs:
+            ff_cell = ff_row.cell
+            d_net   = ff_row.d
 
-        pad_inputs = pad_inputs_by_ff.get(ff_cell)
-        output_rows.append((bs_id, ff_cell, fn_expr, expr_depth, pad_inputs))
+            if d_net is None or d_net == "1'b0":
+                fn_expr    = '0'
+                expr_depth = 0
+            elif d_net == "1'b1":
+                fn_expr    = '1'
+                expr_depth = 0
+            elif d_net in lut_driving:
+                driving_lut         = lut_driving[d_net]
+                fn_expr, expr_depth = symbolic_by_lut.get(driving_lut, (d_net, 0))
+            elif d_net in pad_label_by_net:
+                fn_expr    = pad_label_by_net[d_net]
+                expr_depth = 0
+            else:
+                fn_expr    = d_net   # raw net name (another FF's Q or unresolved)
+                expr_depth = 0
 
-    bulk_insert(cur, """
-        INSERT INTO ff_d_functions (bitstream, ff_cell, fn_expr, depth, pad_inputs)
-        VALUES %s ON CONFLICT DO NOTHING
-    """, output_rows)
-    conn.commit()
-    cur.close()
+            pad_inputs = pad_inputs_by_ff.get(ff_cell)
+            output_rows.append({
+                "bitstream":  bs_id,
+                "ff_cell":    ff_cell,
+                "fn_expr":    fn_expr,
+                "depth":      expr_depth,
+                "pad_inputs": pad_inputs,
+            })
+
+        if output_rows:
+            conn.execute(_insert_ignore(ffd), output_rows)
+
     return len(output_rows)
 
 
@@ -545,18 +487,30 @@ def _walk_ff_chains(edges, ff_by_q_net):
     return chains
 
 
-def pass_shift_registers(bs_id, conn):
-    cur = conn.cursor()
+def pass_shift_registers(bs_id):
+    t_ffs  = schema.ffs
+    t_luts = schema.luts
+    t_pat  = schema.patterns
+    t_srb  = schema.shift_reg_bits
 
-    cur.execute("SELECT cell, clk, ce, d, q FROM ffs WHERE bitstream=%s", (bs_id,))
-    ff_rows = cur.fetchall()
+    with engine().begin() as conn:
+        ff_rows_raw = conn.execute(
+            select(t_ffs.c.cell, t_ffs.c.clk, t_ffs.c.ce, t_ffs.c.d, t_ffs.c.q)
+            .where(t_ffs.c.bitstream == bs_id)
+        ).fetchall()
 
-    cur.execute("SELECT cell, fn, a, b, c, d, z FROM luts WHERE bitstream=%s", (bs_id,))
-    lut_rows = cur.fetchall()
+        lut_rows_raw = conn.execute(
+            select(t_luts.c.cell, t_luts.c.fn,
+                   t_luts.c.a, t_luts.c.b, t_luts.c.c, t_luts.c.d, t_luts.c.z)
+            .where(t_luts.c.bitstream == bs_id)
+        ).fetchall()
+
+    ff_rows  = [(r.cell, r.clk, r.ce, r.d, r.q) for r in ff_rows_raw]
+    lut_rows = [(r.cell, r.fn, r.a, r.b, r.c, r.d, r.z) for r in lut_rows_raw]
 
     # Build the indexes needed for chain detection
-    ff_by_q_net   = {}
-    ff_q_by_cell  = {}   # ff_cell -> q_net  (for writing shift_reg_bits)
+    ff_by_q_net  = {}
+    ff_q_by_cell = {}   # ff_cell -> q_net  (for writing shift_reg_bits)
     for cell, clk, ce, d_net, q_net in ff_rows:
         if q_net and not q_net.startswith("1'b"):
             ff_by_q_net[q_net] = (cell, clk, ce)
@@ -568,44 +522,54 @@ def pass_shift_registers(bs_id, conn):
     chains        = _walk_ff_chains(edges, ff_by_q_net)
 
     # Remove old shift-register patterns for this bitstream before writing new ones
-    cur.execute("DELETE FROM patterns WHERE bitstream=%s AND pattern_type='shift_reg'", (bs_id,))
-    conn.commit()
+    with engine().begin() as conn:
+        conn.execute(
+            delete(t_pat).where(
+                and_(t_pat.c.bitstream == bs_id,
+                     t_pat.c.pattern_type == 'shift_reg')
+            )
+        )
 
     n_chains     = 0
     n_total_bits = 0
 
     for chain_cells, clk_net, ce_net in chains:
         label  = f"shift_reg_{n_chains}"
-        detail = json.dumps({
+        detail = {
             "length":  len(chain_cells),
             "clk_net": clk_net,
             "ce_net":  ce_net,
             "head_ff": chain_cells[0],
             "tail_ff": chain_cells[-1],
-        })
-        cur.execute("""
-            INSERT INTO patterns (bitstream, pattern_type, label, detail)
-            VALUES (%s, 'shift_reg', %s, %s::jsonb)
-            RETURNING id
-        """, (bs_id, label, detail))
-        pattern_id = cur.fetchone()[0]
+        }
 
-        bit_rows = [
-            (pattern_id, bit_index, ff_cell,
-             ff_q_by_cell.get(ff_cell, ''), clk_net, ce_net)
-            for bit_index, ff_cell in enumerate(chain_cells)
-        ]
-        bulk_insert(cur, """
-            INSERT INTO shift_reg_bits
-                (pattern_id, bit_index, ff_cell, q_net, clk_net, load_en_net)
-            VALUES %s
-        """, bit_rows)
+        with engine().begin() as conn:
+            result = conn.execute(
+                insert(t_pat).values(
+                    bitstream=bs_id,
+                    pattern_type='shift_reg',
+                    label=label,
+                    detail=detail,
+                ).returning(t_pat.c.id)
+            )
+            pattern_id = result.fetchone()[0]
+
+            bit_rows = [
+                {
+                    "pattern_id":  pattern_id,
+                    "bit_index":   bit_index,
+                    "ff_cell":     ff_cell,
+                    "q_net":       ff_q_by_cell.get(ff_cell, ''),
+                    "clk_net":     clk_net,
+                    "load_en_net": ce_net,
+                }
+                for bit_index, ff_cell in enumerate(chain_cells)
+            ]
+            conn.execute(insert(t_srb), bit_rows)
 
         n_chains     += 1
         n_total_bits += len(chain_cells)
 
-    conn.commit()
-    cur.close()
     return n_chains, n_total_bits
 
 
@@ -613,7 +577,7 @@ def pass_shift_registers(bs_id, conn):
 # Pass 4: clock_crossings — FFs whose input cone contains a different-domain FF
 # ---------------------------------------------------------------------------
 
-def pass_clock_crossings(bs_id, conn):
+def pass_clock_crossings(bs_id):
     """
     Pure SQL: find every (src_ff, dst_ff) pair where:
       - src_ff.Q appears in dst_ff's input cone (ff_cones.cone_type='input')
@@ -622,41 +586,60 @@ def pass_clock_crossings(bs_id, conn):
     These are potential metastability hazards — signals crossing clock domains
     without a synchroniser.
     """
-    cur = conn.cursor()
-    cur.execute("DELETE FROM clock_crossings WHERE bitstream=%s", (bs_id,))
-    cur.execute("""
-        INSERT INTO clock_crossings
-            (bitstream, dst_ff, dst_clk, src_ff, src_clk, hops)
-        SELECT
-            fc.bitstream,
-            fc.ff_cell        AS dst_ff,
-            cd_dst.clk_net    AS dst_clk,
-            src_ff.cell       AS src_ff,
-            cd_src.clk_net    AS src_clk,
-            fc.min_hops       AS hops
-        FROM ff_cones fc
-        -- fc.net is in dst_ff's input cone; check if it is a Q output of some src_ff
-        JOIN ffs src_ff
-            ON src_ff.bitstream = fc.bitstream
-           AND src_ff.q         = fc.net
-        -- clock domain of the destination FF
-        JOIN clock_domains cd_dst
-            ON cd_dst.bitstream = fc.bitstream
-           AND cd_dst.ff_cell   = fc.ff_cell
-        -- clock domain of the source FF
-        JOIN clock_domains cd_src
-            ON cd_src.bitstream = fc.bitstream
-           AND cd_src.ff_cell   = src_ff.cell
-        WHERE fc.bitstream   = %s
-          AND fc.cone_type   = 'input'
-          AND cd_src.clk_net <> cd_dst.clk_net
-        ON CONFLICT (bitstream, dst_ff, src_ff)
-            DO UPDATE SET hops = EXCLUDED.hops
-    """, (bs_id,))
-    n = cur.rowcount
-    conn.commit()
-    cur.close()
-    return n
+    t_cc  = schema.clock_crossings
+    t_fc  = schema.ff_cones
+    t_ffs = schema.ffs
+    t_cd  = schema.clock_domains
+
+    with engine().begin() as conn:
+        conn.execute(delete(t_cc).where(t_cc.c.bitstream == bs_id))
+
+        src_ff = t_ffs.alias("src_ff")
+        cd_dst = t_cd.alias("cd_dst")
+        cd_src = t_cd.alias("cd_src")
+
+        subq = (
+            select(
+                t_fc.c.bitstream,
+                t_fc.c.ff_cell.label("dst_ff"),
+                cd_dst.c.clk_net.label("dst_clk"),
+                src_ff.c.cell.label("src_ff"),
+                cd_src.c.clk_net.label("src_clk"),
+                t_fc.c.min_hops.label("hops"),
+            )
+            .join(src_ff,
+                  and_(src_ff.c.bitstream == t_fc.c.bitstream,
+                       src_ff.c.q == t_fc.c.net))
+            .join(cd_dst,
+                  and_(cd_dst.c.bitstream == t_fc.c.bitstream,
+                       cd_dst.c.ff_cell == t_fc.c.ff_cell))
+            .join(cd_src,
+                  and_(cd_src.c.bitstream == t_fc.c.bitstream,
+                       cd_src.c.ff_cell == src_ff.c.cell))
+            .where(
+                and_(
+                    t_fc.c.bitstream == bs_id,
+                    t_fc.c.cone_type == 'input',
+                    cd_src.c.clk_net != cd_dst.c.clk_net,
+                )
+            )
+        )
+
+        stmt = insert(t_cc).from_select(
+            ["bitstream", "dst_ff", "dst_clk", "src_ff", "src_clk", "hops"],
+            subq,
+        )
+
+        if BACKEND == "sqlite":
+            stmt = stmt.prefix_with("OR IGNORE")
+        else:
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["bitstream", "dst_ff", "src_ff"],
+                set_={"hops": text("excluded.hops")},
+            )
+
+        result = conn.execute(stmt)
+        return result.rowcount
 
 
 # ---------------------------------------------------------------------------
@@ -706,29 +689,37 @@ def _classify_ebr_port(port_name):
     return (role, bit_index)
 
 
-def pass_ebr_buses(bs_id, conn):
-    cur = conn.cursor()
-    cur.execute("DELETE FROM ebr_buses WHERE bitstream=%s", (bs_id,))
+def pass_ebr_buses(bs_id):
+    t_ep = schema.ebr_ports
+    t_eb = schema.ebr_buses
 
-    cur.execute("SELECT block, port, net FROM ebr_ports WHERE bitstream=%s", (bs_id,))
-    ebr_ports = cur.fetchall()
+    with engine().begin() as conn:
+        conn.execute(delete(t_eb).where(t_eb.c.bitstream == bs_id))
 
-    output_rows = []
-    skipped     = 0
-    for block, port_name, net in ebr_ports:
-        classified = _classify_ebr_port(port_name)
-        if classified is None:
-            skipped += 1
-            continue
-        role, bit_index = classified
-        output_rows.append((bs_id, block, role, bit_index, port_name, net))
+        ebr_port_rows = conn.execute(
+            select(t_ep.c.block, t_ep.c.port, t_ep.c.net)
+            .where(t_ep.c.bitstream == bs_id)
+        ).fetchall()
 
-    bulk_insert(cur, """
-        INSERT INTO ebr_buses (bitstream, block, bus_role, bit_index, port, net)
-        VALUES %s ON CONFLICT DO NOTHING
-    """, output_rows)
-    conn.commit()
-    cur.close()
+        output_rows = []
+        skipped     = 0
+        for r in ebr_port_rows:
+            classified = _classify_ebr_port(r.port)
+            if classified is None:
+                skipped += 1
+                continue
+            role, bit_index = classified
+            output_rows.append({
+                "bitstream": bs_id,
+                "block":     r.block,
+                "bus_role":  role,
+                "bit_index": bit_index,
+                "port":      r.port,
+                "net":       r.net,
+            })
+
+        if output_rows:
+            conn.execute(_insert_ignore(t_eb), output_rows)
 
     if skipped:
         print(f"  ({skipped} EBR ports skipped — unrecognised name format)", flush=True)
@@ -739,7 +730,7 @@ def pass_ebr_buses(bs_id, conn):
 # Pass 6: net_stats — fan-in, fan-out, and flag bits for every net
 # ---------------------------------------------------------------------------
 
-def pass_net_stats(bs_id, conn):
+def pass_net_stats(bs_id):
     """
     For every net in the design, record:
       fanout      — how many cell inputs it drives
@@ -748,75 +739,106 @@ def pass_net_stats(bs_id, conn):
       is_const    — it is driven by a constant source (CONST0/CONST1 LUT or stuck FF)
       is_boundary — it connects to a physical pad or an EFB port
     """
-    cur = conn.cursor()
-    cur.execute("DELETE FROM net_stats WHERE bitstream=%s", (bs_id,))
+    t_ns  = schema.net_stats
+    t_nf  = schema.net_fanout
+    t_cd  = schema.clock_domains
+    t_lut = schema.luts
+    t_ffs = schema.ffs
+    t_pad = schema.pad_map
+    t_efb = schema.efb_ports
+    t_net = schema.nets
 
-    # Fan-out: count how many cell inputs are driven by each net
-    cur.execute("""
-        SELECT net, count(*) FROM net_fanout WHERE bitstream=%s GROUP BY net
-    """, (bs_id,))
-    fanout_by_net = dict(cur.fetchall())
+    with engine().begin() as conn:
+        conn.execute(delete(t_ns).where(t_ns.c.bitstream == bs_id))
 
-    # Fan-in: count how many cells produce each net
-    cur.execute("""
-        SELECT out_net, count(*) FROM net_fanout
-        WHERE bitstream=%s AND out_net IS NOT NULL
-        GROUP BY out_net
-    """, (bs_id,))
-    fanin_by_net = dict(cur.fetchall())
+        # Fan-out: count how many cell inputs are driven by each net
+        fanout_rows = conn.execute(
+            select(t_nf.c.net, func.count().label("cnt"))
+            .where(t_nf.c.bitstream == bs_id)
+            .group_by(t_nf.c.net)
+        ).fetchall()
+        fanout_by_net = {r.net: r.cnt for r in fanout_rows}
 
-    # Clock nets: appear as clk_net in clock_domains
-    cur.execute("SELECT DISTINCT clk_net FROM clock_domains WHERE bitstream=%s", (bs_id,))
-    clock_nets = {row[0] for row in cur.fetchall()}
+        # Fan-in: count how many cells produce each net
+        fanin_rows = conn.execute(
+            select(t_nf.c.out_net, func.count().label("cnt"))
+            .where(and_(t_nf.c.bitstream == bs_id, t_nf.c.out_net != None))
+            .group_by(t_nf.c.out_net)
+        ).fetchall()
+        fanin_by_net = {r.out_net: r.cnt for r in fanin_rows}
 
-    # Const nets from LUTs with constant output
-    cur.execute("""
-        SELECT z FROM luts
-        WHERE bitstream=%s AND z IS NOT NULL AND fn IN ('CONST0','CONST1')
-    """, (bs_id,))
-    const_nets = {row[0] for row in cur.fetchall()}
+        # Clock nets: appear as clk_net in clock_domains
+        clock_rows = conn.execute(
+            select(t_cd.c.clk_net).distinct()
+            .where(t_cd.c.bitstream == bs_id)
+        ).fetchall()
+        clock_nets = {r.clk_net for r in clock_rows}
 
-    # Also: FFs stuck at reset — d='1'b0' with no CE (or CE='1'b0') → Q is const 0
-    cur.execute("""
-        SELECT q FROM ffs
-        WHERE bitstream=%s AND q IS NOT NULL
-          AND d = '1''b0'
-          AND (ce = '1''b0' OR ce IS NULL)
-    """, (bs_id,))
-    for (q_net,) in cur.fetchall():
-        const_nets.add(q_net)
+        # Const nets from LUTs with constant output
+        const_lut_rows = conn.execute(
+            select(t_lut.c.z)
+            .where(and_(
+                t_lut.c.bitstream == bs_id,
+                t_lut.c.z != None,
+                t_lut.c.fn.in_(('CONST0', 'CONST1')),
+            ))
+        ).fetchall()
+        const_nets = {r.z for r in const_lut_rows}
 
-    # Boundary nets: physical pad nets + EFB port nets
-    cur.execute("""
-        SELECT net_in  FROM pad_map WHERE bitstream=%s AND net_in  IS NOT NULL
-        UNION ALL
-        SELECT net_out FROM pad_map WHERE bitstream=%s AND net_out IS NOT NULL
-        UNION ALL
-        SELECT net     FROM efb_ports WHERE bitstream=%s AND net IS NOT NULL
-    """, (bs_id, bs_id, bs_id))
-    boundary_nets = {row[0] for row in cur.fetchall()}
+        # Also: FFs stuck at reset — d='1'b0' with no CE (or CE='1'b0') → Q is const 0
+        stuck_ff_rows = conn.execute(
+            select(t_ffs.c.q)
+            .where(and_(
+                t_ffs.c.bitstream == bs_id,
+                t_ffs.c.q != None,
+                t_ffs.c.d == "1'b0",
+                or_(t_ffs.c.ce == "1'b0", t_ffs.c.ce == None),
+            ))
+        ).fetchall()
+        for r in stuck_ff_rows:
+            const_nets.add(r.q)
 
-    # All nets in the design
-    cur.execute("SELECT name FROM nets WHERE bitstream=%s", (bs_id,))
-    all_net_names = [row[0] for row in cur.fetchall()]
+        # Boundary nets: physical pad nets + EFB port nets
+        pad_in_rows = conn.execute(
+            select(t_pad.c.net_in)
+            .where(and_(t_pad.c.bitstream == bs_id, t_pad.c.net_in != None))
+        ).fetchall()
+        pad_out_rows = conn.execute(
+            select(t_pad.c.net_out)
+            .where(and_(t_pad.c.bitstream == bs_id, t_pad.c.net_out != None))
+        ).fetchall()
+        efb_rows = conn.execute(
+            select(t_efb.c.net)
+            .where(and_(t_efb.c.bitstream == bs_id, t_efb.c.net != None))
+        ).fetchall()
+        boundary_nets = (
+            {r.net_in  for r in pad_in_rows}
+            | {r.net_out for r in pad_out_rows}
+            | {r.net    for r in efb_rows}
+        )
 
-    output_rows = [
-        (bs_id, net,
-         fanout_by_net.get(net, 0),
-         fanin_by_net.get(net, 0),
-         net in clock_nets,
-         net in const_nets,
-         net in boundary_nets)
-        for net in all_net_names
-    ]
+        # All nets in the design
+        all_net_rows = conn.execute(
+            select(t_net.c.name).where(t_net.c.bitstream == bs_id)
+        ).fetchall()
+        all_net_names = [r.name for r in all_net_rows]
 
-    bulk_insert(cur, """
-        INSERT INTO net_stats
-            (bitstream, net, fanout, fanin, is_clock, is_const, is_boundary)
-        VALUES %s ON CONFLICT DO NOTHING
-    """, output_rows)
-    conn.commit()
-    cur.close()
+        output_rows = [
+            {
+                "bitstream":   bs_id,
+                "net":         net,
+                "fanout":      fanout_by_net.get(net, 0),
+                "fanin":       fanin_by_net.get(net, 0),
+                "is_clock":    net in clock_nets,
+                "is_const":    net in const_nets,
+                "is_boundary": net in boundary_nets,
+            }
+            for net in all_net_names
+        ]
+
+        if output_rows:
+            conn.execute(_insert_ignore(t_ns), output_rows)
+
     return len(output_rows)
 
 
@@ -882,24 +904,35 @@ def _topology_hash_for_ff(d_net, lut_driving, lut_topology, max_depth):
     return digest, len(topology_elements)
 
 
-def pass_cone_hashes(bs_id, conn, n_workers, max_depth=6):
-    cur = conn.cursor()
+def pass_cone_hashes(bs_id, n_workers, max_depth=6):
+    t_ffs  = schema.ffs
+    t_luts = schema.luts
+    t_ch   = schema.cone_hashes
 
-    cur.execute("SELECT cell, d FROM ffs WHERE bitstream=%s", (bs_id,))
-    all_ffs = cur.fetchall()
+    with engine().begin() as conn:
+        all_ffs_raw = conn.execute(
+            select(t_ffs.c.cell, t_ffs.c.d)
+            .where(t_ffs.c.bitstream == bs_id)
+        ).fetchall()
+        all_ffs = [(r.cell, r.d) for r in all_ffs_raw]
 
-    # Which LUT cell produces each net
-    cur.execute("SELECT cell, z FROM luts WHERE bitstream=%s AND z IS NOT NULL", (bs_id,))
-    lut_driving = {out_z: cell for cell, out_z in cur.fetchall()}
+        # Which LUT cell produces each net
+        lut_z_rows = conn.execute(
+            select(t_luts.c.cell, t_luts.c.z)
+            .where(and_(t_luts.c.bitstream == bs_id, t_luts.c.z != None))
+        ).fetchall()
+        lut_driving = {r.z: r.cell for r in lut_z_rows}
 
-    # LUT topology: cell -> (init, [port_a, port_b, port_c, port_d])
-    cur.execute("SELECT cell, init, a, b, c, d FROM luts WHERE bitstream=%s", (bs_id,))
-    lut_topology = {cell: (init, [pa, pb, pc, pd])
-                    for cell, init, pa, pb, pc, pd in cur.fetchall()}
+        # LUT topology: cell -> (init, [port_a, port_b, port_c, port_d])
+        lut_topo_rows = conn.execute(
+            select(t_luts.c.cell, t_luts.c.init,
+                   t_luts.c.a, t_luts.c.b, t_luts.c.c, t_luts.c.d)
+            .where(t_luts.c.bitstream == bs_id)
+        ).fetchall()
+        lut_topology = {r.cell: (r.init, [r.a, r.b, r.c, r.d])
+                        for r in lut_topo_rows}
 
-    cur.execute("DELETE FROM cone_hashes WHERE bitstream=%s", (bs_id,))
-    conn.commit()
-    cur.close()
+        conn.execute(delete(t_ch).where(t_ch.c.bitstream == bs_id))
 
     total          = len(all_ffs)
     progress_count = [0]
@@ -908,21 +941,19 @@ def pass_cone_hashes(bs_id, conn, n_workers, max_depth=6):
 
     def process_chunk(ff_chunk):
         try:
-            chunk_conn = connect()
-            chunk_cur  = chunk_conn.cursor()
             rows = []
             for ff_cell, d_net in ff_chunk:
                 cone_hash, cone_size = _topology_hash_for_ff(
                     d_net, lut_driving, lut_topology, max_depth
                 )
-                rows.append((bs_id, ff_cell, cone_hash, cone_size))
-            bulk_insert(chunk_cur, """
-                INSERT INTO cone_hashes (bitstream, ff_cell, cone_hash, cone_size)
-                VALUES %s ON CONFLICT DO NOTHING
-            """, rows)
-            chunk_conn.commit()
-            chunk_cur.close()
-            chunk_conn.close()
+                rows.append({
+                    "bitstream": bs_id,
+                    "ff_cell":   ff_cell,
+                    "cone_hash": cone_hash,
+                    "cone_size": cone_size,
+                })
+            with engine().begin() as chunk_conn:
+                chunk_conn.execute(_insert_ignore(t_ch), rows)
             with lock:
                 progress_count[0] += len(ff_chunk)
                 n = progress_count[0]
@@ -943,13 +974,12 @@ def pass_cone_hashes(bs_id, conn, n_workers, max_depth=6):
     if errors:
         die(f"cone_hashes worker failed: {errors[0]}")
 
-    # Read back the count using a fresh connection (chunk connections are closed)
-    verify_conn = connect()
-    verify_cur  = verify_conn.cursor()
-    verify_cur.execute("SELECT count(*) FROM cone_hashes WHERE bitstream=%s", (bs_id,))
-    n = verify_cur.fetchone()[0]
-    verify_cur.close()
-    verify_conn.close()
+    # Read back the count
+    with engine().begin() as conn:
+        n = conn.execute(
+            select(func.count()).select_from(t_ch)
+            .where(t_ch.c.bitstream == bs_id)
+        ).scalar()
     return n
 
 
@@ -981,7 +1011,7 @@ def _evaluate_lut_init(init_bits, input_values):
     return init_bits[index]
 
 
-def pass_const_nets(bs_id, conn):
+def pass_const_nets(bs_id):
     """
     Seed constant nets from:
       - LUTs with fn=CONST0 → output net is always '0'
@@ -992,66 +1022,80 @@ def pass_const_nets(bs_id, conn):
     init table to determine its output value, and mark that net const too.
     Repeat until no new const nets are discovered (fixed-point iteration).
     """
-    cur = conn.cursor()
-    cur.execute("DELETE FROM const_nets WHERE bitstream=%s", (bs_id,))
+    t_cn  = schema.const_nets
+    t_lut = schema.luts
+    t_ffs = schema.ffs
 
-    const_values = {}   # net_name -> '0' or '1'
+    with engine().begin() as conn:
+        conn.execute(delete(t_cn).where(t_cn.c.bitstream == bs_id))
 
-    # Seed from CONST LUTs
-    cur.execute("""
-        SELECT z, fn FROM luts
-        WHERE bitstream=%s AND z IS NOT NULL AND fn IN ('CONST0','CONST1')
-    """, (bs_id,))
-    for out_net, fn in cur.fetchall():
-        const_values[out_net] = '0' if fn == 'CONST0' else '1'
+        const_values = {}   # net_name -> '0' or '1'
 
-    # Seed from permanently-reset FFs
-    cur.execute("""
-        SELECT q FROM ffs
-        WHERE bitstream=%s AND q IS NOT NULL
-          AND d = '1''b0'
-          AND (ce = '1''b0' OR ce IS NULL)
-    """, (bs_id,))
-    for (q_net,) in cur.fetchall():
-        const_values[q_net] = '0'
+        # Seed from CONST LUTs
+        const_lut_rows = conn.execute(
+            select(t_lut.c.z, t_lut.c.fn)
+            .where(and_(
+                t_lut.c.bitstream == bs_id,
+                t_lut.c.z != None,
+                t_lut.c.fn.in_(('CONST0', 'CONST1')),
+            ))
+        ).fetchall()
+        for r in const_lut_rows:
+            const_values[r.z] = '0' if r.fn == 'CONST0' else '1'
 
-    # All LUTs that could propagate const values (exclude CONST LUTs already seeded)
-    cur.execute("""
-        SELECT cell, init, a, b, c, d, z FROM luts
-        WHERE bitstream=%s AND z IS NOT NULL
-          AND fn NOT IN ('CONST0','CONST1')
-    """, (bs_id,))
-    propagation_luts = cur.fetchall()
+        # Seed from permanently-reset FFs
+        stuck_rows = conn.execute(
+            select(t_ffs.c.q)
+            .where(and_(
+                t_ffs.c.bitstream == bs_id,
+                t_ffs.c.q != None,
+                t_ffs.c.d == "1'b0",
+                or_(t_ffs.c.ce == "1'b0", t_ffs.c.ce == None),
+            ))
+        ).fetchall()
+        for r in stuck_rows:
+            const_values[r.q] = '0'
 
-    # Iterate until no new const nets appear
-    made_progress = True
-    while made_progress:
-        made_progress = False
-        for _cell, init, pa, pb, pc, pd, out_net in propagation_luts:
-            if out_net in const_values:
-                continue   # already determined
+        # All LUTs that could propagate const values (exclude CONST LUTs already seeded)
+        prop_rows = conn.execute(
+            select(t_lut.c.cell, t_lut.c.init,
+                   t_lut.c.a, t_lut.c.b, t_lut.c.c, t_lut.c.d, t_lut.c.z)
+            .where(and_(
+                t_lut.c.bitstream == bs_id,
+                t_lut.c.z != None,
+                t_lut.c.fn.not_in(('CONST0', 'CONST1')),
+            ))
+        ).fetchall()
+        propagation_luts = [(r.cell, r.init, r.a, r.b, r.c, r.d, r.z)
+                            for r in prop_rows]
 
-            # All four inputs must be known constants (None = unconnected = '0')
-            input_vals = {
-                'a': const_values.get(pa) if pa else '0',
-                'b': const_values.get(pb) if pb else '0',
-                'c': const_values.get(pc) if pc else '0',
-                'd': const_values.get(pd) if pd else '0',
-            }
-            if any(v is None for v in input_vals.values()):
-                continue   # at least one input is not yet known to be constant
+        # Iterate until no new const nets appear
+        made_progress = True
+        while made_progress:
+            made_progress = False
+            for _cell, init, pa, pb, pc, pd, out_net in propagation_luts:
+                if out_net in const_values:
+                    continue   # already determined
 
-            result = _evaluate_lut_init(init, input_vals)
-            const_values[out_net] = result
-            made_progress = True
+                # All four inputs must be known constants (None = unconnected = '0')
+                input_vals = {
+                    'a': const_values.get(pa) if pa else '0',
+                    'b': const_values.get(pb) if pb else '0',
+                    'c': const_values.get(pc) if pc else '0',
+                    'd': const_values.get(pd) if pd else '0',
+                }
+                if any(v is None for v in input_vals.values()):
+                    continue   # at least one input is not yet known to be constant
 
-    rows = [(bs_id, net, value) for net, value in const_values.items()]
-    bulk_insert(cur, """
-        INSERT INTO const_nets (bitstream, net, const_value)
-        VALUES %s ON CONFLICT DO NOTHING
-    """, rows)
-    conn.commit()
-    cur.close()
+                result = _evaluate_lut_init(init, input_vals)
+                const_values[out_net] = result
+                made_progress = True
+
+        rows = [{"bitstream": bs_id, "net": net, "const_value": value}
+                for net, value in const_values.items()]
+        if rows:
+            conn.execute(_insert_ignore(t_cn), rows)
+
     return len(rows)
 
 
@@ -1072,28 +1116,25 @@ def main():
                     help="Max LUT depth for symbolic expansion and cone hashing (default: 4)")
     args = ap.parse_args()
 
-    conn = connect()
-    cur  = conn.cursor()
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (args.bitstream,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {args.bitstream!r} not found — run load.py first")
-    bs_id = row[0]
-    cur.close()
+    t_bs = schema.bitstreams
+    with engine().begin() as conn:
+        row = conn.execute(
+            select(t_bs.c.id).where(t_bs.c.label == args.bitstream)
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {args.bitstream!r} not found — run load.py first")
+        bs_id = row[0]
 
-    create_new_tables(conn)
-    conn.close()
+    # schema.init() is called by load.py before reach3 runs; tables already exist.
 
     wall_start = time.time()
     timings    = []
 
     def run_pass(label, fn):
-        """Open a fresh connection, run fn(conn, ...), close, record timing."""
+        """Run fn(), record timing."""
         print(f"{label}…", flush=True)
         t      = time.time()
-        c      = connect()
-        result = fn(c)
-        c.close()
+        result = fn()
         elapsed = time.time() - t
         timings.append((label, elapsed))
         return result, elapsed
@@ -1101,21 +1142,21 @@ def main():
     # Pass 1 — LUT symbolic expansion
     n, elapsed = run_pass(
         "Pass 1: LUT symbolic expansion",
-        lambda c: pass_lut_symbolic(bs_id, c, args.depth)
+        lambda: pass_lut_symbolic(bs_id, args.depth)
     )
     print(f"  {n} LUT expressions  ({elapsed:.2f}s)")
 
     # Pass 2 — FF D-input functions
     n, elapsed = run_pass(
         "Pass 2: FF D-input functions",
-        lambda c: pass_ff_d_functions(bs_id, c)
+        lambda: pass_ff_d_functions(bs_id)
     )
     print(f"  {n} FF functions  ({elapsed:.2f}s)")
 
     # Pass 3 — shift register detection
     result, elapsed = run_pass(
         "Pass 3: shift register detection",
-        lambda c: pass_shift_registers(bs_id, c)
+        lambda: pass_shift_registers(bs_id)
     )
     n_chains, n_bits = result
     print(f"  {n_chains} chains, {n_bits} total FFs  ({elapsed:.2f}s)")
@@ -1123,53 +1164,56 @@ def main():
     # Pass 4 — clock domain crossings (pure SQL)
     n, elapsed = run_pass(
         "Pass 4: clock domain crossings",
-        lambda c: pass_clock_crossings(bs_id, c)
+        lambda: pass_clock_crossings(bs_id)
     )
     print(f"  {n} crossings  ({elapsed:.2f}s)")
 
     # Pass 5 — EBR bus classification
     n, elapsed = run_pass(
         "Pass 5: EBR bus classification",
-        lambda c: pass_ebr_buses(bs_id, c)
+        lambda: pass_ebr_buses(bs_id)
     )
     print(f"  {n} bus port assignments  ({elapsed:.2f}s)")
 
     # Pass 6 — net fan-in/fan-out statistics
     n, elapsed = run_pass(
         "Pass 6: net fan-in / fan-out statistics",
-        lambda c: pass_net_stats(bs_id, c)
+        lambda: pass_net_stats(bs_id)
     )
     print(f"  {n} nets  ({elapsed:.2f}s)")
 
     # Pass 7 — cone hashes (parallelised internally; doesn't fit the run_pass pattern)
     print("Pass 7: FF input cone structural hashes…", flush=True)
     t = time.time()
-    n = pass_cone_hashes(bs_id, connect(), args.workers, max_depth=args.depth)
+    n = pass_cone_hashes(bs_id, args.workers, max_depth=args.depth)
     elapsed = time.time() - t
     timings.append(("Pass 7: cone_hashes", elapsed))
     print(f"\n  {n} cone hashes  ({elapsed:.2f}s)")
 
     # Report which cone structures appear most often (structurally identical sub-circuits)
-    summary_conn = connect()
-    summary_cur  = summary_conn.cursor()
-    summary_cur.execute("""
-        SELECT cone_hash, count(*) AS n_ffs, min(cone_size) AS depth
-        FROM cone_hashes WHERE bitstream=%s
-        GROUP BY cone_hash HAVING count(*) > 1
-        ORDER BY n_ffs DESC LIMIT 5
-    """, (bs_id,))
-    duplicates = summary_cur.fetchall()
-    summary_cur.close()
-    summary_conn.close()
+    t_ch = schema.cone_hashes
+    with engine().begin() as conn:
+        duplicates = conn.execute(
+            select(
+                t_ch.c.cone_hash,
+                func.count().label("n_ffs"),
+                func.min(t_ch.c.cone_size).label("depth"),
+            )
+            .where(t_ch.c.bitstream == bs_id)
+            .group_by(t_ch.c.cone_hash)
+            .having(func.count() > 1)
+            .order_by(func.count().desc())
+            .limit(5)
+        ).fetchall()
     if duplicates:
         print("  Most-duplicated cone structures (identical topology, different nets):")
-        for cone_hash, n_ffs, depth in duplicates:
-            print(f"    {cone_hash[:12]}…  {n_ffs} FFs  depth={depth}")
+        for row in duplicates:
+            print(f"    {row.cone_hash[:12]}…  {row.n_ffs} FFs  depth={row.depth}")
 
     # Pass 8 — constant net propagation
     n, elapsed = run_pass(
         "Pass 8: constant net propagation",
-        lambda c: pass_const_nets(bs_id, c)
+        lambda: pass_const_nets(bs_id)
     )
     print(f"  {n} constant nets  ({elapsed:.2f}s)")
 

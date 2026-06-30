@@ -29,35 +29,58 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect, die, execute_values
+from db import engine, die, BACKEND
 import schema
+from sqlalchemy import select, insert, delete, update, func, and_, or_, text
 
 
 # ---------------------------------------------------------------------------
-# Shared insert helper (same as reach3.py)
+# Shared insert helpers (SQLAlchemy Core)
 # ---------------------------------------------------------------------------
 
-def bulk_insert(cursor, sql, rows):
-    """Bulk-insert rows using execute_values. No-op on empty list."""
-    execute_values(cursor, sql, rows, page_size=2000)
+def _net_names_insert():
+    """Return an insert statement for net_names with ON CONFLICT DO NOTHING."""
+    tbl = schema.net_names
+    stmt = insert(tbl)
+    if BACKEND == "postgres":
+        return stmt.on_conflict_do_nothing(index_elements=["bitstream", "net"])
+    else:
+        return stmt.prefix_with("OR IGNORE")
+
+
+def _cell_names_insert():
+    """Return an insert statement for cell_names with ON CONFLICT DO NOTHING."""
+    tbl = schema.cell_names
+    stmt = insert(tbl)
+    if BACKEND == "postgres":
+        return stmt.on_conflict_do_nothing(index_elements=["bitstream", "cell"])
+    else:
+        return stmt.prefix_with("OR IGNORE")
+
+
+def bulk_insert_nets(conn, rows):
+    """Bulk-insert net_names rows. No-op on empty list.
+
+    rows: list of dicts with keys: bitstream, net, name, description, confidence, source
+    """
+    if not rows:
+        return
+    conn.execute(_net_names_insert(), rows)
+
+
+def bulk_insert_cells(conn, rows):
+    """Bulk-insert cell_names rows. No-op on empty list.
+
+    rows: list of dicts with keys: bitstream, cell, name, description, confidence
+    """
+    if not rows:
+        return
+    conn.execute(_cell_names_insert(), rows)
 
 
 # ---------------------------------------------------------------------------
 # Pass 1: Const nets — GND / VCC
 # ---------------------------------------------------------------------------
-
-_NET_NAME_INSERT = """
-    INSERT INTO net_names (bitstream, net, name, description, confidence, source)
-    VALUES %s
-    ON CONFLICT (bitstream, net) DO NOTHING
-"""
-
-_CELL_NAME_INSERT = """
-    INSERT INTO cell_names (bitstream, cell, name, description, confidence)
-    VALUES %s
-    ON CONFLICT (bitstream, cell) DO NOTHING
-"""
-
 
 def pass_const_nets(bs_id, conn):
     """
@@ -77,20 +100,20 @@ def pass_const_nets(bs_id, conn):
     confidence='confirmed': the value is proven by reach3 const propagation.
     source='auto_const'
     """
-    cur = conn.cursor()
+    cn = schema.const_nets
+    nn = schema.net_names
 
     # Load all const nets sorted so naming is deterministic (first one gets bare name)
-    cur.execute("""
-        SELECT net, const_value
-        FROM const_nets
-        WHERE bitstream = %s
-        ORDER BY const_value, net
-    """, (bs_id,))
-    const_rows = cur.fetchall()
+    const_rows = conn.execute(
+        select(cn.c.net, cn.c.const_value)
+        .where(cn.c.bitstream == bs_id)
+        .order_by(cn.c.const_value, cn.c.net)
+    ).fetchall()
 
     # Check which nets already have names so we don't count them toward "first"
-    cur.execute("SELECT net FROM net_names WHERE bitstream = %s", (bs_id,))
-    already_named = {row[0] for row in cur.fetchall()}
+    already_named = {row[0] for row in conn.execute(
+        select(nn.c.net).where(nn.c.bitstream == bs_id)
+    ).fetchall()}
 
     gnd_seen = False
     vcc_seen = False
@@ -115,11 +138,16 @@ def pass_const_nets(bs_id, conn):
                 name = f'VCC_n{net}'
             description = 'Constant logic 1'
 
-        output_rows.append((bs_id, net, name, description, 'confirmed', 'auto_const'))
+        output_rows.append({
+            "bitstream": bs_id,
+            "net": net,
+            "name": name,
+            "description": description,
+            "confidence": "confirmed",
+            "source": "auto_const",
+        })
 
-    bulk_insert(cur, _NET_NAME_INSERT, output_rows)
-    conn.commit()
-    cur.close()
+    bulk_insert_nets(conn, output_rows)
     return len(output_rows)
 
 
@@ -145,32 +173,33 @@ def pass_clock_nets(bs_id, conn):
     don't know which physical signal it corresponds to.
     source='auto_clock'
     """
-    cur = conn.cursor()
+    nn  = schema.net_names
+    nf  = schema.net_fanout
+    ns  = schema.net_stats
 
     # Already-named nets — skip them
-    cur.execute("SELECT net FROM net_names WHERE bitstream = %s", (bs_id,))
-    already_named = {row[0] for row in cur.fetchall()}
+    already_named = {row[0] for row in conn.execute(
+        select(nn.c.net).where(nn.c.bitstream == bs_id)
+    ).fetchall()}
 
     # Ghost clock nets: nets that ONLY appear on CLK pins in net_fanout,
     # have fanin=0 (not driven by recoverable logic), and are not boundary nets.
     # "Only on CLK pins" means every row for this net has pin='CLK'.
-    cur.execute("""
-        SELECT
-            nf.net,
-            count(*) AS ff_count
-        FROM net_fanout nf
-        JOIN net_stats ns
-          ON ns.bitstream = nf.bitstream
-         AND ns.net       = nf.net
-        WHERE nf.bitstream = %s
-          AND ns.fanin     = 0
-          AND ns.is_boundary = FALSE
-          AND ns.is_const    = FALSE
-        GROUP BY nf.net
-        HAVING bool_and(nf.pin = 'CLK')
-        ORDER BY ff_count DESC, nf.net
-    """, (bs_id,))
-    clock_candidates = cur.fetchall()
+    clock_candidates = conn.execute(
+        select(nf.c.net, func.count().label("ff_count"))
+        .join(ns, and_(ns.c.bitstream == nf.c.bitstream, ns.c.net == nf.c.net))
+        .where(
+            and_(
+                nf.c.bitstream == bs_id,
+                ns.c.fanin == 0,
+                ns.c.is_boundary == False,
+                ns.c.is_const == False,
+            )
+        )
+        .group_by(nf.c.net)
+        .having(func.bool_and(nf.c.pin == 'CLK'))
+        .order_by(func.count().desc(), nf.c.net)
+    ).fetchall()
 
     output_rows = []
     rank = 0
@@ -180,12 +209,17 @@ def pass_clock_nets(bs_id, conn):
             continue
         name        = f'clk_{rank}'
         description = f'Clock domain: {ff_count} FFs'
-        output_rows.append((bs_id, net, name, description, 'estimate', 'auto_clock'))
+        output_rows.append({
+            "bitstream": bs_id,
+            "net": net,
+            "name": name,
+            "description": description,
+            "confidence": "estimate",
+            "source": "auto_clock",
+        })
         rank += 1
 
-    bulk_insert(cur, _NET_NAME_INSERT, output_rows)
-    conn.commit()
-    cur.close()
+    bulk_insert_nets(conn, output_rows)
     return len(output_rows)
 
 
@@ -247,26 +281,29 @@ def pass_ff_spatial(bs_id, conn):
     FPGA designs that pack related register bits into adjacent tiles.
     source='auto_spatial'
     """
-    cur = conn.cursor()
+    ffs = schema.ffs
+    nn  = schema.net_names
+    cn  = schema.cell_names
 
     # Load all FFs: we need cell name, Q net, and clock net
-    cur.execute("""
-        SELECT cell, q, clk
-        FROM ffs
-        WHERE bitstream = %s
-    """, (bs_id,))
-    all_ffs = cur.fetchall()
+    all_ffs = conn.execute(
+        select(ffs.c.cell, ffs.c.q, ffs.c.clk)
+        .where(ffs.c.bitstream == bs_id)
+    ).fetchall()
 
     # Already-named nets and cells — skip them
-    cur.execute("SELECT net  FROM net_names  WHERE bitstream = %s", (bs_id,))
-    named_nets = {row[0] for row in cur.fetchall()}
+    named_nets = {row[0] for row in conn.execute(
+        select(nn.c.net).where(nn.c.bitstream == bs_id)
+    ).fetchall()}
 
-    cur.execute("SELECT cell FROM cell_names WHERE bitstream = %s", (bs_id,))
-    named_cells = {row[0] for row in cur.fetchall()}
+    named_cells = {row[0] for row in conn.execute(
+        select(cn.c.cell).where(cn.c.bitstream == bs_id)
+    ).fetchall()}
 
     # Clock net → human name from net_names (so descriptions say 'clk_0' not 'n42')
-    cur.execute("SELECT net, name FROM net_names WHERE bitstream = %s", (bs_id,))
-    net_name_map = {net: name for net, name in cur.fetchall()}
+    net_name_map = {row[0]: row[1] for row in conn.execute(
+        select(nn.c.net, nn.c.name).where(nn.c.bitstream == bs_id)
+    ).fetchall()}
 
     # Group FFs by (row, col) tile
     tiles = {}   # (row, col) → list of (cell, slice_char, bit_int, q_net, clk_net)
@@ -304,30 +341,28 @@ def pass_ff_spatial(bs_id, conn):
 
             # Name the cell
             if cell not in named_cells:
-                cell_rows.append((
-                    bs_id,
-                    cell,
-                    f'{reg_base}[{idx}]',
-                    f'Register bit {idx} at tile r{row}c{col}{clk_suffix}',
-                    'estimate',
-                ))
+                cell_rows.append({
+                    "bitstream": bs_id,
+                    "cell": cell,
+                    "name": f'{reg_base}[{idx}]',
+                    "description": f'Register bit {idx} at tile r{row}c{col}{clk_suffix}',
+                    "confidence": "estimate",
+                })
                 n_ffs_named += 1
 
             # Name the Q net
             if q_net and q_net not in named_nets:
-                net_rows.append((
-                    bs_id,
-                    q_net,
-                    f'{reg_base}_q[{idx}]',
-                    f'Q output of register bit {idx} at tile r{row}c{col}{clk_suffix}',
-                    'estimate',
-                    'auto_spatial',
-                ))
+                net_rows.append({
+                    "bitstream": bs_id,
+                    "net": q_net,
+                    "name": f'{reg_base}_q[{idx}]',
+                    "description": f'Q output of register bit {idx} at tile r{row}c{col}{clk_suffix}',
+                    "confidence": "estimate",
+                    "source": "auto_spatial",
+                })
 
-    bulk_insert(cur, _CELL_NAME_INSERT, cell_rows)
-    bulk_insert(cur, _NET_NAME_INSERT,  net_rows)
-    conn.commit()
-    cur.close()
+    bulk_insert_cells(conn, cell_rows)
+    bulk_insert_nets(conn, net_rows)
     return n_groups, n_ffs_named
 
 
@@ -356,30 +391,34 @@ def pass_ghost_d_inputs(bs_id, conn):
     cannot determine what drives it from the available netlist information.
     source='auto_ghost'
     """
-    cur = conn.cursor()
+    nn  = schema.net_names
+    nf  = schema.net_fanout
+    ns  = schema.net_stats
 
     # Already-named nets — skip them
-    cur.execute("SELECT net FROM net_names WHERE bitstream = %s", (bs_id,))
-    already_named = {row[0] for row in cur.fetchall()}
+    already_named = {row[0] for row in conn.execute(
+        select(nn.c.net).where(nn.c.bitstream == bs_id)
+    ).fetchall()}
 
     # Ghost D-input nets: appear on pin='D' in net_fanout, have fanin=0,
     # are not boundary, not const, not the literal '1'b0'/'1'b1' tokens.
-    cur.execute("""
-        SELECT DISTINCT nf.net
-        FROM net_fanout nf
-        JOIN net_stats ns
-          ON ns.bitstream = nf.bitstream
-         AND ns.net       = nf.net
-        WHERE nf.bitstream  = %s
-          AND nf.pin        = 'D'
-          AND nf.cell_type  = 'FF'
-          AND ns.fanin      = 0
-          AND ns.is_boundary = FALSE
-          AND ns.is_const    = FALSE
-          AND nf.net NOT LIKE '1''b%%'
-        ORDER BY nf.net
-    """, (bs_id,))
-    ghost_nets = [row[0] for row in cur.fetchall()]
+    ghost_nets = [row[0] for row in conn.execute(
+        select(nf.c.net)
+        .distinct()
+        .join(ns, and_(ns.c.bitstream == nf.c.bitstream, ns.c.net == nf.c.net))
+        .where(
+            and_(
+                nf.c.bitstream == bs_id,
+                nf.c.pin == 'D',
+                nf.c.cell_type == 'FF',
+                ns.c.fanin == 0,
+                ns.c.is_boundary == False,
+                ns.c.is_const == False,
+                nf.c.net.notlike("1'b%"),
+            )
+        )
+        .order_by(nf.c.net)
+    ).fetchall()]
 
     output_rows = []
     index = 0
@@ -387,19 +426,17 @@ def pass_ghost_d_inputs(bs_id, conn):
     for net in ghost_nets:
         if net in already_named:
             continue
-        output_rows.append((
-            bs_id,
-            net,
-            f'ghost_d_{index}',
-            'Unresolved D input: fanin=0, likely hard IP',
-            'guess',
-            'auto_ghost',
-        ))
+        output_rows.append({
+            "bitstream": bs_id,
+            "net": net,
+            "name": f'ghost_d_{index}',
+            "description": 'Unresolved D input: fanin=0, likely hard IP',
+            "confidence": "guess",
+            "source": "auto_ghost",
+        })
         index += 1
 
-    bulk_insert(cur, _NET_NAME_INSERT, output_rows)
-    conn.commit()
-    cur.close()
+    bulk_insert_nets(conn, output_rows)
     return len(output_rows)
 
 
@@ -422,43 +459,50 @@ def pass_clock_semantics(bs_id, conn):
     This pass uses ON CONFLICT DO UPDATE to overwrite the clk_N names set by pass 2.
     confidence='estimate', source='auto_clock' (kept).
     """
-    cur = conn.cursor()
+    nn  = schema.net_names
+    cd  = schema.clock_domains
+    cx  = schema.clock_crossings
+    pm  = schema.pad_map
+    ffs = schema.ffs
+    ns  = schema.net_stats
+    rch = schema.reachability
 
     # Load all auto_clock nets with FF count (from clock_domains) and
     # crossing counts (from clock_crossings).
-    cur.execute("""
-        SELECT
-            nn.net,
-            nn.name,
-            COALESCE(cd.ff_count,  0) AS ff_count,
-            COALESCE(cx_out.n, 0) AS crossings_out,
-            COALESCE(cx_in.n,  0) AS crossings_in
-        FROM net_names nn
-        LEFT JOIN (
-            SELECT bitstream, clk_net, count(*) AS ff_count
-            FROM clock_domains
-            WHERE bitstream = %s
-            GROUP BY bitstream, clk_net
-        ) cd ON cd.bitstream = nn.bitstream AND cd.clk_net = nn.net
-        LEFT JOIN (
-            SELECT bitstream, src_clk, count(*) AS n
-            FROM clock_crossings
-            WHERE bitstream = %s
-            GROUP BY bitstream, src_clk
-        ) cx_out ON cx_out.bitstream = nn.bitstream AND cx_out.src_clk = nn.net
-        LEFT JOIN (
-            SELECT bitstream, dst_clk, count(*) AS n
-            FROM clock_crossings
-            WHERE bitstream = %s
-            GROUP BY bitstream, dst_clk
-        ) cx_in ON cx_in.bitstream = nn.bitstream AND cx_in.dst_clk = nn.net
-        WHERE nn.bitstream = %s
-          AND nn.source    = 'auto_clock'
-    """, (bs_id, bs_id, bs_id, bs_id))
-    clock_rows = cur.fetchall()  # (net, name, ff_count, xout, xin)
+    cd_sub = (
+        select(cd.c.bitstream, cd.c.clk_net, func.count().label("ff_count"))
+        .where(cd.c.bitstream == bs_id)
+        .group_by(cd.c.bitstream, cd.c.clk_net)
+        .subquery()
+    )
+    cx_out_sub = (
+        select(cx.c.bitstream, cx.c.src_clk, func.count().label("n"))
+        .where(cx.c.bitstream == bs_id)
+        .group_by(cx.c.bitstream, cx.c.src_clk)
+        .subquery()
+    )
+    cx_in_sub = (
+        select(cx.c.bitstream, cx.c.dst_clk, func.count().label("n"))
+        .where(cx.c.bitstream == bs_id)
+        .group_by(cx.c.bitstream, cx.c.dst_clk)
+        .subquery()
+    )
+
+    clock_rows = conn.execute(
+        select(
+            nn.c.net,
+            nn.c.name,
+            func.coalesce(cd_sub.c.ff_count, 0).label("ff_count"),
+            func.coalesce(cx_out_sub.c.n, 0).label("crossings_out"),
+            func.coalesce(cx_in_sub.c.n, 0).label("crossings_in"),
+        )
+        .outerjoin(cd_sub, and_(cd_sub.c.bitstream == nn.c.bitstream, cd_sub.c.clk_net == nn.c.net))
+        .outerjoin(cx_out_sub, and_(cx_out_sub.c.bitstream == nn.c.bitstream, cx_out_sub.c.src_clk == nn.c.net))
+        .outerjoin(cx_in_sub, and_(cx_in_sub.c.bitstream == nn.c.bitstream, cx_in_sub.c.dst_clk == nn.c.net))
+        .where(and_(nn.c.bitstream == bs_id, nn.c.source == 'auto_clock'))
+    ).fetchall()
 
     if not clock_rows:
-        cur.close()
         return 0
 
     # Build sorted candidates for rule evaluation
@@ -491,40 +535,48 @@ def pass_clock_semantics(bs_id, conn):
 
     # Rule 3 — clk_src_{pad}: all live Q nets reach a CLK pad within 3 hops
     # Get pads whose label contains CLK
-    cur.execute("""
-        SELECT pm.net_in, pm.label
-        FROM pad_map pm
-        WHERE pm.bitstream = %s
-          AND (pm.label ILIKE '%%CLK%%' OR pm.label ILIKE '%%_CLK')
-    """, (bs_id,))
-    clk_pads = {row[0]: row[1] for row in cur.fetchall()}  # net_in → label
+    # Fix for ILIKE (not portable): use func.upper(col).like(func.upper(val))
+    clk_pad_rows = conn.execute(
+        select(pm.c.net_in, pm.c.label)
+        .where(
+            and_(
+                pm.c.bitstream == bs_id,
+                or_(
+                    func.upper(pm.c.label).like(func.upper('%CLK%')),
+                    func.upper(pm.c.label).like(func.upper('%_CLK')),
+                ),
+            )
+        )
+    ).fetchall()
+    clk_pads = {row[0]: row[1] for row in clk_pad_rows}  # net_in → label
 
     for net, _name, _ff, _xout, _xin in clock_rows:
         if net in assigned:
             continue
 
         # FFs clocked by this net whose Q has nonzero fanout
-        cur.execute("""
-            SELECT f.q
-            FROM ffs f
-            JOIN net_stats ns ON ns.bitstream = f.bitstream AND ns.net = f.q
-            WHERE f.bitstream = %s AND f.clk = %s AND ns.fanout > 0
-        """, (bs_id, net))
-        q_nets = [row[0] for row in cur.fetchall()]
+        q_nets = [row[0] for row in conn.execute(
+            select(ffs.c.q)
+            .join(ns, and_(ns.c.bitstream == ffs.c.bitstream, ns.c.net == ffs.c.q))
+            .where(and_(ffs.c.bitstream == bs_id, ffs.c.clk == net, ns.c.fanout > 0))
+        ).fetchall()]
         if not q_nets:
             continue
 
         # For each Q net, check reachability to a CLK pad within 3 hops
         reached_pad_labels = set()
         for q_net in q_nets:
-            cur.execute("""
-                SELECT rch.dst
-                FROM reachability rch
-                WHERE rch.bitstream = %s
-                  AND rch.src       = %s
-                  AND rch.min_hops  <= 3
-            """, (bs_id, q_net))
-            for (dst_net,) in cur.fetchall():
+            dst_nets = [row[0] for row in conn.execute(
+                select(rch.c.dst)
+                .where(
+                    and_(
+                        rch.c.bitstream == bs_id,
+                        rch.c.src == q_net,
+                        rch.c.min_hops <= 3,
+                    )
+                )
+            ).fetchall()]
+            for dst_net in dst_nets:
                 if dst_net in clk_pads:
                     reached_pad_labels.add(clk_pads[dst_net])
 
@@ -537,35 +589,42 @@ def pass_clock_semantics(bs_id, conn):
             assign(net, semantic)
 
     # Rule 4 — clk_dac_data_a/b: Q nets reach DAC_D* pads
-    cur.execute("""
-        SELECT pm.net_in, pm.label
-        FROM pad_map pm
-        WHERE pm.bitstream = %s AND pm.label ILIKE 'DAC_D%%'
-    """, (bs_id,))
-    dac_data_pads = {row[0]: row[1] for row in cur.fetchall()}
+    # Fix for ILIKE (not portable): use func.upper(col).like(func.upper(val))
+    dac_data_pad_rows = conn.execute(
+        select(pm.c.net_in, pm.c.label)
+        .where(
+            and_(
+                pm.c.bitstream == bs_id,
+                func.upper(pm.c.label).like(func.upper('DAC_D%')),
+            )
+        )
+    ).fetchall()
+    dac_data_pads = {row[0]: row[1] for row in dac_data_pad_rows}
 
     dac_candidates = []   # (net, n_reaches)
     for net, _name, _ff, _xout, _xin in clock_rows:
         if net in assigned:
             continue
 
-        cur.execute("""
-            SELECT f.q
-            FROM ffs f
-            JOIN net_stats ns ON ns.bitstream = f.bitstream AND ns.net = f.q
-            WHERE f.bitstream = %s AND f.clk = %s AND ns.fanout > 0
-        """, (bs_id, net))
-        q_nets = [row[0] for row in cur.fetchall()]
+        q_nets = [row[0] for row in conn.execute(
+            select(ffs.c.q)
+            .join(ns, and_(ns.c.bitstream == ffs.c.bitstream, ns.c.net == ffs.c.q))
+            .where(and_(ffs.c.bitstream == bs_id, ffs.c.clk == net, ns.c.fanout > 0))
+        ).fetchall()]
 
         dac_reach_count = 0
         for q_net in q_nets:
-            cur.execute("""
-                SELECT rch.dst
-                FROM reachability rch
-                WHERE rch.bitstream = %s AND rch.src = %s
-                  AND rch.min_hops <= 3
-            """, (bs_id, q_net))
-            for (dst_net,) in cur.fetchall():
+            dst_nets = [row[0] for row in conn.execute(
+                select(rch.c.dst)
+                .where(
+                    and_(
+                        rch.c.bitstream == bs_id,
+                        rch.c.src == q_net,
+                        rch.c.min_hops <= 3,
+                    )
+                )
+            ).fetchall()]
+            for dst_net in dst_nets:
                 if dst_net in dac_data_pads:
                     dac_reach_count += 1
 
@@ -578,19 +637,23 @@ def pass_clock_semantics(bs_id, conn):
     if len(dac_candidates) >= 2:
         assign(dac_candidates[1][0], 'clk_dac_data_b')
 
-    # Write back — overwrite the clk_N names (DO UPDATE)
+    # Write back — overwrite the clk_N names (UPDATE)
     renamed = 0
     for net, new_name in assigned.items():
-        cur.execute("""
-            UPDATE net_names
-            SET name = %s
-            WHERE bitstream = %s AND net = %s AND source = 'auto_clock'
-        """, (new_name, bs_id, net))
-        if cur.rowcount:
+        result = conn.execute(
+            update(nn)
+            .where(
+                and_(
+                    nn.c.bitstream == bs_id,
+                    nn.c.net == net,
+                    nn.c.source == 'auto_clock',
+                )
+            )
+            .values(name=new_name)
+        )
+        if result.rowcount:
             renamed += 1
 
-    conn.commit()
-    cur.close()
     return renamed
 
 
@@ -613,33 +676,49 @@ def pass_ebr_bus(bs_id, conn):
 
     confidence='estimate', source='auto_ebr'.
     """
-    cur = conn.cursor()
+    ep  = schema.ebr_ports
+    eb  = schema.ebr_buses
 
-    # Find nets shared by >= 3 EBR blocks on J[ABCD] ports
-    cur.execute("""
-        SELECT port_letter, net, count(distinct block) AS n_blocks
-        FROM (
-            SELECT substring(port, 2, 1) AS port_letter, net, block
-            FROM ebr_ports
-            WHERE bitstream = %s AND net IS NOT NULL
-              AND port ~ '^J[ABCD]\\d+$'
-        ) t
-        GROUP BY port_letter, net
-        HAVING count(distinct block) >= 3
-    """, (bs_id,))
-    main_group_nets = {row[1] for row in cur.fetchall()}  # set of net ids
+    # Find nets shared by >= 3 EBR blocks on J[ABCD] ports.
+    # Use text() for the regex/substring since SQLAlchemy doesn't have a
+    # portable substring/regex extract across SQLite and PostgreSQL.
+    if BACKEND == "postgres":
+        main_group_sql = text("""
+            SELECT net
+            FROM (
+                SELECT substring(port, 2, 1) AS port_letter, net, block
+                FROM ebr_ports
+                WHERE bitstream = :bs_id AND net IS NOT NULL
+                  AND port ~ '^J[ABCD]\\d+$'
+            ) t
+            GROUP BY port_letter, net
+            HAVING count(distinct block) >= 3
+        """)
+    else:
+        # SQLite: use glob pattern and substr
+        main_group_sql = text("""
+            SELECT net
+            FROM (
+                SELECT substr(port, 2, 1) AS port_letter, net, block
+                FROM ebr_ports
+                WHERE bitstream = :bs_id AND net IS NOT NULL
+                  AND port GLOB 'J[ABCD]*'
+            ) t
+            GROUP BY port_letter, net
+            HAVING count(distinct block) >= 3
+        """)
+    main_group_nets = {row[0] for row in conn.execute(main_group_sql, {"bs_id": bs_id}).fetchall()}
 
     # All EBR ports with their bus metadata
-    cur.execute("""
-        SELECT ep.block, ep.port, ep.net, eb.bus_role, eb.bit_index
-        FROM ebr_ports ep
-        JOIN ebr_buses eb
-          ON eb.bitstream = ep.bitstream
-         AND eb.block     = ep.block
-         AND eb.port      = ep.port
-        WHERE ep.bitstream = %s AND ep.net IS NOT NULL
-    """, (bs_id,))
-    all_ebr_ports = cur.fetchall()  # (block, port, net, bus_role, bit_index)
+    all_ebr_ports = conn.execute(
+        select(ep.c.block, ep.c.port, ep.c.net, eb.c.bus_role, eb.c.bit_index)
+        .join(eb, and_(
+            eb.c.bitstream == ep.c.bitstream,
+            eb.c.block == ep.c.block,
+            eb.c.port == ep.c.port,
+        ))
+        .where(and_(ep.c.bitstream == bs_id, ep.c.net.isnot(None)))
+    ).fetchall()
 
     net_rows = []
     main_count = 0
@@ -659,11 +738,16 @@ def pass_ebr_bus(bs_id, conn):
             desc = f'EBR block {block} {bus_role} bit {bit_index}'
             solo_count += 1
 
-        net_rows.append((bs_id, net, name, desc, 'estimate', 'auto_ebr'))
+        net_rows.append({
+            "bitstream": bs_id,
+            "net": net,
+            "name": name,
+            "description": desc,
+            "confidence": "estimate",
+            "source": "auto_ebr",
+        })
 
-    bulk_insert(cur, _NET_NAME_INSERT, net_rows)
-    conn.commit()
-    cur.close()
+    bulk_insert_nets(conn, net_rows)
     return len(net_rows), main_count, solo_count
 
 
@@ -683,39 +767,45 @@ def pass_pad_propagation(bs_id, conn):
 
     confidence='estimate', source='auto_propagate'.
     """
-    cur = conn.cursor()
+    pm  = schema.pad_map
+    nn  = schema.net_names
+    cn  = schema.cell_names
+    ns  = schema.net_stats
+    rch = schema.reachability
+    nf  = schema.net_fanout
+    ffs = schema.ffs
 
     # Load all named pads (input and output)
-    cur.execute("""
-        SELECT pm.net_in, pm.net_out, pm.label, pm.direction
-        FROM pad_map pm
-        WHERE pm.bitstream = %s
-    """, (bs_id,))
-    pads = cur.fetchall()  # (net_in, net_out, label, direction)
+    pads = conn.execute(
+        select(pm.c.net_in, pm.c.net_out, pm.c.label, pm.c.direction)
+        .where(pm.c.bitstream == bs_id)
+    ).fetchall()
 
     # Already-named nets and cells
-    cur.execute("SELECT net  FROM net_names  WHERE bitstream = %s", (bs_id,))
-    named_nets = {row[0] for row in cur.fetchall()}
+    named_nets = {row[0] for row in conn.execute(
+        select(nn.c.net).where(nn.c.bitstream == bs_id)
+    ).fetchall()}
 
-    cur.execute("SELECT cell FROM cell_names WHERE bitstream = %s", (bs_id,))
-    named_cells = {row[0] for row in cur.fetchall()}
+    named_cells = {row[0] for row in conn.execute(
+        select(cn.c.cell).where(cn.c.bitstream == bs_id)
+    ).fetchall()}
 
     # Clock nets — skip these during hop propagation
-    cur.execute("SELECT net FROM net_stats WHERE bitstream = %s AND is_clock = TRUE", (bs_id,))
-    clock_nets = {row[0] for row in cur.fetchall()}
+    clock_nets = {row[0] for row in conn.execute(
+        select(ns.c.net).where(and_(ns.c.bitstream == bs_id, ns.c.is_clock == True))
+    ).fetchall()}
 
     # For hop-2 uniqueness: build map net → set of named-pad net_ins that reach
     # it within 1 hop (so we can check if a hop-2 net is already reachable at
     # hop 1 from another pad).
-    cur.execute("""
-        SELECT rch.src, rch.dst
-        FROM reachability rch
-        JOIN pad_map pm ON pm.bitstream = rch.bitstream AND pm.net_in = rch.src
-        JOIN net_names nn ON nn.bitstream = pm.bitstream AND nn.net = pm.net_in
-        WHERE rch.bitstream = %s AND rch.min_hops = 1
-    """, (bs_id,))
+    hop1_rows = conn.execute(
+        select(rch.c.src, rch.c.dst)
+        .join(pm, and_(pm.c.bitstream == rch.c.bitstream, pm.c.net_in == rch.c.src))
+        .join(nn, and_(nn.c.bitstream == pm.c.bitstream, nn.c.net == pm.c.net_in))
+        .where(and_(rch.c.bitstream == bs_id, rch.c.min_hops == 1))
+    ).fetchall()
     hop1_from_named_pad = {}   # dst_net → set of src pad net_ins
-    for src, dst in cur.fetchall():
+    for src, dst in hop1_rows:
         hop1_from_named_pad.setdefault(dst, set()).add(src)
 
     net_rows  = []
@@ -724,12 +814,25 @@ def pass_pad_propagation(bs_id, conn):
 
     def add_net(net, name, desc):
         if net and net not in named_nets and net not in added_nets and net not in clock_nets:
-            net_rows.append((bs_id, net, name, desc, 'estimate', 'auto_propagate'))
+            net_rows.append({
+                "bitstream": bs_id,
+                "net": net,
+                "name": name,
+                "description": desc,
+                "confidence": "estimate",
+                "source": "auto_propagate",
+            })
             added_nets.add(net)
 
     def add_cell(cell, name, desc):
         if cell and cell not in named_cells:
-            cell_rows.append((bs_id, cell, name, desc, 'estimate'))
+            cell_rows.append({
+                "bitstream": bs_id,
+                "cell": cell,
+                "name": name,
+                "description": desc,
+                "confidence": "estimate",
+            })
 
     for net_in, net_out, label, direction in pads:
         pad_lower = label.lower()
@@ -740,13 +843,17 @@ def pass_pad_propagation(bs_id, conn):
 
         if direction in ('input', 'inout', None) and net_in:
             # Fetch hops 1 and 2 from this pad's net_in
-            cur.execute("""
-                SELECT rch.dst, rch.min_hops
-                FROM reachability rch
-                WHERE rch.bitstream = %s AND rch.src = %s
-                  AND rch.min_hops <= 2
-            """, (bs_id, net_in))
-            for dst_net, hops in cur.fetchall():
+            reach_rows = conn.execute(
+                select(rch.c.dst, rch.c.min_hops)
+                .where(
+                    and_(
+                        rch.c.bitstream == bs_id,
+                        rch.c.src == net_in,
+                        rch.c.min_hops <= 2,
+                    )
+                )
+            ).fetchall()
+            for dst_net, hops in reach_rows:
                 if dst_net in clock_nets:
                     continue
                 if hops == 1:
@@ -762,23 +869,25 @@ def pass_pad_propagation(bs_id, conn):
 
         if direction in ('output', 'inout') and net_out:
             # Find FF driving net_out (FF whose Q = net_out)
-            cur.execute("""
-                SELECT nf.cell, f.d
-                FROM net_fanout nf
-                JOIN ffs f ON f.bitstream = nf.bitstream AND f.cell = nf.cell
-                WHERE nf.bitstream = %s AND nf.out_net = %s
-                  AND nf.cell_type = 'FF'
-            """, (bs_id, net_out))
-            for ff_cell, d_net in cur.fetchall():
+            ff_rows = conn.execute(
+                select(nf.c.cell, ffs.c.d)
+                .join(ffs, and_(ffs.c.bitstream == nf.c.bitstream, ffs.c.cell == nf.c.cell))
+                .where(
+                    and_(
+                        nf.c.bitstream == bs_id,
+                        nf.c.out_net == net_out,
+                        nf.c.cell_type == 'FF',
+                    )
+                )
+            ).fetchall()
+            for ff_cell, d_net in ff_rows:
                 add_net(d_net, f'{pad_lower}_d',
                         f'D input of output FF driving {label}')
                 add_cell(ff_cell, f'ff_{pad_lower}',
                          f'Output FF driving {label} pad')
 
-    bulk_insert(cur, _NET_NAME_INSERT,  net_rows)
-    bulk_insert(cur, _CELL_NAME_INSERT, cell_rows)
-    conn.commit()
-    cur.close()
+    bulk_insert_nets(conn, net_rows)
+    bulk_insert_cells(conn, cell_rows)
     return len(net_rows) + len(cell_rows)
 
 
@@ -808,27 +917,29 @@ def pass_lut_naming(bs_id, conn):
 
     confidence='estimate', source='auto_lut'.
     """
-    cur = conn.cursor()
+    nn   = schema.net_names
+    cn   = schema.cell_names
+    luts = schema.luts
 
     # Load named nets
-    cur.execute("SELECT net, name FROM net_names WHERE bitstream = %s", (bs_id,))
-    net_name_map = {row[0]: row[1] for row in cur.fetchall()}
+    net_name_map = {row[0]: row[1] for row in conn.execute(
+        select(nn.c.net, nn.c.name).where(nn.c.bitstream == bs_id)
+    ).fetchall()}
 
     # Already-named cells
-    cur.execute("SELECT cell FROM cell_names WHERE bitstream = %s", (bs_id,))
-    named_cells = {row[0] for row in cur.fetchall()}
+    named_cells = {row[0] for row in conn.execute(
+        select(cn.c.cell).where(cn.c.bitstream == bs_id)
+    ).fetchall()}
 
     # Load all LUT cells with their Z net and fn (schema column is 'z')
-    cur.execute("""
-        SELECT cell, z, fn
-        FROM luts
-        WHERE bitstream = %s
-    """, (bs_id,))
-    luts = cur.fetchall()  # (cell, z_net, fn)
+    all_luts = conn.execute(
+        select(luts.c.cell, luts.c.z, luts.c.fn)
+        .where(luts.c.bitstream == bs_id)
+    ).fetchall()
 
     cell_rows = []
 
-    for cell, z_net, fn in luts:
+    for cell, z_net, fn in all_luts:
         if cell in named_cells:
             continue
         if z_net not in net_name_map:
@@ -843,25 +954,21 @@ def pass_lut_naming(bs_id, conn):
                 prefix = cell_pfx
                 break
 
-        cell_rows.append((
-            bs_id,
-            cell,
-            f'{prefix}_{net_name}',
-            f'LUT driving {net_name}',
-            'estimate',
-        ))
+        cell_rows.append({
+            "bitstream": bs_id,
+            "cell": cell,
+            "name": f'{prefix}_{net_name}',
+            "description": f'LUT driving {net_name}',
+            "confidence": "estimate",
+        })
 
-    bulk_insert(cur, _CELL_NAME_INSERT, cell_rows)
-    conn.commit()
-    cur.close()
+    bulk_insert_cells(conn, cell_rows)
     return len(cell_rows)
 
 
 # ---------------------------------------------------------------------------
 # Pass 9: CDC synchroniser detection
 # ---------------------------------------------------------------------------
-
-
 
 def pass_cdc_synchronisers(bs_id, conn):
     """
@@ -882,11 +989,16 @@ def pass_cdc_synchronisers(bs_id, conn):
     confidence='estimate', source='auto_cdc'.
     """
     schema.init()   # ensure cdc_synchronisers exists
-    cur = conn.cursor()
+    nn   = schema.net_names
+    cn   = schema.cell_names
+    ffs  = schema.ffs
+    luts = schema.luts
+    cdc  = schema.cdc_synchronisers
 
     # Load net names for clock labelling
-    cur.execute("SELECT net, name FROM net_names WHERE bitstream = %s", (bs_id,))
-    net_name_map = {row[0]: row[1] for row in cur.fetchall()}
+    net_name_map = {row[0]: row[1] for row in conn.execute(
+        select(nn.c.net, nn.c.name).where(nn.c.bitstream == bs_id)
+    ).fetchall()}
 
     def clk_label(clk_net):
         """Return semantic name if available, else strip leading 'n' from raw id."""
@@ -897,12 +1009,10 @@ def pass_cdc_synchronisers(bs_id, conn):
         return s.lstrip('n') if s.startswith('n') else s
 
     # Load all FFs: cell, q, d, clk, ce
-    cur.execute("""
-        SELECT cell, q, d, clk, ce
-        FROM ffs
-        WHERE bitstream = %s
-    """, (bs_id,))
-    all_ffs = cur.fetchall()
+    all_ffs = conn.execute(
+        select(ffs.c.cell, ffs.c.q, ffs.c.d, ffs.c.clk, ffs.c.ce)
+        .where(ffs.c.bitstream == bs_id)
+    ).fetchall()
 
     # Index: q_net → FF info (one FF per Q net)
     ff_by_q   = {}   # q_net → (cell, d, clk, ce)
@@ -919,23 +1029,21 @@ def pass_cdc_synchronisers(bs_id, conn):
 
     # LUT index: z → list of (cell, inputs)  — for 1-LUT hop check
     # (schema column is 'z', not 'z_net')
-    cur.execute("""
-        SELECT cell, z
-        FROM luts
-        WHERE bitstream = %s
-    """, (bs_id,))
+    all_luts_z = conn.execute(
+        select(luts.c.cell, luts.c.z)
+        .where(luts.c.bitstream == bs_id)
+    ).fetchall()
     lut_by_output = {}  # z_net → cell
-    for lut_cell, z_net in cur.fetchall():
+    for lut_cell, z_net in all_luts_z:
         lut_by_output[z_net] = lut_cell
 
     # Build lut z → input nets for 1-LUT hop via LUT (using luts columns a/b/c/d)
-    cur.execute("""
-        SELECT cell, a, b, c, d
-        FROM luts
-        WHERE bitstream = %s
-    """, (bs_id,))
+    all_luts_inputs = conn.execute(
+        select(luts.c.cell, luts.c.a, luts.c.b, luts.c.c, luts.c.d)
+        .where(luts.c.bitstream == bs_id)
+    ).fetchall()
     lut_inputs = {}  # lut_cell → list of input nets
-    for lut_cell, a, b, c, dd in cur.fetchall():
+    for lut_cell, a, b, c, dd in all_luts_inputs:
         lut_inputs[lut_cell] = [n for n in (a, b, c, dd) if n is not None]
 
     always_enabled = {"1'b1", "1b1", "VCC", "vcc", None}
@@ -989,22 +1097,29 @@ def pass_cdc_synchronisers(bs_id, conn):
             synchronisers.append((ff_a_cell, clk_a, ff_b_cell, ff_c_found, clk_b))
 
     # Insert into cdc_synchronisers
-    cdc_rows = []
-    for src_ff, src_clk, stage1_ff, stage2_ff, dst_clk in synchronisers:
-        cdc_rows.append((bs_id, src_ff, src_clk, stage1_ff, stage2_ff, dst_clk))
-
-    if cdc_rows:
-        execute_values(cur, """
-            INSERT INTO cdc_synchronisers
-                (bitstream, src_ff, src_clk, stage1_ff, stage2_ff, dst_clk)
-            VALUES %s
-            ON CONFLICT (bitstream, stage1_ff) DO NOTHING
-        """, cdc_rows, page_size=500)
+    if synchronisers:
+        cdc_rows = [
+            {
+                "bitstream": bs_id,
+                "src_ff": src_ff,
+                "src_clk": src_clk,
+                "stage1_ff": stage1_ff,
+                "stage2_ff": stage2_ff,
+                "dst_clk": dst_clk,
+            }
+            for src_ff, src_clk, stage1_ff, stage2_ff, dst_clk in synchronisers
+        ]
+        cdc_stmt = insert(cdc)
+        if BACKEND == "postgres":
+            cdc_stmt = cdc_stmt.on_conflict_do_nothing(index_elements=["bitstream", "stage1_ff"])
+        else:
+            cdc_stmt = cdc_stmt.prefix_with("OR IGNORE")
+        conn.execute(cdc_stmt, cdc_rows)
 
     # Name stage1 and stage2 FF cells
-    named_cells_cur = set()
-    cur.execute("SELECT cell FROM cell_names WHERE bitstream = %s", (bs_id,))
-    named_cells_cur = {row[0] for row in cur.fetchall()}
+    named_cells_cur = {row[0] for row in conn.execute(
+        select(cn.c.cell).where(cn.c.bitstream == bs_id)
+    ).fetchall()}
 
     cell_rows = []
     for src_ff, src_clk, stage1_ff, stage2_ff, dst_clk in synchronisers:
@@ -1015,24 +1130,23 @@ def pass_cdc_synchronisers(bs_id, conn):
         name2 = f'sync2_{src_label}_{dst_label}'
 
         if stage1_ff not in named_cells_cur:
-            cell_rows.append((
-                bs_id, stage1_ff, name1,
-                f'CDC sync stage 1: {src_label} → {dst_label}',
-                'estimate',
-            ))
+            cell_rows.append({
+                "bitstream": bs_id,
+                "cell": stage1_ff,
+                "name": name1,
+                "description": f'CDC sync stage 1: {src_label} → {dst_label}',
+                "confidence": "estimate",
+            })
         if stage2_ff not in named_cells_cur:
-            cell_rows.append((
-                bs_id, stage2_ff, name2,
-                f'CDC sync stage 2: {src_label} → {dst_label}',
-                'estimate',
-            ))
+            cell_rows.append({
+                "bitstream": bs_id,
+                "cell": stage2_ff,
+                "name": name2,
+                "description": f'CDC sync stage 2: {src_label} → {dst_label}',
+                "confidence": "estimate",
+            })
 
-    # Use source='auto_cdc' — need a custom insert for cell_names with source column
-    # cell_names schema: (bitstream, cell, name, description, confidence)
-    # source not stored in cell_names; use standard insert
-    bulk_insert(cur, _CELL_NAME_INSERT, cell_rows)
-    conn.commit()
-    cur.close()
+    bulk_insert_cells(conn, cell_rows)
     return len(synchronisers)
 
 
@@ -1052,15 +1166,14 @@ def main():
     args = ap.parse_args()
 
     # Resolve bitstream ID
-    conn = connect()
-    cur  = conn.cursor()
-    cur.execute("SELECT id FROM bitstreams WHERE label = %s", (args.bitstream,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {args.bitstream!r} not found — run load.py first")
-    bs_id = row[0]
-    cur.close()
-    conn.close()
+    bs = schema.bitstreams
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(bs.c.id).where(bs.c.label == args.bitstream)
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {args.bitstream!r} not found — run load.py first")
+        bs_id = row[0]
 
     wall_start = time.time()
     timings    = []
@@ -1068,10 +1181,9 @@ def main():
     def run_pass(label, fn):
         """Open a fresh connection, run fn(conn), close, record timing."""
         print(f"{label}…", flush=True)
-        t   = time.time()
-        c   = connect()
-        result  = fn(c)
-        c.close()
+        t = time.time()
+        with engine().begin() as conn:
+            result = fn(conn)
         elapsed = time.time() - t
         timings.append((label, elapsed))
         return result, elapsed
@@ -1150,23 +1262,23 @@ def main():
         print(f"  {pass_name:<48}  {t_pass:5.2f}s  {bar}")
 
     # Quick coverage summary
-    summary_conn = connect()
-    summary_cur  = summary_conn.cursor()
-    summary_cur.execute("""
-        SELECT
-            (SELECT count(*) FROM nets       WHERE bitstream = %s) AS total_nets,
-            (SELECT count(*) FROM net_names  WHERE bitstream = %s) AS named_nets,
-            (SELECT count(*) FROM ffs        WHERE bitstream = %s) AS total_ffs,
-            (SELECT count(*) FROM cell_names WHERE bitstream = %s) AS named_cells,
-            (SELECT count(*) FROM luts       WHERE bitstream = %s) AS total_luts,
-            (SELECT count(*) FROM cell_names cn
-               JOIN luts l ON l.bitstream = cn.bitstream AND l.cell = cn.cell
-               WHERE cn.bitstream = %s) AS named_luts
-    """, (bs_id, bs_id, bs_id, bs_id, bs_id, bs_id))
-    total_nets, named_nets, total_ffs, named_cells, total_luts, named_luts = \
-        summary_cur.fetchone()
-    summary_cur.close()
-    summary_conn.close()
+    with engine().connect() as conn:
+        nt  = schema.nets
+        nn  = schema.net_names
+        ffs = schema.ffs
+        cn  = schema.cell_names
+        lu  = schema.luts
+
+        total_nets  = conn.execute(select(func.count()).select_from(nt).where(nt.c.bitstream == bs_id)).scalar()
+        named_nets  = conn.execute(select(func.count()).select_from(nn).where(nn.c.bitstream == bs_id)).scalar()
+        total_ffs   = conn.execute(select(func.count()).select_from(ffs).where(ffs.c.bitstream == bs_id)).scalar()
+        named_cells = conn.execute(select(func.count()).select_from(cn).where(cn.c.bitstream == bs_id)).scalar()
+        total_luts  = conn.execute(select(func.count()).select_from(lu).where(lu.c.bitstream == bs_id)).scalar()
+        named_luts  = conn.execute(
+            select(func.count())
+            .select_from(cn.join(lu, and_(lu.c.bitstream == cn.c.bitstream, lu.c.cell == cn.c.cell)))
+            .where(cn.c.bitstream == bs_id)
+        ).scalar()
 
     net_pct  = 100.0 * named_nets  / total_nets  if total_nets  else 0
     cell_pct = 100.0 * named_cells / total_ffs   if total_ffs   else 0
