@@ -11,7 +11,7 @@ Verilog and is emitted as comments only.
 
 Usage
 -----
-  python3 fpga/pluribus/verilog.py [--bitstream V07] [--out out/V07.v] [--top hantek2d82]
+  python3 fpga/pluribus/verilog.py [--bitstream V07] [--out out/V07.v] [--top aw2]
 """
 
 import argparse
