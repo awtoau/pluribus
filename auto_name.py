@@ -30,7 +30,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect, die
+from db import engine, die, BACKEND
+import schema
+from sqlalchemy import select, insert
 
 # ---------------------------------------------------------------------------
 # Init-pattern rules
@@ -275,6 +277,16 @@ def apply_expr_rules(lut_rows, existing_names, inserts):
 
 
 # ---------------------------------------------------------------------------
+# ON CONFLICT helper
+# ---------------------------------------------------------------------------
+
+def _ins(t):
+    if BACKEND == "sqlite":
+        return insert(t).prefix_with("OR IGNORE")
+    return insert(t).on_conflict_do_nothing()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -285,27 +297,41 @@ def main():
     ap.add_argument("--bitstream", default="V07")
     args = ap.parse_args()
 
-    conn = connect()
-    cur  = conn.cursor()
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(schema.bitstreams.c.id).where(
+                schema.bitstreams.c.label == args.bitstream
+            )
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {args.bitstream!r} not found")
+        bs_id = row[0]
 
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (args.bitstream,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {args.bitstream!r} not found")
-    bs_id = row[0]
+        lut_rows = conn.execute(
+            select(
+                schema.luts.c.cell,
+                schema.luts.c.fn,
+                schema.luts.c.init,
+                schema.luts.c.a,
+                schema.luts.c.b,
+                schema.luts.c.c,
+                schema.luts.c.d,
+                schema.luts.c.z,
+                schema.lut_symbolic.c.expr,
+            ).join(
+                schema.lut_symbolic,
+                (schema.lut_symbolic.c.bitstream == schema.luts.c.bitstream) &
+                (schema.lut_symbolic.c.lut_cell  == schema.luts.c.cell),
+            ).where(schema.luts.c.bitstream == bs_id)
+        ).fetchall()
 
-    cur.execute("""
-        SELECT l.cell, l.fn, l.init, l.a, l.b, l.c, l.d, l.z, ls.expr
-        FROM luts l
-        JOIN lut_symbolic ls ON ls.bitstream=l.bitstream AND ls.lut_cell=l.cell
-        WHERE l.bitstream=%s
-    """, (bs_id,))
-    lut_rows = cur.fetchall()
-
-    cur.execute("SELECT net, name FROM net_names WHERE bitstream=%s", (bs_id,))
-    existing_names = dict(cur.fetchall())
-    cur.close()
-    conn.close()
+        existing_names = dict(
+            conn.execute(
+                select(schema.net_names.c.net, schema.net_names.c.name).where(
+                    schema.net_names.c.bitstream == bs_id
+                )
+            ).fetchall()
+        )
 
     all_inserts = []
     pass_num = 0
@@ -328,23 +354,25 @@ def main():
         print("  auto_name: 0 new names (all already named)")
         return
 
-    conn = connect()
-    cur  = conn.cursor()
-    cur.executemany("""
-        INSERT INTO net_names (bitstream, net, name, description, confidence, source)
-        VALUES (%s, %s, %s, %s, %s, 'auto')
-        ON CONFLICT (bitstream, net) DO NOTHING
-    """, [
-        (bs_id, net, name, note, conf)
+    rows = [
+        {
+            "bitstream":   bs_id,
+            "net":         net,
+            "name":        name,
+            "description": note,
+            "confidence":  conf,
+            "source":      "auto",
+        }
         for net, name, typ, conf, note in all_inserts
-    ])
-    conn.commit()
-    inserted = cur.rowcount
-    skipped  = total_added - inserted
+    ]
+
+    with engine().begin() as conn:
+        result = conn.execute(_ins(schema.net_names), rows)
+        inserted = result.rowcount
+
+    skipped = total_added - inserted
     print(f"  auto_name: {inserted} new names inserted "
           f"({skipped} skipped — already named by TSV)")
-    cur.close()
-    conn.close()
 
 
 if __name__ == "__main__":

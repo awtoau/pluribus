@@ -9,8 +9,8 @@ For each test bitstream in tests/<name>/*.cfg or *.bin.config:
 
 Usage
 -----
-  TRELLIS_DBROOT=... PYTHONPATH=... python3 fpga/pluribus/fuzz.py \\
-      --device LCMXO2-1200 \\
+  TRELLIS_DBROOT=... PYTHONPATH=... python3 fpga/pluribus/fuzz.py \
+      --device LCMXO2-1200 \
       [--test blank] [--test one_ff] [--test shift_reg_8]  # or all if omitted
       [--out-dir fpga/pluribus/tests/out]
 
@@ -41,7 +41,9 @@ _BUILD  = _HERE / "build.py"
 
 import sys as _sys
 _sys.path.insert(0, str(_HERE))
-from db import connect, die
+from db import engine, die
+import schema
+from sqlalchemy import select, func
 
 
 def run_test(name, test_dir, out_dir, device):
@@ -95,34 +97,36 @@ def run_test(name, test_dir, out_dir, device):
         return {"name": name, "status": "FAIL", "error": "build failed"}
 
     # Verify expectations from manifest
-    conn = connect()
-    cur  = conn.cursor()
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (label,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {label!r} not found after successful build")
-    bs_id = row[0]
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(schema.bitstreams.c.id)
+            .where(schema.bitstreams.c.label == label)
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {label!r} not found after successful build")
+        bs_id = row[0]
 
-    results = {"name": name, "status": "OK", "checks": []}
-    expect  = m.get("expect", {})
+        results = {"name": name, "status": "OK", "checks": []}
+        expect  = m.get("expect", {})
 
-    def check(what, sql, expected):
-        cur.execute(sql, (bs_id,))
-        got = cur.fetchone()[0]
-        ok  = (expected is None or got == expected)
-        status = "OK" if ok else "FAIL"
-        results["checks"].append({"what": what, "got": got, "expected": expected, "status": status})
-        if not ok:
-            results["status"] = "FAIL"
-        print(f"  {status:4s}  {what}: got={got}" + (f" expected={expected}" if expected is not None else ""))
+        def check(what, table, expected):
+            got = conn.execute(
+                select(func.count()).select_from(table)
+                .where(table.c.bitstream == bs_id)
+            ).scalar()
+            ok  = (expected is None or got == expected)
+            status = "OK" if ok else "FAIL"
+            results["checks"].append({"what": what, "got": got, "expected": expected, "status": status})
+            if not ok:
+                results["status"] = "FAIL"
+            print(f"  {status:4s}  {what}: got={got}" + (f" expected={expected}" if expected is not None else ""))
 
-    check("ffs",   "SELECT count(*) FROM ffs WHERE bitstream=%s",  expect.get("ffs"))
-    check("luts",  "SELECT count(*) FROM luts WHERE bitstream=%s", expect.get("luts"))
-    check("nets",  "SELECT count(*) FROM nets WHERE bitstream=%s", expect.get("nets"))
-    check("efb_ports", "SELECT count(*) FROM efb_ports WHERE bitstream=%s", expect.get("efb_ports"))
-    check("reach_pairs", "SELECT count(*) FROM reachability WHERE bitstream=%s", expect.get("reach_pairs"))
+        check("ffs",        schema.ffs,          expect.get("ffs"))
+        check("luts",       schema.luts,         expect.get("luts"))
+        check("nets",       schema.nets,         expect.get("nets"))
+        check("efb_ports",  schema.efb_ports,    expect.get("efb_ports"))
+        check("reach_pairs",schema.reachability, expect.get("reach_pairs"))
 
-    cur.close(); conn.close()
     results["elapsed"] = time.time() - t0
     print(f"  {results['status']}  ({results['elapsed']:.1f}s)")
     return results

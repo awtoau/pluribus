@@ -24,7 +24,9 @@ sys.path.insert(0, str(_SCRIPTS))
 sys.path.insert(0, str(_HERE))
 
 from lifters import machxo2_lift as mx
-from db import connect, die
+from sqlalchemy import select
+from db import engine, die
+import schema
 
 DEVICE = os.environ.get("TRELLIS_DEVICE", "LCMXO2-1200")
 
@@ -63,81 +65,84 @@ def main():
     ap.add_argument("--out",       required=True, help="output .txt path")
     args = ap.parse_args()
 
-    conn = connect()
-    cur  = conn.cursor()
+    with engine().connect() as conn:
+        # ── look up bitstream id ───────────────────────────────────────────────
+        row = conn.execute(
+            select(schema.bitstreams.c.id).where(
+                schema.bitstreams.c.label == args.bitstream
+            )
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {args.bitstream!r} not found in DB")
+        bs_id = row[0]
 
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (args.bitstream,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {args.bitstream!r} not found in DB")
-    bs_id = row[0]
+        # ── recover netlist for liveness analysis ──────────────────────────────
+        print(f"Recovering netlist from {args.config}…")
+        lift   = mx.MachXO2Lift(DEVICE)
+        pc     = lift.parse_config(args.config)
+        design = lift.recover_netlist(pc)
+        res    = mx.resource_summary(design, DEVICE)
+        hardip = mx.hardip_summary(pc)
+        unknowns = mx.scan_unknown_bits(args.config)
 
-    # ── recover netlist for liveness analysis ─────────────────────────────
-    print(f"Recovering netlist from {args.config}…")
-    lift   = mx.MachXO2Lift(DEVICE)
-    pc     = lift.parse_config(args.config)
-    design = lift.recover_netlist(pc)
-    res    = mx.resource_summary(design, DEVICE)
-    hardip = mx.hardip_summary(pc)
-    unknowns = mx.scan_unknown_bits(args.config)
+        # ── load pad rows from DB ──────────────────────────────────────────────
+        pm = schema.pad_map
+        pad_rows = conn.execute(
+            select(
+                pm.c.pin, pm.c.label, pm.c.direction,
+                pm.c.row, pm.c.col, pm.c.pio,
+                pm.c.net_in, pm.c.net_out,
+                pm.c.iostd, pm.c.drive, pm.c.pull,
+                pm.c.si_function, pm.c.conn_class,
+                pm.c.chip_ref, pm.c.chip_pin, pm.c.chip_signal,
+            ).where(pm.c.bitstream == bs_id).order_by(pm.c.pin)
+        ).fetchall()
 
-    # ── load pad rows from DB ─────────────────────────────────────────────
-    cur.execute("""
-        SELECT pin, label, direction, row, col, pio,
-               net_in, net_out,
-               iostd, drive, pull, si_function, conn_class,
-               chip_ref, chip_pin, chip_signal
-        FROM pad_map
-        WHERE bitstream=%s
-        ORDER BY pin
-    """, (bs_id,))
-    rows = []
-    for (pin, label, direction, row_r, col, pio,
-         net_in, net_out,
-         iostd, drive, pull, si_fn, conn_cls,
-         chip_ref, chip_pin, chip_signal) in cur.fetchall():
-        site = f"R{row_r}C{col}:PIO{pio}" if row_r is not None else "?"
-        rows.append({
-            "pin": pin, "label": label, "dir": direction,
-            "row": row_r, "col": col, "pio": pio, "site": site,
-            "net_in": net_in, "net_out": net_out,
-            "iostd": iostd or "", "drive": drive or "",
-            "pull": pull or "", "si_function": si_fn or "",
-            "conn_class": conn_cls or "unused",
-            "chip_ref": chip_ref or "", "chip_pin": chip_pin or "",
-            "chip_signal": chip_signal or "",
-        })
+        rows = []
+        for (pin, label, direction, row_r, col, pio,
+             net_in, net_out,
+             iostd, drive, pull, si_fn, conn_cls,
+             chip_ref, chip_pin, chip_signal) in pad_rows:
+            site = f"R{row_r}C{col}:PIO{pio}" if row_r is not None else "?"
+            rows.append({
+                "pin": pin, "label": label, "dir": direction,
+                "row": row_r, "col": col, "pio": pio, "site": site,
+                "net_in": net_in, "net_out": net_out,
+                "iostd": iostd or "", "drive": drive or "",
+                "pull": pull or "", "si_function": si_fn or "",
+                "conn_class": conn_cls or "unused",
+                "chip_ref": chip_ref or "", "chip_pin": chip_pin or "",
+                "chip_signal": chip_signal or "",
+            })
 
-    # ── liveness ──────────────────────────────────────────────────────────
-    primary_in  = {x["net_in"]  for x in rows if x["net_in"]}
-    primary_out = {x["net_out"] for x in rows if x["net_out"]}
-    live = mx.analyze_liveness(design, primary_in, primary_out)
-    for x in rows:
-        if x["net_out"]:
-            fan, ok = mx.net_liveness(live, x["net_out"])
-            x["fan"], x["live"] = "src", ("yes" if ok else "dead")
-        elif x["net_in"]:
-            fan, ok = mx.net_liveness(live, x["net_in"])
-            x["fan"], x["live"] = str(fan), ("yes" if ok else "dead")
-        else:
-            x["fan"], x["live"] = "-", "-"
+        # ── liveness ───────────────────────────────────────────────────────────
+        primary_in  = {x["net_in"]  for x in rows if x["net_in"]}
+        primary_out = {x["net_out"] for x in rows if x["net_out"]}
+        live = mx.analyze_liveness(design, primary_in, primary_out)
+        for x in rows:
+            if x["net_out"]:
+                fan, ok = mx.net_liveness(live, x["net_out"])
+                x["fan"], x["live"] = "src", ("yes" if ok else "dead")
+            elif x["net_in"]:
+                fan, ok = mx.net_liveness(live, x["net_in"])
+                x["fan"], x["live"] = str(fan), ("yes" if ok else "dead")
+            else:
+                x["fan"], x["live"] = "-", "-"
 
-    # ── patterns ──────────────────────────────────────────────────────────
-    import json as _json
-    cur.execute("""
-        SELECT pattern_type, label, detail
-        FROM patterns
-        WHERE bitstream=%s
-        ORDER BY pattern_type, label
-    """, (bs_id,))
-    patterns_by_type = {}
-    for pt, lbl, detail in cur.fetchall():
-        patterns_by_type.setdefault(pt, []).append((lbl, detail))
+        # ── patterns ───────────────────────────────────────────────────────────
+        import json as _json
+        pt = schema.patterns
+        pattern_rows = conn.execute(
+            select(pt.c.pattern_type, pt.c.label, pt.c.detail).where(
+                pt.c.bitstream == bs_id
+            ).order_by(pt.c.pattern_type, pt.c.label)
+        ).fetchall()
 
-    cur.close()
-    conn.close()
+        patterns_by_type = {}
+        for ptype, lbl, detail in pattern_rows:
+            patterns_by_type.setdefault(ptype, []).append((lbl, detail))
 
-    # ── build report text ─────────────────────────────────────────────────
+    # ── build report text ──────────────────────────────────────────────────────
     def util(used, cap):
         return f"{used}/{cap} ({100*used/cap:.0f}%)" if cap else str(used)
 
@@ -197,7 +202,7 @@ def main():
     for t, n in sorted(unknowns["by_tiletype"].items(), key=lambda kv: -kv[1]):
         lines.append(f"  {t:<22} {n}")
 
-    # ── pin table ─────────────────────────────────────────────────────────
+    # ── pin table ──────────────────────────────────────────────────────────────
     H = (f"{'pin':>3}  {'dir':<5} {'site':<13} {'iostd':<18} "
          f"{'drv':<4} {'pull':<8} {'function':<12} {'conn':<8} "
          f"{'fan':>4} {'live':<5}  {'signal':<16} {'chip':<6} "
@@ -228,7 +233,7 @@ def main():
         for x in sorted(subset, key=lambda x: x["pin"]):
             lines.append(pin_line(x))
 
-    # ── patterns summary ──────────────────────────────────────────────────
+    # ── patterns summary ───────────────────────────────────────────────────────
     lines.append("")
     lines.append("== patterns ==")
 

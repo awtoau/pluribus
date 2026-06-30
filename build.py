@@ -18,14 +18,14 @@ Two modes:
 Usage
 -----
   # First time — generate a template:
-  ./fpga/pluribus/build.py --init \\
-    --config fpga/v7/FPGA_V07.bin.config \\
+  ./fpga/pluribus/build.py --init \
+    --config fpga/v7/FPGA_V07.bin.config \
     --out fpga/pluribus/hantek2d82-pins-template.tsv
 
   # Subsequent runs — full rebuild from annotated pin file:
-  ./fpga/pluribus/build.py \\
-    --label V07 \\
-    --config fpga/v7/FPGA_V07.bin.config \\
+  ./fpga/pluribus/build.py \
+    --label V07 \
+    --config fpga/v7/FPGA_V07.bin.config \
     --pins fpga/pluribus/hantek2d82-pins.tsv
 
   # Every run CLEARS the database for this label and rebuilds from scratch.
@@ -44,7 +44,7 @@ _SCRIPTS = _HERE.parent / "scripts"
 sys.path.insert(0, str(_SCRIPTS))
 sys.path.insert(0, str(_HERE))
 
-from db import connect, die, EFB_JF, JF_RE
+from db import engine, die, EFB_JF, JF_RE, BACKEND
 
 TRELLIS_DBROOT = os.environ.get(
     "TRELLIS_DBROOT", "debris/tmp/prjtrellis/database"
@@ -178,66 +178,77 @@ def cmd_annotate_only(label, pins, out_dir):
     Clears only net_names (pins_tsv source), re-imports from the TSV, then
     re-exports all output TSVs.
     """
+    from sqlalchemy import select, delete, insert, func
+    import schema
+
     t0 = time.time()
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    conn = connect()
-    cur  = conn.cursor()
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(schema.bitstreams.c.id).where(schema.bitstreams.c.label == label)
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {label!r} not in DB — run a full build first")
+        bs_id = row[0]
 
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (label,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {label!r} not in DB — run a full build first")
-    bs_id = row[0]
+        # Verify netlist is present
+        n_nets = conn.execute(
+            select(func.count()).select_from(schema.nets).where(schema.nets.c.bitstream == bs_id)
+        ).scalar()
+        if n_nets == 0:
+            die(f"Netlist for {label!r} is empty — run a full build first")
 
-    # Verify netlist is present
-    cur.execute("SELECT count(*) FROM nets WHERE bitstream=%s", (bs_id,))
-    n_nets = cur.fetchone()[0]
-    if n_nets == 0:
-        die(f"Netlist for {label!r} is empty — run a full build first")
-
-    # Clear only pin-TSV-sourced annotations; keep any from other sources
-    cur.execute(
-        "DELETE FROM net_names WHERE bitstream=%s AND source='pins_tsv'", (bs_id,)
-    )
-    deleted = cur.rowcount
-    conn.commit()
-    print(f"Cleared {deleted} net_names rows (source=pins_tsv) for {label!r}")
-
-    # Re-parse pin TSV and re-insert annotations
-    # Import parse_pins_tsv from load.py
-    sys.path.insert(0, str(_HERE))
-    from load import parse_pins_tsv
-    meta, pin_rows = parse_pins_tsv(pins)
-    print(f"  {len(pin_rows)} pins from {pins}")
-
-    inserted = 0
-    for pin, row_r, col, pio, direction, lbl, fn, conf in pin_rows:
-        if direction in ("nc", "cfg"):
-            continue
-        # Look up net from pad_map
-        cur.execute(
-            "SELECT net_in, net_out FROM pad_map WHERE bitstream=%s AND pin=%s",
-            (bs_id, pin)
+    with engine().begin() as conn:
+        # Clear only pin-TSV-sourced annotations; keep any from other sources
+        result = conn.execute(
+            delete(schema.net_names).where(
+                schema.net_names.c.bitstream == bs_id,
+                schema.net_names.c.source == "pins_tsv",
+            )
         )
-        pm = cur.fetchone()
-        if pm is None:
-            continue
-        net_in, net_out = pm
-        net = net_in or net_out
-        if not net:
-            continue
-        confidence_str = "confirmed" if conf >= 8 else "estimate" if conf >= 5 else "guess"
-        cur.execute(
-            "INSERT INTO net_names (bitstream,net,name,description,confidence,source) "
-            "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-            (bs_id, net, lbl, fn, confidence_str, "pins_tsv")
-        )
-        inserted += cur.rowcount
-    conn.commit()
-    cur.close()
-    conn.close()
+        deleted = result.rowcount
+        print(f"Cleared {deleted} net_names rows (source=pins_tsv) for {label!r}")
+
+        # Re-parse pin TSV and re-insert annotations
+        sys.path.insert(0, str(_HERE))
+        from load import parse_pins_tsv
+        meta, pin_rows = parse_pins_tsv(pins)
+        print(f"  {len(pin_rows)} pins from {pins}")
+
+        inserted = 0
+        for pin, row_r, col, pio, direction, lbl, fn, conf in pin_rows:
+            if direction in ("nc", "cfg"):
+                continue
+            # Look up net from pad_map
+            pm = conn.execute(
+                select(schema.pad_map.c.net_in, schema.pad_map.c.net_out).where(
+                    schema.pad_map.c.bitstream == bs_id,
+                    schema.pad_map.c.pin == pin,
+                )
+            ).fetchone()
+            if pm is None:
+                continue
+            net_in, net_out = pm
+            net = net_in or net_out
+            if not net:
+                continue
+            confidence_str = "confirmed" if conf >= 8 else "estimate" if conf >= 5 else "guess"
+            if BACKEND == "sqlite":
+                stmt = insert(schema.net_names).prefix_with("OR IGNORE")
+            else:
+                stmt = insert(schema.net_names).on_conflict_do_nothing()
+            r2 = conn.execute(stmt.values(
+                bitstream=bs_id,
+                net=net,
+                name=lbl,
+                description=fn,
+                confidence=confidence_str,
+                source="pins_tsv",
+            ))
+            inserted += r2.rowcount
+
     print(f"  Inserted {inserted} net_names annotations")
 
     export_summary(label, out_dir)
@@ -367,107 +378,149 @@ def cmd_build(label, config, pins, device, package, out_dir, depth, workers):
 
 def export_summary(label, out_dir):
     """Write diff-friendly TSV summaries of the current DB state."""
-    conn = connect()
-    cur  = conn.cursor()
+    from sqlalchemy import select, func
+    import schema
 
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (label,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {label!r} not in DB after build — something went wrong")
-    bs_id = row[0]
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(schema.bitstreams.c.id).where(schema.bitstreams.c.label == label)
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {label!r} not in DB after build — something went wrong")
+        bs_id = row[0]
 
-    print(f"\n── export ──")
+        print(f"\n── export ──")
 
-    # ── pads summary ──
-    f_pads = out_dir / f"{label}-pads.tsv"
-    cur.execute("""
-        SELECT pm.pin, pm.label, pm.direction,
-               pm.net_in, pm.net_out,
-               nn_in.name  AS in_name,
-               nn_out.name AS out_name,
-               nn_in.confidence,
-               nn_in.description
-        FROM pad_map pm
-        LEFT JOIN net_names nn_in  ON nn_in.bitstream=pm.bitstream  AND nn_in.net=pm.net_in
-        LEFT JOIN net_names nn_out ON nn_out.bitstream=pm.bitstream AND nn_out.net=pm.net_out
-        WHERE pm.bitstream=%s
-        ORDER BY pm.pin
-    """, (bs_id,))
-    with open(f_pads, "w") as fh:
-        fh.write("pin\tlabel\tdir\tnet_in\tnet_out\tname\tconfidence\tdescription\n")
-        for r in cur.fetchall():
-            pin, lbl, d, ni, no, nn_i, nn_o, conf, desc = r
-            name = nn_i or nn_o or ""
-            fh.write(f"{pin}\t{lbl}\t{d}\t{ni or ''}\t{no or ''}\t{name}\t{conf or ''}\t{desc or ''}\n")
-    print(f"  {f_pads}")
+        # ── pads summary ──
+        f_pads = out_dir / f"{label}-pads.tsv"
+        pm    = schema.pad_map
+        nn_in  = schema.net_names.alias("nn_in")
+        nn_out = schema.net_names.alias("nn_out")
+        pads_q = (
+            select(
+                pm.c.pin,
+                pm.c.label,
+                pm.c.direction,
+                pm.c.net_in,
+                pm.c.net_out,
+                nn_in.c.name.label("in_name"),
+                nn_out.c.name.label("out_name"),
+                nn_in.c.confidence,
+                nn_in.c.description,
+            )
+            .select_from(
+                pm
+                .outerjoin(nn_in,  (nn_in.c.bitstream  == pm.c.bitstream) & (nn_in.c.net  == pm.c.net_in))
+                .outerjoin(nn_out, (nn_out.c.bitstream == pm.c.bitstream) & (nn_out.c.net == pm.c.net_out))
+            )
+            .where(pm.c.bitstream == bs_id)
+            .order_by(pm.c.pin)
+        )
+        with open(f_pads, "w") as fh:
+            fh.write("pin\tlabel\tdir\tnet_in\tnet_out\tname\tconfidence\tdescription\n")
+            for r in conn.execute(pads_q):
+                pin, lbl, d, ni, no, nn_i, nn_o, conf, desc = r
+                name = nn_i or nn_o or ""
+                fh.write(f"{pin}\t{lbl}\t{d}\t{ni or ''}\t{no or ''}\t{name}\t{conf or ''}\t{desc or ''}\n")
+        print(f"  {f_pads}")
 
-    # ── EFB ports ──
-    f_efb = out_dir / f"{label}-efb.tsv"
-    cur.execute("""
-        SELECT ep.port_name, ep.net, nn.name, nn.description
-        FROM efb_ports ep
-        LEFT JOIN net_names nn ON nn.bitstream=ep.bitstream AND nn.net=ep.net
-        WHERE ep.bitstream=%s
-        ORDER BY ep.port_name
-    """, (bs_id,))
-    with open(f_efb, "w") as fh:
-        fh.write("port\tnet\tname\tdescription\n")
-        for r in cur.fetchall():
-            fh.write("\t".join(str(v or "") for v in r) + "\n")
-    print(f"  {f_efb}")
+        # ── EFB ports ──
+        f_efb = out_dir / f"{label}-efb.tsv"
+        ep = schema.efb_ports
+        nn = schema.net_names
+        efb_q = (
+            select(
+                ep.c.port_name,
+                ep.c.net,
+                nn.c.name,
+                nn.c.description,
+            )
+            .select_from(
+                ep.outerjoin(nn, (nn.c.bitstream == ep.c.bitstream) & (nn.c.net == ep.c.net))
+            )
+            .where(ep.c.bitstream == bs_id)
+            .order_by(ep.c.port_name)
+        )
+        with open(f_efb, "w") as fh:
+            fh.write("port\tnet\tname\tdescription\n")
+            for r in conn.execute(efb_q):
+                fh.write("\t".join(str(v or "") for v in r) + "\n")
+        print(f"  {f_efb}")
 
-    # ── clock domains ──
-    f_clk = out_dir / f"{label}-clocks.tsv"
-    cur.execute("""
-        SELECT cd.clk_net, nn.name, count(*) AS ff_count
-        FROM clock_domains cd
-        LEFT JOIN net_names nn ON nn.bitstream=cd.bitstream AND nn.net=cd.clk_net
-        WHERE cd.bitstream=%s
-        GROUP BY cd.clk_net, nn.name
-        ORDER BY ff_count DESC
-    """, (bs_id,))
-    with open(f_clk, "w") as fh:
-        fh.write("clk_net\tname\tff_count\n")
-        for r in cur.fetchall():
-            fh.write("\t".join(str(v or "") for v in r) + "\n")
-    print(f"  {f_clk}")
+        # ── clock domains ──
+        f_clk = out_dir / f"{label}-clocks.tsv"
+        cd  = schema.clock_domains
+        nn2 = schema.net_names
+        clk_q = (
+            select(
+                cd.c.clk_net,
+                nn2.c.name,
+                func.count().label("ff_count"),
+            )
+            .select_from(
+                cd.outerjoin(nn2, (nn2.c.bitstream == cd.c.bitstream) & (nn2.c.net == cd.c.clk_net))
+            )
+            .where(cd.c.bitstream == bs_id)
+            .group_by(cd.c.clk_net, nn2.c.name)
+            .order_by(func.count().desc())
+        )
+        with open(f_clk, "w") as fh:
+            fh.write("clk_net\tname\tff_count\n")
+            for r in conn.execute(clk_q):
+                fh.write("\t".join(str(v or "") for v in r) + "\n")
+        print(f"  {f_clk}")
 
-    # ── reachability summary (EFB → everything) ──
-    f_reach = out_dir / f"{label}-reach-efb.tsv"
-    cur.execute("""
-        SELECT ep.port_name, r.dst, r.min_hops, nn.name
-        FROM efb_ports ep
-        JOIN reachability r ON r.bitstream=ep.bitstream AND r.src=ep.net
-        LEFT JOIN net_names nn ON nn.bitstream=r.bitstream AND nn.net=r.dst
-        WHERE ep.bitstream=%s
-        ORDER BY ep.port_name, r.min_hops, r.dst
-    """, (bs_id,))
-    with open(f_reach, "w") as fh:
-        fh.write("efb_port\tdst_net\thops\tdst_name\n")
-        for r in cur.fetchall():
-            fh.write("\t".join(str(v or "") for v in r) + "\n")
-    print(f"  {f_reach}")
+        # ── reachability summary (EFB → everything) ──
+        f_reach = out_dir / f"{label}-reach-efb.tsv"
+        ep2 = schema.efb_ports
+        rch = schema.reachability
+        nn3 = schema.net_names
+        reach_q = (
+            select(
+                ep2.c.port_name,
+                rch.c.dst,
+                rch.c.min_hops,
+                nn3.c.name,
+            )
+            .select_from(
+                ep2
+                .join(rch, (rch.c.bitstream == ep2.c.bitstream) & (rch.c.src == ep2.c.net))
+                .outerjoin(nn3, (nn3.c.bitstream == rch.c.bitstream) & (nn3.c.net == rch.c.dst))
+            )
+            .where(ep2.c.bitstream == bs_id)
+            .order_by(ep2.c.port_name, rch.c.min_hops, rch.c.dst)
+        )
+        with open(f_reach, "w") as fh:
+            fh.write("efb_port\tdst_net\thops\tdst_name\n")
+            for r in conn.execute(reach_q):
+                fh.write("\t".join(str(v or "") for v in r) + "\n")
+        print(f"  {f_reach}")
 
-    # ── net stats ──
-    f_stats = out_dir / f"{label}-stats.tsv"
-    cur.execute("""
-        SELECT 'bitstream' AS metric, label AS value FROM bitstreams WHERE id=%s
-        UNION ALL SELECT 'ffs',          count(*)::text FROM ffs WHERE bitstream=%s
-        UNION ALL SELECT 'luts',         count(*)::text FROM luts WHERE bitstream=%s
-        UNION ALL SELECT 'nets',         count(*)::text FROM nets WHERE bitstream=%s
-        UNION ALL SELECT 'fanout_edges', count(*)::text FROM net_fanout WHERE bitstream=%s
-        UNION ALL SELECT 'reach_pairs',  count(*)::text FROM reachability WHERE bitstream=%s
-        UNION ALL SELECT 'named_nets',   count(*)::text FROM net_names WHERE bitstream=%s
-        UNION ALL SELECT 'clock_domains', count(distinct clk_net)::text FROM clock_domains WHERE bitstream=%s
-    """, (bs_id,bs_id,bs_id,bs_id,bs_id,bs_id,bs_id,bs_id))
-    with open(f_stats, "w") as fh:
-        fh.write("metric\tvalue\n")
-        for r in cur.fetchall():
-            fh.write(f"{r[0]}\t{r[1]}\n")
-    print(f"  {f_stats}")
+        # ── net stats ──
+        f_stats = out_dir / f"{label}-stats.tsv"
 
-    cur.close()
-    conn.close()
+        def _scalar(q):
+            return str(conn.execute(q).scalar() or 0)
+
+        bs_label_val = conn.execute(
+            select(schema.bitstreams.c.label).where(schema.bitstreams.c.id == bs_id)
+        ).scalar()
+
+        stat_rows = [
+            ("bitstream",     bs_label_val),
+            ("ffs",           _scalar(select(func.count()).select_from(schema.ffs).where(schema.ffs.c.bitstream == bs_id))),
+            ("luts",          _scalar(select(func.count()).select_from(schema.luts).where(schema.luts.c.bitstream == bs_id))),
+            ("nets",          _scalar(select(func.count()).select_from(schema.nets).where(schema.nets.c.bitstream == bs_id))),
+            ("fanout_edges",  _scalar(select(func.count()).select_from(schema.net_fanout).where(schema.net_fanout.c.bitstream == bs_id))),
+            ("reach_pairs",   _scalar(select(func.count()).select_from(schema.reachability).where(schema.reachability.c.bitstream == bs_id))),
+            ("named_nets",    _scalar(select(func.count()).select_from(schema.net_names).where(schema.net_names.c.bitstream == bs_id))),
+            ("clock_domains", _scalar(select(func.count(schema.clock_domains.c.clk_net.distinct())).select_from(schema.clock_domains).where(schema.clock_domains.c.bitstream == bs_id))),
+        ]
+        with open(f_stats, "w") as fh:
+            fh.write("metric\tvalue\n")
+            for metric, value in stat_rows:
+                fh.write(f"{metric}\t{value}\n")
+        print(f"  {f_stats}")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

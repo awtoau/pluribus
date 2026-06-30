@@ -16,7 +16,10 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect, die
+import schema
+from db import engine, die, BACKEND
+
+from sqlalchemy import select, func, and_, or_, text, distinct
 
 
 # ---------------------------------------------------------------------------
@@ -52,26 +55,49 @@ def hops_str(n_hops):
     return f"{n_hops} hop" if n_hops == 1 else f"{n_hops} hops"
 
 
-def _fetch_net_names(cur, bs_id):
+def _fetch_net_names(conn, bs_id):
     """Return {net: name} dict for all named nets in this bitstream."""
-    cur.execute(
-        "SELECT net, name FROM net_names WHERE bitstream=%s",
-        (bs_id,),
-    )
-    return dict(cur.fetchall())
+    nn = schema.net_names
+    rows = conn.execute(
+        select(nn.c.net, nn.c.name).where(nn.c.bitstream == bs_id)
+    ).fetchall()
+    return dict(rows)
+
+
+def _table_exists(conn, table_name):
+    """Return True if the given table name exists in the DB."""
+    if BACKEND == "postgres":
+        row = conn.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables"
+                " WHERE table_name = :t)"
+            ),
+            {"t": table_name},
+        ).fetchone()
+        return bool(row[0])
+    else:
+        row = conn.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM sqlite_master"
+                " WHERE type='table' AND name = :t)"
+            ),
+            {"t": table_name},
+        ).fetchone()
+        return bool(row[0])
 
 
 # ---------------------------------------------------------------------------
 # Section 1: Header
 # ---------------------------------------------------------------------------
 
-def section_header(cur, bs_id):
+def section_header(conn, bs_id):
     """Print the report header with bitstream metadata and generation timestamp."""
-    cur.execute(
-        "SELECT label, device, package, loaded_at FROM bitstreams WHERE id=%s",
-        (bs_id,),
-    )
-    label, device, package, loaded_at = cur.fetchone()
+    bs = schema.bitstreams
+    row = conn.execute(
+        select(bs.c.label, bs.c.device, bs.c.package, bs.c.loaded_at)
+        .where(bs.c.id == bs_id)
+    ).fetchone()
+    label, device, package, loaded_at = row
 
     now = datetime.now(AEST).strftime("%Y-%m-%dT%H:%M:%S+10:00")
 
@@ -89,58 +115,67 @@ def section_header(cur, bs_id):
 # Section 2: Netlist Summary
 # ---------------------------------------------------------------------------
 
-def section_netlist(cur, bs_id):
+def section_netlist(conn, bs_id):
     """Summarise the raw netlist: FF/LUT/net counts, naming coverage, clocks."""
-    cur.execute("SELECT count(*) FROM ffs WHERE bitstream=%s", (bs_id,))
-    n_ffs = cur.fetchone()[0]
+    ffs = schema.ffs
+    luts = schema.luts
+    nets = schema.nets
+    nf = schema.net_fanout
+    ns = schema.net_stats
+    nn = schema.net_names
+    cn = schema.cell_names
+    cd = schema.clock_domains
+    co = schema.const_nets
 
-    cur.execute("SELECT count(*) FROM luts WHERE bitstream=%s", (bs_id,))
-    n_luts = cur.fetchone()[0]
+    n_ffs = conn.execute(
+        select(func.count()).where(ffs.c.bitstream == bs_id)
+    ).scalar()
 
-    cur.execute("SELECT count(*) FROM nets WHERE bitstream=%s", (bs_id,))
-    n_nets = cur.fetchone()[0]
+    n_luts = conn.execute(
+        select(func.count()).where(luts.c.bitstream == bs_id)
+    ).scalar()
 
-    cur.execute("SELECT count(*) FROM net_fanout WHERE bitstream=%s", (bs_id,))
-    n_fanout = cur.fetchone()[0]
+    n_nets = conn.execute(
+        select(func.count()).where(nets.c.bitstream == bs_id)
+    ).scalar()
 
-    # Average and max fanout per net (from net_stats)
-    cur.execute(
-        "SELECT avg(fanout), max(fanout) FROM net_stats WHERE bitstream=%s",
-        (bs_id,),
-    )
-    row = cur.fetchone()
+    n_fanout = conn.execute(
+        select(func.count()).where(nf.c.bitstream == bs_id)
+    ).scalar()
+
+    row = conn.execute(
+        select(func.avg(ns.c.fanout), func.max(ns.c.fanout))
+        .where(ns.c.bitstream == bs_id)
+    ).fetchone()
     avg_fo = float(row[0]) if row[0] is not None else 0.0
     max_fo = row[1] or 0
 
-    # Named nets
-    cur.execute("SELECT count(*) FROM net_names WHERE bitstream=%s", (bs_id,))
-    n_named_nets = cur.fetchone()[0]
+    n_named_nets = conn.execute(
+        select(func.count()).where(nn.c.bitstream == bs_id)
+    ).scalar()
     pct_nets = 100.0 * n_named_nets / n_nets if n_nets else 0.0
 
-    # Named cells
-    cur.execute("SELECT count(*) FROM cell_names WHERE bitstream=%s", (bs_id,))
-    n_named_cells = cur.fetchone()[0]
+    n_named_cells = conn.execute(
+        select(func.count()).where(cn.c.bitstream == bs_id)
+    ).scalar()
     n_cells = n_ffs + n_luts
     pct_cells = 100.0 * n_named_cells / n_cells if n_cells else 0.0
 
-    # Clock domains — distinct clock nets
-    cur.execute(
-        "SELECT count(DISTINCT clk_net) FROM clock_domains WHERE bitstream=%s",
-        (bs_id,),
-    )
-    n_clk_domains = cur.fetchone()[0]
+    n_clk_domains = conn.execute(
+        select(func.count(distinct(cd.c.clk_net)))
+        .where(cd.c.bitstream == bs_id)
+    ).scalar()
 
-    # Active FFs (D != 1'b0)
-    cur.execute(
-        "SELECT count(*) FROM ffs WHERE bitstream=%s AND d != '1''b0'",
-        (bs_id,),
-    )
-    n_active_ffs = cur.fetchone()[0]
+    n_active_ffs = conn.execute(
+        select(func.count()).where(
+            and_(ffs.c.bitstream == bs_id, ffs.c.d != "1'b0")
+        )
+    ).scalar()
     n_stuck_ffs = n_ffs - n_active_ffs
 
-    # Const nets
-    cur.execute("SELECT count(*) FROM const_nets WHERE bitstream=%s", (bs_id,))
-    n_const_nets = cur.fetchone()[0]
+    n_const_nets = conn.execute(
+        select(func.count()).where(co.c.bitstream == bs_id)
+    ).scalar()
 
     lines = [
         "",
@@ -161,31 +196,29 @@ def section_netlist(cur, bs_id):
 # Section 3: Clock Architecture
 # ---------------------------------------------------------------------------
 
-def section_clocks(cur, bs_id, net_names):
+def section_clocks(conn, bs_id, net_names):
     """List clock domains ranked by FF count with crossing counts."""
-    cur.execute(
-        """
-        SELECT cd.clk_net, count(*) AS n_ffs
-        FROM clock_domains cd
-        WHERE cd.bitstream=%s
-        GROUP BY cd.clk_net ORDER BY n_ffs DESC
-        """,
-        (bs_id,),
-    )
-    domains = cur.fetchall()
+    cd = schema.clock_domains
+    cc = schema.clock_crossings
 
-    # Crossings-in and crossings-out per clock net
-    cur.execute(
-        "SELECT dst_clk, count(*) FROM clock_crossings WHERE bitstream=%s GROUP BY dst_clk",
-        (bs_id,),
-    )
-    crossings_in = dict(cur.fetchall())
+    domains = conn.execute(
+        select(cd.c.clk_net, func.count().label("n_ffs"))
+        .where(cd.c.bitstream == bs_id)
+        .group_by(cd.c.clk_net)
+        .order_by(func.count().desc())
+    ).fetchall()
 
-    cur.execute(
-        "SELECT src_clk, count(*) FROM clock_crossings WHERE bitstream=%s GROUP BY src_clk",
-        (bs_id,),
-    )
-    crossings_out = dict(cur.fetchall())
+    crossings_in = dict(conn.execute(
+        select(cc.c.dst_clk, func.count())
+        .where(cc.c.bitstream == bs_id)
+        .group_by(cc.c.dst_clk)
+    ).fetchall())
+
+    crossings_out = dict(conn.execute(
+        select(cc.c.src_clk, func.count())
+        .where(cc.c.bitstream == bs_id)
+        .group_by(cc.c.src_clk)
+    ).fetchall())
 
     n_total = len(domains)
 
@@ -209,38 +242,47 @@ def section_clocks(cur, bs_id, net_names):
 # Section 4: Physical Boundary
 # ---------------------------------------------------------------------------
 
-def section_boundary(cur, bs_id, net_names):
+def section_boundary(conn, bs_id, net_names):
     """Summarise the physical pad map and EFB ports."""
-    cur.execute("SELECT count(*) FROM pad_map WHERE bitstream=%s", (bs_id,))
-    n_total_pads = cur.fetchone()[0]
+    pm = schema.pad_map
+    ffs = schema.ffs
+    luts = schema.luts
+    cn = schema.cell_names
+    ep = schema.efb_ports
+    r = schema.reachability
+    nf = schema.net_fanout
 
-    cur.execute(
-        "SELECT count(*) FROM pad_map WHERE bitstream=%s AND (net_in IS NOT NULL OR net_out IS NOT NULL)",
-        (bs_id,),
-    )
-    n_resolved = cur.fetchone()[0]
+    n_total_pads = conn.execute(
+        select(func.count()).where(pm.c.bitstream == bs_id)
+    ).scalar()
+
+    n_resolved = conn.execute(
+        select(func.count()).where(
+            and_(
+                pm.c.bitstream == bs_id,
+                or_(pm.c.net_in.isnot(None), pm.c.net_out.isnot(None)),
+            )
+        )
+    ).scalar()
     n_unresolved = n_total_pads - n_resolved
 
-    # Input pads
-    cur.execute(
-        "SELECT pin, label, net_in FROM pad_map WHERE bitstream=%s AND net_in IS NOT NULL ORDER BY pin",
-        (bs_id,),
-    )
-    input_pads = cur.fetchall()
+    input_pads = conn.execute(
+        select(pm.c.pin, pm.c.label, pm.c.net_in)
+        .where(and_(pm.c.bitstream == bs_id, pm.c.net_in.isnot(None)))
+        .order_by(pm.c.pin)
+    ).fetchall()
 
-    # Output pads
-    cur.execute(
-        "SELECT pin, label, net_out FROM pad_map WHERE bitstream=%s AND net_out IS NOT NULL ORDER BY pin",
-        (bs_id,),
-    )
-    output_pads = cur.fetchall()
+    output_pads = conn.execute(
+        select(pm.c.pin, pm.c.label, pm.c.net_out)
+        .where(and_(pm.c.bitstream == bs_id, pm.c.net_out.isnot(None)))
+        .order_by(pm.c.pin)
+    ).fetchall()
 
-    # EFB ports
-    cur.execute(
-        "SELECT port_name, net FROM efb_ports WHERE bitstream=%s ORDER BY port_name",
-        (bs_id,),
-    )
-    efb_ports = cur.fetchall()
+    efb_ports = conn.execute(
+        select(ep.c.port_name, ep.c.net)
+        .where(ep.c.bitstream == bs_id)
+        .order_by(ep.c.port_name)
+    ).fetchall()
 
     lines = [
         "",
@@ -253,19 +295,19 @@ def section_boundary(cur, bs_id, net_names):
     ]
 
     for pin, label, net in input_pads:
-        # reachability stats
-        cur.execute(
-            """
-            SELECT count(*), min(r.min_hops)
-            FROM reachability r
-            JOIN ffs f ON f.bitstream=r.bitstream AND (f.d=r.dst OR f.ce=r.dst)
-            WHERE r.bitstream=%s AND r.src=%s
-            """,
-            (bs_id, net),
-        )
-        r = cur.fetchone()
-        n_ffs_reach = r[0] if r else 0
-        min_hops = r[1] if r else None
+        # reachability stats — join reachability with ffs on D or CE
+        reach_row = conn.execute(
+            select(func.count(), func.min(r.c.min_hops))
+            .select_from(
+                r.join(ffs, and_(
+                    ffs.c.bitstream == r.c.bitstream,
+                    or_(ffs.c.d == r.c.dst, ffs.c.ce == r.c.dst),
+                ))
+            )
+            .where(and_(r.c.bitstream == bs_id, r.c.src == net))
+        ).fetchone()
+        n_ffs_reach = reach_row[0] if reach_row else 0
+        min_hops = reach_row[1] if reach_row else None
 
         hop_str = f"{n_ffs_reach} FFs in {hops_str(min_hops)}" if min_hops is not None else "no reach data"
         name = net_names.get(net, label)
@@ -279,29 +321,25 @@ def section_boundary(cur, bs_id, net_names):
 
     for pin, label, net in output_pads:
         # Find what drives the net (FF or LUT)
-        cur.execute(
-            "SELECT cell, clk FROM ffs WHERE bitstream=%s AND q=%s",
-            (bs_id, net),
-        )
-        row = cur.fetchone()
-        if row:
-            ff_cell, clk = row
-            # After pass 7 (pad propagation), the driving FF may be named in cell_names
-            cur.execute(
-                "SELECT name FROM cell_names WHERE bitstream=%s AND cell=%s",
-                (bs_id, ff_cell),
-            )
-            cn = cur.fetchone()
-            ff_label = cn[0] if cn else ff_cell
+        ff_row = conn.execute(
+            select(ffs.c.cell, ffs.c.clk)
+            .where(and_(ffs.c.bitstream == bs_id, ffs.c.q == net))
+        ).fetchone()
+        if ff_row:
+            ff_cell, clk = ff_row
+            cn_row = conn.execute(
+                select(cn.c.name)
+                .where(and_(cn.c.bitstream == bs_id, cn.c.cell == ff_cell))
+            ).fetchone()
+            ff_label = cn_row[0] if cn_row else ff_cell
             driver_str = f"ff={ff_label}  clk={net_with_name(clk, net_names)}"
         else:
-            cur.execute(
-                "SELECT cell, fn FROM luts WHERE bitstream=%s AND z=%s",
-                (bs_id, net),
-            )
-            row = cur.fetchone()
-            if row:
-                driver_str = f"lut={row[0]}  fn={row[1]}"
+            lut_row = conn.execute(
+                select(luts.c.cell, luts.c.fn)
+                .where(and_(luts.c.bitstream == bs_id, luts.c.z == net))
+            ).fetchone()
+            if lut_row:
+                driver_str = f"lut={lut_row[0]}  fn={lut_row[1]}"
             else:
                 driver_str = "unknown driver"
         name = net_names.get(net, label)
@@ -314,24 +352,23 @@ def section_boundary(cur, bs_id, net_names):
     lines.append(f"  EFB ports ({len(efb_ports)}):")
 
     for port_name, net in efb_ports:
-        cur.execute(
-            "SELECT count(*) FROM net_fanout WHERE bitstream=%s AND net=%s",
-            (bs_id, net),
-        )
-        fo = cur.fetchone()[0]
+        fo = conn.execute(
+            select(func.count())
+            .where(and_(nf.c.bitstream == bs_id, nf.c.net == net))
+        ).scalar()
 
-        cur.execute(
-            """
-            SELECT count(*), min(r.min_hops)
-            FROM reachability r
-            JOIN ffs f ON f.bitstream=r.bitstream AND (f.d=r.dst OR f.ce=r.dst)
-            WHERE r.bitstream=%s AND r.src=%s
-            """,
-            (bs_id, net),
-        )
-        r = cur.fetchone()
-        n_ff_reach = r[0] if r else 0
-        min_hops = r[1] if r else None
+        reach_row = conn.execute(
+            select(func.count(), func.min(r.c.min_hops))
+            .select_from(
+                r.join(ffs, and_(
+                    ffs.c.bitstream == r.c.bitstream,
+                    or_(ffs.c.d == r.c.dst, ffs.c.ce == r.c.dst),
+                ))
+            )
+            .where(and_(r.c.bitstream == bs_id, r.c.src == net))
+        ).fetchone()
+        n_ff_reach = reach_row[0] if reach_row else 0
+        min_hops = reach_row[1] if reach_row else None
 
         hop_str = (
             f"{n_ff_reach} FFs in {hops_str(min_hops)}"
@@ -351,13 +388,20 @@ def section_boundary(cur, bs_id, net_names):
 # Section 5: Active Logic
 # ---------------------------------------------------------------------------
 
-def section_active_ffs(cur, bs_id, net_names):
+def section_active_ffs(conn, bs_id, net_names):
     """Detail the non-reset FFs — the only FFs doing actual work."""
-    cur.execute(
-        "SELECT cell, clk, ce, d, q FROM ffs WHERE bitstream=%s AND d != '1''b0' ORDER BY cell",
-        (bs_id,),
-    )
-    active = cur.fetchall()
+    ffs = schema.ffs
+    fd = schema.ff_d_functions
+    ns = schema.net_stats
+    nn = schema.net_names
+    pfi = schema.pad_ff_influence
+    cc = schema.clock_crossings
+
+    active = conn.execute(
+        select(ffs.c.cell, ffs.c.clk, ffs.c.ce, ffs.c.d, ffs.c.q)
+        .where(and_(ffs.c.bitstream == bs_id, ffs.c.d != "1'b0"))
+        .order_by(ffs.c.cell)
+    ).fetchall()
 
     lines = [
         "",
@@ -367,52 +411,42 @@ def section_active_ffs(cur, bs_id, net_names):
 
     for ff_cell, clk, ce, d_net, q_net in active:
 
-        # D-function expression
-        cur.execute(
-            "SELECT fn_expr FROM ff_d_functions WHERE ff_cell=%s",
-            (ff_cell,),
-        )
-        row = cur.fetchone()
-        fn_expr = row[0] if row else d_net
+        fn_row = conn.execute(
+            select(fd.c.fn_expr).where(fd.c.ff_cell == ff_cell)
+        ).fetchone()
+        fn_expr = fn_row[0] if fn_row else d_net
 
-        # Is D net a ghost (fanin=0)?
-        cur.execute(
-            "SELECT fanin FROM net_stats WHERE bitstream=%s AND net=%s",
-            (bs_id, d_net),
-        )
-        row = cur.fetchone()
-        fanin = row[0] if row else None
+        ns_row = conn.execute(
+            select(ns.c.fanin)
+            .where(and_(ns.c.bitstream == bs_id, ns.c.net == d_net))
+        ).fetchone()
+        fanin = ns_row[0] if ns_row else None
 
         if fanin == 0:
-            # Show resolved name if pass 7+ gave it something other than auto_ghost
-            cur.execute(
-                "SELECT name, source FROM net_names WHERE bitstream=%s AND net=%s",
-                (bs_id, d_net),
-            )
-            nn = cur.fetchone()
-            if nn and nn[1] != 'auto_ghost':
-                d_annotation = f"{d_net}  (ghost net — fanin=0, hard IP source; resolved: {nn[0]})"
+            nn_row = conn.execute(
+                select(nn.c.name, nn.c.source)
+                .where(and_(nn.c.bitstream == bs_id, nn.c.net == d_net))
+            ).fetchone()
+            if nn_row and nn_row[1] != 'auto_ghost':
+                d_annotation = f"{d_net}  (ghost net — fanin=0, hard IP source; resolved: {nn_row[0]})"
             else:
                 d_annotation = f"{d_net}  (ghost net — fanin=0, hard IP source)"
         else:
             d_annotation = fn_expr or d_net
 
-        # Pad influence
-        cur.execute(
-            "SELECT array_agg(pad_label ORDER BY pad_label) FROM pad_ff_influence WHERE bitstream=%s AND ff_cell=%s",
-            (bs_id, ff_cell),
-        )
-        row = cur.fetchone()
-        pad_labels = row[0] if row and row[0] else []
-
+        # Pad influence — collect pad_labels as a list
+        pad_rows = conn.execute(
+            select(pfi.c.pad_label)
+            .where(and_(pfi.c.bitstream == bs_id, pfi.c.ff_cell == ff_cell))
+            .order_by(pfi.c.pad_label)
+        ).fetchall()
+        pad_labels = [row[0] for row in pad_rows]
         pad_str = ", ".join(pad_labels) if pad_labels else "none"
 
-        # Clock crossings from this FF's Q
-        cur.execute(
-            "SELECT count(DISTINCT dst_clk) FROM clock_crossings WHERE bitstream=%s AND src_ff=%s",
-            (bs_id, ff_cell),
-        )
-        n_cross = cur.fetchone()[0]
+        n_cross = conn.execute(
+            select(func.count(distinct(cc.c.dst_clk)))
+            .where(and_(cc.c.bitstream == bs_id, cc.c.src_ff == ff_cell))
+        ).scalar()
 
         lines.append("")
         lines.append(
@@ -432,46 +466,81 @@ def section_active_ffs(cur, bs_id, net_names):
 # Section 6: Register Map (spatial clusters)
 # ---------------------------------------------------------------------------
 
-def section_register_clusters(cur, bs_id, net_names):
+def section_register_clusters(conn, bs_id, net_names):
     """Group FFs by tile location to identify register banks."""
-    cur.execute(
-        """
-        SELECT substring(cell, 1, length(cell)-3) AS tile,
-               count(*)                 AS n_ffs,
-               array_agg(DISTINCT clk) AS clks,
-               array_agg(DISTINCT ce)  AS ces
-        FROM ffs WHERE bitstream=%s
-        GROUP BY tile ORDER BY n_ffs DESC, tile
-        """,
-        (bs_id,),
-    )
-    clusters = cur.fetchall()
+    ffs = schema.ffs
 
-    cur.execute(
-        """
-        SELECT count(DISTINCT substring(cell, 1, length(cell)-3))
-        FROM ffs WHERE bitstream=%s
-        """,
-        (bs_id,),
-    )
-    n_tiles = cur.fetchone()[0]
+    # Tile extraction uses dialect-specific string functions; use text() for
+    # this purely analytic, read-only section.
+    if BACKEND == "postgres":
+        clusters = conn.execute(
+            text(
+                "SELECT substring(cell, 1, length(cell)-3) AS tile,"
+                " count(*) AS n_ffs,"
+                " array_agg(DISTINCT clk) AS clks,"
+                " array_agg(DISTINCT ce) AS ces"
+                " FROM ffs WHERE bitstream=:bs"
+                " GROUP BY tile ORDER BY n_ffs DESC, tile"
+            ),
+            {"bs": bs_id},
+        ).fetchall()
 
-    cur.execute("SELECT count(*) FROM ffs WHERE bitstream=%s", (bs_id,))
-    n_total_ffs = cur.fetchone()[0]
+        n_tiles = conn.execute(
+            text(
+                "SELECT count(DISTINCT substring(cell, 1, length(cell)-3))"
+                " FROM ffs WHERE bitstream=:bs"
+            ),
+            {"bs": bs_id},
+        ).scalar()
 
-    # Mixed-clock tiles
-    cur.execute(
-        """
-        SELECT substring(cell, 1, length(cell)-3) AS tile,
-               array_agg(DISTINCT clk) AS clks,
-               count(*) AS n_ffs
-        FROM ffs WHERE bitstream=%s
-        GROUP BY tile HAVING count(DISTINCT clk) > 1
-        ORDER BY tile
-        """,
-        (bs_id,),
-    )
-    mixed_clock = cur.fetchall()
+        mixed_clock = conn.execute(
+            text(
+                "SELECT substring(cell, 1, length(cell)-3) AS tile,"
+                " array_agg(DISTINCT clk) AS clks,"
+                " count(*) AS n_ffs"
+                " FROM ffs WHERE bitstream=:bs"
+                " GROUP BY tile HAVING count(DISTINCT clk) > 1"
+                " ORDER BY tile"
+            ),
+            {"bs": bs_id},
+        ).fetchall()
+    else:
+        # SQLite uses substr() not substring()
+        clusters = conn.execute(
+            text(
+                "SELECT substr(cell, 1, length(cell)-3) AS tile,"
+                " count(*) AS n_ffs,"
+                " group_concat(DISTINCT clk) AS clks,"
+                " group_concat(DISTINCT ce) AS ces"
+                " FROM ffs WHERE bitstream=:bs"
+                " GROUP BY tile ORDER BY n_ffs DESC, tile"
+            ),
+            {"bs": bs_id},
+        ).fetchall()
+
+        n_tiles = conn.execute(
+            text(
+                "SELECT count(DISTINCT substr(cell, 1, length(cell)-3))"
+                " FROM ffs WHERE bitstream=:bs"
+            ),
+            {"bs": bs_id},
+        ).scalar()
+
+        mixed_clock = conn.execute(
+            text(
+                "SELECT substr(cell, 1, length(cell)-3) AS tile,"
+                " group_concat(DISTINCT clk) AS clks,"
+                " count(*) AS n_ffs"
+                " FROM ffs WHERE bitstream=:bs"
+                " GROUP BY tile HAVING count(DISTINCT clk) > 1"
+                " ORDER BY tile"
+            ),
+            {"bs": bs_id},
+        ).fetchall()
+
+    n_total_ffs = conn.execute(
+        select(func.count()).where(ffs.c.bitstream == bs_id)
+    ).scalar()
 
     lines = [
         "",
@@ -481,8 +550,18 @@ def section_register_clusters(cur, bs_id, net_names):
         "  Largest groups (8 FFs per full tile):",
     ]
 
-    # Show top 20 tiles
-    for tile, n_ffs, clks, ces in clusters[:20]:
+    def _split_agg(val):
+        """Normalise array_agg (list) or group_concat (str) to a Python list."""
+        if val is None:
+            return []
+        if isinstance(val, list):
+            return val
+        return val.split(",")
+
+    for row in clusters[:20]:
+        tile, n_ffs, clks_raw, ces_raw = row[0], row[1], row[2], row[3]
+        clks = _split_agg(clks_raw)
+        ces  = _split_agg(ces_raw)
         clk_str = ", ".join(c for c in clks if c)
         ce_str  = ", ".join(c for c in ces  if c)
         clk_names = ", ".join(
@@ -498,7 +577,9 @@ def section_register_clusters(cur, bs_id, net_names):
 
     lines.append("")
     lines.append(f"  Mixed-clock tiles ({len(mixed_clock)} — potential CDC inside tile):")
-    for tile, clks, n_ffs in mixed_clock[:20]:
+    for row in mixed_clock[:20]:
+        tile, clks_raw, n_ffs = row[0], row[1], row[2]
+        clks = _split_agg(clks_raw)
         clk_str = ", ".join(c for c in clks if c)
         lines.append(f"    {tile:<14}  {n_ffs} FFs  clks: {clk_str}")
 
@@ -515,32 +596,29 @@ def section_register_clusters(cur, bs_id, net_names):
 # Section 7: Clock Crossings Summary
 # ---------------------------------------------------------------------------
 
-def section_clock_crossings(cur, bs_id, net_names):
+def section_clock_crossings(conn, bs_id, net_names):
     """Summarise potential metastability hazards across clock domains."""
-    cur.execute("SELECT count(*) FROM clock_crossings WHERE bitstream=%s", (bs_id,))
-    n_total = cur.fetchone()[0]
+    cc = schema.clock_crossings
 
-    # Top crossing pairs
-    cur.execute(
-        """
-        SELECT src_clk, dst_clk, count(*) AS n
-        FROM clock_crossings WHERE bitstream=%s
-        GROUP BY src_clk, dst_clk ORDER BY n DESC LIMIT 15
-        """,
-        (bs_id,),
-    )
-    top_pairs = cur.fetchall()
+    n_total = conn.execute(
+        select(func.count()).where(cc.c.bitstream == bs_id)
+    ).scalar()
 
-    # Most dangerous dst FFs (receives from most distinct source domains)
-    cur.execute(
-        """
-        SELECT dst_ff, dst_clk, count(DISTINCT src_clk) AS n_srcs
-        FROM clock_crossings WHERE bitstream=%s
-        GROUP BY dst_ff, dst_clk ORDER BY n_srcs DESC LIMIT 10
-        """,
-        (bs_id,),
-    )
-    dangerous = cur.fetchall()
+    top_pairs = conn.execute(
+        select(cc.c.src_clk, cc.c.dst_clk, func.count().label("n"))
+        .where(cc.c.bitstream == bs_id)
+        .group_by(cc.c.src_clk, cc.c.dst_clk)
+        .order_by(func.count().desc())
+        .limit(15)
+    ).fetchall()
+
+    dangerous = conn.execute(
+        select(cc.c.dst_ff, cc.c.dst_clk, func.count(distinct(cc.c.src_clk)).label("n_srcs"))
+        .where(cc.c.bitstream == bs_id)
+        .group_by(cc.c.dst_ff, cc.c.dst_clk)
+        .order_by(func.count(distinct(cc.c.src_clk)).desc())
+        .limit(10)
+    ).fetchall()
 
     lines = [
         "",
@@ -577,33 +655,22 @@ def section_clock_crossings(cur, bs_id, net_names):
 # Section 7b: CDC Synchronisers
 # ---------------------------------------------------------------------------
 
-def section_cdc_synchronisers(cur, bs_id, net_names):
+def section_cdc_synchronisers(conn, bs_id, net_names):
     """List detected 2-FF CDC synchroniser chains (named by pass 9 of reach4)."""
-    # Guard: table may not exist if reach4 pass 9 hasn't been run yet
-    cur.execute(
-        """
-        SELECT EXISTS (
-            SELECT 1 FROM information_schema.tables
-            WHERE table_name = 'cdc_synchronisers'
-        )
-        """
-    )
-    if not cur.fetchone()[0]:
+    if not _table_exists(conn, "cdc_synchronisers"):
         return [
             "",
             "── CDC Synchronisers ────────────────────────────────────",
             "  (cdc_synchronisers table not found — run reach4 pass 9)",
         ]
 
-    cur.execute(
-        """
-        SELECT src_ff, src_clk, stage1_ff, stage2_ff, dst_clk
-        FROM cdc_synchronisers WHERE bitstream=%s
-        ORDER BY dst_clk, src_clk
-        """,
-        (bs_id,),
-    )
-    rows = cur.fetchall()
+    cs = schema.cdc_synchronisers
+
+    rows = conn.execute(
+        select(cs.c.src_ff, cs.c.src_clk, cs.c.stage1_ff, cs.c.stage2_ff, cs.c.dst_clk)
+        .where(cs.c.bitstream == bs_id)
+        .order_by(cs.c.dst_clk, cs.c.src_clk)
+    ).fetchall()
     n_sync = len(rows)
 
     lines = [
@@ -618,8 +685,8 @@ def section_cdc_synchronisers(cur, bs_id, net_names):
         lines.append("  (none detected)")
     else:
         for src_ff, src_clk, stage1_ff, stage2_ff, dst_clk in rows:
-            src_clk_label  = net_names.get(src_clk,  src_clk)
-            dst_clk_label  = net_names.get(dst_clk,  dst_clk)
+            src_clk_label = net_names.get(src_clk, src_clk)
+            dst_clk_label = net_names.get(dst_clk, dst_clk)
             lines.append(
                 f"  {src_ff}({src_clk_label}) → {stage1_ff} → {stage2_ff}  ({dst_clk_label})"
             )
@@ -631,23 +698,30 @@ def section_cdc_synchronisers(cur, bs_id, net_names):
 # Section 8: EBR Block RAM
 # ---------------------------------------------------------------------------
 
-def section_ebr(cur, bs_id, net_names=None):
+def section_ebr(conn, bs_id, net_names=None):
     """Show block RAM port assignments grouped by block and bus role."""
     if net_names is None:
         net_names = {}
-    cur.execute(
-        "SELECT DISTINCT block FROM ebr_buses WHERE bitstream=%s ORDER BY block",
-        (bs_id,),
-    )
-    blocks = [row[0] for row in cur.fetchall()]
 
-    # Fall back to raw ebr_ports if ebr_buses is empty
+    eb = schema.ebr_buses
+    ep = schema.ebr_ports
+
+    blocks = [
+        row[0] for row in conn.execute(
+            select(distinct(eb.c.block))
+            .where(eb.c.bitstream == bs_id)
+            .order_by(eb.c.block)
+        ).fetchall()
+    ]
+
     if not blocks:
-        cur.execute(
-            "SELECT DISTINCT block FROM ebr_ports WHERE bitstream=%s ORDER BY block",
-            (bs_id,),
-        )
-        raw_blocks = [row[0] for row in cur.fetchall()]
+        raw_blocks = [
+            row[0] for row in conn.execute(
+                select(distinct(ep.c.block))
+                .where(ep.c.bitstream == bs_id)
+                .order_by(ep.c.block)
+            ).fetchall()
+        ]
         n_raw = len(raw_blocks)
         lines = [
             "",
@@ -666,17 +740,12 @@ def section_ebr(cur, bs_id, net_names=None):
 
     for block in blocks:
         lines.append(f"  Block {block}:")
-        cur.execute(
-            """
-            SELECT bus_role, bit_index, port, net
-            FROM ebr_buses WHERE bitstream=%s AND block=%s
-            ORDER BY bus_role, bit_index
-            """,
-            (bs_id, block),
-        )
-        bus_rows = cur.fetchall()
+        bus_rows = conn.execute(
+            select(eb.c.bus_role, eb.c.bit_index, eb.c.port, eb.c.net)
+            .where(and_(eb.c.bitstream == bs_id, eb.c.block == block))
+            .order_by(eb.c.bus_role, eb.c.bit_index)
+        ).fetchall()
 
-        # Group by role
         by_role = {}
         for role, bit_idx, port, net in bus_rows:
             by_role.setdefault(role, []).append((bit_idx, port, net))
@@ -692,14 +761,11 @@ def section_ebr(cur, bs_id, net_names=None):
             ]
             lines.append(f"    {role:<12}: {', '.join(port_strs)}")
 
-        # After pass 6, shared EBR bus nets are named ebr_main_* in net_names.
-        # Collect the distinct base names (strip [N] suffix) for any port nets that match.
         shared_bus_names = set()
         for role, bit_idx, port, net in bus_rows:
             if net and net in net_names:
                 name = net_names[net]
                 if name.startswith("ebr_main_"):
-                    # Strip bit index suffix e.g. "ebr_main_write_addr[0]" → "ebr_main_write_addr"
                     base = name.split("[")[0]
                     shared_bus_names.add(base)
         if shared_bus_names:
@@ -712,13 +778,17 @@ def section_ebr(cur, bs_id, net_names=None):
 # Section 9: SPI/EFB Reachability
 # ---------------------------------------------------------------------------
 
-def section_spi_efb(cur, bs_id):
+def section_spi_efb(conn, bs_id):
     """Show reachability from each EFB port into the fabric."""
-    cur.execute(
-        "SELECT port_name, net FROM efb_ports WHERE bitstream=%s ORDER BY port_name",
-        (bs_id,),
-    )
-    efb_ports = cur.fetchall()
+    ep = schema.efb_ports
+    r  = schema.reachability
+    ffs = schema.ffs
+
+    efb_ports = conn.execute(
+        select(ep.c.port_name, ep.c.net)
+        .where(ep.c.bitstream == bs_id)
+        .order_by(ep.c.port_name)
+    ).fetchall()
 
     lines = [
         "",
@@ -730,44 +800,35 @@ def section_spi_efb(cur, bs_id):
         return lines
 
     for port_name, net in efb_ports:
-        # raw nets reachable
-        cur.execute(
-            """
-            SELECT count(*), min(min_hops), max(min_hops)
-            FROM reachability WHERE bitstream=%s AND src=%s
-            """,
-            (bs_id, net),
-        )
-        r_none = cur.fetchone()
-        n_none = r_none[0] if r_none else 0
+        r_none = conn.execute(
+            select(func.count(), func.min(r.c.min_hops), func.max(r.c.min_hops))
+            .where(and_(r.c.bitstream == bs_id, r.c.src == net))
+        ).fetchone()
+        n_none    = r_none[0] if r_none else 0
         min_h_none = r_none[1] if r_none else None
         max_h_none = r_none[2] if r_none else None
 
-        # First few reachable nets
-        cur.execute(
-            """
-            SELECT dst FROM reachability
-            WHERE bitstream=%s AND src=%s
-            ORDER BY min_hops LIMIT 6
-            """,
-            (bs_id, net),
-        )
-        first_nets = [row[0] for row in cur.fetchall()]
+        first_rows = conn.execute(
+            select(r.c.dst)
+            .where(and_(r.c.bitstream == bs_id, r.c.src == net))
+            .order_by(r.c.min_hops)
+            .limit(6)
+        ).fetchall()
+        first_nets = [row[0] for row in first_rows]
         first_str = ", ".join(first_nets[:5])
         if len(first_nets) > 5:
             first_str += ", ..."
 
-        # how many FF data inputs are downstream
-        cur.execute(
-            """
-            SELECT count(*), min(r.min_hops)
-            FROM reachability r
-            JOIN ffs f ON f.bitstream=r.bitstream AND (f.d=r.dst OR f.ce=r.dst)
-            WHERE r.bitstream=%s AND r.src=%s
-            """,
-            (bs_id, net),
-        )
-        r_ff = cur.fetchone()
+        r_ff = conn.execute(
+            select(func.count(), func.min(r.c.min_hops))
+            .select_from(
+                r.join(ffs, and_(
+                    ffs.c.bitstream == r.c.bitstream,
+                    or_(ffs.c.d == r.c.dst, ffs.c.ce == r.c.dst),
+                ))
+            )
+            .where(and_(r.c.bitstream == bs_id, r.c.src == net))
+        ).fetchone()
         n_ff = r_ff[0] if r_ff else 0
         min_ff_hops = r_ff[1] if r_ff else None
 
@@ -798,55 +859,46 @@ def section_spi_efb(cur, bs_id):
 # Section 10: Structural Patterns
 # ---------------------------------------------------------------------------
 
-def section_patterns(cur, bs_id):
+def section_patterns(conn, bs_id):
     """Show detected structural patterns: shift registers, cone groups, const nets."""
-    cur.execute(
-        "SELECT count(*) FROM patterns WHERE bitstream=%s AND pattern_type='shift_reg'",
-        (bs_id,),
-    )
-    n_shift = cur.fetchone()[0]
+    pat = schema.patterns
+    ch  = schema.cone_hashes
+    co  = schema.const_nets
+    ls  = schema.lut_symbolic
 
-    # Cone hash groups
-    cur.execute(
-        """
-        SELECT cone_hash, count(*) AS n_ffs, min(cone_size) AS depth
-        FROM cone_hashes WHERE bitstream=%s
-        GROUP BY cone_hash ORDER BY n_ffs DESC
-        """,
-        (bs_id,),
-    )
-    cone_groups = cur.fetchall()
+    n_shift = conn.execute(
+        select(func.count())
+        .where(and_(pat.c.bitstream == bs_id, pat.c.pattern_type == "shift_reg"))
+    ).scalar()
 
-    # Total cone_hashes
-    cur.execute("SELECT count(*) FROM cone_hashes WHERE bitstream=%s", (bs_id,))
-    n_cone_hashes = cur.fetchone()[0]
+    cone_groups = conn.execute(
+        select(ch.c.cone_hash, func.count().label("n_ffs"), func.min(ch.c.cone_size).label("depth"))
+        .where(ch.c.bitstream == bs_id)
+        .group_by(ch.c.cone_hash)
+        .order_by(func.count().desc())
+    ).fetchall()
 
-    # Const nets
-    cur.execute("SELECT count(*) FROM const_nets WHERE bitstream=%s", (bs_id,))
-    n_const = cur.fetchone()[0]
+    n_const = conn.execute(
+        select(func.count()).where(co.c.bitstream == bs_id)
+    ).scalar()
 
-    cur.execute(
-        "SELECT const_value, count(*) FROM const_nets WHERE bitstream=%s GROUP BY const_value",
-        (bs_id,),
-    )
-    const_by_val = dict(cur.fetchall())
+    const_by_val = dict(conn.execute(
+        select(co.c.const_value, func.count())
+        .where(co.c.bitstream == bs_id)
+        .group_by(co.c.const_value)
+    ).fetchall())
     n_gnd = const_by_val.get("0", 0)
     n_vcc = const_by_val.get("1", 0)
 
-    # LUT symbolic max depth
-    cur.execute(
-        "SELECT max(depth) FROM lut_symbolic WHERE bitstream=%s",
-        (bs_id,),
-    )
-    row = cur.fetchone()
+    row = conn.execute(
+        select(func.max(ls.c.depth)).where(ls.c.bitstream == bs_id)
+    ).fetchone()
     max_sym_depth = row[0] if row and row[0] is not None else 0
 
-    cur.execute("SELECT count(*) FROM lut_symbolic WHERE bitstream=%s", (bs_id,))
-    n_symbolic = cur.fetchone()[0]
+    n_symbolic = conn.execute(
+        select(func.count()).where(ls.c.bitstream == bs_id)
+    ).scalar()
 
-    # Build readable cone group labels
-    # Heuristic: group with largest n_ffs and cone_size=0 is typically CONST_D
-    # The second largest with cone_size=0 is typically LEAF (ghost D input)
     cone_labels = []
     for i, (cone_hash, n_ffs, depth) in enumerate(cone_groups):
         if i == 0 and n_ffs > 100:
@@ -866,15 +918,12 @@ def section_patterns(cur, bs_id):
     if n_shift == 0:
         lines.append("    (none)")
     else:
-        cur.execute(
-            """
-            SELECT label, detail FROM patterns
-            WHERE bitstream=%s AND pattern_type='shift_reg'
-            ORDER BY label
-            """,
-            (bs_id,),
-        )
-        for pat_label, detail in cur.fetchall():
+        shift_rows = conn.execute(
+            select(pat.c.label, pat.c.detail)
+            .where(and_(pat.c.bitstream == bs_id, pat.c.pattern_type == "shift_reg"))
+            .order_by(pat.c.label)
+        ).fetchall()
+        for pat_label, detail in shift_rows:
             import json
             d = json.loads(detail) if isinstance(detail, str) else detail
             lines.append(
@@ -899,16 +948,15 @@ def section_patterns(cur, bs_id):
 # Section 11: Open Questions
 # ---------------------------------------------------------------------------
 
-def section_open_questions(cur, bs_id):
+def section_open_questions(conn, bs_id):
     """List open RE questions from the open_questions table."""
-    cur.execute(
-        """
-        SELECT id, issue_num, title, status, blocker
-        FROM open_questions WHERE bitstream=%s ORDER BY status, id
-        """,
-        (bs_id,),
-    )
-    questions = cur.fetchall()
+    oq = schema.open_questions
+
+    questions = conn.execute(
+        select(oq.c.id, oq.c.issue_num, oq.c.title, oq.c.status, oq.c.blocker)
+        .where(oq.c.bitstream == bs_id)
+        .order_by(oq.c.status, oq.c.id)
+    ).fetchall()
 
     lines = [
         "",
@@ -932,71 +980,80 @@ def section_open_questions(cur, bs_id):
 # Section 12: Gaps
 # ---------------------------------------------------------------------------
 
-def section_gaps(cur, bs_id):
+def section_gaps(conn, bs_id):
     """Enumerate what's still unknown or unresolved — the 'what we don't know' list."""
-    cur.execute(
-        "SELECT count(*) FROM pad_map WHERE bitstream=%s AND net_in IS NULL AND net_out IS NULL",
-        (bs_id,),
-    )
-    n_unresolved_pads = cur.fetchone()[0]
+    pm   = schema.pad_map
+    nets = schema.nets
+    nn   = schema.net_names
+    ffs  = schema.ffs
+    luts = schema.luts
+    cn   = schema.cell_names
+    ns   = schema.net_stats
+    cd   = schema.clock_domains
+    cc   = schema.clock_crossings
 
-    cur.execute("SELECT count(*) FROM nets WHERE bitstream=%s", (bs_id,))
-    n_nets = cur.fetchone()[0]
+    n_unresolved_pads = conn.execute(
+        select(func.count()).where(
+            and_(
+                pm.c.bitstream == bs_id,
+                pm.c.net_in.is_(None),
+                pm.c.net_out.is_(None),
+            )
+        )
+    ).scalar()
 
-    cur.execute("SELECT count(*) FROM net_names WHERE bitstream=%s", (bs_id,))
-    n_named = cur.fetchone()[0]
+    n_nets = conn.execute(
+        select(func.count()).where(nets.c.bitstream == bs_id)
+    ).scalar()
+
+    n_named = conn.execute(
+        select(func.count()).where(nn.c.bitstream == bs_id)
+    ).scalar()
     n_unnamed_nets = n_nets - n_named
     pct_unnamed = 100.0 * n_unnamed_nets / n_nets if n_nets else 0.0
 
-    cur.execute("SELECT count(*) FROM ffs WHERE bitstream=%s", (bs_id,))
-    n_ffs = cur.fetchone()[0]
-    cur.execute("SELECT count(*) FROM luts WHERE bitstream=%s", (bs_id,))
-    n_luts = cur.fetchone()[0]
+    n_ffs = conn.execute(
+        select(func.count()).where(ffs.c.bitstream == bs_id)
+    ).scalar()
+    n_luts = conn.execute(
+        select(func.count()).where(luts.c.bitstream == bs_id)
+    ).scalar()
     n_cells = n_ffs + n_luts
 
-    cur.execute("SELECT count(*) FROM cell_names WHERE bitstream=%s", (bs_id,))
-    n_named_cells = cur.fetchone()[0]
+    n_named_cells = conn.execute(
+        select(func.count()).where(cn.c.bitstream == bs_id)
+    ).scalar()
     n_unnamed_cells = n_cells - n_named_cells
     pct_unnamed_cells = 100.0 * n_unnamed_cells / n_cells if n_cells else 0.0
 
     # Active FFs with ghost D inputs (fanin=0)
-    cur.execute(
-        """
-        SELECT count(*) FROM ffs f
-        JOIN net_stats ns ON ns.bitstream=f.bitstream AND ns.net=f.d
-        WHERE f.bitstream=%s AND f.d != '1''b0' AND ns.fanin=0
-        """,
-        (bs_id,),
-    )
-    n_ghost_d = cur.fetchone()[0]
+    n_ghost_d = conn.execute(
+        select(func.count())
+        .select_from(
+            ffs.join(ns, and_(ns.c.bitstream == ffs.c.bitstream, ns.c.net == ffs.c.d))
+        )
+        .where(and_(
+            ffs.c.bitstream == bs_id,
+            ffs.c.d != "1'b0",
+            ns.c.fanin == 0,
+        ))
+    ).scalar()
 
-    # Clock domains count (all are ghost clock nets — hard IP spine)
-    cur.execute(
-        "SELECT count(DISTINCT clk_net) FROM clock_domains WHERE bitstream=%s",
-        (bs_id,),
-    )
-    n_clk_domains = cur.fetchone()[0]
+    n_clk_domains = conn.execute(
+        select(func.count(distinct(cd.c.clk_net)))
+        .where(cd.c.bitstream == bs_id)
+    ).scalar()
 
-    # Total crossings
-    cur.execute("SELECT count(*) FROM clock_crossings WHERE bitstream=%s", (bs_id,))
-    n_crossings = cur.fetchone()[0]
+    n_crossings = conn.execute(
+        select(func.count()).where(cc.c.bitstream == bs_id)
+    ).scalar()
 
-    # Verified synchroniser count (pass 9) — zero if table doesn't exist yet
     n_verified = 0
-    cur.execute(
-        """
-        SELECT EXISTS (
-            SELECT 1 FROM information_schema.tables
-            WHERE table_name = 'cdc_synchronisers'
-        )
-        """
-    )
-    if cur.fetchone()[0]:
-        cur.execute(
-            "SELECT count(*) FROM cdc_synchronisers WHERE bitstream=%s",
-            (bs_id,),
-        )
-        n_verified = cur.fetchone()[0]
+    if _table_exists(conn, "cdc_synchronisers"):
+        cs = schema.cdc_synchronisers
+        n_verified = conn.execute(
+            select(func.count()).where(cs.c.bitstream == bs_id)
+        ).scalar()
     n_unverified = n_crossings - n_verified
 
     lines = [
@@ -1035,37 +1092,35 @@ def main():
     )
     args = ap.parse_args()
 
-    conn = connect()
-    cur  = conn.cursor()
+    bs_tbl = schema.bitstreams
 
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (args.bitstream,))
-    row = cur.fetchone()
-    if not row:
-        die(f"Bitstream {args.bitstream!r} not found — run load.py first")
-    bs_id = row[0]
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(bs_tbl.c.id).where(bs_tbl.c.label == args.bitstream)
+        ).fetchone()
+        if not row:
+            die(f"Bitstream {args.bitstream!r} not found — run load.py first")
+        bs_id = row[0]
 
-    # Fetch shared lookup once — reused by many sections
-    net_names = _fetch_net_names(cur, bs_id)
+        # Fetch shared lookup once — reused by many sections
+        net_names = _fetch_net_names(conn, bs_id)
 
-    # Run all sections in order
-    sections = [
-        section_header(cur, bs_id),
-        section_netlist(cur, bs_id),
-        section_clocks(cur, bs_id, net_names),
-        section_boundary(cur, bs_id, net_names),
-        section_active_ffs(cur, bs_id, net_names),
-        section_register_clusters(cur, bs_id, net_names),
-        section_clock_crossings(cur, bs_id, net_names),
-        section_cdc_synchronisers(cur, bs_id, net_names),
-        section_ebr(cur, bs_id, net_names),
-        section_spi_efb(cur, bs_id),
-        section_patterns(cur, bs_id),
-        section_open_questions(cur, bs_id),
-        section_gaps(cur, bs_id),
-    ]
-
-    cur.close()
-    conn.close()
+        # Run all sections in order
+        sections = [
+            section_header(conn, bs_id),
+            section_netlist(conn, bs_id),
+            section_clocks(conn, bs_id, net_names),
+            section_boundary(conn, bs_id, net_names),
+            section_active_ffs(conn, bs_id, net_names),
+            section_register_clusters(conn, bs_id, net_names),
+            section_clock_crossings(conn, bs_id, net_names),
+            section_cdc_synchronisers(conn, bs_id, net_names),
+            section_ebr(conn, bs_id, net_names),
+            section_spi_efb(conn, bs_id),
+            section_patterns(conn, bs_id),
+            section_open_questions(conn, bs_id),
+            section_gaps(conn, bs_id),
+        ]
 
     lines = []
     for section in sections:
