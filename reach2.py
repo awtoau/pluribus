@@ -237,7 +237,7 @@ def pass_critical_paths(bs_id):
     if BACKEND == "sqlite":
         path_nets_expr = func.json_array(fa.c.q, r.c.dst).label("path_nets")
     else:
-        path_nets_expr = text("ARRAY[fa.q, r.dst] AS path_nets")
+        path_nets_expr = text("json_build_array(fa.q, r.dst) AS path_nets")
 
     sel = (
         select(
@@ -284,7 +284,7 @@ def pass_critical_paths(bs_id):
                     fa.cell  AS src_ff,
                     fb.cell  AS dst_ff,
                     r.min_hops,
-                    ARRAY[fa.q, r.dst]
+                    json_build_array(fa.q, r.dst)
                 FROM reachability r
                 JOIN ffs fa ON fa.bitstream=r.bitstream AND fa.q=r.src
                 JOIN ffs fb ON fb.bitstream=r.bitstream
