@@ -235,9 +235,9 @@ def pass_critical_paths(bs_id):
     # Build path_nets as a JSON list — SQLAlchemy func.json_array works on
     # SQLite; for PostgreSQL we use a text() fragment for ARRAY[] → cast to JSON.
     if BACKEND == "sqlite":
-        path_nets_expr = func.json_array(fa.c.q, r.c.dst)
+        path_nets_expr = func.json_array(fa.c.q, r.c.dst).label("path_nets")
     else:
-        path_nets_expr = text("ARRAY[fa.q, r.dst]")
+        path_nets_expr = text("ARRAY[fa.q, r.dst] AS path_nets")
 
     sel = (
         select(
@@ -245,7 +245,7 @@ def pass_critical_paths(bs_id):
             fa.c.cell.label("src_ff"),
             fb.c.cell.label("dst_ff"),
             r.c.min_hops,
-            path_nets_expr.label("path_nets"),
+            path_nets_expr,
         )
         .join(fa, and_(fa.c.bitstream == r.c.bitstream, fa.c.q == r.c.src))
         .join(fb, and_(
