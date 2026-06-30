@@ -62,7 +62,7 @@ luts = Table("luts", metadata,
 )
 
 net_fanout = Table("net_fanout", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("net",       Text, nullable=False),
     Column("cell_type", Text, nullable=False),
@@ -122,7 +122,7 @@ clock_domains = Table("clock_domains", metadata,
 # ── 2. Analysis layer ─────────────────────────────────────────────────────────
 
 reachability = Table("reachability", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("src",      Text,        nullable=False),
     Column("dst",      Text,        nullable=False),
@@ -133,7 +133,7 @@ Index("idx_reach_src", reachability.c.bitstream, reachability.c.src)
 Index("idx_reach_dst", reachability.c.bitstream, reachability.c.dst)
 
 pad_ff_influence = Table("pad_ff_influence", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("pad_label", Text,        nullable=False),
     Column("ff_cell",   Text,        nullable=False),
@@ -219,7 +219,7 @@ open_questions = Table("open_questions", metadata,
 # ── 4. Extended analysis (reach2) ─────────────────────────────────────────────
 
 reachability_rev = Table("reachability_rev", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("dst",      Text,        nullable=False),
     Column("src",      Text,        nullable=False),
@@ -230,7 +230,7 @@ Index("idx_reach_rev_dst", reachability_rev.c.bitstream, reachability_rev.c.dst)
 Index("idx_reach_rev_src", reachability_rev.c.bitstream, reachability_rev.c.src)
 
 ff_cones = Table("ff_cones", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("ff_cell",   Text,        nullable=False),
     Column("cone_type", Text,        nullable=False),
@@ -253,7 +253,7 @@ critical_paths = Table("critical_paths", metadata,
 Index("idx_crit_hops", critical_paths.c.bitstream, critical_paths.c.hops)
 
 dominators = Table("dominators", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("ff_cell",  Text, nullable=False),
     Column("net",      Text, nullable=False),
@@ -266,7 +266,7 @@ Index("idx_dom_net", dominators.c.bitstream, dominators.c.net)
 # ── 5. Symbolic / reach3 layer ────────────────────────────────────────────────
 
 lut_symbolic = Table("lut_symbolic", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("lut_cell",  Text,    nullable=False),
     Column("expr",      Text,    nullable=False),
@@ -275,7 +275,7 @@ lut_symbolic = Table("lut_symbolic", metadata,
 )
 
 clock_crossings = Table("clock_crossings", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("dst_ff",  Text,    nullable=False),
     Column("dst_clk", Text,    nullable=False),
@@ -331,7 +331,7 @@ const_nets = Table("const_nets", metadata,
 # ── 6. Routing layer ─────────────────────────────────────────────────────────
 
 arcs = Table("arcs", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("tile_row",    Integer, nullable=False),
     Column("tile_col",    Integer, nullable=False),
@@ -374,7 +374,7 @@ Index("idx_cds_track", clock_domain_summary.c.bitstream, clock_domain_summary.c.
 # ── CDC synchroniser table (reach4) ──────────────────────────────────────────
 
 cdc_synchronisers = Table("cdc_synchronisers", metadata,
-    Column("id",        BigInteger, primary_key=True, autoincrement=True),
+    Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("src_ff",    Text, nullable=False),
     Column("src_clk",   Text, nullable=False),
