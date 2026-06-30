@@ -30,24 +30,38 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+import os
+
 sys.path.insert(0, str(Path(__file__).parent))
-from db import connect_pg8000, die
+from db import BACKEND, connect_threadsafe, die
 
 MAX_DEPTH = 100000  # no practical limit; die on cycle if BFS depth exceeds this
-N_WORKERS = 24
+N_WORKERS = os.cpu_count()  # use all available CPUs; was hardcoded 24
+
+def _run(conn, sql, **params):
+    """Execute SQL on a raw connection, return rows.
+
+    Abstracts the pg8000.native (conn.run, :name params) vs
+    sqlite3 (conn.execute, :name params via dict) interface.
+    """
+    if BACKEND == "postgres":
+        return conn.run(sql, **params)
+    else:
+        cur = conn.execute(sql, params)
+        return cur.fetchall()
+
 
 def load_graph(bs_id):
     """Pull fanout from DB into plain Python dicts."""
-    conn = connect_pg8000()
-    rows = conn.run(
+    conn = connect_threadsafe()
+    rows = _run(conn,
         "SELECT net, cell_type, pin, out_net FROM net_fanout WHERE bitstream=:bs",
-        bs=bs_id
-    )
+        bs=bs_id)
     fwd = defaultdict(list)
     for net, ctype, pin, out_net in rows:
         fwd[net].append((ctype, pin, out_net))
 
-    all_nets = [r[0] for r in conn.run(
+    all_nets = [r[0] for r in _run(conn,
         "SELECT name FROM nets WHERE bitstream=:bs", bs=bs_id)]
 
     conn.close()
@@ -183,15 +197,17 @@ def main():
     print(f"NoGIL: {not sys._is_gil_enabled()}  "
           f"(workers={args.workers}, depth={args.depth})")
 
-    conn = connect_pg8000()
-    row = conn.run("SELECT id FROM bitstreams WHERE label=:l", l=args.bitstream)
+    conn = connect_threadsafe()
+    row = _run(conn, "SELECT id FROM bitstreams WHERE label=:l", l=args.bitstream)
     if not row:
         die(f"Bitstream {args.bitstream!r} not found — run load.py first")
     bs_id = row[0][0]
 
     if args.replace:
-        conn.run("DELETE FROM reachability     WHERE bitstream=:bs", bs=bs_id)
-        conn.run("DELETE FROM pad_ff_influence WHERE bitstream=:bs", bs=bs_id)
+        _run(conn, "DELETE FROM reachability     WHERE bitstream=:bs", bs=bs_id)
+        _run(conn, "DELETE FROM pad_ff_influence WHERE bitstream=:bs", bs=bs_id)
+        if BACKEND == "sqlite":
+            conn.commit()
         print(f"Cleared reachability + pad_ff_influence for bitstream {bs_id}")
 
     conn.close()
@@ -238,45 +254,45 @@ def main():
     print(f"  Lock stats:  {counters_lock.stats()}")
     print(f"               {result_lock.stats()}")
 
-    # Bulk-insert all reachability pairs in one COPY operation
+    # Bulk-insert all reachability pairs
     print("Bulk inserting reachability…")
     t_ins = time.time()
-    conn = connect_pg8000()
-    # Chunk into 100k-row batches to avoid single huge transaction
+    conn = connect_threadsafe()
     CHUNK = 100_000
-    for i in range(0, len(result_buf), CHUNK):
-        batch = result_buf[i:i + CHUNK]
-        vals = ",".join(f"({r[0]},'{r[1]}','{r[2]}',{r[3]})" for r in batch)
-        conn.run(
-            "INSERT INTO reachability (bitstream,src,dst,min_hops) "
-            f"VALUES {vals} "
-            "ON CONFLICT (bitstream,src,dst) DO UPDATE SET min_hops=EXCLUDED.min_hops"
-        )
+    if BACKEND == "postgres":
+        for i in range(0, len(result_buf), CHUNK):
+            batch = result_buf[i:i + CHUNK]
+            vals = ",".join(f"({r[0]},'{r[1]}','{r[2]}',{r[3]})" for r in batch)
+            conn.run(
+                "INSERT INTO reachability (bitstream,src,dst,min_hops) "
+                f"VALUES {vals} "
+                "ON CONFLICT (bitstream,src,dst) DO UPDATE SET min_hops=EXCLUDED.min_hops"
+            )
+    else:
+        sql = ("INSERT INTO reachability (bitstream,src,dst,min_hops) VALUES (?,?,?,?) "
+               "ON CONFLICT (bitstream,src,dst) DO UPDATE SET min_hops=EXCLUDED.min_hops")
+        for i in range(0, len(result_buf), CHUNK):
+            conn.executemany(sql, result_buf[i:i + CHUNK])
+        conn.commit()
     conn.close()
     print(f"  Inserted {len(result_buf)} rows in {time.time()-t_ins:.1f}s")
 
     # pad→FF influence via JOIN — filter dst to FF data/ce inputs
-    # Two passes: (1) direct pad_net→FF.d/ce, (2) pad_net→LUT→FF.d/ce (one LUT level)
     print("Building pad→FF influence…")
-    conn = connect_pg8000()
-    # Re-fetch bs_id — load.py runs in always-rebuild mode and may have recreated
-    # the bitstream row (new id) while the BFS was running above.
-    row = conn.run("SELECT id FROM bitstreams WHERE label=:l", l=args.bitstream)
+    conn = connect_threadsafe()
+    # Re-fetch bs_id — load.py always-rebuild mode may have recreated the row.
+    row = _run(conn, "SELECT id FROM bitstreams WHERE label=:l", l=args.bitstream)
     if not row:
         die(f"Bitstream {args.bitstream!r} disappeared before pad_ff INSERT")
     bs_id = row[0][0]
-    # Pass 1: pad net reaches FF D/CE directly. Aggregate MIN to avoid duplicate
-    # (bitstream, pad_label, ff_cell) pairs from multiple reachability paths.
-    # Re-fetch bs_id immediately before INSERT — load.py always-rebuild mode
-    # drops+recreates the bitstream row on every run, so the id can change even
-    # between the re-fetch above and this INSERT if a concurrent build ran load.py
-    # in the window. Using :bs as the literal bitstream column value (not pm.bitstream
-    # from the JOIN) ensures the INSERT row matches the FK that exists right now.
-    row = conn.run("SELECT id FROM bitstreams WHERE label=:l", l=args.bitstream)
-    if not row:
-        die(f"Bitstream {args.bitstream!r} disappeared before pad_ff INSERT")
-    bs_id = row[0][0]
-    conn.run("""
+
+    # LEAST() is PostgreSQL; SQLite uses MIN() in scalar context or CASE WHEN.
+    least_expr = ("LEAST(pad_ff_influence.min_hops, EXCLUDED.min_hops)"
+                  if BACKEND == "postgres"
+                  else "CASE WHEN pad_ff_influence.min_hops < EXCLUDED.min_hops "
+                       "THEN pad_ff_influence.min_hops ELSE EXCLUDED.min_hops END")
+
+    sql_pad_ff = f"""
         INSERT INTO pad_ff_influence (bitstream, pad_label, ff_cell, min_hops)
         SELECT :bs, pm.label, f.cell, MIN(r.min_hops)
         FROM pad_map pm
@@ -287,13 +303,15 @@ def main():
         WHERE pm.bitstream=:bs AND pm.net_in IS NOT NULL
         GROUP BY pm.label, f.cell
         ON CONFLICT (bitstream, pad_label, ff_cell) DO UPDATE
-            SET min_hops = LEAST(pad_ff_influence.min_hops, EXCLUDED.min_hops)
-    """, bs=bs_id)
-    # Pass 2 removed: the LUT→FF connection arcs are incomplete in the current
-    # extraction — LUT output nets don't appear in net_fanout.net so BFS stops
-    # at LUT outputs. The 320 pad_ff rows are from IOLOGIC-direct paths only.
-    # TODO: fix load.py arc extraction to cover the full combinational cone.
-    r1 = conn.run("SELECT COUNT(*) FROM pad_ff_influence WHERE bitstream=:bs", bs=bs_id)
+            SET min_hops = {least_expr}
+    """
+    if BACKEND == "postgres":
+        conn.run(sql_pad_ff, bs=bs_id)
+    else:
+        conn.execute(sql_pad_ff, {"bs": bs_id})
+        conn.commit()
+
+    r1 = _run(conn, "SELECT COUNT(*) FROM pad_ff_influence WHERE bitstream=:bs", bs=bs_id)
     print(f"  pad_ff_influence: {r1[0][0]} rows")
     conn.close()
 
