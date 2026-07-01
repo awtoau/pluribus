@@ -193,7 +193,10 @@ def pass_clock_nets(bs_id, conn):
             )
         )
         .group_by(nf.c.net)
-        .having(func.bool_and(nf.c.pin == 'CLK'))
+        .having(
+            func.bool_and(nf.c.pin == 'CLK') if BACKEND == "postgres"
+            else and_(func.min(nf.c.pin) == 'CLK', func.max(nf.c.pin) == 'CLK')
+        )
         .order_by(func.count().desc(), nf.c.net)
     ).fetchall()
 
