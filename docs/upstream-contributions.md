@@ -1,8 +1,26 @@
-# Upstream gap analysis — MachXO2 IOLOGIC primitives
+# Upstream contributions — MachXO2 open-source toolchain
+
+Tracking issue: https://github.com/awtoau/pluribus/issues/19
+
+This document is the canonical record of all upstream work stemming from
+Pluribus's diamond-fuzz RE. It covers what we have, what each project needs,
+and the current status of each contribution.
+
+Patches and check.py files live in `upstream_patches/` in this repo.
+
+---
 
 ## tl;dr
 
-- **prjtrellis**: already complete for MachXO2 IOLOGIC. No contribution needed.
+- **prjtrellis**: already complete for MachXO2 IOLOGIC bitfield data. We have
+  a check suite + two patches ready to PR. No new fuzzing needed.
+- **nextpnr-machxo2**: zero IOLOGIC implementation. Needs ~200 lines of C++
+  across 4 files. Our 143 Diamond bitstreams are the data source and test suite.
+  **This is the priority — directly unblocks our spy bitstream from Diamond.**
+- **prjcombine**: IOLOGIC bels are wiring stubs only. Blocked on upstream
+  geometry model completion. Longer term.
+- **Diamond EULA**: not a problem. prjtrellis explicitly uses Diamond as a
+  black-box oracle — same as Project X-Ray does with Vivado. Accepted practice.
 - **nextpnr-machxo2**: zero IOLOGIC implementation. Needs C++ work (new cells,
   packer, bitstream writer). Our 143 Diamond bitstreams are the reference data
   and the test suite.
