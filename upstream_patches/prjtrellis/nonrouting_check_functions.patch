@@ -1,0 +1,188 @@
+diff --git a/util/fuzz/nonrouting.py b/util/fuzz/nonrouting.py
+index 0990541..af76735 100644
+--- a/util/fuzz/nonrouting.py
++++ b/util/fuzz/nonrouting.py
+@@ -2,11 +2,183 @@
+ Utilities for fuzzing non-routing configuration. This is the counterpart to interconnect.py
+ """
+ 
++import sys
+ import threading
+ import tiles
+ import pytrellis
+ 
+ 
++def check_enum_setting(config, name, values, get_ncl_substs, empty_bitfile=None):
++    """
++    Verify that building each value of an enum setting produces exactly the bit pattern
++    recorded in the database.  Runs a full sweep (every value in `values`).
++
++    Checks in both directions:
++    1. Every bit the database expects for a value is present in the bitstream.
++    2. No bits change between values that the database doesn't account for
++       (catches extra bits Diamond sets that prjtrellis never recorded).
++
++    NEVER exits.  Returns a list of error strings (empty = all match).
++    The caller is responsible for accumulating errors and exiting at the end.
++    """
++    prefix = "chk{}_".format(threading.get_ident())
++    tile_dbs = {tile: pytrellis.get_tile_bitdata(
++        pytrellis.TileLocator(config.family, config.device, tiles.type_from_fullname(tile)))
++        for tile in config.tiles}
++
++    errors = []
++
++    # Build all bitstreams first, keyed by value
++    chips = {}
++    for val in values:
++        print("****** Checking {} = {} ******".format(name, val))
++        bit_bitf = config.build_design(config.ncl, get_ncl_substs(val), prefix)
++        chips[val] = pytrellis.Bitstream.read_bit(bit_bitf).deserialise_chip()
++
++    for tile in config.tiles:
++        tdb = tile_dbs[tile]
++        tile_type = tiles.type_from_fullname(tile)
++
++        try:
++            esb = tdb.get_data_for_enum(name)
++        except Exception:
++            errors.append("MISSING_IN_DB: setting '{}' not found in database for tile {} ({})".format(
++                name, tile, tile_type))
++            continue
++
++        # Collect the set of (frame, bit) positions the database knows about for this setting
++        known_bits = set()
++        for val, bg in esb.options.items():
++            for cb in bg.bits:
++                known_bits.add((cb.frame, cb.bit))
++
++        for val in values:
++            if val not in esb.options:
++                errors.append("MISSING_VALUE: value '{}' for setting '{}' not in database for tile {}".format(
++                    val, name, tile))
++                continue
++
++            expected_bg = esb.options[val]
++            cram = chips[val].tiles[tile].cram
++
++            # Check 1: every bit the db expects is correct in the actual bitstream
++            for cb in expected_bg.bits:
++                actual = cram.bit(cb.frame, cb.bit)
++                want = 0 if cb.inv else 1
++                if actual != want:
++                    errors.append(
++                        "BIT_MISMATCH: {} value={} tile={} F{}B{}: db_expects={} diamond_got={}".format(
++                            name, val, tile, cb.frame, cb.bit, want, actual))
++
++            # Check 2: no bit outside the known set changes between this value and any other
++            # (detects bits Diamond sets that the database never recorded)
++            for other_val, other_chip in chips.items():
++                if other_val == val:
++                    continue
++                other_cram = other_chip.tiles[tile].cram
++                diff = cram - other_cram
++                for bit in diff:
++                    if (bit.frame, bit.bit) not in known_bits:
++                        errors.append(
++                            "EXTRA_BIT: {} value={} vs value={} tile={} F{}B{}: "
++                            "bit differs but not in database for this setting".format(
++                                name, val, other_val, tile, bit.frame, bit.bit))
++
++    if errors:
++        print("MISMATCH: {} — {} discrepancy(s)".format(name, len(errors)))
++        for e in errors:
++            print("  " + e)
++    else:
++        print("OK: {} — all {} values match database (both directions)".format(name, len(values)))
++
++    return errors
++
++
++def check_word_setting(config, name, length, get_ncl_substs, empty_bitfile=None):
++    """
++    Verify that each bit position of a word setting produces the bit pattern recorded
++    in the database when set to 1 (full sweep: one build per bit position).
++
++    Checks in both directions:
++    1. Every bit the database expects for each bit position is present.
++    2. No bits change that the database doesn't account for
++       (catches extra bits Diamond sets that prjtrellis never recorded).
++
++    NEVER exits.  Returns a list of error strings (empty = all match).
++    The caller is responsible for accumulating errors and exiting at the end.
++    """
++    prefix = "chkw{}_".format(threading.get_ident())
++    tile_dbs = {tile: pytrellis.get_tile_bitdata(
++        pytrellis.TileLocator(config.family, config.device, tiles.type_from_fullname(tile)))
++        for tile in config.tiles}
++
++    baseline_bitf = config.build_design(config.ncl, get_ncl_substs([False for _ in range(length)]), prefix)
++    baseline_chip = pytrellis.Bitstream.read_bit(baseline_bitf).deserialise_chip()
++
++    # Build all per-bit bitstreams upfront
++    chips = {}
++    for i in range(length):
++        bit_vec = [(_ == i) for _ in range(length)]
++        print("****** Checking {} bit {} ******".format(name, i))
++        bit_bitf = config.build_design(config.ncl, get_ncl_substs(bit_vec), prefix)
++        chips[i] = pytrellis.Bitstream.read_bit(bit_bitf).deserialise_chip()
++
++    errors = []
++
++    for tile in config.tiles:
++        tdb = tile_dbs[tile]
++
++        try:
++            wsb = tdb.get_data_for_word(name)
++        except Exception:
++            errors.append("MISSING_IN_DB: word setting '{}' not found in database for tile {}".format(name, tile))
++            continue
++
++        # Collect all (frame, bit) positions the database records for this word setting
++        known_bits = set()
++        for bg in wsb.bits:
++            for cb in bg.bits:
++                known_bits.add((cb.frame, cb.bit))
++
++        base_cram = baseline_chip.tiles[tile].cram
++
++        for i in range(length):
++            if i >= len(wsb.bits):
++                errors.append("MISSING_BIT: word setting '{}' bit {} out of range (db has {} bits)".format(
++                    name, i, len(wsb.bits)))
++                continue
++
++            expected_bg = wsb.bits[i]
++            cram = chips[i].tiles[tile].cram
++
++            # Check 1: expected bits are correct
++            for cb in expected_bg.bits:
++                actual = cram.bit(cb.frame, cb.bit)
++                want = 0 if cb.inv else 1
++                if actual != want:
++                    errors.append(
++                        "BIT_MISMATCH: {}[{}] tile={} F{}B{}: db_expects={} diamond_got={}".format(
++                            name, i, tile, cb.frame, cb.bit, want, actual))
++
++            # Check 2: no extra bits differ vs baseline that the database doesn't know about
++            diff = cram - base_cram
++            for bit in diff:
++                if (bit.frame, bit.bit) not in known_bits:
++                    errors.append(
++                        "EXTRA_BIT: {}[{}] tile={} F{}B{}: "
++                        "bit differs from baseline but not in database for this setting".format(
++                            name, i, tile, bit.frame, bit.bit))
++
++    if errors:
++        print("MISMATCH: {} — {} discrepancy(s)".format(name, len(errors)))
++        for e in errors:
++            print("  " + e)
++    else:
++        print("OK: {} — all {} bit positions match database (both directions)".format(name, length))
++
++    return errors
++
++
+ def fuzz_word_setting(config, name, length, get_ncl_substs, empty_bitfile=None):
+     """
+     Fuzz a multi-bit setting, such as LUT initialisation
