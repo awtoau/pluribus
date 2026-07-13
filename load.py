@@ -17,7 +17,7 @@ Usage
   python3 fpga/pluribus/load.py \
     --label V07 \
     --config fpga/v7/FPGA_V07.bin.config \
-    --pins fpga/pluribus/hantek2d82-pins.tsv
+    --pins fpga/pluribus/aw2-pins.tsv
 """
 
 import argparse
@@ -25,6 +25,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 _HERE = Path(__file__).parent
@@ -110,12 +111,12 @@ def parse_pins_tsv(path):
     return meta, rows
 
 
-# ── fpga_nets.tsv loader ─────────────────────────────────────────────────────
+# ── aw2-nets.tsv loader ─────────────────────────────────────────────────────
 
 def parse_fpga_nets_tsv(path):
     """Return list of (net, name, type_, confidence, freq_mhz, hpbx, ff_count, notes).
 
-    Reads fpga_nets.tsv — human-maintained net annotation table.
+    Reads aw2-nets.tsv — human-maintained net annotation table.
     Comment lines (#) and blank lines are skipped.
     Confidence must be one of: confirmed, inferred, speculative.
     """
@@ -235,51 +236,41 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
     with engine().begin() as conn:
         # Upsert the bitstream row — keep the existing id stable so concurrent reach.py
         # workers don't hit FK violations when load.py runs again mid-BFS.
+        _now = datetime.now(timezone.utc)
         if BACKEND == "sqlite":
-            # SQLite: INSERT OR REPLACE then SELECT id (no RETURNING in older SA/SQLite)
             conn.execute(
                 insert(schema.bitstreams).prefix_with("OR REPLACE").values(
                     label=label,
                     filename=os.path.basename(config_path),
                     device=device,
                     package=package,
+                    loaded_at=_now,
                 )
             )
             bs_id = conn.execute(
                 select(schema.bitstreams.c.id).where(schema.bitstreams.c.label == label)
             ).scalar()
         else:
-            if BACKEND == "sqlite":
-                conn.execute(
-                    insert(schema.bitstreams).prefix_with("OR REPLACE").values(
-                        label=label,
-                        filename=os.path.basename(config_path),
-                        device=device,
-                        package=package,
-                    )
+            bs_id = conn.execute(
+                _pg_insert(schema.bitstreams)
+                .values(
+                    label=label,
+                    filename=os.path.basename(config_path),
+                    device=device,
+                    package=package,
+                    loaded_at=_now,
                 )
-                bs_id = conn.execute(
-                    select(schema.bitstreams.c.id).where(schema.bitstreams.c.label == label)
-                ).scalar()
-            else:
-                bs_id = conn.execute(
-                    _pg_insert(schema.bitstreams)
-                    .values(
-                        label=label,
+                .on_conflict_do_update(
+                    index_elements=["label"],
+                    set_=dict(
                         filename=os.path.basename(config_path),
                         device=device,
                         package=package,
-                    )
-                    .on_conflict_do_update(
-                        index_elements=["label"],
-                        set_=dict(
-                            filename=os.path.basename(config_path),
-                            device=device,
-                            package=package,
-                        ),
-                    )
-                    .returning(schema.bitstreams.c.id)
-                ).scalar()
+                        loaded_at=_now,
+                    ),
+                )
+                .returning(schema.bitstreams.c.id)
+            ).scalar()
 
         if bs_id is None:
             die("INSERT INTO bitstreams returned NULL id")
@@ -519,7 +510,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         if pad_resolved == 0 and not fuzz:
             die("Zero fabric pads resolved — wrong device/config or machxo2_lift bug")
 
-        # ── fpga_nets.tsv — user net annotations (names + confidence) ─────────
+        # ── aw2-nets.tsv — user net annotations (names + confidence) ─────────
         if nets_tsv:
             print(f"Reading net annotations from {nets_tsv}…")
             net_rows = parse_fpga_nets_tsv(nets_tsv)
@@ -1058,7 +1049,7 @@ def dump_pins(config_path, annotations_path, out_path, device):
     """Scan bitstream + iomap → write a TSV template with correct coordinates.
 
     Merges pin_annotations.json (by pin number) so signal/chip/note data is
-    preserved.  The output is in hantek2d82-pins.tsv column format so it can
+    preserved.  The output is in aw2-pins.tsv column format so it can
     be diffed directly against the existing file.
 
     Columns:
@@ -1166,7 +1157,7 @@ def main():
     ap.add_argument("--label",     help="bitstream label e.g. V07")
     ap.add_argument("--config",    required=True, help="path to .bin.config file")
     ap.add_argument("--pins",      help="path to pins TSV annotation file")
-    ap.add_argument("--nets",      help="path to fpga_nets.tsv net annotation file (optional)")
+    ap.add_argument("--nets",      help="path to aw2-nets.tsv net annotation file (optional)")
     ap.add_argument("--device",    default="LCMXO2-1200")
     ap.add_argument("--package",   default="TQFP100")
     ap.add_argument("--dump-pins", metavar="OUT_TSV",
