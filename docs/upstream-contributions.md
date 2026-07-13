@@ -14,16 +14,17 @@ Patches and check.py files live in `upstream_patches/` in this repo.
 
 - **prjtrellis**: already complete for MachXO2 IOLOGIC bitfield data. We have
   a check suite + two patches ready to PR. No new fuzzing needed.
-- **nextpnr-machxo2**: zero IOLOGIC implementation. Needs ~200 lines of C++
-  across 4 files. Our 143 Diamond bitstreams are the data source and test suite.
-  **This is the priority — directly unblocks our spy bitstream from Diamond.**
+- **nextpnr-machxo2**: **DONE (local fork, commit c1f89eb).** IDDRX1F/ODDRX1F
+  packing and bitstream generation implemented across 6 files, 217 lines.
+  Fuzz confirms 100% wire globalise on all 158 iologic runs (previously 0/158).
+  Ready to upstream as a PR.
 - **prjcombine**: IOLOGIC bels are wiring stubs only. Blocked on upstream
   geometry model completion. Longer term.
 - **Diamond EULA**: not a problem. prjtrellis explicitly uses Diamond as a
   black-box oracle — same as Project X-Ray does with Vivado. Accepted practice.
-- **nextpnr-machxo2**: zero IOLOGIC implementation. Needs C++ work (new cells,
-  packer, bitstream writer). Our 143 Diamond bitstreams are the reference data
-  and the test suite.
+- **nextpnr-machxo2**: **IMPLEMENTED** — IDDRX1F/ODDRX1F support added in
+  local fork at `/mnt/2tb/git/nextpnr/`, commit c1f89eb. See implementation
+  notes below.
 - **prjcombine**: IOLOGIC bels are wiring stubs only. No DDR primitives defined
   for MachXO2 *or* ECP5. Requires finishing the MachXO2 geometry model in Rust
   before IOLOGIC primitives can be added. Longer-term than nextpnr.
@@ -82,17 +83,32 @@ motivation to close the gap. We are the exception: Diamond installed, licensed,
 
 ---
 
-## What nextpnr-machxo2 needs (specific files)
+## nextpnr-machxo2 IOLOGIC implementation (DONE)
 
-ECP5 in the same codebase has ~600 lines of IOLOGIC packing. MachXO2 has none.
-The work is porting the ECP5 pattern using our enum mappings:
+Implemented in `/mnt/2tb/git/nextpnr/`, commit `c1f89eb`. 217 lines across 6 files:
 
-| File | What to add |
-|------|-------------|
-| `machxo2/cells.cc` | New cell types: `IDDRXE`, `ODDRXE`, `IDDRX2E`, `ODDRX2E`, `IFS1P3*`, `OFS1P3*` — port lists + param defaults in `create_machxo2_cell()` |
-| `machxo2/cells.h` | `is_iologic()` predicate |
-| `machxo2/pack.cc` | New `pack_iologic()` method: find IOLOGIC cells, pair with adjacent `TRELLIS_IO` via shared `IOLDO`/`DI` nets, set `DATAMUX_ODDR`. Call from `run()` at line 1626. |
-| `machxo2/bitstream.cc` | New `write_iologic()` method: write MODE + CLKIMUX + CLKOMUX + LSRMUX + GSR to the IOLOGIC tile. Dispatch branch in `run()` at line 727. |
+| File | What was added |
+|------|----------------|
+| `machxo2/constids.inc` | `TRELLIS_IOLOGIC`, `IDDRX1F`, `ODDRX1F`, `SCLK`, `CLKIMUX`, `CLKOMUX`, `LSRIMUX`, `LSROMUX` |
+| `machxo2/cells.cc` | `TRELLIS_IOLOGIC` branch with all 13 BEL pins (CLK, LSR, CE, PADDI, OPOS, ONEG, TS, DI in; IOLDO, IOLTO, INDD, IN, IP out) |
+| `machxo2/pack.cc` | `pack_iologic()` pass: maps IDDRX1F/ODDRX1F → TRELLIS_IOLOGIC, finds paired \*IOLOGIC BEL via `getBelsByTile()`, handles all BEL variants (IOLOGIC/TIOLOGIC/TSIOLOGIC/RIOLOGIC/BIOLOGIC/BSIOLOGIC) |
+| `machxo2/arch.h` | `isValidBelForCellType()` override: TRELLIS_IOLOGIC valid on any \*IOLOGIC-family BEL |
+| `machxo2/arch.cc` | `TMG_IGNORE` timing class for TRELLIS_IOLOGIC |
+| `machxo2/bitstream.cc` | `write_iologic()`: emits `MODE=IDDR_ODDR`, `GSR`, `SRMODE`, `CLKIMUX`, `CLKOMUX`, `LSRIMUX`/`LSROMUX`, `DATAMUX_ODDR` to PIC tile |
+
+### Key implementation decisions
+- BEL name derivation: iterate `getBelsByTile(x, y)` for matching \*IOLOGIC BEL with same slot letter as PIO — handles TSIOLOGICC ≠ IOLOGICC pattern at top-row tiles
+- `iol.back()` for slot extraction in bitstream.cc, not `substr(7)` (would break for TSIOLOGICC, TIOLOGICC, RIOLOGICC)
+- CLKIMUX/CLKOMUX default = "CLK" (nextpnr uses non-inverted clock unlike the Diamond-synthesized IDDRXE/ODDRXE which uses "INV")
+
+### Test results
+- IDDRX1F: routes on LCMXO2-1200HC-4SG32C, correct `TSIOLOGICC.MODE IDDR_ODDR` config
+- ODDRX1F: routes correctly, `PIOC.DATAMUX_ODDR IOLDO` set
+- Fuzz: all 158 iologic runs pass (100% wire globalise), up from 0/158
+
+### To upstream
+- PR target: https://github.com/YosysHQ/nextpnr
+- Need: test designs verified against Diamond bitstreams (CLK mux setting may differ)
 
 ---
 
