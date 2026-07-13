@@ -2,8 +2,7 @@
 
 Does NOT require pytrellis or a real bitstream.  Directly exercises:
   - schema.init() creates all tables in a fresh SQLite file
-  - db.connect() shim: cursor, execute, executemany, fetchone, fetchall, commit
-  - execute_values() replacement
+  - engine().begin() / engine().connect() with SQLAlchemy text() queries
   - Basic INSERT / SELECT / ON CONFLICT round-trips on core tables
 
 Run with:
@@ -12,9 +11,11 @@ Run with:
 
 import os
 import sys
+import json
 import pytest
+from sqlalchemy import text
 
-# Add repo root to sys.path so imports work when running from tests/ or from root
+# Add repo root to sys.path so imports work from tests/ or from root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
@@ -27,45 +28,47 @@ def fresh_db(tmp_path, monkeypatch):
     monkeypatch.setenv("PLURIBUS_DB_BACKEND", "sqlite")
     monkeypatch.setenv("PLURIBUS_SQLITE_PATH", db_path)
 
-    # Force db module to rebuild its cached engine so it picks up the new path.
-    # The module was already imported above (sys.path.insert), so we patch in-place.
     import db
-    db.BACKEND  = "sqlite"
-    db._SQPATH  = db_path
-    db._engine  = None   # discard previous engine
+    db.BACKEND = "sqlite"
+    db._SQPATH = db_path
+    db._engine = None
 
     import schema
     schema.init()
 
     yield db_path
 
-    # Cleanup: reset engine so the next test starts clean
     import db as _db
     _db._engine = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _insert_bitstream(cur, label="TEST"):
-    cur.execute(
-        "INSERT INTO bitstreams (label, filename, device, package) "
-        "VALUES (%s,%s,%s,%s) ON CONFLICT (label) DO NOTHING",
-        (label, "test.config", "LCMXO2-1200", "TQFP100")
-    )
-    cur.execute("SELECT id FROM bitstreams WHERE label=%s", (label,))
-    return cur.fetchone()[0]
+def eng():
+    import db
+    return db.engine()
+
+
+def insert_bitstream(label="TEST"):
+    with eng().begin() as conn:
+        conn.execute(text(
+            "INSERT INTO bitstreams (label, filename, device, package) "
+            "VALUES (:l,:f,:d,:p) ON CONFLICT (label) DO NOTHING"
+        ), {"l": label, "f": "test.config", "d": "LCMXO2-1200", "p": "TQFP100"})
+    with eng().connect() as conn:
+        row = conn.execute(
+            text("SELECT id FROM bitstreams WHERE label=:l"), {"l": label}
+        ).fetchone()
+    return row[0]
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 def test_schema_creates_all_required_tables():
-    import db
-    conn = db.connect()
-    cur  = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-    tables = {r[0] for r in cur.fetchall()}
-    conn.close()
-
+    with eng().connect() as conn:
+        tables = {r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        )}
     for t in ("bitstreams", "nets", "ffs", "luts", "net_fanout", "pad_map",
               "efb_ports", "ebr_ports", "reachability", "net_names", "cell_names",
               "reachability_rev", "ff_cones", "critical_paths", "dominators",
@@ -74,143 +77,128 @@ def test_schema_creates_all_required_tables():
 
 
 def test_bitstream_insert_and_select():
-    import db
-    conn = db.connect()
-    cur  = conn.cursor()
-    cur.execute(
-        "INSERT INTO bitstreams (label, filename, device, package) "
-        "VALUES (%s,%s,%s,%s)",
-        ("V01", "v01.config", "LCMXO2-1200", "TQFP100")
-    )
-    conn.commit()
-    cur.execute("SELECT id, label, device FROM bitstreams WHERE label=%s", ("V01",))
-    row = cur.fetchone()
-    conn.close()
+    with eng().begin() as conn:
+        conn.execute(text(
+            "INSERT INTO bitstreams (label, filename, device, package) "
+            "VALUES (:l,:f,:d,:p)"
+        ), {"l": "V01", "f": "v01.config", "d": "LCMXO2-1200", "p": "TQFP100"})
+
+    with eng().connect() as conn:
+        row = conn.execute(
+            text("SELECT id, label, device FROM bitstreams WHERE label=:l"),
+            {"l": "V01"}
+        ).fetchone()
 
     assert row is not None
     assert row[1] == "V01"
     assert row[2] == "LCMXO2-1200"
 
 
-def test_nets_executemany():
-    import db
-    conn = db.connect()
-    cur  = conn.cursor()
-    bs_id = _insert_bitstream(cur)
-    nets = [(bs_id, f"n{i}") for i in range(200)]
-    cur.executemany("INSERT INTO nets (bitstream,name) VALUES (%s,%s)", nets)
-    conn.commit()
-    cur.execute("SELECT count(*) FROM nets WHERE bitstream=%s", (bs_id,))
-    assert cur.fetchone()[0] == 200
-    conn.close()
+def test_nets_bulk_insert():
+    bs_id = insert_bitstream()
+    rows = [{"bs": bs_id, "n": f"n{i}"} for i in range(200)]
+    with eng().begin() as conn:
+        conn.execute(text("INSERT INTO nets (bitstream,name) VALUES (:bs,:n)"), rows)
+    with eng().connect() as conn:
+        count = conn.execute(
+            text("SELECT count(*) FROM nets WHERE bitstream=:bs"), {"bs": bs_id}
+        ).fetchone()[0]
+    assert count == 200
 
 
 def test_on_conflict_do_nothing():
-    import db
-    conn = db.connect()
-    cur  = conn.cursor()
-    bs_id = _insert_bitstream(cur)
-    cur.execute("INSERT INTO nets (bitstream,name) VALUES (%s,%s)", (bs_id, "n1"))
-    cur.execute(
-        "INSERT INTO nets (bitstream,name) VALUES (%s,%s) ON CONFLICT DO NOTHING",
-        (bs_id, "n1")
-    )
-    conn.commit()
-    cur.execute("SELECT count(*) FROM nets WHERE bitstream=%s AND name=%s", (bs_id, "n1"))
-    assert cur.fetchone()[0] == 1
-    conn.close()
+    bs_id = insert_bitstream()
+    with eng().begin() as conn:
+        conn.execute(text(
+            "INSERT INTO nets (bitstream,name) VALUES (:bs,:n)"
+        ), {"bs": bs_id, "n": "n1"})
+        conn.execute(text(
+            "INSERT INTO nets (bitstream,name) VALUES (:bs,:n) ON CONFLICT DO NOTHING"
+        ), {"bs": bs_id, "n": "n1"})
+    with eng().connect() as conn:
+        count = conn.execute(
+            text("SELECT count(*) FROM nets WHERE bitstream=:bs AND name=:n"),
+            {"bs": bs_id, "n": "n1"}
+        ).fetchone()[0]
+    assert count == 1
 
 
-def test_execute_values():
-    import db
-    conn = db.connect()
-    cur  = conn.cursor()
-    bs_id = _insert_bitstream(cur)
-    conn.commit()
-
-    rows = [(bs_id, f"net_{i}", "FF", f"ff_{i}", "D", f"net_{i+1}") for i in range(50)]
-    db.execute_values(cur, """
-        INSERT INTO net_fanout (bitstream, net, cell_type, cell, pin, out_net)
-        VALUES %s ON CONFLICT DO NOTHING
-    """, rows)
-    conn.commit()
-
-    cur.execute("SELECT count(*) FROM net_fanout WHERE bitstream=%s", (bs_id,))
-    assert cur.fetchone()[0] == 50
-    conn.close()
+def test_bulk_insert_net_fanout():
+    bs_id = insert_bitstream()
+    rows = [{"bs": bs_id, "net": f"net_{i}", "ct": "FF",
+             "cell": f"ff_{i}", "pin": "D", "out": f"net_{i+1}"}
+            for i in range(50)]
+    with eng().begin() as conn:
+        conn.execute(text(
+            "INSERT INTO net_fanout (bitstream,net,cell_type,cell,pin,out_net) "
+            "VALUES (:bs,:net,:ct,:cell,:pin,:out) ON CONFLICT DO NOTHING"
+        ), rows)
+    with eng().connect() as conn:
+        count = conn.execute(
+            text("SELECT count(*) FROM net_fanout WHERE bitstream=:bs"), {"bs": bs_id}
+        ).fetchone()[0]
+    assert count == 50
 
 
 def test_upsert_bitstream_stable_id():
     """ON CONFLICT DO UPDATE keeps the same primary key."""
-    import db
-    conn = db.connect()
-    cur  = conn.cursor()
-
-    upsert = ("INSERT INTO bitstreams (label, filename, device, package) "
-              "VALUES (%s,%s,%s,%s) "
-              "ON CONFLICT (label) DO UPDATE SET filename=%s, device=%s, package=%s "
-              "RETURNING id")
-
-    cur.execute(upsert, ("UPSERT", "v1.config", "LCMXO2-1200", "TQFP100",
-                          "v1.config", "LCMXO2-1200", "TQFP100"))
-    id1 = cur.fetchone()[0]
-
-    cur.execute(upsert, ("UPSERT", "v2.config", "LCMXO2-1200", "TQFP100",
-                          "v2.config", "LCMXO2-1200", "TQFP100"))
-    id2 = cur.fetchone()[0]
-    conn.commit()
-
-    assert id1 == id2, "upsert must not change the primary key"
-
-    cur.execute("SELECT filename FROM bitstreams WHERE label=%s", ("UPSERT",))
-    assert cur.fetchone()[0] == "v2.config"
-    conn.close()
+    upsert = text(
+        "INSERT INTO bitstreams (label,filename,device,package) "
+        "VALUES (:l,:f,:d,:p) "
+        "ON CONFLICT (label) DO UPDATE SET filename=:f, device=:d, package=:p "
+        "RETURNING id"
+    )
+    with eng().begin() as conn:
+        id1 = conn.execute(upsert, {"l": "U", "f": "v1.cfg", "d": "LCMXO2-1200", "p": "TQFP100"}).fetchone()[0]
+        id2 = conn.execute(upsert, {"l": "U", "f": "v2.cfg", "d": "LCMXO2-1200", "p": "TQFP100"}).fetchone()[0]
+    assert id1 == id2
+    with eng().connect() as conn:
+        fn = conn.execute(text("SELECT filename FROM bitstreams WHERE label=:l"), {"l": "U"}).fetchone()[0]
+    assert fn == "v2.cfg"
 
 
 def test_ffs_and_net_names():
-    import db
-    conn = db.connect()
-    cur  = conn.cursor()
-    bs_id = _insert_bitstream(cur)
-    cur.execute(
-        "INSERT INTO nets (bitstream,name) VALUES (%s,%s)",
-        (bs_id, "n307")
-    )
-    cur.executemany(
-        "INSERT INTO ffs (bitstream,cell,clk,ce,d,q) VALUES (%s,%s,%s,%s,%s,%s)",
-        [(bs_id, "ff_r3c10_A0", "clk_h0", "1'b1", "n307", "n308")]
-    )
-    cur.execute(
-        "INSERT INTO net_names (bitstream,net,name,confidence,source) "
-        "VALUES (%s,%s,%s,%s,%s)",
-        (bs_id, "n307", "JUPDATE", "confirmed", "pins_tsv")
-    )
-    conn.commit()
+    bs_id = insert_bitstream()
+    with eng().begin() as conn:
+        conn.execute(text("INSERT INTO nets (bitstream,name) VALUES (:bs,:n)"),
+                     {"bs": bs_id, "n": "n307"})
+        conn.execute(text(
+            "INSERT INTO ffs (bitstream,cell,clk,ce,d,q) VALUES (:bs,:c,:clk,:ce,:d,:q)"
+        ), {"bs": bs_id, "c": "ff_r3c10_A0", "clk": "clk_h0",
+            "ce": "1'b1", "d": "n307", "q": "n308"})
+        conn.execute(text(
+            "INSERT INTO net_names (bitstream,net,name,confidence,source) "
+            "VALUES (:bs,:net,:nm,:conf,:src)"
+        ), {"bs": bs_id, "net": "n307", "nm": "JUPDATE",
+            "conf": "confirmed", "src": "pins_tsv"})
 
-    cur.execute("SELECT count(*) FROM ffs WHERE bitstream=%s", (bs_id,))
-    assert cur.fetchone()[0] == 1
+    with eng().connect() as conn:
+        ff_count = conn.execute(
+            text("SELECT count(*) FROM ffs WHERE bitstream=:bs"), {"bs": bs_id}
+        ).fetchone()[0]
+        name = conn.execute(
+            text("SELECT name FROM net_names WHERE bitstream=:bs AND net=:net"),
+            {"bs": bs_id, "net": "n307"}
+        ).fetchone()[0]
 
-    cur.execute("SELECT name FROM net_names WHERE bitstream=%s AND net=%s",
-                (bs_id, "n307"))
-    assert cur.fetchone()[0] == "JUPDATE"
-    conn.close()
+    assert ff_count == 1
+    assert name == "JUPDATE"
 
 
 def test_json_columns():
     """TEXT[] columns stored as JSON lists round-trip correctly."""
-    import db, json
-    conn = db.connect()
-    cur  = conn.cursor()
-    bs_id = _insert_bitstream(cur)
+    bs_id = insert_bitstream()
     deps = ["a", "c"]
-    cur.execute(
-        "INSERT INTO luts (bitstream,cell,init,deps,fn) VALUES (%s,%s,%s,%s,%s)",
-        (bs_id, "lut_r2c5_A0", "0110011001100110", json.dumps(deps), "XOR(a,c)")
-    )
-    conn.commit()
-    cur.execute("SELECT deps FROM luts WHERE bitstream=%s", (bs_id,))
-    raw = cur.fetchone()[0]
-    # SQLAlchemy JSON type returns the decoded Python object
+    with eng().begin() as conn:
+        conn.execute(text(
+            "INSERT INTO luts (bitstream,cell,init,deps,fn) VALUES (:bs,:c,:init,:deps,:fn)"
+        ), {"bs": bs_id, "c": "lut_r2c5_A0", "init": "0110011001100110",
+            "deps": json.dumps(deps), "fn": "XOR(a,c)"})
+
+    with eng().connect() as conn:
+        raw = conn.execute(
+            text("SELECT deps FROM luts WHERE bitstream=:bs"), {"bs": bs_id}
+        ).fetchone()[0]
+
     result = raw if isinstance(raw, list) else json.loads(raw)
     assert result == deps
-    conn.close()
