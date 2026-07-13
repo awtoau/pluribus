@@ -320,10 +320,21 @@ def section_boundary(conn, bs_id, net_names):
     lines.append(f"  Outputs ({len(output_pads)} pads with net_out):")
 
     for pin, label, net in output_pads:
-        # Find what drives the net (FF or LUT)
+        # net is a synthetic boundary net (pad_XX). The real fabric net is one
+        # hop back in net_fanout: net_fanout.out_net = pad_XX → .net = fabric_net.
+        # Pick the A-side port (primary data, not DDR second phase).
+        fabric_net_row = conn.execute(
+            select(nf.c.net)
+            .where(and_(nf.c.bitstream == bs_id, nf.c.out_net == net,
+                        nf.c.pin.like("A%")))
+            .limit(1)
+        ).fetchone()
+        lookup_net = fabric_net_row[0] if fabric_net_row else net
+
+        # Find what drives lookup_net (FF or LUT)
         ff_row = conn.execute(
             select(ffs.c.cell, ffs.c.clk)
-            .where(and_(ffs.c.bitstream == bs_id, ffs.c.q == net))
+            .where(and_(ffs.c.bitstream == bs_id, ffs.c.q == lookup_net))
         ).fetchone()
         if ff_row:
             ff_cell, clk = ff_row
@@ -336,10 +347,13 @@ def section_boundary(conn, bs_id, net_names):
         else:
             lut_row = conn.execute(
                 select(luts.c.cell, luts.c.fn)
-                .where(and_(luts.c.bitstream == bs_id, luts.c.z == net))
+                .where(and_(luts.c.bitstream == bs_id, luts.c.z == lookup_net))
             ).fetchone()
             if lut_row:
                 driver_str = f"lut={lut_row[0]}  fn={lut_row[1]}"
+            elif fabric_net_row and lookup_net != net:
+                # fabric net exists but no fabric cell drives it: clock spine / hard IP
+                driver_str = f"spine={net_with_name(lookup_net, net_names)}"
             else:
                 driver_str = "unknown driver"
         name = net_names.get(net, label)
