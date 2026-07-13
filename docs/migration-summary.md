@@ -10,20 +10,45 @@ All scripts used psycopg2 directly, schema was raw SQL DDL, lifter was a bare mo
 | Commit | What |
 |---|---|
 | `b40068a` | Repo structure: source files, `lifters/` package, README, requirements.txt |
-| `c6ee008` | `db.py` — dual-backend engine + psycopg2-compat shim (`_Conn`/`_Cursor`, `%s`→`:pN`, `execute_values()`); `schema.py` — all ~26 tables as SQLAlchemy Core, cross-dialect JSON for `TEXT[]`/`JSONB` |
-| `cbdc2ba` | `load.py`, `reach2/3/4.py` converted — psycopg2 removed, all SQL through the shim unchanged |
+| `c6ee008` | `db.py` — dual-backend engine + SQLAlchemy Core; `schema.py` — all ~26 tables, cross-dialect JSON for `TEXT[]`/`JSONB` |
+| `cbdc2ba` | `load.py`, `reach2/3/4.py` converted — psycopg2 removed |
 | `489e86f` | `reach.py` — `connect_threadsafe()` for NoGIL workers, SQLite bulk-insert path, `os.cpu_count()` replacing hardcoded 24 |
-| `bb1c0dc` | `tests/test_sqlite.py` — 8 smoke tests, all green; `BigInteger` PK → `Integer` (SQLite only autoincrements `INTEGER PRIMARY KEY`) |
+| `bb1c0dc` | `tests/test_sqlite.py` — 8 smoke tests; `BigInteger` PK → `Integer` (SQLite only autoincrements `INTEGER PRIMARY KEY`) |
 | `0a30393` | `CLAUDE.md` |
-| `5b2020f` | Path/import fixes: `machxo2_lift` moved into `lifters/` package (3 files missed), `reset_db()` rewrote from PostgreSQL-only `DO $$ ... $$` + missing `schema.sql` to `schema.drop_all()` + `schema.init()`, `fuzz.py` psycopg2 → `db.connect()` |
+| `5b2020f` | Path/import fixes: `machxo2_lift` moved into `lifters/` package (missed in 3 files), `reset_db()` rewritten for dual-backend |
+| `a1bf23c` | Tests rewritten to use `engine().begin()` + SQLAlchemy Core (psycopg2 shim was removed in a prior session; tests were broken) |
+| `633f98f` | `load.py`: set `loaded_at` on bitstream upsert; remove dead duplicate SQLite branch |
+| `0b3658f` | `reach2.py` dominator query: 370s → 0.16s (see below) |
 
 ### How the backend abstraction works
 
 - `PLURIBUS_DB_BACKEND=sqlite` (default) — SQLAlchemy + sqlite3, WAL mode, no server
 - `PLURIBUS_DB_BACKEND=postgres` — SQLAlchemy + pg8000 (pure Python, NoGIL-safe)
-- All scripts use `db.connect()` shim with `%s` placeholders — no SQL rewrites needed
+- All scripts use `engine()` + SQLAlchemy Core with `text()` for complex SQL
 - `reach.py` uses `db.connect_threadsafe()` for raw per-thread connections (NoGIL workers can't share SQLAlchemy pool)
-- Two SQL divergences handled explicitly: `LEAST()` → `CASE WHEN` (SQLite), `ARRAY[...]` → `json_array(...)` (SQLite)
+- SQL divergences handled explicitly: `LEAST()` → `CASE WHEN` (SQLite), `ARRAY[...]` → `json_array(...)` (SQLite)
+
+### Full pipeline verified (V07 bitstream, LCMXO2-1200)
+
+| Stage | Result | Time |
+|---|---|---|
+| `load.py` | 1105 FFs, 1138 LUTs, 3076 nets, 12808 arcs | 1.1s |
+| `reach.py` | 252,218 reachability pairs | 0.8s |
+| `reach2.py` | 115,370 cone entries, 12,472 dominators | 4s |
+| `reach3.py` | LUT expansion, clock crossings, cone hashes | 0.4s |
+| `reach4.py` | 1200/3104 nets named (38.7%) | 0.2s |
+| `report.py` | Full report renders correctly | — |
+
+### Dominator query fix (`reach2.py`)
+
+The original SQLite dominator query did a triple self-join on `reachability`
+(252k rows). SQLite's planner couldn't push the CTE-derived `pad_net` value
+into an index scan, falling back to a full table scan for each (ff, pad)
+combination — O(n²), ~370s.
+
+Rewritten to use `ff_cones` (input cone per FF, 26k rows) and `pad_map`
+(18 rows) with a covering-index lookup on `reachability(bitstream, src, dst)`.
+Result: identical dominator set, 0.16s.
 
 ---
 
