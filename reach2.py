@@ -326,47 +326,34 @@ def pass_dominators(bs_id):
     # SQLAlchemy Core without becoming harder to read than the raw SQL, so we
     # use text() here as permitted by the rewrite rules.
     if BACKEND == "sqlite":
+        # Rewritten to avoid triple self-join on reachability (252k rows).
+        # Uses ff_cones (input cone per FF, 26k rows) and pad_map (18 rows)
+        # so SQLite can do covering-index lookups instead of full scans.
+        # pad_counts comes from pad_ff_influence (already aggregated by reach.py).
         stmt = text("""
             WITH
-            pad_to_ff AS (
-                SELECT
-                    f.cell      AS ff_cell,
-                    pm.label    AS pad_label,
-                    r.src       AS pad_net
-                FROM ffs f
-                JOIN reachability r  ON r.bitstream=f.bitstream
-                                    AND (r.dst=f.d OR r.dst=f.ce)
-                JOIN pad_map pm      ON pm.bitstream=f.bitstream
-                                    AND pm.net_in=r.src
-                WHERE f.bitstream=:bs_id
-                  AND f.d IS NOT NULL
-            ),
             pad_counts AS (
-                SELECT ff_cell, count(DISTINCT pad_label) AS n_pads
-                FROM pad_to_ff GROUP BY ff_cell
+                SELECT ff_cell, count(*) AS n_pads
+                FROM pad_ff_influence
+                WHERE bitstream=:bs_id
+                GROUP BY ff_cell
             ),
-            net_on_path AS (
-                SELECT
-                    ptf.ff_cell,
-                    r_fwd.dst   AS via_net,
-                    ptf.pad_label
-                FROM pad_to_ff ptf
-                JOIN reachability r_fwd ON r_fwd.bitstream=:bs_id
-                                       AND r_fwd.src=ptf.pad_net
-                JOIN ffs f2 ON f2.cell=ptf.ff_cell AND f2.bitstream=:bs_id
-                JOIN reachability r_back ON r_back.bitstream=:bs_id
-                                        AND r_back.src=r_fwd.dst
-                                        AND (r_back.dst=f2.d OR r_back.dst=f2.ce)
-            ),
-            via_counts AS (
-                SELECT ff_cell, via_net, count(DISTINCT pad_label) AS n_paths
-                FROM net_on_path GROUP BY ff_cell, via_net
+            pad_via_counts AS (
+                SELECT fc.ff_cell, fc.net AS via_net,
+                       count(DISTINCT pm.label) AS n_paths
+                FROM ff_cones fc
+                JOIN pad_map pm ON pm.bitstream=:bs_id AND pm.net_in IS NOT NULL
+                JOIN reachability r ON r.bitstream=:bs_id
+                                   AND r.src=pm.net_in
+                                   AND r.dst=fc.net
+                WHERE fc.bitstream=:bs_id AND fc.cone_type='input'
+                GROUP BY fc.ff_cell, fc.net
             )
             INSERT OR IGNORE INTO dominators (bitstream, ff_cell, net, n_paths)
-            SELECT :bs_id, vc.ff_cell, vc.via_net, vc.n_paths
-            FROM via_counts vc
-            JOIN pad_counts pc ON pc.ff_cell=vc.ff_cell
-            WHERE vc.n_paths = pc.n_pads
+            SELECT :bs_id, pvc.ff_cell, pvc.via_net, pvc.n_paths
+            FROM pad_via_counts pvc
+            JOIN pad_counts pc ON pc.ff_cell=pvc.ff_cell
+            WHERE pvc.n_paths = pc.n_pads
               AND pc.n_pads > 0
         """)
     else:
@@ -418,7 +405,11 @@ def pass_dominators(bs_id):
     with engine().begin() as conn:
         conn.execute(delete(dom).where(dom.c.bitstream == bs_id))
         result = conn.execute(stmt, {"bs_id": bs_id})
-        n = result.rowcount
+        # rowcount is -1 for INSERT...SELECT with CTEs in SQLite; do a real count
+        with engine().connect() as _c:
+            n = _c.execute(
+                select(func.count()).select_from(dom).where(dom.c.bitstream == bs_id)
+            ).scalar()
 
     # Top dominators by n_paths
     with engine().connect() as conn:
