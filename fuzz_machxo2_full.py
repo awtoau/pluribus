@@ -75,12 +75,28 @@ ALL_DEVICES = [
     "LCMXO2-2000", "LCMXO2-4000", "LCMXO2-7000",
 ]
 
-# nextpnr device name (with speed grade) from device + package
-def nextpnr_device(device: str, package: str) -> str:
-    pkg = (package.replace("TQFP", "TG").replace("QFN", "QN")
-                  .replace("CSBGA", "BG").replace("WLCSP", "WL")
-                  .replace("CABGA", "BG").replace("FTBGA", "FT")
-                  .replace("FPBGA", "FP").replace("UCBGA", "BG"))
+# Packages absent from the nextpnr MachXO2 database — skip entirely.
+_PKG_UNSUPPORTED = frozenset({
+    "WLCSP25", "WLCSP36", "WLCSP49", "WLCSP81",  # no WLCSP in nextpnr
+    "CSBGA184",                                    # only LCMXO2-4000, absent from nextpnr
+})
+
+# nextpnr device string (with speed grade) from device + package.
+# Returns None for packages not present in the nextpnr database.
+def nextpnr_device(device, package):
+    if package in _PKG_UNSUPPORTED:
+        return None
+    pkg = (package
+           .replace("TQFP", "TG")
+           .replace("CSBGA", "MG")    # compact-stacked BGA → MG (was BG, wrong)
+           .replace("UCBGA", "UMG")   # µBGA → UMG (was BG, wrong)
+           .replace("CABGA", "BG")
+           .replace("FTBGA", "FTG")   # fine-pitch thin BGA → FTG (was FT, wrong)
+           .replace("FPBGA", "FG")    # fine-pitch BGA → FG (was FP, wrong)
+           .replace("QFN32", "SG32")  # SSOP32 — iodb mislabels as QFN
+           .replace("QFN48", "SG48")  # SSOP48 — iodb mislabels as QFN
+           .replace("QFN", "QN")      # genuine QFN (e.g. QFN84 → QN84)
+           )
     return f"{device}HC-4{pkg}C"
 
 # Dedicated clock pin per device (used for FF/EBR/PLL designs that need a clock)
@@ -375,6 +391,10 @@ def synthesise(device, package, verilog, lpf, tmpdir, run_id,
         return "synth_fail", None, None
 
     ndev = nextpnr_device(device, package)
+    if ndev is None:
+        update_run(run_id, "skip", error="package not in nextpnr database", yv=yv, nv=nv,
+                   rtl_hash=rtl_hash)
+        return "skip", None, None
     r2 = subprocess.run(
         [_NEXTPNR_BIN, "--device", ndev, "--json", str(json_f),
          "--lpf", str(lpf_f), "--lpf-allow-unconstrained",
@@ -1310,6 +1330,9 @@ def collect_jobs(device, package, lift):
 
 
 def fuzz_device_package(device, package, yv, nv, L, jobs_n=1):
+    if nextpnr_device(device, package) is None:
+        L(f"SKIP {device}/{package}: package not in nextpnr database")
+        return
     try:
         lift = mx.MachXO2Lift(device)
     except Exception as e:
