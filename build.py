@@ -26,7 +26,7 @@ Usage
   ./fpga/pluribus/build.py \
     --label V07 \
     --config fpga/v7/FPGA_V07.bin.config \
-    --pins fpga/pluribus/hantek2d82-pins.tsv
+    --pins fpga/pluribus/aw2-pins.tsv
 
   # Every run CLEARS the database for this label and rebuilds from scratch.
   # Never use the database as a source of truth across runs — always rebuild.

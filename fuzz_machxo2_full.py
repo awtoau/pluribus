@@ -5,19 +5,18 @@ Covers every synthesisable primitive type: pads, LUTs, FFs, carry chains,
 distributed RAM (DPRAM/RAMW), block RAM (EBR DP8KC), PLL (EHXPLLJ), IOLOGIC
 (IDDR/ODDR), EFB (WB/SPI/I2C/Timer/UFM), and long-line/global wires.
 
-All results go into Postgres (fpga_re DB) with a unified schema queryable via SQL.
-Fully resumable — kill and restart at any point.
+All results go into a SQLite database (fully resumable — kill and restart).
 
 Primary target: LCMXO2-1200 TQFP100 (our device).
 Secondary: all other LCMXO2 devices/packages (--all-devices flag).
 
 Usage:
-    python3 fpga/scripts/fuzz_machxo2_full.py              # LCMXO2-1200 TQFP100
-    python3 fpga/scripts/fuzz_machxo2_full.py --all-devices
-    python3 fpga/scripts/fuzz_machxo2_full.py --report
-    python3 fpga/scripts/fuzz_machxo2_full.py --kill
+    python3 fuzz_machxo2_full.py              # LCMXO2-1200 TQFP100
+    python3 fuzz_machxo2_full.py --all-devices
+    python3 fuzz_machxo2_full.py --report
+    python3 fuzz_machxo2_full.py --kill
 
-DB:  fpga_re (Postgres) — connection via PLURIBUS_DSN env var or default dbname=fpga_re
+DB:  fpga/tmp/fuzz_full2.db  (override with FUZZ_DB env var)
 Log: fpga/tmp/fuzz_full.log
 
 Upstream contribution: prjcombine MachXO2 routing database (issue #76).
@@ -36,15 +35,16 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import psycopg2
-from psycopg2 import extras as _pgextras
+import sqlite3
 
 # ---------------------------------------------------------------------------
 # Paths / toolchain
 # ---------------------------------------------------------------------------
 _HERE   = Path(__file__).parent
 _ROOT   = _HERE.parent.parent
-_LOG    = _ROOT / "fpga" / "tmp" / "fuzz_full.log"
+_LOG     = _ROOT / "fpga" / "tmp" / "fuzz_full.log"
+_FUZZ_DB = Path(os.environ.get("FUZZ_DB",
+    str(_ROOT / "fpga" / "tmp" / "fuzz_full2.db")))
 
 _TRELLIS_BUILD  = os.environ.get("TRELLIS_BUILD",
     str(_ROOT / "debris/tmp/prjtrellis/libtrellis/build"))
@@ -60,7 +60,7 @@ _NEXTPNR_BIN = (os.environ.get("NEXTPNR_MACHXO2")
 sys.path.insert(0, str(_HERE))
 os.environ["TRELLIS_BUILD"]  = _TRELLIS_BUILD
 os.environ["TRELLIS_DBROOT"] = _TRELLIS_DBROOT
-import machxo2_lift as mx
+from lifters import machxo2_lift as mx
 
 # ---------------------------------------------------------------------------
 # Device / package matrix
@@ -92,17 +92,110 @@ def clk_pin_for(device: str, package: str) -> str:
     return _CLK_PIN.get(device, {}).get(package, _DEFAULT_CLK_PIN)
 
 # ---------------------------------------------------------------------------
-# DB helpers (Postgres — per-thread connection via threading.local)
+# DB helpers (SQLite — per-thread connection via threading.local)
 # ---------------------------------------------------------------------------
 _tls = threading.local()
 
 def _conn():
-    """Return a per-thread psycopg2 connection to fpga_re."""
+    """Return a per-thread SQLite connection."""
     if not getattr(_tls, 'con', None):
-        dsn = os.environ.get('PLURIBUS_DSN', 'dbname=fpga_re')
-        _tls.con = psycopg2.connect(dsn)
-        _tls.con.autocommit = False
+        con = sqlite3.connect(str(_FUZZ_DB), check_same_thread=False, timeout=60)
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA synchronous=NORMAL")
+        con.execute("PRAGMA foreign_keys=ON")
+        con.execute("PRAGMA busy_timeout=60000")
+        _tls.con = con
     return _tls.con
+
+def init_db():
+    """Create tables and views if they don't exist yet."""
+    _FUZZ_DB.parent.mkdir(parents=True, exist_ok=True)
+    con = _conn()
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS fuzz_runs (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            device            TEXT NOT NULL,
+            package           TEXT NOT NULL,
+            primitive_class   TEXT NOT NULL,
+            primitive_variant TEXT NOT NULL,
+            site_tag          TEXT NOT NULL,
+            tile_row          INTEGER,
+            tile_col          INTEGER,
+            status            TEXT NOT NULL DEFAULT 'pending',
+            bitstream_hash    TEXT,
+            error_msg         TEXT,
+            run_at            TEXT,
+            yosys_version     TEXT,
+            nextpnr_version   TEXT,
+            rtl_hash          TEXT,
+            design_params     TEXT,
+            UNIQUE(device, package, primitive_class, primitive_variant, site_tag)
+        );
+        CREATE TABLE IF NOT EXISTS fuzz_wires (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id        INTEGER NOT NULL REFERENCES fuzz_runs(id),
+            tile_row      INTEGER,
+            tile_col      INTEGER,
+            wire_name     TEXT NOT NULL,
+            is_sink       INTEGER,
+            globalise_ok  INTEGER,
+            global_x      INTEGER,
+            global_y      INTEGER,
+            global_id     INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS synth_logs (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id  INTEGER NOT NULL REFERENCES fuzz_runs(id),
+            stage   TEXT,
+            stdout  TEXT,
+            stderr  TEXT
+        );
+        CREATE TABLE IF NOT EXISTS fuzz_toolchain_versions (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            yosys_version    TEXT NOT NULL,
+            nextpnr_version  TEXT NOT NULL,
+            recorded_at      TEXT NOT NULL,
+            UNIQUE(yosys_version, nextpnr_version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_runs_lookup
+            ON fuzz_runs(device, package, primitive_class, primitive_variant, site_tag);
+        CREATE INDEX IF NOT EXISTS idx_wires_run ON fuzz_wires(run_id);
+        CREATE VIEW IF NOT EXISTS fuzz_coverage_summary AS
+            SELECT device, package, primitive_class, primitive_variant,
+                   count(*) AS total_runs,
+                   sum(CASE WHEN status='ok'         THEN 1 ELSE 0 END) AS ok_runs,
+                   sum(CASE WHEN status='pnr_fail'   THEN 1 ELSE 0 END) AS pnr_fail_runs,
+                   sum(CASE WHEN status='synth_fail' THEN 1 ELSE 0 END) AS synth_fail_runs
+            FROM fuzz_runs GROUP BY device, package, primitive_class, primitive_variant;
+        CREATE VIEW IF NOT EXISTS fuzz_wire_globalise_rate AS
+            SELECT r.device, r.primitive_class,
+                   count(*) AS total_wires,
+                   sum(CASE WHEN w.globalise_ok THEN 1 ELSE 0 END) AS resolved_wires,
+                   round(100.0*sum(CASE WHEN w.globalise_ok THEN 1 ELSE 0 END)/count(*),1)
+                       AS pct_resolved
+            FROM fuzz_wires w JOIN fuzz_runs r ON r.id=w.run_id WHERE r.status='ok'
+            GROUP BY r.device, r.primitive_class;
+        CREATE VIEW IF NOT EXISTS fuzz_missing_wires AS
+            SELECT w.wire_name, w.tile_row, w.tile_col, r.device, r.primitive_class,
+                   count(*) AS missing_count
+            FROM fuzz_wires w JOIN fuzz_runs r ON r.id=w.run_id
+            WHERE r.status='ok' AND w.globalise_ok=0
+            GROUP BY w.wire_name, w.tile_row, w.tile_col, r.device, r.primitive_class
+            ORDER BY missing_count DESC;
+        CREATE VIEW IF NOT EXISTS fuzz_regressions AS
+            SELECT a.device, a.package, a.primitive_class, a.primitive_variant, a.site_tag,
+                   a.yosys_version AS yosys_a,  a.nextpnr_version AS nextpnr_a,
+                   b.yosys_version AS yosys_b,  b.nextpnr_version AS nextpnr_b,
+                   a.bitstream_hash AS hash_a,  b.bitstream_hash AS hash_b,
+                   a.run_at AS run_at_a,         b.run_at AS run_at_b
+            FROM fuzz_runs a JOIN fuzz_runs b
+                ON  a.device=b.device AND a.package=b.package
+                AND a.primitive_class=b.primitive_class
+                AND a.primitive_variant=b.primitive_variant
+                AND a.site_tag=b.site_tag AND a.id < b.id
+            WHERE a.status='ok' AND b.status='ok'
+              AND a.bitstream_hash != b.bitstream_hash;
+    """)
 
 def _tool_ver(cmd):
     try:
@@ -117,9 +210,9 @@ def capture_toolchain():
     nv = _tool_ver([_NEXTPNR_BIN, "--version"])
     ts = _now()
     con = _conn()
-    con.cursor().execute(
-        "INSERT INTO fuzz_toolchain_versions(yosys_version,nextpnr_version,recorded_at)"
-        " VALUES(%s,%s,%s) ON CONFLICT DO NOTHING",
+    con.execute(
+        "INSERT OR IGNORE INTO fuzz_toolchain_versions"
+        "(yosys_version,nextpnr_version,recorded_at) VALUES (?,?,?)",
         (yv, nv, ts)
     )
     con.commit()
@@ -130,10 +223,9 @@ def _now():
 
 def run_exists(device, package, pclass, pvariant, site_tag) -> bool:
     con = _conn()
-    cur = con.cursor()
-    cur.execute(
-        "SELECT id FROM fuzz_runs WHERE device=%s AND package=%s AND primitive_class=%s "
-        "AND primitive_variant=%s AND site_tag=%s AND status!='pending'",
+    cur = con.execute(
+        "SELECT id FROM fuzz_runs WHERE device=? AND package=? AND primitive_class=? "
+        "AND primitive_variant=? AND site_tag=? AND status!='pending'",
         (device, package, pclass, pvariant, site_tag)
     )
     return cur.fetchone() is not None
@@ -141,40 +233,39 @@ def run_exists(device, package, pclass, pvariant, site_tag) -> bool:
 def insert_run(device, package, pclass, pvariant, site_tag,
                tile_row=None, tile_col=None, design_params=None) -> int:
     con = _conn()
-    cur = con.cursor()
-    cur.execute(
-        "INSERT INTO fuzz_runs(device,package,primitive_class,primitive_variant,"
+    cur = con.execute(
+        "INSERT OR IGNORE INTO fuzz_runs"
+        "(device,package,primitive_class,primitive_variant,"
         "site_tag,tile_row,tile_col,status,run_at,design_params) "
-        "VALUES(%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s) ON CONFLICT DO NOTHING RETURNING id",
+        "VALUES (?,?,?,?,?,?,?,'pending',?,?)",
         (device, package, pclass, pvariant, site_tag, tile_row, tile_col, _now(), design_params)
     )
-    row = cur.fetchone()
     con.commit()
-    if row:
-        return row[0]
-    cur.execute(
-        "SELECT id FROM fuzz_runs WHERE device=%s AND package=%s AND primitive_class=%s "
-        "AND primitive_variant=%s AND site_tag=%s",
+    if cur.lastrowid:
+        return cur.lastrowid
+    row = con.execute(
+        "SELECT id FROM fuzz_runs WHERE device=? AND package=? AND primitive_class=? "
+        "AND primitive_variant=? AND site_tag=?",
         (device, package, pclass, pvariant, site_tag)
-    )
-    return cur.fetchone()[0]
+    ).fetchone()
+    return row[0]
 
 def update_run(run_id, status, bshash=None, error=None,
                yv=None, nv=None, rtl_hash=None):
     con = _conn()
-    con.cursor().execute(
-        "UPDATE fuzz_runs SET status=%s,bitstream_hash=%s,error_msg=%s,"
-        "yosys_version=%s,nextpnr_version=%s,rtl_hash=%s WHERE id=%s",
+    con.execute(
+        "UPDATE fuzz_runs SET status=?,bitstream_hash=?,error_msg=?,"
+        "yosys_version=?,nextpnr_version=?,rtl_hash=? WHERE id=?",
         (status, bshash, error, yv, nv, rtl_hash, run_id)
     )
     con.commit()
 
 def insert_wires(run_id, wires):
     con = _conn()
-    _pgextras.execute_values(
-        con.cursor(),
-        "INSERT INTO fuzz_wires(run_id,tile_row,tile_col,wire_name,is_sink,"
-        "globalise_ok,global_x,global_y,global_id) VALUES %s",
+    con.executemany(
+        "INSERT OR IGNORE INTO fuzz_wires"
+        "(run_id,tile_row,tile_col,wire_name,is_sink,"
+        "globalise_ok,global_x,global_y,global_id) VALUES (?,?,?,?,?,?,?,?,?)",
         [(run_id, r, c, name, is_sink, ok, gx, gy, gid)
          for (r, c, name, is_sink, ok, gx, gy, gid) in wires]
     )
@@ -182,8 +273,8 @@ def insert_wires(run_id, wires):
 
 def insert_log(run_id, stage, stdout, stderr):
     con = _conn()
-    con.cursor().execute(
-        "INSERT INTO synth_logs(run_id,stage,stdout,stderr) VALUES(%s,%s,%s,%s)",
+    con.execute(
+        "INSERT INTO synth_logs(run_id,stage,stdout,stderr) VALUES (?,?,?,?)",
         (run_id, stage, stdout[:8000], stderr[:8000])
     )
     con.commit()
@@ -1276,7 +1367,8 @@ def main():
             print(f"killed PID {pid}")
         sys.exit(0)
 
-    print("DB: fpga_re (Postgres)", flush=True)
+    init_db()
+    print(f"DB: {_FUZZ_DB}", flush=True)
 
     if args.report:
         report()

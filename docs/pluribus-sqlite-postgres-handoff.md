@@ -14,7 +14,7 @@ CI, shared servers, and large-device runs.
   `/mnt/2tb/git/pluribus/` (currently empty — only the git remote is set up)
 - **Move:** the entire `fpga/pluribus/` tree should become the root of the
   `awtoau/pluribus` repo.  The project-specific layer
-  (`fpga/pluribus_awto-2000/`) stays in `awto-2000` and adapts to import from
+  (`fpga/aw2/`) stays in `awto-2000` and adapts to import from
   the new package.
 
 ---
@@ -188,7 +188,7 @@ For SQLite: `os.unlink(_SQPATH)` before recreating tables.  For postgres:
 
 1. **Create repo structure** in `/mnt/2tb/git/pluribus/`:
    - Copy (do not move) `fpga/pluribus/*.py` to repo root
-   - Add `README.md` (extract from `fpga/pluribus_awto-2000/pluribus.md`)
+   - Add `README.md` (extract from `fpga/aw2/pluribus.md`)
    - Add `requirements.txt`: `pg8000`, `sqlalchemy` (postgres backend also needs
      `pg8000`; SQLite backend needs nothing beyond stdlib)
 
@@ -237,7 +237,7 @@ For SQLite: `os.unlink(_SQPATH)` before recreating tables.  For postgres:
 - The `die()` / hard-exit-on-any-error discipline.
 - The NoGIL parallel BFS — keep `python3.14t` and 24 threads.
 - The TSV annotation file format and parse logic in `load.py`.
-- The project-specific layer (`fpga/pluribus_awto-2000/`) — it stays in
+- The project-specific layer (`fpga/aw2/`) — it stays in
   `awto-2000` and imports from the now-separate `pluribus` package.
 
 ---
