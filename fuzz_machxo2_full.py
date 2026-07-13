@@ -42,14 +42,15 @@ import sqlite3
 # ---------------------------------------------------------------------------
 _HERE   = Path(__file__).parent
 _ROOT   = _HERE.parent.parent
-_LOG     = _ROOT / "fpga" / "tmp" / "fuzz_full.log"
+_AWTO   = Path("/mnt/2tb/git/awto-2000")
+_LOG     = _HERE / "tmp" / "fuzz_full.log"
 _FUZZ_DB = Path(os.environ.get("FUZZ_DB",
-    str(_ROOT / "fpga" / "tmp" / "fuzz_full2.db")))
+    str(_HERE / "tmp" / "fuzz_full2.db")))
 
 _TRELLIS_BUILD  = os.environ.get("TRELLIS_BUILD",
-    str(_ROOT / "debris/tmp/prjtrellis/libtrellis/build"))
+    str(_AWTO / "debris/tmp/prjtrellis/libtrellis/build"))
 _TRELLIS_DBROOT = os.environ.get("TRELLIS_DBROOT",
-    str(_ROOT / "debris/tmp/prjtrellis/database"))
+    str(_AWTO / "debris/tmp/prjtrellis/database"))
 
 
 import shutil as _shutil
@@ -58,6 +59,7 @@ _NEXTPNR_BIN = (os.environ.get("NEXTPNR_MACHXO2")
                 or "/home/dan/opt/oss-cad-suite/bin/nextpnr-machxo2")
 
 sys.path.insert(0, str(_HERE))
+sys.path.insert(0, _TRELLIS_BUILD)
 os.environ["TRELLIS_BUILD"]  = _TRELLIS_BUILD
 os.environ["TRELLIS_DBROOT"] = _TRELLIS_DBROOT
 from lifters import machxo2_lift as mx
