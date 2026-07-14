@@ -895,23 +895,17 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         print(f"  IOLOGIC: {len(iologic_fanout)} fanout entries  "
               f"{len(boundary_nets)} pad boundary nets inserted")
 
-        # ── input-pad H06E routing gap (known limitation) ────────────────────
-        # Right-edge (col=21) ADC input pads drive their data onto the E3_H06E0003
-        # horizontal bus via the JQ arc.  The H06E bus is a shared 6-hop wire — the
-        # arc model records one JQ→H06E arc at the source tile but does NOT record
-        # which CIB tiles downstream tap the bus for a specific net.  prjtrellis
-        # models this correctly (the arc IS recorded); the gap is that we cannot
-        # determine the downstream fanout without Diamond routing reports.
+        # ── input-pad fanout gap (residual after H06W fix) ───────────────────
+        # Right-edge (col=21) ADC input pads route JQ → H06W0003 (the western
+        # arm of the 6-hop longline).  The machxo2_lift.py fix (GH #156) correctly
+        # maps E3_H06E0003 at PIC_R tiles to W3_H06W0003, so most right-edge pads
+        # now trace through to their DPRAM write ports via the recovered arc chain.
         #
-        # A previous spatial heuristic (stitch JQ net → nearby d='1'b0' FFs) was
-        # REMOVED because it produced false positives — d='1'b0' FFs near right-edge
-        # pads are AWG EBR output registers (clk_h0_awg_wr), not ADC input registers.
-        # V07 uses no IOLOGIC input mode on ADC pads; the bitstream config confirms
-        # simple INPUT_LVTTL33 with no IOLOGICA.MODE setting.
-        #
-        # True ADC data path: JQ net → H06E bus → (interior CIB taps not modelled) →
-        # LUT 0001000100011110 DDR deserialiser → fabric FFs.  Resolving this requires
-        # either Diamond routing reports or a physical signal trace.  Filed in GH #76.
+        # Residual gap: a few input pads (e.g. ADC_D0A and ADC_D4A) still have
+        # net_in set but zero net_fanout entries after all stitching passes.  These
+        # appear to route through EBR intermediate arcs or CIB tap points that the
+        # lifter does not model.  The count below tracks this residual so it is
+        # visible in the load summary.  Filed originally as GH #76.
         nf = schema.net_fanout
         pm = schema.pad_map
         unstitched_count = conn.execute(

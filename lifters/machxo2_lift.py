@@ -231,6 +231,19 @@ class MachXO2Lift:
     _SEG_NORTH = re.compile(r'^N(\d)_')   # northward N-hop → walk south (row+1)
     _SEG_SOUTH = re.compile(r'^S(\d)_')   # southward N-hop → walk north (row-1)
 
+    @staticmethod
+    def _mirror_e_h06e(name):
+        """Remap an E{N}_H06E{M} wire name to W{N}_H06W{M} for PIC_R tiles.
+
+        In PIC_R0 (right-edge IO) tiles, prjtrellis emits H06 6-hop longline
+        pips as E{N}_H06E{M} even though the routing graph exposes the same
+        connection as W{N}_H06W{M} (the westward arm of the bus).  This
+        remapping lets globalise_net() find the correct canonical key."""
+        m = re.match(r'^E(\d)_H06E(\d+)$', name)
+        if m:
+            return f"W{m.group(1)}_H06W{m.group(2)}"
+        return None
+
     def gkey(self, row, col, name):
         """Canonical node key, or None if the name globalises to an invalid
         (-1,-1) location (chip-global clock/spine longlines).
@@ -238,7 +251,18 @@ class MachXO2Lift:
         For segment longlines (E3/W3/N3/S3 etc.) that fail at chip-edge tiles
         because their canonical endpoint would fall off the grid, we walk the
         origin back into the interior — the canonical key is the same for every
-        valid origin of the same wire."""
+        valid origin of the same wire.
+
+        Right-edge boundary fix: E{N}_H06E{M} wires at PIC_R tiles (col ==
+        max_col) are remapped to W{N}_H06W{M} before globalising, because
+        prjtrellis encodes these pips with the wrong E/W sense for the right
+        boundary.  E{N}_H06E{M} arcs at interior PLC tiles within N columns of
+        the right edge would canonicalise to an off-chip position — their
+        walk-back incorrectly collapses them to the same canonical key as the
+        PIC_R tile's H06E wire, merging unrelated nets.  We detect this case
+        (col + N > max_col at a non-boundary tile) and return None instead of
+        the wrong key, so those stub arcs are silently dropped rather than
+        causing a net-merge bug."""
         g = self.rg.globalise_net(row, col, name)
         if g.loc.x >= 0 and g.loc.y >= 0:
             return (g.loc.x, g.loc.y, g.id)
@@ -253,6 +277,36 @@ class MachXO2Lift:
             is_north = wire[0] == 'N'
             max_col  = self.chip.get_max_col()
             max_row  = self.chip.get_max_row()
+
+            # Right-edge guard: E{N}_H06E{M} wires where col+hops > max_col.
+            # At the PIC_R tile (col == max_col): remap to W{N}_H06W{M} which
+            # globalise_net correctly resolves to the interior anchor.
+            # At PLC tiles interior to the boundary (col < max_col): this is a
+            # dead stub whose true canonical falls off-chip; return None to
+            # suppress the arc rather than collapsing it to the PIC_R tile's
+            # canonical (which would wrongly merge pad inputs with FF outputs).
+            if is_east and col + hops > max_col:
+                if col == max_col:
+                    mirrored = self._mirror_e_h06e(name)
+                    if mirrored:
+                        gm = self.rg.globalise_net(row, col, mirrored)
+                        if gm.loc.x >= 0 and gm.loc.y >= 0:
+                            return (gm.loc.x, gm.loc.y, gm.id)
+                # No valid canonical (off-chip stub or mirror failed).
+                return None
+
+            # Symmetric guard for W-direction wires at the left edge.
+            if not is_east and wire[0] == 'W' and col - hops < 0:
+                if col == 0:
+                    # Symmetric mirror: W{N}_H06W{M} → E{N}_H06E{M}
+                    mirror_m = re.match(r'^W(\d)_H06W(\d+)$', name)
+                    if mirror_m:
+                        mirrored = f"E{mirror_m.group(1)}_H06E{mirror_m.group(2)}"
+                        gm = self.rg.globalise_net(row, col, mirrored)
+                        if gm.loc.x >= 0 and gm.loc.y >= 0:
+                            return (gm.loc.x, gm.loc.y, gm.id)
+                return None
+
             for delta in range(1, hops + 1):
                 if is_east or wire[0] == 'W':
                     probe_col = col - delta if is_east else col + delta
