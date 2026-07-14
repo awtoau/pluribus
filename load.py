@@ -829,7 +829,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                 if net and net not in info["jq_nets"]:
                     info["jq_nets"].append(net)
 
-        # Find output FFs for each EBR (d='1'b0' + spatially near EBR).
+        # Find output FFs for each EBR (d='1'b0' or ghost-D, spatially near EBR).
         # In MachXO2 PDPW8KC/DP8KC with OUTREG, the EBR output register FFs are
         # physically placed adjacent to the EBR block.  Their DI input is hardwired
         # from EBR DOB (invisible in prjtrellis arcs), so they appear with d='1'b0'.
@@ -837,19 +837,34 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         # of the EBR use their own clock (not the EBR read clock).  Instead we use
         # spatial proximity: any FF with d='1'b0' within ±4 rows and ±4 cols of
         # the EBR is treated as a potential output register or downstream pipeline FF.
+        #
+        # Ghost-D FFs: prjtrellis also emits OFX{n}→DI{n} config arcs for EBR
+        # OUTREG bypass paths.  These give the FF a real D-net name (not '1'b0'),
+        # but the net has no LUT or FF driver — OFX is hardwired from EBR DOB via
+        # a non-configurable arc invisible to the config arc model.  Detect them
+        # by finding FFs whose D-net appears in no LUT Z output and no FF Q output.
+        _lut_z_nets = {lt["z"] for lt in design.luts if lt["z"]}
+        _ff_q_nets  = {ff["q"] for ff in design.ffs}
+        _ghost_d_nets: set = set()
+        for _ff in design.ffs:
+            _d = _ff["d"]
+            if _d.startswith("1'b") or _d in _lut_z_nets or _d in _ff_q_nets:
+                continue
+            _ghost_d_nets.add(_d)
+        if _ghost_d_nets:
+            print(f"  {len(_ghost_d_nets)} ghost-D nets detected (EBR OUTREG bypass)")
+
         _block_to_output_ffs: dict = {}  # block → [ff.q, ...]
         for ff in design.ffs:
-            if ff["d"] != "1'b0":
+            is_const_d = ff["d"] == "1'b0"
+            is_ghost_d = ff["d"] in _ghost_d_nets
+            if not (is_const_d or is_ghost_d):
                 continue
             # Parse FF row/col from name ff_rNcM_XY  (e.g. ff_r8c20_C1)
-            try:
-                import re as _re
-                m = _re.match(r'^ff_r(\d+)c(\d+)_', ff["name"])
-                if not m:
-                    continue
-                ff_r, ff_c = int(m.group(1)), int(m.group(2))
-            except (ValueError, AttributeError):
+            m = re.match(r'^ff_r(\d+)c(\d+)_', ff["name"])
+            if not m:
                 continue
+            ff_r, ff_c = int(m.group(1)), int(m.group(2))
             for block, info in _ebr_full.items():
                 er, ec = info["er"], info["ec"]
                 if abs(ff_r - er) <= 4 and abs(ff_c - ec) <= 4:
@@ -993,17 +1008,18 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         print(f"  IOLOGIC: {len(iologic_fanout)} fanout entries  "
               f"{len(boundary_nets)} pad boundary nets inserted")
 
-        # ── input-pad fanout gap (residual after H06W fix) ───────────────────
-        # Right-edge (col=21) ADC input pads route JQ → H06W0003 (the western
-        # arm of the 6-hop longline).  The machxo2_lift.py fix (GH #156) correctly
-        # maps E3_H06E0003 at PIC_R tiles to W3_H06W0003, so most right-edge pads
-        # now trace through to their DPRAM write ports via the recovered arc chain.
+        # ── input-pad fanout gap ──────────────────────────────────────────────
+        # Some input pads have net_in set but zero net_fanout entries.  The count
+        # below tracks this residual so it is visible in the load summary.
         #
-        # Residual gap: a few input pads (e.g. ADC_D0A and ADC_D4A) still have
-        # net_in set but zero net_fanout entries after all stitching passes.  These
-        # appear to route through EBR intermediate arcs or CIB tap points that the
-        # lifter does not model.  The count below tracks this residual so it is
-        # visible in the load summary.  Filed originally as GH #76.
+        # Investigation (V07): some right-edge PIOA pads route via E3_H06E0003
+        # (canonical at col=18) to a right-edge H06 bus stub that has zero
+        # downstream arcs in this bitstream.  The signal is stranded at col=18
+        # with no fabric pickup — these are likely unused ADC channels (the PnR
+        # routed them to a bus stub, not to any logic).  Top-edge pads at row=0
+        # have their arcs in the CIB_PIC_T row=1 tile, which IS parsed; their
+        # routing also dead-ends at H06 stubs with no downstream connections.
+        # Filed as GH #76 for tracking.
         nf = schema.net_fanout
         pm = schema.pad_map
         unstitched_count = conn.execute(

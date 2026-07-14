@@ -235,10 +235,11 @@ class MachXO2Lift:
     def _mirror_e_h06e(name):
         """Remap an E{N}_H06E{M} wire name to W{N}_H06W{M} for PIC_R tiles.
 
-        In PIC_R0 (right-edge IO) tiles, prjtrellis emits H06 6-hop longline
-        pips as E{N}_H06E{M} even though the routing graph exposes the same
-        connection as W{N}_H06W{M} (the westward arm of the bus).  This
-        remapping lets globalise_net() find the correct canonical key."""
+        In PIC_R0 (right-edge IO) tiles, prjtrellis emits H06 pad-to-bus pips
+        as E{N}_H06E{M}.  The mirrored W{N}_H06W{M} form is safe to pass to
+        globalise_net and returns the correct wire id.  The caller then fixes
+        the canonical column to max_col so DSU unifies with interior arcs that
+        reference the same bus as H06W{M} (local, anchored at max_col)."""
         m = re.match(r'^E(\d)_H06E(\d+)$', name)
         if m:
             return f"W{m.group(1)}_H06W{m.group(2)}"
@@ -279,8 +280,12 @@ class MachXO2Lift:
             max_row  = self.chip.get_max_row()
 
             # Right-edge guard: E{N}_H06E{M} wires where col+hops > max_col.
-            # At the PIC_R tile (col == max_col): remap to W{N}_H06W{M} which
-            # globalise_net correctly resolves to the interior anchor.
+            # At the PIC_R tile (col == max_col): _mirror_e_h06e converts to
+            # W{N}_H06W{M} which globalise_net resolves to (col-N, row, id).
+            # The same physical bus is referenced by interior arcs at the same
+            # right-edge tile as H06W{M} with canonical (col, row, id).
+            # We override the column to max_col (col) so DSU unifies the pad
+            # wire with those downstream routing arcs.
             # At PLC tiles interior to the boundary (col < max_col): this is a
             # dead stub whose true canonical falls off-chip; return None to
             # suppress the arc rather than collapsing it to the PIC_R tile's
@@ -291,7 +296,8 @@ class MachXO2Lift:
                     if mirrored:
                         gm = self.rg.globalise_net(row, col, mirrored)
                         if gm.loc.x >= 0 and gm.loc.y >= 0:
-                            return (gm.loc.x, gm.loc.y, gm.id)
+                            # Anchor at max_col, not col-N, to match H06W{M} local refs.
+                            return (col, gm.loc.y, gm.id)
                 # No valid canonical (off-chip stub or mirror failed).
                 return None
 
