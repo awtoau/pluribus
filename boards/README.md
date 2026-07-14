@@ -28,9 +28,10 @@ nets_tsv = "nets.tsv"      # optional
 
 ## Boards
 
-| Directory | Board | FPGA | Lifter |
-|-----------|-------|------|--------|
-| `aw2-2d82auto/` | Hantek 2D82AUTO | LCMXO2-1200HC TQFP100 | machxo2 |
+| Directory | Board | FPGA | Lifter | Status |
+|-----------|-------|------|--------|--------|
+| `aw2-2d82auto/` | Hantek 2D82AUTO | LCMXO2-1200HC TQFP100 | machxo2 | production |
+| `cynthion-r1/` | GSG Cynthion r1.x | LFE5U-12F BG256 | ecp5 | stub — pins.tsv + ECP5 lifter pending (#9/#15) |
 
 ## Adding a new board
 

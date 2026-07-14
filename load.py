@@ -75,14 +75,11 @@ def load_board_config(board_path):
 
 def make_lift(lifter_name, device):
     """Instantiate the named lifter for the given device string."""
-    if lifter_name == "machxo2":
-        from lifters import machxo2_lift as mx
-        return mx.MachXO2Lift(device)
-    elif lifter_name == "ecp5":
-        from lifters import ecp5_lift as ex
-        return ex.ECP5Lift(device)
-    else:
-        die(f"Unknown lifter {lifter_name!r} — add it to make_lift() in load.py")
+    from lifters.trellis_lift import TrellisLift
+    try:
+        return TrellisLift(lifter_name, device)
+    except ValueError as e:
+        die(str(e))
 
 
 def assert_eq(label, got, expected):

@@ -1,0 +1,22 @@
+# Pluribus board config — Great Scott Gadgets Cynthion r1.x (ECP5)
+#
+# Cynthion is an open-source USB multitool.  The r1.0–r1.4 production
+# hardware all uses the same FPGA: LFE5U-12F in a 256-ball BG package.
+#
+# Source: cynthion/python/src/gateware/platform/cynthion_r1_0.py
+#         https://github.com/greatscottgadgets/cynthion
+#
+# Usage (once pins.tsv and ECP5 lifter are available, issue #9/#15):
+#   python3.14t load.py --board boards/cynthion-r1 \
+#       --label <label> --config <bitstream.config> \
+#       --pins boards/cynthion-r1/pins.tsv
+
+[board]
+name    = "Great Scott Gadgets Cynthion r1.x"
+device  = "LFE5U-12F"
+package = "BG256"
+lifter  = "ecp5"
+
+# pins_tsv: not yet provided — add when board is in hand and ECP5 lifter
+# lands (issue #9 / #15).  Until then, pass --pins explicitly.
+[files]
