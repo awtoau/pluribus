@@ -941,6 +941,9 @@ def pass_cone_hashes(bs_id, n_workers, max_depth=6):
     total          = len(all_ffs)
     progress_count = [0]
     lock           = threading.Lock()
+    # Serialise inserts: concurrent whole-chunk transactions exhaust the
+    # SQLAlchemy pool (5+10, 30s) and SQLite single-writes anyway.
+    insert_lock    = threading.Lock()
     errors         = []
 
     def process_chunk(ff_chunk):
@@ -956,8 +959,9 @@ def pass_cone_hashes(bs_id, n_workers, max_depth=6):
                     "cone_hash": cone_hash,
                     "cone_size": cone_size,
                 })
-            with engine().begin() as chunk_conn:
-                chunk_conn.execute(_insert_ignore(t_ch), rows)
+            with insert_lock:
+                with engine().begin() as chunk_conn:
+                    chunk_conn.execute(_insert_ignore(t_ch), rows)
             with lock:
                 progress_count[0] += len(ff_chunk)
                 n = progress_count[0]

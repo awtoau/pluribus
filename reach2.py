@@ -38,7 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from db import BACKEND, die, engine
-from sqlalchemy import select, insert, delete, func, and_, or_, text
+from sqlalchemy import select, insert, delete, func, text
 import schema
 
 
@@ -148,6 +148,10 @@ def pass_ff_cones(bs_id, n_workers):
     total      = len(ffs)
     done       = [0]
     lock       = threading.Lock()
+    # Post-SD-fix cone sizes make each worker's final insert large; 24
+    # concurrent inserts exhaust the SQLAlchemy pool (5+10, 30s timeout)
+    # and SQLite serialises writers anyway — one insert at a time.
+    insert_lock = threading.Lock()
     error_msgs = []
 
     def worker_chunk(chunk):
@@ -183,8 +187,9 @@ def pass_ff_cones(bs_id, n_workers):
                         })
 
             if rows:
-                with engine().begin() as wconn:
-                    wconn.execute(_insert_or_ignore(schema.ff_cones), rows)
+                with insert_lock:
+                    with engine().begin() as wconn:
+                        wconn.execute(_insert_or_ignore(schema.ff_cones), rows)
 
             with lock:
                 done[0] += len(chunk)
@@ -227,73 +232,39 @@ def pass_critical_paths(bs_id):
     dst=FF.d/ce — any path in the table that starts at a register output and
     ends at a register input is a combinational chain.
     """
-    r  = schema.reachability
-    fa = schema.ffs.alias("fa")
-    fb = schema.ffs.alias("fb")
     cp = schema.critical_paths
 
-    # Build path_nets as a JSON list — SQLAlchemy func.json_array works on
-    # SQLite; for PostgreSQL we use a text() fragment for ARRAY[] → cast to JSON.
-    if BACKEND == "sqlite":
-        path_nets_expr = func.json_array(fa.c.q, r.c.dst).label("path_nets")
-    else:
-        path_nets_expr = text("json_build_array(fa.q, r.dst) AS path_nets")
-
-    sel = (
-        select(
-            r.c.bitstream,
-            fa.c.cell.label("src_ff"),
-            fb.c.cell.label("dst_ff"),
-            r.c.min_hops,
-            path_nets_expr,
-        )
-        .join(fa, and_(fa.c.bitstream == r.c.bitstream, fa.c.q == r.c.src))
-        .join(fb, and_(
-            fb.c.bitstream == r.c.bitstream,
-            or_(fb.c.d == r.c.dst, fb.c.ce == r.c.dst),
-        ))
-        .where(r.c.bitstream == bs_id)
-    )
+    # A (src_ff, dst_ff) pair can match several reachability rows (fb.d and
+    # fb.ce are separate dst nets, each possibly at several hop counts), so
+    # dedupe with a window function keeping the max-hops row.  Rows for the
+    # label are deleted first, so a plain INSERT needs no upsert — the old
+    # ON CONFLICT form broke on PostgreSQL ("cannot affect row a second
+    # time") and SQLite's INSERT OR REPLACE kept an arbitrary row, not max.
+    json_fn = "json_array" if BACKEND == "sqlite" else "json_build_array"
+    stmt = text(f"""
+        INSERT INTO critical_paths (bitstream, src_ff, dst_ff, hops, path_nets)
+        SELECT bitstream, src_ff, dst_ff, min_hops, path_nets FROM (
+            SELECT
+                r.bitstream,
+                fa.cell  AS src_ff,
+                fb.cell  AS dst_ff,
+                r.min_hops,
+                {json_fn}(fa.q, r.dst) AS path_nets,
+                ROW_NUMBER() OVER (
+                    PARTITION BY r.bitstream, fa.cell, fb.cell
+                    ORDER BY r.min_hops DESC
+                ) AS rn
+            FROM reachability r
+            JOIN ffs fa ON fa.bitstream=r.bitstream AND fa.q=r.src
+            JOIN ffs fb ON fb.bitstream=r.bitstream
+                       AND (fb.d=r.dst OR fb.ce=r.dst)
+            WHERE r.bitstream=:bs_id
+        ) ranked
+        WHERE rn = 1
+    """)
 
     with engine().begin() as conn:
         conn.execute(delete(cp).where(cp.c.bitstream == bs_id))
-
-        # For ON CONFLICT DO UPDATE (upsert keeping max hops) we need raw SQL
-        # because SQLAlchemy Core's on_conflict_do_update differs between backends.
-        if BACKEND == "sqlite":
-            stmt = text("""
-                INSERT OR REPLACE INTO critical_paths
-                    (bitstream, src_ff, dst_ff, hops, path_nets)
-                SELECT
-                    r.bitstream,
-                    fa.cell  AS src_ff,
-                    fb.cell  AS dst_ff,
-                    r.min_hops,
-                    json_array(fa.q, r.dst)
-                FROM reachability r
-                JOIN ffs fa ON fa.bitstream=r.bitstream AND fa.q=r.src
-                JOIN ffs fb ON fb.bitstream=r.bitstream
-                           AND (fb.d=r.dst OR fb.ce=r.dst)
-                WHERE r.bitstream=:bs_id
-            """)
-        else:
-            stmt = text("""
-                INSERT INTO critical_paths (bitstream, src_ff, dst_ff, hops, path_nets)
-                SELECT
-                    r.bitstream,
-                    fa.cell  AS src_ff,
-                    fb.cell  AS dst_ff,
-                    r.min_hops,
-                    json_build_array(fa.q, r.dst)
-                FROM reachability r
-                JOIN ffs fa ON fa.bitstream=r.bitstream AND fa.q=r.src
-                JOIN ffs fb ON fb.bitstream=r.bitstream
-                           AND (fb.d=r.dst OR fb.ce=r.dst)
-                WHERE r.bitstream=:bs_id
-                ON CONFLICT (bitstream, src_ff, dst_ff)
-                    DO UPDATE SET hops=EXCLUDED.hops, path_nets=EXCLUDED.path_nets
-                    WHERE critical_paths.hops < EXCLUDED.hops
-            """)
         result = conn.execute(stmt, {"bs_id": bs_id})
         n = result.rowcount
 
