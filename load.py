@@ -11,13 +11,18 @@ plus label, function, and confidence (1–10).
 
 Usage
 -----
-  cd /mnt/2tb/git/awto-2000
-  TRELLIS_DBROOT=debris/tmp/prjtrellis/database \
-  PYTHONPATH=debris/tmp/prjtrellis/libtrellis/build \
-  python3 fpga/pluribus/load.py \
+  # With board config (preferred):
+  TRELLIS_DBROOT=... PYTHONPATH=... python3.14t load.py \
+    --board boards/aw2-2d82auto \
     --label V07 \
-    --config fpga/v7/FPGA_V07.bin.config \
-    --pins fpga/pluribus/aw2-pins.tsv
+    --config /path/to/FPGA_V07.bin.config
+
+  # Explicit flags (legacy / board-less):
+  TRELLIS_DBROOT=... PYTHONPATH=... python3.14t load.py \
+    --label V07 \
+    --config /path/to/FPGA_V07.bin.config \
+    --pins /path/to/pins.tsv \
+    --device LCMXO2-1200 --package TQFP100
 """
 
 import argparse
@@ -25,19 +30,59 @@ import os
 import re
 import sys
 import time
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
 _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
 
-from lifters import machxo2_lift as mx
 from db import engine, die, EFB_JF, JF_RE, BACKEND
 import schema
 from sqlalchemy import insert, delete, select, update, func, text
 
+# Utility functions (LUT truth-table parsing, pad resolution) live in machxo2_lift
+# for now.  When ECP5 support lands these will move to lifters/common.py.
+from lifters import machxo2_lift as mx
+
 # EFB ports that MUST appear in the recovered bitstream for LCMXO2 with SPI enabled
 REQUIRED_EFB_PORTS = {"JTCK", "JTDI", "JUPDATE", "JRSTN", "JSHIFTDR", "JTDO"}
+
+
+def load_board_config(board_path):
+    """Read boards/<name>/board.toml and return a dict with keys:
+    device, package, lifter, pins_tsv, nets_tsv (may be None).
+    All file paths are resolved to absolute paths relative to board_path.
+    """
+    board_dir = Path(board_path).resolve()
+    toml_path = board_dir / "board.toml"
+    if not toml_path.exists():
+        die(f"Board config not found: {toml_path}")
+    with open(toml_path, "rb") as fh:
+        cfg = tomllib.load(fh)
+    b = cfg.get("board", {})
+    f = cfg.get("files", {})
+    pins_rel = f.get("pins_tsv")
+    nets_rel = f.get("nets_tsv")
+    return {
+        "device":   b.get("device") or die("board.toml missing [board] device"),
+        "package":  b.get("package") or die("board.toml missing [board] package"),
+        "lifter":   b.get("lifter", "machxo2"),
+        "pins_tsv": str(board_dir / pins_rel) if pins_rel else None,
+        "nets_tsv": str(board_dir / nets_rel) if nets_rel else None,
+    }
+
+
+def make_lift(lifter_name, device):
+    """Instantiate the named lifter for the given device string."""
+    if lifter_name == "machxo2":
+        from lifters import machxo2_lift as mx
+        return mx.MachXO2Lift(device)
+    elif lifter_name == "ecp5":
+        from lifters import ecp5_lift as ex
+        return ex.ECP5Lift(device)
+    else:
+        die(f"Unknown lifter {lifter_name!r} — add it to make_lift() in load.py")
 
 
 def assert_eq(label, got, expected):
@@ -192,7 +237,8 @@ def resolve_net(design, lift, row, col, wire):
 
 # ── Main load ─────────────────────────────────────────────────────────────────
 
-def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=False):
+def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=False,
+         lifter="machxo2"):
     t0 = time.time()
 
     # ── parse pin annotation file ──────────────────────────────────────────
@@ -216,7 +262,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
     print(f"Recovering netlist from {config_path}…")
     if not os.path.exists(config_path):
         die(f"Config file not found: {config_path}")
-    lift   = mx.MachXO2Lift(device)
+    lift   = make_lift(lifter, device)
     pc     = lift.parse_config(config_path)
     design = lift.recover_netlist(pc)
 
@@ -1074,7 +1120,7 @@ def dump_pins(config_path, annotations_path, out_path, device):
     import json
 
     print(f"Recovering netlist from {config_path}…")
-    lift   = mx.MachXO2Lift(device)
+    lift   = make_lift("machxo2", device)
     pc     = lift.parse_config(config_path)
     design = lift.recover_netlist(pc)
     max_row = lift.chip.get_max_row()
@@ -1168,12 +1214,14 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--label",     help="bitstream label e.g. V07")
-    ap.add_argument("--config",    required=True, help="path to .bin.config file")
-    ap.add_argument("--pins",      help="path to pins TSV annotation file")
-    ap.add_argument("--nets",      help="path to aw2-nets.tsv net annotation file (optional)")
-    ap.add_argument("--device",    default="LCMXO2-1200")
-    ap.add_argument("--package",   default="TQFP100")
+    ap.add_argument("--label",   help="bitstream label e.g. V07")
+    ap.add_argument("--config",  required=True, help="path to .bin.config file")
+    ap.add_argument("--board",   help="path to board config directory containing board.toml")
+    ap.add_argument("--pins",    help="path to pins TSV annotation file (overrides --board)")
+    ap.add_argument("--nets",    help="path to nets annotation TSV (overrides --board)")
+    ap.add_argument("--device",  help="device string e.g. LCMXO2-1200 (overrides --board)")
+    ap.add_argument("--package", help="package string e.g. TQFP100 (overrides --board)")
+    ap.add_argument("--lifter",  help="lifter name: machxo2 or ecp5 (overrides --board)")
     ap.add_argument("--dump-pins", metavar="OUT_TSV",
                     help="scan bitstream+iomap, merge pin_annotations.json, write template TSV and exit")
     ap.add_argument("--annotations", default=None,
@@ -1182,16 +1230,24 @@ def main():
                     help="fuzz mode: skip FF/LUT/net count sanity checks (designs have very few cells)")
     args = ap.parse_args()
 
+    # Board config provides defaults; explicit flags override.
+    board_cfg = load_board_config(args.board) if args.board else {}
+    device  = args.device  or board_cfg.get("device",  "LCMXO2-1200")
+    package = args.package or board_cfg.get("package", "TQFP100")
+    lifter  = args.lifter  or board_cfg.get("lifter",  "machxo2")
+    pins    = args.pins    or board_cfg.get("pins_tsv")
+    nets    = args.nets    or board_cfg.get("nets_tsv")
+
     if args.dump_pins:
-        dump_pins(args.config, args.annotations, args.dump_pins, args.device)
+        dump_pins(args.config, args.annotations, args.dump_pins, device)
         return
 
     if not args.label:
         ap.error("--label is required when not using --dump-pins")
-    if not args.pins:
-        ap.error("--pins is required when not using --dump-pins")
-    load(args.label, args.config, args.pins, args.device, args.package, args.nets,
-         fuzz=args.fuzz)
+    if not pins:
+        ap.error("--pins is required (or provide --board with pins_tsv in board.toml)")
+    load(args.label, args.config, pins, device, package, nets,
+         fuzz=args.fuzz, lifter=lifter)
 
 
 if __name__ == "__main__":

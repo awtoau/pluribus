@@ -1,0 +1,18 @@
+# Pluribus board config — Hantek 2D82AUTO (LCMXO2-1200HC-4TG100C TQFP100)
+#
+# Usage:
+#   python3.14t load.py --board boards/aw2-2d82auto --label V07 \
+#       --config /path/to/FPGA_V07.bin.config
+
+[board]
+name    = "Hantek 2D82AUTO"
+device  = "LCMXO2-1200"
+package = "TQFP100"
+lifter  = "machxo2"
+
+# Paths relative to this board.toml file.
+# pins_tsv: required — pad location + direction annotations.
+# nets_tsv: optional — human net name annotations.
+[files]
+pins_tsv = "pins.tsv"
+nets_tsv = "nets.tsv"
