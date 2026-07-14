@@ -63,7 +63,9 @@ force it — best-fit package detection can drift to a bigger package).
 
 1. **Load log** (`tmp/pipeline_<label>_load.log`): expect
    `45/45 pads resolved` and a low
-   `Input-pad H06E gap: N pads with no net_fanout` count.
+   `Input-pad fanout gap: N pads with no net_fanout` count.
+   Currently V07=3, V02=6, V4=6 — see [pad-fanout-gap.md](pad-fanout-gap.md)
+   for what those are (lifter bugs, not dead pins).
 2. **FF D-input health**: `python3 scripts/ffd_stats.py <config>` —
    classifies every FF's D-net (LUT z / FF q / routed / const).
    A large `const` count means D recovery is broken (exit 1 if >10%).
