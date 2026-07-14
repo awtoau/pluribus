@@ -633,6 +633,41 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             ))
             print(f"  {len(efb_fanout_rows)} EFB→fabric net_fanout entries")
 
+        # Stitch EFB INPUT nets into net_fanout so BFS can traverse into the EFB.
+        # The CIB_EBR0_END0 tile is the EFB's internal EBR access tile; its
+        # J[ABCDM]*/JCE*/JCLK*/JLSR*/JWE* sinks are EFB data/address/control
+        # inputs (WISHBONE register file, SPI data ports, etc.).  These arcs
+        # appear in the .config but are not EBR1 tiles, so the EBR port scan
+        # below skips them entirely.  Without this pass, nets like n2536
+        # (FPGA_nCS) have 0 net_fanout entries and are dead ends for BFS.
+        # Model each as: fabric_net → EFB cell → "EFB" synthetic node so that
+        # reach.py BFS can continue from the EFB's output nets.
+        _EFB_IN_SINK_RE = re.compile(
+            r'^J([ABCDM]\d+|CE\d+|CLK\d+|LSR\d+|WE\d*)$'
+        )
+        efb_in_rows = []
+        efb_in_tile = next(
+            ((er, ec) for (er, ec), t in pc.tile_type.items()
+             if t == "CIB_EBR0_END0"),
+            None,
+        )
+        if efb_in_tile:
+            eir, eic = efb_in_tile
+            for (r, c, sink, src) in pc.arcs:
+                if r != eir or c != eic:
+                    continue
+                if not _EFB_IN_SINK_RE.match(sink):
+                    continue
+                net = resolve_net(design, lift, eir, eic, src)
+                if net:
+                    efb_in_rows.append({
+                        "bitstream": bs_id, "net": net, "cell_type": "EFB",
+                        "cell": "EFB", "pin": sink, "out_net": "EFB",
+                    })
+        if efb_in_rows:
+            conn.execute(_insert_or_ignore(schema.net_fanout), efb_in_rows)
+        print(f"  {len(efb_in_rows)} fabric→EFB net_fanout entries")
+
         # ── ebr_ports ─────────────────────────────────────────────────────────
         JA = re.compile(r'^J[AB]\d+$'); JC = re.compile(r'^J[CD]\d+$')
         JX = re.compile(r'^(JCLK|JLSR|JCE|JWE)\d*$')

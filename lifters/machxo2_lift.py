@@ -433,8 +433,17 @@ class MachXO2Lift:
         # routes not present in the .config arcs.  Reading them from bits.db
         # and unioning them here lets any FF whose D-input wire traces back to
         # an EFB output get a real net name instead of "1'b0".
+        # CIB_CFG0 tile location varies by device — look it up from the parsed
+        # config rather than hardcoding, so LCMXO2-1200 (col=3) vs other sizes
+        # (col=4 or larger) all resolve correctly.
+        cfg0_loc = next(
+            ((r, c) for (r, c), t in pc.tile_type.items() if t == "CIB_CFG0"),
+            (1, 4),
+        )
         efb_conns = self.load_efb_fixed_conns()
-        d.efb_resolved = self.apply_efb_fixed_conns(dsu, efb_conns)
+        d.efb_resolved = self.apply_efb_fixed_conns(
+            dsu, efb_conns, cfg_row=cfg0_loc[0], cfg_col=cfg0_loc[1]
+        )
 
         d.used_roots = {dsu.find(k) for k in src_keys}
 
