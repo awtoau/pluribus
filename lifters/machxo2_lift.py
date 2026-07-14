@@ -115,6 +115,24 @@ def _correct_pio_iostandard(pio_enums: "dict[str, str]") -> "dict[str, str]":
     return corrected
 
 
+def ff_d_source(slice_enums, j):
+    """Which slice wire feeds REG{j}'s D input: 'F' or 'M'.
+
+    Trellis PLC bits.db defines REG{j}.SD with value 1 as the zero-state
+    (bit clear, enum OMITTED from the textcfg), meaning DI — the FF is
+    packed with its slice LUT and D comes through the internal F→DI
+    path (nextpnr machxo2 pack.cc sets SD=1 when pairing FF+COMB).
+    An explicit "SD 0" (bit set) means D comes from the fabric-routed
+    M wire (nextpnr renames the port DI→M in that case).
+
+    Getting this wrong is catastrophic and quiet: with the polarity
+    inverted every FF resolves DI (which never appears in config arcs)
+    and the whole netlist recovers d=1'b0 — V07 showed 1081/1090
+    constant-D FFs before this was fixed.
+    """
+    return "F" if slice_enums.get(f"REG{j}.SD", "1") == "1" else "M"
+
+
 class DSU:
     """Union-find over arbitrary hashable node keys."""
 
@@ -503,8 +521,15 @@ class MachXO2Lift:
                     qkey = pins.get("Q")
                     if qkey is None or dsu.find(qkey) not in d.used_roots:
                         continue
-                    sd = senum.get(f"REG{j}.SD", "0")
-                    dkey = pins.get("M") if sd == "1" else pins.get("DI")
+                    # See ff_d_source() for the REG{j}.SD semantics.  The
+                    # DI wire never appears in config arcs (F→DI is an
+                    # internal fixed path), so the DI case resolves
+                    # straight to the paired LUT's F output key.
+                    sd = senum.get(f"REG{j}.SD", "1")
+                    if ff_d_source(senum, j) == "F":
+                        dkey = bels.get(f"SLICE{sl}.K{j}", {}).get("F")
+                    else:
+                        dkey = pins.get("M")
 
                     def net_or(key, const):
                         return (net_of(key)

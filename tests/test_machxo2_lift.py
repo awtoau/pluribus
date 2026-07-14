@@ -26,12 +26,37 @@ from lifters.machxo2_lift import (
     DSU,
     _correct_pio_iostandard,
     classify_pin,
+    ff_d_source,
     lut_dependence,
     resource_summary,
     Design,
     _PULLMODE_NONE_GHOST_IOSTDS,
 )
 from verilog import _simplify_lut, _lut_init_to_case
+
+
+# ── ff_d_source ───────────────────────────────────────────────────────────────
+# REG{j}.SD polarity regression (2026-07-14): Trellis's zero-state is SD=1
+# (enum omitted, FF takes DI from the paired LUT); explicit "SD 0" means the
+# fabric-routed M wire.  The original code had both the mapping and the
+# default inverted, which recovered d=1'b0 for 1081/1090 V07 FFs.
+
+class TestFfDSource:
+    def test_absent_defaults_to_lut_f(self):
+        assert ff_d_source({}, 0) == "F"
+        assert ff_d_source({}, 1) == "F"
+
+    def test_explicit_sd1_is_lut_f(self):
+        assert ff_d_source({"REG0.SD": "1"}, 0) == "F"
+
+    def test_explicit_sd0_is_fabric_m(self):
+        assert ff_d_source({"REG0.SD": "0"}, 0) == "M"
+        assert ff_d_source({"REG1.SD": "0"}, 1) == "M"
+
+    def test_regs_independent(self):
+        senum = {"REG0.SD": "0"}   # REG1 unset → DI
+        assert ff_d_source(senum, 0) == "M"
+        assert ff_d_source(senum, 1) == "F"
 
 
 # ── DSU ───────────────────────────────────────────────────────────────────────

@@ -840,15 +840,27 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         #
         # Ghost-D FFs: prjtrellis also emits OFX{n}→DI{n} config arcs for EBR
         # OUTREG bypass paths.  These give the FF a real D-net name (not '1'b0'),
-        # but the net has no LUT or FF driver — OFX is hardwired from EBR DOB via
-        # a non-configurable arc invisible to the config arc model.  Detect them
-        # by finding FFs whose D-net appears in no LUT Z output and no FF Q output.
+        # but the net has no driver anywhere — OFX is hardwired from EBR DOB via
+        # a non-configurable arc invisible to the config arc model.  A net is
+        # ghost only if NOTHING drives it: not a LUT Z, not an FF Q, not any
+        # net_fanout driver already stitched (EBR reads, EFB, IOLOGIC), and
+        # not an input pad net.  (Since the REG.SD fix most FF D-nets are
+        # ordinary fabric-routed nets with real drivers — testing only
+        # LUT-Z/FF-Q membership would misclassify all of those as ghosts.)
         _lut_z_nets = {lt["z"] for lt in design.luts if lt["z"]}
         _ff_q_nets  = {ff["q"] for ff in design.ffs}
+        _driven_nets = {row[0] for row in conn.execute(
+            select(schema.net_fanout.c.out_net.distinct())
+            .where(schema.net_fanout.c.bitstream == bs_id))}
+        _pad_in_nets = {row[0] for row in conn.execute(
+            select(schema.pad_map.c.net_in.distinct())
+            .where(schema.pad_map.c.bitstream == bs_id)
+            .where(schema.pad_map.c.net_in.isnot(None)))}
         _ghost_d_nets: set = set()
         for _ff in design.ffs:
             _d = _ff["d"]
-            if _d.startswith("1'b") or _d in _lut_z_nets or _d in _ff_q_nets:
+            if (_d.startswith("1'b") or _d in _lut_z_nets or _d in _ff_q_nets
+                    or _d in _driven_nets or _d in _pad_in_nets):
                 continue
             _ghost_d_nets.add(_d)
         if _ghost_d_nets:
@@ -1009,17 +1021,16 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
               f"{len(boundary_nets)} pad boundary nets inserted")
 
         # ── input-pad fanout gap ──────────────────────────────────────────────
-        # Some input pads have net_in set but zero net_fanout entries.  The count
+        # Input pads with net_in set but zero net_fanout entries.  The count
         # below tracks this residual so it is visible in the load summary.
         #
-        # Investigation (V07): some right-edge PIOA pads route via E3_H06E0003
-        # (canonical at col=18) to a right-edge H06 bus stub that has zero
-        # downstream arcs in this bitstream.  The signal is stranded at col=18
-        # with no fabric pickup — these are likely unused ADC channels (the PnR
-        # routed them to a bus stub, not to any logic).  Top-edge pads at row=0
-        # have their arcs in the CIB_PIC_T row=1 tile, which IS parsed; their
-        # routing also dead-ends at H06 stubs with no downstream connections.
-        # Filed as GH #76 for tracking.
+        # History (GH #76): the gap was once blamed on unused ADC channels —
+        # disproven by cross-loading V02/V4/V07 (scripts/compare_pads.py):
+        # every ADC pad reaches logic in at least one firmware, so any pad
+        # stranded in one bitstream is a lifter modelling gap.  Two real
+        # causes were found and fixed: the H06E canonical anchoring at
+        # right-edge tiles (gkey()), and the REG.SD polarity inversion that
+        # dropped every fabric-routed FF D input (ff_d_source()).
         nf = schema.net_fanout
         pm = schema.pad_map
         unstitched_count = conn.execute(
@@ -1036,7 +1047,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                 .exists()
             )
         ).scalar()
-        print(f"  Input-pad H06E gap: {unstitched_count} pads with no net_fanout (H06E routing not modelled)")
+        print(f"  Input-pad fanout gap: {unstitched_count} pads with no net_fanout")
 
         # ── clock_domains ─────────────────────────────────────────────────────
         clk_ffs = [{"bitstream": bs_id, "clk_net": ff["clk"], "ff_cell": ff["name"]}
