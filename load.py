@@ -567,8 +567,28 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         missing_efb = REQUIRED_EFB_PORTS - set(found_efb)
         if missing_efb and has_cfg2 and not fuzz:
             die(f"Missing required EFB ports: {sorted(missing_efb)}")
-        efb_output_count = sum(1 for p in found_efb if p.startswith("JWB") or p.startswith("JSPI") or p.startswith("JTC") or p.startswith("JPLL"))
+        # EFB output prefix patterns: ports that drive fabric (not JTAG inputs).
+        _EFB_OUT_PREFIXES = ("JWB", "JSPI", "JTC", "JPLL", "JI2C", "CFGWAKE", "CFGSTDBY")
+        efb_output_count = sum(1 for p in found_efb if p.startswith(_EFB_OUT_PREFIXES))
         print(f"  EFB ports: {len(found_efb)} total ({efb_output_count} EFB outputs resolved from fixed conns)")
+
+        # Stitch EFB output nets into net_fanout so reach.py can traverse them.
+        # Each EFB output is modelled as: "EFB" source net → EFB cell → out_net.
+        # This makes EFB-driven nets visible in reverse reachability queries.
+        efb_fanout_rows = []
+        for port, net in found_efb.items():
+            if port.startswith(_EFB_OUT_PREFIXES):
+                efb_fanout_rows.append({
+                    "bitstream": bs_id, "net": "EFB", "cell_type": "EFB",
+                    "cell": "EFB", "pin": port, "out_net": net,
+                })
+        if efb_fanout_rows:
+            conn.execute(_insert_or_ignore(schema.net_fanout), efb_fanout_rows)
+            # "EFB" must exist as a net so BFS can seed from it.
+            conn.execute(_insert_or_ignore(schema.nets).values(
+                bitstream=bs_id, name="EFB",
+            ))
+            print(f"  {len(efb_fanout_rows)} EFB→fabric net_fanout entries")
 
         # ── ebr_ports ─────────────────────────────────────────────────────────
         JA = re.compile(r'^J[AB]\d+$'); JC = re.compile(r'^J[CD]\d+$')
