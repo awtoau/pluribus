@@ -618,6 +618,16 @@ def emit_luts(data: dict) -> list[str]:
     const_net_map = data["const_net_map"]
     cell_name_map = data["cell_name_map"]
 
+    # Input pads are declared as `input wire PORT_NAME` in the module header.
+    # Pad loopback arcs can make a LUT output net share the same DSU root as an
+    # input pad net, causing z_name to resolve to PORT_NAME.  Emitting
+    # `assign PORT_NAME = ...` for those creates a conflicting driver.
+    input_port_names: set[str] = {
+        _sanitise(label)
+        for _pin, label, direction, _ni, _no in data["pads"]
+        if direction == "in" and label
+    }
+
     def rn(net):
         return resolve_net(net, net_name_map, const_net_map)
 
@@ -661,6 +671,10 @@ def emit_luts(data: dict) -> list[str]:
         z_name    = rn(out_z)
         # Skip LUTs whose output is a power/ground net — can't assign to a constant
         if z_name in ("1'b0", "1'b1"):
+            continue
+
+        # Skip LUTs whose output net resolves to an input port name.
+        if z_name in input_port_names:
             continue
 
         # Skip duplicate drivers: a previous LUT already drives this net.
