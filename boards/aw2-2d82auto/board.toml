@@ -1,8 +1,12 @@
 # Pluribus board config — Hantek 2D82AUTO (LCMXO2-1200HC-4TG100C TQFP100)
 #
+# Every path below points OUT of pluribus, into the RE project that owns
+# the artefacts.  Pluribus is the generic engine and stores no board data;
+# this file is the one place the two meet.  See ../README.md.
+#
 # Usage:
-#   python3.14t load.py --board boards/aw2-2d82auto --label V07 \
-#       --config /path/to/FPGA_V07.bin.config
+#   python3 scripts/run_pipeline.py --board boards/aw2-2d82auto --all
+#   python3 scripts/run_pipeline.py --board boards/aw2-2d82auto --label V07
 
 [board]
 name    = "Hantek 2D82AUTO"
