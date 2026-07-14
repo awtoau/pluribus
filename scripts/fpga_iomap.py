@@ -4,10 +4,8 @@
 Produces the `.iomap.tsv` sidecar that load.py reads to map PIO sites to
 package pins (pin#, bank, function, direction, IO standard, conn class).
 
-Copied from awto-2000 debris/fpga/scripts/fpga_iomap.py and adapted for
-pluribus: imports from lifters/, pluribus tmp/ cache path, and a
-refuse-to-overwrite guard so it can never clobber an existing iomap
-sidecar (e.g. the v7/v4 ones in awto-2000).
+Refuses to overwrite an existing sidecar, so it cannot clobber an iomap
+that other work depends on.
 
 Inputs:
   - the named-cell config produced by scripts/trellis_unpack.py. PIO
@@ -42,18 +40,14 @@ from collections import defaultdict
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-# setdefault so lifters/machxo2_lift.py (which reads these itself) agrees.
-os.environ.setdefault(
-    "TRELLIS_DBROOT",
-    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/database")
-os.environ.setdefault(
-    "TRELLIS_BUILD",
-    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/libtrellis/build")
-DEVICE = os.environ.get("TRELLIS_DEVICE", "LCMXO2-1200")
-DBROOT = os.environ["TRELLIS_DBROOT"]
-BUILD_DIR = os.environ["TRELLIS_BUILD"]
+# Same env vars and defaults the lifter uses — no paths of our own.
+from lifters.machxo2_lift import (  # noqa: E402
+    DEF_BUILD_DIR, DEF_DBROOT, MachXO2Lift, _correct_pio_iostandard,
+)
 
-from lifters.machxo2_lift import MachXO2Lift, _correct_pio_iostandard  # noqa: E402
+DEVICE = os.environ.get("TRELLIS_DEVICE", "LCMXO2-1200")
+DBROOT = DEF_DBROOT
+BUILD_DIR = DEF_BUILD_DIR
 
 
 # `.tile <NAME>:<TYPE>` -- NAME:TYPE together is the Trellis tile name.

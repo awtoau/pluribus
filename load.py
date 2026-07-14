@@ -51,7 +51,12 @@ REQUIRED_EFB_PORTS = {"JTCK", "JTDI", "JUPDATE", "JRSTN", "JSHIFTDR", "JTDO"}
 
 def load_board_config(board_path):
     """Read boards/<name>/board.toml and return a dict with keys:
-    device, package, lifter, pins_tsv, nets_tsv (may be None).
+    device, package, lifter, pins_tsv, nets_tsv (may be None),
+    bitstreams — {label: {"config": path, "bin": path|None}} from the
+    optional [bitstreams.<label>] tables, and trellis — {"TRELLIS_BUILD":
+    path, "TRELLIS_DBROOT": path} from the optional [trellis] table.
+    Both are used by scripts/run_pipeline.py; pluribus hardcodes no
+    toolchain or board paths of its own.
     All file paths are resolved to absolute paths relative to board_path.
     """
     board_dir = Path(board_path).resolve()
@@ -64,12 +69,31 @@ def load_board_config(board_path):
     f = cfg.get("files", {})
     pins_rel = f.get("pins_tsv")
     nets_rel = f.get("nets_tsv")
+    bitstreams = {}
+    for label, spec in (cfg.get("bitstreams") or {}).items():
+        cfg_rel = spec.get("config")
+        if not cfg_rel:
+            die(f"board.toml [bitstreams.{label}] missing config")
+        bin_rel = spec.get("bin")
+        bitstreams[label] = {
+            "config": str((board_dir / cfg_rel).resolve()),
+            "bin":    str((board_dir / bin_rel).resolve()) if bin_rel else None,
+        }
+    t = cfg.get("trellis") or {}
+    trellis = {
+        env: str((board_dir / t[key]).resolve())
+        for key, env in (("build", "TRELLIS_BUILD"),
+                         ("dbroot", "TRELLIS_DBROOT"))
+        if t.get(key)
+    }
     return {
         "device":   b.get("device") or die("board.toml missing [board] device"),
         "package":  b.get("package") or die("board.toml missing [board] package"),
         "lifter":   b.get("lifter", "machxo2"),
         "pins_tsv": str(board_dir / pins_rel) if pins_rel else None,
         "nets_tsv": str(board_dir / nets_rel) if nets_rel else None,
+        "bitstreams": bitstreams,
+        "trellis": trellis,
     }
 
 
@@ -1024,13 +1048,15 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         # Input pads with net_in set but zero net_fanout entries.  The count
         # below tracks this residual so it is visible in the load summary.
         #
-        # History (GH #76): the gap was once blamed on unused ADC channels —
-        # disproven by cross-loading V02/V4/V07 (scripts/compare_pads.py):
-        # every ADC pad reaches logic in at least one firmware, so any pad
-        # stranded in one bitstream is a lifter modelling gap.  Two real
-        # causes were found and fixed: the H06E canonical anchoring at
-        # right-edge tiles (gkey()), and the REG.SD polarity inversion that
-        # dropped every fabric-routed FF D input (ff_d_source()).
+        # This counter is a lifter-defect metric, not a design fact.  A pad
+        # here was blamed on "unused peripheral channels" until several
+        # bitstreams for one board were cross-loaded (scripts/compare_pads.py):
+        # a pin stranded in one bitstream but stitched in another, on the
+        # same board, can only be a modelling gap.  Two causes have been
+        # found and fixed so far — H06E canonical anchoring at right-edge
+        # tiles (gkey()), and the REG.SD polarity inversion that dropped
+        # every fabric-routed FF D input (ff_d_source()).  What remains is
+        # documented in docs/pad-fanout-gap.md.
         nf = schema.net_fanout
         pm = schema.pad_map
         unstitched_count = conn.execute(

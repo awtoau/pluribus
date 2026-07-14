@@ -10,10 +10,8 @@ Usage:
   python3 scripts/compare_config.py \\
       ref.config nextpnr_out.config --tile-type PIC_T0 PIC_B0 PIC_L0 PIC_R0
 
-  # Compare V04 vs V07 full bitstreams
-  python3 scripts/compare_config.py \\
-      fpga/v4/DS1302_2019071801.bin.config \\
-      fpga/v7/FPGA_V07.bin.config
+  # Compare two full bitstreams (e.g. two firmware versions of one board)
+  python3 scripts/compare_config.py old.bin.config new.bin.config
 
   # Show only IOLOGIC enum differences (suppress arcs)
   python3 scripts/compare_config.py ref.config out.config --no-arcs

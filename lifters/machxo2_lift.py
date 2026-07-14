@@ -127,8 +127,10 @@ def ff_d_source(slice_enums, j):
 
     Getting this wrong is catastrophic and quiet: with the polarity
     inverted every FF resolves DI (which never appears in config arcs)
-    and the whole netlist recovers d=1'b0 — V07 showed 1081/1090
-    constant-D FFs before this was fixed.
+    and the whole netlist recovers d=1'b0 — a real bitstream came back
+    with 1081 of its 1090 FFs constant-D before this was fixed, while
+    every cell count, net name and LUT INIT still looked correct.
+    scripts/ffd_stats.py is the regression guard.
     """
     return "F" if slice_enums.get(f"REG{j}.SD", "1") == "1" else "M"
 

@@ -1,101 +1,127 @@
 # Running a new bitstream through the pipeline
 
-How to take a raw MachXO2 `.bin` you have never seen before and get it
-fully loaded, reachability-analysed and comparable against the other
-firmware versions.  Written after doing exactly this for the Hantek V2
-bitstream (2026-07-14); the V2 paths below are a real worked example.
+How to take a raw vendor `.bin` you have never seen before and get it
+unpacked, loaded, reachability-analysed, and comparable against other
+bitstreams for the same board.
 
-## TL;DR — one command per bitstream
+## Set up the board once
 
-```sh
-python3 scripts/run_pipeline.py --label V02 \
-    --bin "/mnt/2tb/git/awto-2000/fpga/v2/DS1302_impl1(8)_V02.bin" \
-    --config tmp/v2/DS1302_V02.bin.config \
-    --pins /mnt/2tb/git/awto-2000/fpga/aw2/aw2-pins.tsv
+Everything board-specific lives in `boards/<name>/` — see
+[boards/README.md](../boards/README.md).  Pluribus itself stores no board
+data: `pins.tsv` / `nets.tsv` are symlinks into the RE project that owns
+them, and bitstream paths in `board.toml` point there too.
+
+```toml
+[board]
+name = "..."   ;  device = "LCMXO2-1200"  ;  package = "TQFP100"
+lifter = "machxo2"
+
+[files]
+pins_tsv = "pins.tsv"
+
+# Optional: declare the bitstreams you have, so run_pipeline can find
+# them by label.  `bin` is only needed when `config` doesn't exist yet.
+[bitstreams.<LABEL>]
+bin    = "../../../<re-project>/fpga/<ver>/<name>.bin"
+config = "../../tmp/<ver>/<name>.bin.config"
 ```
 
-`run_pipeline.py` chains every stage with the right interpreter and env
-vars, logs each stage to `tmp/pipeline_<label>_<stage>.log`, and stops
-on the first failure.  Already-unpacked bitstream → drop `--bin`.
-Already-loaded label → `--skip-load` (starts at reach).
+## Run it
 
-## The stages it runs
+```sh
+# one bitstream
+python3 scripts/run_pipeline.py --board boards/<name> --label <LABEL>
+
+# every bitstream the board declares
+python3 scripts/run_pipeline.py --board boards/<name> --all
+
+# already loaded — start at reach
+python3 scripts/run_pipeline.py --board boards/<name> --label <LABEL> --skip-load
+```
+
+Board-less form, if you have no `board.toml`:
+
+```sh
+python3 scripts/run_pipeline.py --label <LABEL> \
+    --bin path/to.bin --config path/to.bin.config --pins path/to/pins.tsv
+```
+
+`run_pipeline.py` chains every stage, logs each to
+`tmp/pipeline_<label>_<stage>.log`, and stops at the first failure.
+
+## The stages
 
 | stage  | script                      | interpreter | notes |
 |--------|-----------------------------|-------------|-------|
-| unpack | `scripts/trellis_unpack.py` | python3     | `.bin` → named-cell `.config` via pytrellis; only with `--bin` |
-| iomap  | `scripts/fpga_iomap.py`     | python3     | `.config` → `.config.iomap.tsv` sidecar (pin↔site map); only with `--bin` |
+| unpack | `scripts/trellis_unpack.py` | python3     | `.bin` → named-cell `.config`; runs only if the `.config` is absent |
+| iomap  | `scripts/fpga_iomap.py`     | python3     | `.config` → `.config.iomap.tsv` (pin ↔ site map); same condition |
 | load   | `load.py`                   | python3     | netlist recovery → DB rows for the label |
 | reach  | `reach.py`                  | **python3.14t** | NoGIL BFS workers |
 | reach2/3/4 | `reach{2,3,4}.py`       | python3     | derived analyses |
 | report | `report.py`                 | python3     | summary tables |
 
-Interpreter rules (CLAUDE.md): only `reach.py` needs python3.14t.
-**Do not run `load.py` under python3.14t** — sqlalchemy forces the GIL
-on and the subsequent pytrellis import segfaults.
+Only `reach.py` needs python3.14t.  **Do not run `load.py` under it** —
+sqlalchemy forces the GIL back on and the later pytrellis import
+segfaults.
 
 ## Environment
 
-`run_pipeline.py` sets these itself; for manual runs export:
+Trellis paths come from the same env vars the lifter uses
+(`lifters/machxo2_lift.py`), so set them however you already do:
 
 ```
-TRELLIS_BUILD=/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/libtrellis/build
-TRELLIS_DBROOT=/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/database
+TRELLIS_BUILD   libtrellis build dir containing pytrellis.so
+TRELLIS_DBROOT  prjtrellis database root
+TRELLIS_DEVICE  optional; default LCMXO2-1200
 ```
 
-Optional: `TRELLIS_DEVICE` (default `LCMXO2-1200`), `TRELLIS_PACKAGE`
-for the iomap stage (default `TQFP100` via `run_pipeline.py --package`;
-force it — best-fit package detection can drift to a bigger package).
+`--package` (or the board's `package`) pins `TRELLIS_PACKAGE` for the
+iomap stage.  Pin it: best-fit package detection can drift to a larger
+package than the physical part once more pads are recovered.
 
-## Safety rules
+## Safety
 
-- `/mnt/2tb/git/awto-2000/` is a **live RE project — read-only**.
-  Unpack outputs for new bitstreams go under pluribus `tmp/` (e.g.
-  `tmp/v2/`), never next to the source `.bin`.
-- `trellis_unpack.py` and `fpga_iomap.py` **refuse to overwrite** an
-  existing output file.  This is deliberate: it makes clobbering the
-  curated v4/v7 sidecars in awto-2000 impossible.  Delete the target
-  first if regeneration is intended.
-- The DB is per-label always-rebuild: loading label `V02` deletes and
-  reinserts only `V02` rows.  Other labels are untouched.
+- **The generators refuse to overwrite.**  `trellis_unpack.py` and
+  `fpga_iomap.py` both abort rather than replace an existing output.
+  Regenerating is therefore an explicit act: delete the file first.  This
+  is what makes it safe to point `board.toml` at a read-only RE project —
+  no pipeline run can clobber curated `.config` / `.iomap.tsv` sidecars.
+- Unpack outputs for bitstreams with no committed `.config` go under
+  pluribus `tmp/`, never next to the source `.bin`.
+- The DB is per-label always-rebuild: loading a label deletes and
+  reinserts only that label's rows.  Other labels are untouched.
 
 ## Verifying the result
 
-1. **Load log** (`tmp/pipeline_<label>_load.log`): expect
-   `45/45 pads resolved` and a low
-   `Input-pad fanout gap: N pads with no net_fanout` count.
-   Currently V07=3, V02=6, V4=6 — see [pad-fanout-gap.md](pad-fanout-gap.md)
-   for what those are (lifter bugs, not dead pins).
-2. **FF D-input health**: `python3 scripts/ffd_stats.py <config>` —
-   classifies every FF's D-net (LUT z / FF q / routed / const).
-   A large `const` count means D recovery is broken (exit 1 if >10%).
-   Reference point: V07 shows 409 LUT z / 345 FF q / 301 routed /
-   35 const after the REG.SD polarity fix; before the fix it was
-   1081/1090 const.
-3. **Cross-bitstream comparison**:
-   `python3 scripts/compare_pads.py V02 V4 V07` — per-pin direction and
-   stitch status across labels.  All three Hantek firmwares configure
-   the identical 45-pad set with identical directions; a pin that is
-   `NOFAN` in one firmware but `+fan` in another is a lifter gap, not a
-   dead pin (all 16 ADC data pins are live in every firmware).
-4. **Unstitched-pad diagnostics**: `scripts/diag_fanout_gap.py` and
-   `scripts/diag_unstitched.py` dump the DSU class of each stranded pad
-   net and which bel pins it touches.
+1. **Load log** (`tmp/pipeline_<label>_load.log`): expect all pads
+   resolved and a low `Input-pad fanout gap: N`.  That counter is a
+   lifter-defect metric — see [pad-fanout-gap.md](pad-fanout-gap.md).
+2. **FF D-input health**: `python3 scripts/ffd_stats.py <config>`
+   classifies every FF's D-net (LUT z / FF q / routed / const) and exits
+   non-zero if >10% come back constant.  This is the regression guard for
+   the REG.SD polarity bug, which silently flattened FF connectivity
+   while leaving every cell count and net name looking correct.
+3. **Cross-bitstream diff**: `python3 scripts/compare_pads.py LABEL...`
+   shows per-pin direction and stitch status across labels.  For one
+   board, a pin live in one bitstream and dead in another is a lifter
+   bug, never a design fact — and the union across bitstreams corroborates
+   the board's pin annotation.
+4. **Stranded pads**: `python3 scripts/diag_fanout_gap.py LABEL CONFIG`
+   dumps the DSU class of each and resolves the keys back to bel pins.
 
 ## Pitfalls learned the hard way
 
-- **REG.SD polarity** (fixed in `machxo2_lift.py`): Trellis PLC
-  bits.db defines SD value 1 as the zero-state (enum omitted from the
-  textcfg) meaning DI (FF packed with its LUT); explicit `SD 0` means
-  the FF's D comes from the fabric-routed **M** wire.  nextpnr
-  machxo2 `pack.cc` is the ground truth for the forward direction.
-- The DI wire never appears in config arcs (LUT F→DI is an internal
-  fixed path), so SD=1 FFs must resolve their D straight to the paired
+- **REG.SD polarity** (fixed; see `ff_d_source()`): Trellis PLC bits.db
+  makes SD value 1 the zero-state — enum *omitted* from the textcfg —
+  meaning DI, i.e. the FF is packed with its slice LUT.  An explicit
+  `SD 0` means the fabric-routed **M** wire.  nextpnr's machxo2
+  `pack.cc` is the ground truth for the forward direction.
+- The DI wire never appears in a config arc (LUT F→DI is an internal
+  fixed path), so an SD=1 FF must resolve its D straight to the paired
   LUT's F key.
-- Diamond-built Hantek bitstreams are compressed; `trellis_unpack.py`
-  wraps the raw config with an `FF 00` header before `read_bit` and
-  relies on `deserialise_chip_forced` (compressed MachXO2 configs carry
-  no IDCODE).
-- Right-edge/top-edge pads route via `E{N}_H06E*` bus names whose
-  canonical must anchor at the pad's own column (see `gkey()` in
-  `machxo2_lift.py`); this was the earlier H06E gap fix.
+- Vendor bitstreams are often compressed: `trellis_unpack.py` wraps the
+  raw config with an `FF 00` header before `read_bit` and relies on
+  `deserialise_chip_forced` (a compressed MachXO2 config carries no
+  IDCODE or frame count).
+- Right/top-edge pads route via `E{N}_H06E*`-style bus names whose
+  canonical must anchor at the pad's own column — see `gkey()`.

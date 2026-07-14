@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Unpack a MachXO2 vendor bitstream into named cells using pytrellis.
+"""Unpack a vendor bitstream into named cells using pytrellis.
 
-Bitstream -> named-cell recovery: read the raw .bin against Project
-Trellis's MachXO2 database and emit the ChipConfig text form (tiles,
-routing arcs, LUT INITs, IO enums) -- the input format for load.py.
+Bitstream -> named-cell recovery: read the raw .bin against the Project
+Trellis database and emit the ChipConfig text form (tiles, routing arcs,
+LUT INITs, IO enums) -- the input format for load.py.
 
-Copied from awto-2000 debris/fpga/scripts/trellis_unpack.py and adapted
-for pluribus (TRELLIS_BUILD/TRELLIS_DBROOT env vars, refuse-to-overwrite
-guard so a careless invocation can never clobber an existing .config).
+Refuses to overwrite an existing output, so a careless invocation can
+never clobber a .config that other work depends on.
 
 Usage: trellis_unpack.py BIN [OUT.config]
 Env:   TRELLIS_BUILD  = libtrellis build dir containing pytrellis.so
@@ -19,12 +18,13 @@ import os
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.environ.get(
-    "TRELLIS_BUILD",
-    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/libtrellis/build"))
-DBROOT = os.environ.get(
-    "TRELLIS_DBROOT",
-    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/database")
+sys.path.insert(0, REPO)
+
+# Same env vars and defaults the lifter uses — no paths of our own.
+from lifters.machxo2_lift import DEF_BUILD_DIR, DEF_DBROOT  # noqa: E402
+
+sys.path.insert(0, DEF_BUILD_DIR)
+DBROOT = DEF_DBROOT
 
 
 def main() -> int:

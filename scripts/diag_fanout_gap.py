@@ -8,11 +8,14 @@ bel pin it lands on.  A key that resolves to a SLICE FF's M or a LUT's
 A/B/C/D means the signal DOES reach logic and the lifter dropped it; a
 class with only routing wires means the routing genuinely dead-ends.
 
+See docs/pad-fanout-gap.md for the two failure modes this distinguishes
+and what to do about each.
+
 Usage: diag_fanout_gap.py LABEL CONFIG
-   e.g. diag_fanout_gap.py V07 /mnt/2tb/git/awto-2000/fpga/v7/FPGA_V07.bin.config
+Env:   TRELLIS_BUILD / TRELLIS_DBROOT / TRELLIS_DEVICE (as for the lifter)
 
 History: this script found the REG.SD polarity bug (fixed 2026-07-14).
-Pin75/ADC_D0A's class contained SLICEB.FF1.M at R3C18 — the FF's
+A stranded input pad's DSU class contained a SLICE FF's M pin — the FF's
 fabric-routed data input — while recover_netlist() was resolving DI
 instead, dropping every M-path net in the design.
 """
@@ -22,12 +25,6 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-os.environ.setdefault(
-    "TRELLIS_BUILD",
-    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/libtrellis/build")
-os.environ.setdefault(
-    "TRELLIS_DBROOT",
-    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/database")
 
 import db          # noqa: E402
 import schema      # noqa: E402

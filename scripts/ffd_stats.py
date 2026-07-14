@@ -9,12 +9,14 @@ For every FF, its D-net should be one of:
             reads, wide-mux outputs, ...)
   const   — genuinely tied off (should be RARE)
 
-A high const count means D-input recovery is broken.  Before the SD
-polarity fix (2026-07-14) V07 showed 1081/1090 const — the SD enum was
-read with inverted polarity and wrong default, so no FF ever resolved
-its M wire and DI never resolves via config arcs at all.
+A high const count means D-input recovery is broken.  Before the REG.SD
+polarity fix (2026-07-14) a real 1090-FF bitstream recovered 1081 of them
+with a constant D: the SD enum was read with inverted polarity and the
+wrong default, so no FF ever resolved its M wire, and DI never resolves
+through config arcs at all.  See ff_d_source() in lifters/machxo2_lift.py.
 
-Usage: ffd_stats.py [CONFIG]   (default: the V07 bitstream)
+Usage: ffd_stats.py CONFIG
+Env:   TRELLIS_BUILD / TRELLIS_DBROOT / TRELLIS_DEVICE (as for the lifter)
 """
 
 import os
@@ -22,20 +24,14 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-os.environ.setdefault(
-    "TRELLIS_BUILD",
-    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/libtrellis/build")
-os.environ.setdefault(
-    "TRELLIS_DBROOT",
-    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/database")
 
 from lifters.machxo2_lift import MachXO2Lift  # noqa: E402
 
-DEFAULT_CONFIG = "/mnt/2tb/git/awto-2000/fpga/v7/FPGA_V07.bin.config"
-
 
 def main():
-    cfg = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CONFIG
+    if len(sys.argv) < 2:
+        sys.exit("usage: ffd_stats.py CONFIG")
+    cfg = sys.argv[1]
     device = os.environ.get("TRELLIS_DEVICE", "LCMXO2-1200")
 
     lift = MachXO2Lift(device)

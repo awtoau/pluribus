@@ -10,9 +10,36 @@ device  = "LCMXO2-1200"
 package = "TQFP100"
 lifter  = "machxo2"
 
+# Where the RE project that owns this board keeps its prjtrellis build.
+# Optional: scripts/run_pipeline.py exports these as TRELLIS_BUILD /
+# TRELLIS_DBROOT when they are not already set in the environment, so a
+# --board run is self-sufficient.  Paths relative to this board.toml.
+# Pluribus hardcodes no toolchain path of its own.
+[trellis]
+build  = "../../../awto-2000/debris/tmp/prjtrellis/libtrellis/build"
+dbroot = "../../../awto-2000/debris/tmp/prjtrellis/database"
+
 # Paths relative to this board.toml file.
 # pins_tsv: required — pad location + direction annotations.
 # nets_tsv: optional — human net name annotations.
 [files]
 pins_tsv = "pins.tsv"
 nets_tsv = "nets.tsv"
+
+# Known bitstreams for this board, keyed by the label they load under.
+#   config — the named-cell .config (scripts/trellis_unpack.py output)
+#   bin    — optional raw vendor bitstream; run_pipeline.py unpacks it to
+#            `config` when that file does not exist yet.
+# Paths are relative to this board.toml.  As with pins.tsv/nets.tsv, they
+# point into the RE project that owns the artefacts — pluribus itself
+# stores no board data.  Run them all with:
+#   python3 scripts/run_pipeline.py --board boards/aw2-2d82auto --all
+[bitstreams.V02]
+bin    = "../../../awto-2000/fpga/v2/DS1302_impl1(8)_V02.bin"
+config = "../../tmp/v2/DS1302_V02.bin.config"
+
+[bitstreams.V4]
+config = "../../../awto-2000/fpga/v4/DS1302_2019071801.bin.config"
+
+[bitstreams.V07]
+config = "../../../awto-2000/fpga/v7/FPGA_V07.bin.config"

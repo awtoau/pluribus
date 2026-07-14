@@ -9,9 +9,9 @@ Runs Yosys on a recovered .v file and categorises warnings:
 Exit 0 if only expected warnings; exit 1 on unexpected issues.
 
 Usage:
-  python3 scripts/check_verilog.py tmp/V07.v
-  python3 scripts/check_verilog.py tmp/V07.v --top top --strict
-  python3 scripts/check_verilog.py tmp/V07.v --out tmp/check_V07.log
+  python3 scripts/check_verilog.py tmp/<label>.v
+  python3 scripts/check_verilog.py tmp/<label>.v --top top --strict
+  python3 scripts/check_verilog.py tmp/<label>.v --out tmp/check_<label>.log
 """
 
 import argparse
@@ -31,9 +31,9 @@ _EXPECTED_PATTERNS = [
 ]
 
 # Conflict warnings on pad nets are expected due to pad loopback arcs
-# (e.g. ADC_D0A simultaneously an input pad and an inverter output).
+# (a pad net can be simultaneously an input pad and an inverter output).
 # Yosys names these two ways:
-#   escaped identifier  → "multiple conflicting drivers for top.\ADC_D0A:"
+#   escaped identifier  → "multiple conflicting drivers for top.\PAD_NET:"
 #   internal $cell name → "multiple conflicting drivers for top.$not$…_Y:"
 # Match both with a broad capture of everything after "for ".
 _CONFLICT_PAT = re.compile(r"multiple conflicting drivers for (.+)")
