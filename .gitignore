@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
+tmp/
+.vscode/
 *.egg-info/
 dist/
 build/
