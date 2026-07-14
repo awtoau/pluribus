@@ -31,12 +31,18 @@ from sqlalchemy import text
 def _sanitise(raw: str) -> str:
     """Return a valid Verilog identifier from an arbitrary raw name.
 
-    Replaces apostrophes and spaces with underscores.  Prepends 'n_' if the
-    first character is a digit (Verilog identifiers must start with a letter
-    or underscore).
+    Replaces non-identifier characters with underscores.  Prepends 'n_' if
+    the first character is a digit (Verilog identifiers must start with a
+    letter or underscore).
     """
-    ident = re.sub(r"['\s]", "_", raw)
-    if ident and ident[0].isdigit():
+    # Replace any character not legal in a Verilog identifier with underscore.
+    # Legal: [a-zA-Z0-9_$].  This covers brackets, whitespace, quotes, etc.
+    ident = re.sub(r"[^a-zA-Z0-9_$]", "_", raw)
+    # Strip trailing underscores introduced by e.g. "foo[0]" → "foo_0_"
+    ident = ident.rstrip("_")
+    if not ident:
+        ident = "_"
+    elif ident[0].isdigit():
         ident = "n_" + ident
     return ident
 
@@ -71,27 +77,33 @@ def resolve_net(net: str | None, net_name_map: dict, const_net_map: dict) -> str
     return _sanitise(net)
 
 
+_SYNTHETIC_NAME_RE = re.compile(r"^reg_r\d+c\d+")
+
+
 def resolve_cell(cell: str, cell_name_map: dict,
                  cell_clkname_map: dict | None = None) -> str:
     """Return a Verilog identifier for *cell*, preferring the human name.
 
     Fallback order:
-    1. TSV-assigned human name from cell_name_map
-    2. Clock-derived name: <short_clk>__<tile_slice>  (if cell_clkname_map provided)
-    3. Synthetic cell identifier (reg_rXcY_slice)
+    1. TSV human name that is NOT a synthetic grid-position name (reg_rNcN*)
+    2. Clock-derived name: <short_clk>__<tile_slice>  (more informative than grid)
+    3. Synthetic TSV name (reg_rNcN*) — last resort when no clock name is available
+    4. Raw cell identifier
     """
     human = cell_name_map.get(cell)
-    if human:
+    # Use human name only when it's not a synthetic reg_rNcN grid-position name
+    if human and not _SYNTHETIC_NAME_RE.match(human):
         return _sanitise(human)
     if cell_clkname_map:
         clk = cell_clkname_map.get(cell)
         if clk:
-            # Strip clk_ prefix for brevity: clk_h2_spi_ser_a → spi_ser_a
+            # Strip clk_hN_ prefix for brevity: clk_h2_spi_ser_a → spi_ser_a
             short = re.sub(r"^clk_h\d+_", "", clk)
             # cell is e.g. ff_r10c11_A0 → take the tile+slice suffix
             suffix = re.sub(r"^ff_", "", cell)   # r10c11_A0
             return _sanitise(f"{short}__{suffix}")
-    return _sanitise(cell)
+    # Fall back to synthetic name or raw cell id
+    return _sanitise(human if human else cell)
 
 
 # ---------------------------------------------------------------------------
@@ -116,14 +128,39 @@ def load_data(conn, bs_id: int) -> dict:
     # EFB ports: (port_name, net)
     efb_ports = q("SELECT port_name, net FROM efb_ports WHERE bitstream=:bs_id ORDER BY port_name")
 
+    # EBR buses: (block, bus_role, bit_index, port, net)
+    ebr_buses = q("SELECT block, bus_role, bit_index, port, net FROM ebr_buses WHERE bitstream=:bs_id ORDER BY block, bus_role, bit_index")
+    # EBR ports: (block, port, role, net)
+    ebr_ctrl  = q("SELECT block, port, role, net FROM ebr_ports WHERE bitstream=:bs_id ORDER BY block, port")
+
     # Net names: net → (name, description)
     net_name_rows = q("SELECT net, name, description FROM net_names WHERE bitstream=:bs_id")
     net_name_map = {net: name for net, name, _desc in net_name_rows}
     net_desc_map = {net: desc for net, _name, desc in net_name_rows if desc}
+    # Deduplicate: multiple nets can share a name (e.g. both K-slices of a 1-input LUT).
+    # Append the net ID to disambiguate so wire declarations and references stay consistent.
+    from collections import Counter as _NameCounter
+    _name_counts = _NameCounter(net_name_map.values())
+    _name_seen: dict[str, int] = {}
+    for net in list(net_name_map):
+        base = net_name_map[net]
+        if _name_counts[base] > 1:
+            idx = _name_seen.get(base, 0)
+            _name_seen[base] = idx + 1
+            net_name_map[net] = f"{base}_{net}"
 
     # Cell names: cell → (name, description)
     cell_name_rows = q("SELECT cell, name, description FROM cell_names WHERE bitstream=:bs_id")
     cell_name_map  = {cell: name for cell, name, _desc in cell_name_rows}
+    # Deduplicate cell names the same way as net names
+    _cell_name_counts = _NameCounter(cell_name_map.values())
+    _cell_name_seen: dict[str, int] = {}
+    for cell in list(cell_name_map):
+        base = cell_name_map[cell]
+        if _cell_name_counts[base] > 1:
+            idx = _cell_name_seen.get(base, 0)
+            _cell_name_seen[base] = idx + 1
+            cell_name_map[cell] = f"{base}_{cell}"
 
     # Const nets: net → const_value ('0' or '1')
     const_net_rows = q("SELECT net, const_value FROM const_nets WHERE bitstream=:bs_id")
@@ -149,12 +186,12 @@ def load_data(conn, bs_id: int) -> dict:
     # Bitstream label / device / package
     meta = q("SELECT label, device, package FROM bitstreams WHERE id=:bs_id")[0]
 
-    # Build clock-derived cell name map: cell → resolved clock name (for unnamed FFs)
-    # Used by emit_ffs and emit_wires to give unnamed FF regs a clock-prefixed name.
-    # Only populated when the clock net itself has a human name (not a bare nNNNN).
+    # Build clock-derived cell name map: cell → resolved clock name.
+    # Populated for ALL FFs (not just unnamed) when the clock has a human name.
+    # Used by resolve_cell to prefer clock-domain names over synthetic reg_rNcN names.
     cell_clkname_map: dict[str, str] = {}
     for cell, clk, _ce, _d, _q, _lsr in ffs:
-        if clk and cell not in cell_name_map:
+        if clk:
             clk_human = net_name_map.get(clk)
             if clk_human:
                 cell_clkname_map[cell] = clk_human
@@ -162,16 +199,63 @@ def load_data(conn, bs_id: int) -> dict:
     # Build FF Q→cell map for wire naming: net → cell (so emit_wires can name Q wires)
     ff_q_cell_map: dict[str, str] = {q: cell for cell, _clk, _ce, _d, q, _lsr in ffs if q}
 
+    # Build FF Q wire name map: cell → Verilog identifier that downstream logic uses to read
+    # the FF's Q output.  This is the Q net's human name when available, otherwise derived
+    # from the cell's human name + "_q".  emit_ffs uses this as the reg identifier so that
+    # the reg name and the wire name (used by LUT input resolution) always match.
+    ff_q_wire_map: dict[str, str] = {}
+    for cell, _clk, _ce, _d, q, _lsr in ffs:
+        if q is None:
+            continue
+        q_human = net_name_map.get(q)
+        if q_human:
+            ff_q_wire_map[cell] = _sanitise(q_human)
+        elif cell in cell_name_map:
+            ff_q_wire_map[cell] = _sanitise(f"{cell_name_map[cell]}_q")
+
+    # Module port names (sanitised pad labels) — reg declarations must avoid these names
+    # because ports are declared as wires in the module header.
+    port_names: set[str] = {
+        _sanitise(label)
+        for _pin, label, direction, _ni, _no in pads
+        if direction in ("in", "out", "bidir") and label
+    }
+
+    # Q wire names that are ALSO driven by a LUT continuous assign.
+    # Adding `assign q_wire = reg;` for these would create a multi-driver conflict,
+    # so emit_ffs must skip connect assigns for them.
+    lut_z_nets: set[str] = {z for _cell, _init, _a, _b, _c, _d, z, _fn in luts if z}
+    # Resolved LUT output identifiers: used by emit_ebr to avoid double-assigning
+    # nets that already have a LUT driver (EBR dout bits routed through buffering LUTs).
+    lut_driven_net_ids: set[str] = {resolve_net(z, net_name_map, const_net_map)
+                                     for z in lut_z_nets
+                                     if z is not None}
+    # FF Q-wire identifiers that emit_ffs will assign: used by emit_ebr to skip
+    # EBR dout assigns when the target net is already a FF Q output wire.
+    ff_q_all_wire_ids: set[str] = set(ff_q_wire_map.values())
+    dual_driven_q_wires: set[str] = {
+        ff_q_wire_map[cell]
+        for cell, _clk, _ce, _d, q, _lsr in ffs
+        if q and q in lut_z_nets and cell in ff_q_wire_map
+    }
+
     return {
         "ffs":              ffs,
         "luts":             luts,
         "pads":             pads,
         "efb_ports":        efb_ports,
+        "ebr_buses":        ebr_buses,
+        "ebr_ctrl":         ebr_ctrl,
         "net_name_map":     net_name_map,
         "net_desc_map":     net_desc_map,
         "cell_name_map":    cell_name_map,
         "cell_clkname_map": cell_clkname_map,
         "ff_q_cell_map":    ff_q_cell_map,
+        "ff_q_wire_map":        ff_q_wire_map,
+        "port_names":           port_names,
+        "dual_driven_q_wires":  dual_driven_q_wires,
+        "lut_driven_net_ids":   lut_driven_net_ids,
+        "ff_q_all_wire_ids":    ff_q_all_wire_ids,
         "const_net_map":    const_net_map,
         "net_stats_map":    net_stats_map,
         "clock_domains":    clock_domains,
@@ -242,16 +326,24 @@ def emit_ports(data: dict, top_name: str) -> list[str]:
 
     lines = [f"module {top_name} ("]
 
-    # Resolved ports
+    # Resolved ports — track seen names to de-dup blank labels (e.g. multiple pins named "_")
     if resolved:
         lines.append(f"    // Physical pads — resolved ({len(resolved)})")
+    seen_port_names: set[str] = set()
     for i, (pin, label, direction, net_in, net_out) in enumerate(resolved):
         fabric_net = net_in if direction == "in" else net_out
         if direction == "bidir":
             # For bidir we show both; pick net_in if available, else net_out
             fabric_net = net_in or net_out
         direction_kw = {"in": "input  wire", "out": "output wire", "bidir": "inout  wire"}[direction]
-        port_name = _sanitise(label)
+        base_name = _sanitise(label)
+        # Unknown-label pins sanitise to bare "_" — always use pin<N> so they're unique
+        # and don't shadow internal wires.  Also handle any accidental name collision.
+        if base_name == "_" or base_name in seen_port_names:
+            port_name = f"pin{pin}"
+        else:
+            port_name = base_name
+        seen_port_names.add(port_name)
         is_last = (i == len(resolved) - 1) and not unresolved
         comma = "" if is_last else ","
         lines.append(f"    {direction_kw} {port_name}{comma}   // pin {pin}  net {fabric_net}")
@@ -279,8 +371,13 @@ def emit_wires(data: dict) -> list[str]:
     pads              = data["pads"]
     all_nets          = data["all_nets"]
 
-    # Build set of port nets (already declared in module ports)
+    # Build set of port nets AND port name strings.
+    # Both must be excluded from wire declarations:
+    # - port_nets: catches pad boundary nets (pad_XX) and fabric nets recorded in pad_map
+    # - port_names: catches internal nets whose TSV name collides with a port identifier
+    #   (e.g. n2508 named "ADC_ENCA" where pad_map has net_in=None so n2508 escapes port_nets)
     port_nets: set[str] = set()
+    port_names: set[str] = set()
     for _pin, _label, direction, net_in, net_out in pads:
         if direction not in ("in", "out", "bidir"):
             continue
@@ -290,6 +387,7 @@ def emit_wires(data: dict) -> list[str]:
             port_nets.add(net_in)
         if net_out:
             port_nets.add(net_out)
+        port_names.add(_sanitise(_label))
 
     def _wire_name(net: str) -> str:
         """Resolve net to a Verilog wire identifier, with clock-derived fallback."""
@@ -297,20 +395,38 @@ def emit_wires(data: dict) -> list[str]:
             return _sanitise(net_name_map[net])
         if net in const_net_map:
             return _sanitise(net)
-        # Unnamed net — if it's the Q output of a FF whose clock is named, derive name
         src_cell = ff_q_cell_map.get(net)
         if src_cell:
-            # Try TSV cell name first
             cell_human = cell_name_map.get(src_cell)
             if cell_human:
                 return _sanitise(f"{cell_human}_q")
-            # Fall back to clock-derived: spi_ser_a__r10c11_A0_q
             clk_name = cell_clkname_map.get(src_cell)
             if clk_name:
                 short = re.sub(r"^clk_h\d+_", "", clk_name)
                 suffix = re.sub(r"^ff_", "", src_cell)
                 return _sanitise(f"{short}__{suffix}_q")
         return resolve_net(net, net_name_map, const_net_map)
+
+    # Split into groups
+    named_nets   = []
+    clkderiv_nets = []
+    unnamed_nets = []
+    const_nets   = []
+    for net in all_nets:
+        if net in port_nets:
+            continue
+        if _wire_name(net) in port_names:
+            continue
+        if net in const_net_map:
+            const_nets.append(net)
+        elif net in net_name_map:
+            named_nets.append(net)
+        elif net in ff_q_cell_map and (
+                cell_name_map.get(ff_q_cell_map[net]) or
+                cell_clkname_map.get(ff_q_cell_map[net])):
+            clkderiv_nets.append(net)
+        else:
+            unnamed_nets.append(net)
 
     def _wire_line(net: str) -> str:
         wire_name = _wire_name(net)
@@ -334,25 +450,6 @@ def emit_wires(data: dict) -> list[str]:
         comment = "  // " + " — ".join(comment_parts) if comment_parts else ""
         return f"    wire {wire_name};{comment}"
 
-    # Split into three groups, skip port nets and consts handled separately
-    named_nets   = []   # have TSV name
-    clkderiv_nets = []  # unnamed but Q of a FF with named clock → derived name
-    unnamed_nets = []   # truly unnamed
-    const_nets   = []
-    for net in all_nets:
-        if net in port_nets:
-            continue
-        if net in const_net_map:
-            const_nets.append(net)
-        elif net in net_name_map:
-            named_nets.append(net)
-        elif net in ff_q_cell_map and (
-                cell_name_map.get(ff_q_cell_map[net]) or
-                cell_clkname_map.get(ff_q_cell_map[net])):
-            clkderiv_nets.append(net)
-        else:
-            unnamed_nets.append(net)
-
     # Sort named by human name; clock-derived by derived name; unnamed numerically
     named_nets.sort(key=lambda n: net_name_map[n])
     clkderiv_nets.sort(key=lambda n: _wire_name(n))
@@ -367,6 +464,9 @@ def emit_wires(data: dict) -> list[str]:
         f"    // {len(named_nets)} named  {len(clkderiv_nets)} clock-derived"
         f"  {len(unnamed_nets)} unnamed  {len(const_nets)} const",
     ]
+
+    # NC (not-connected) sentinel — LUT inputs left unconnected are tied to GND.
+    lines.append("    wire NC = 1'b0;  // unconnected LUT inputs — tied to GND in MachXO2")
 
     if const_nets:
         lines.append("    // Constants")
@@ -420,26 +520,91 @@ def emit_efb_comment(data: dict) -> list[str]:
     return lines
 
 
-def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str) -> list[str]:
-    """Emit a 4-bit case expression for a LUT with no symbolic fn.
+def _simplify_lut(init: str, a: str, b: str, c: str, d: str) -> str | None:
+    """Reduce a 4-input LUT to a direct Verilog operator expression where possible.
 
-    init is 16 chars of '0'/'1', LSB-first (index 0 = a=0,b=0,c=0,d=0).
-    We reverse it to get Verilog's MSB-first bit-select form.
+    NC and 1'b0 inputs are treated as constant 0; 1'b1 inputs as constant 1.
+    Returns a Verilog expression string for the output, or None when the
+    function needs 3+ live inputs (too complex to name in a single expression).
+
+    init: 16-char LSB-first truth table (index i = a + 2b + 4c + 8d).
     """
-    # Collect which inputs are actually connected
-    connected_inputs = []
-    for port_name, net_expr in [("d", d), ("c", c), ("b", b), ("a", a)]:
-        if net_expr not in ("NC", "1'b0", "1'b1"):
-            connected_inputs.append(net_expr)
-        else:
-            connected_inputs.append(net_expr)
+    ZERO = {"NC", "1'b0"}
+    ONE  = {"1'b1"}
 
-    # Reversed init for Verilog bit-indexing (MSB-first)
+    ports  = [(0, a), (1, b), (2, c), (3, d)]
+    live   = [(pos, sig) for pos, sig in ports if sig not in ZERO and sig not in ONE]
+    fixed1 = [pos for pos, sig in ports if sig in ONE]
+
+    if len(live) > 2:
+        return None
+
+    # Effective truth table for the live inputs only (indexed by bit position
+    # within live[], bit 0 = live[0]).  Fixed inputs contribute a constant
+    # offset into the full 16-entry init string.
+    const_idx = sum(1 << pos for pos in fixed1)
+    eff = []
+    for i in range(1 << len(live)):
+        idx = const_idx
+        for bit, (pos, _) in enumerate(live):
+            if (i >> bit) & 1:
+                idx |= (1 << pos)
+        eff.append(init[idx])
+    tt = ''.join(eff)
+
+    def p(s: str) -> str:
+        return f'({s})' if ' ' in s else s
+
+    if len(live) == 0:
+        return f"1'b{tt[0]}"
+
+    if len(live) == 1:
+        x = live[0][1]
+        return {'01': x, '10': f'~{x}'}.get(tt)
+
+    x, y = live[0][1], live[1][1]
+    px, py = p(x), p(y)
+    TABLE = {
+        '0000': "1'b0",   '1111': "1'b1",
+        '0101': x,         '1010': f'~{x}',
+        '0011': y,         '1100': f'~{y}',
+        '0001': f'{px} & {py}',     '1110': f'~({px} & {py})',
+        '0111': f'{px} | {py}',     '1000': f'~({px} | {py})',
+        '0110': f'{px} ^ {py}',     '1001': f'~({px} ^ {py})',
+        '0010': f'~{px} & {py}',    '1011': f'~{px} | {py}',
+        '0100': f'{px} & ~{py}',    '1101': f'{px} | ~{py}',
+    }
+    return TABLE.get(tt)
+
+
+def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str, cell_name: str = "") -> list[str]:
+    """Emit an assign for a LUT with no structured fn tag.
+
+    First tries _simplify_lut() — for LUTs with ≤2 live inputs this emits a
+    direct operator expression (x ^ y, x & y, etc.) instead of a localparam.
+    Falls back to a localparam bit-select for more complex truth tables.
+
+    init: 16-char LSB-first truth table (index 0 = a=0,b=0,c=0,d=0).
+    cell_name: human cell name to use for the localparam identifier; empty
+               string tells us to use z_name instead (avoids _lut_lut_lut_…).
+    """
+    expr = _simplify_lut(init, a, b, c, d)
+    if expr is not None:
+        return [f"    assign {z_name} = {expr};"]
+
+    # Localparam bit-select fallback
     init_msb_first = init[::-1]
+    lp_base = cell_name if cell_name else z_name
+    sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', lp_base)
+    # Strip any leading lut_ repetitions to prevent _lut_lut_lut_… prefixes
+    sanitized = re.sub(r'^(lut_)+', '', sanitized) or sanitized
+    lp_name = f"_lut_{sanitized}"
     sel_expr = "{" + ", ".join([d, c, b, a]) + "}"
 
-    lines = [f"    assign {z_name} = (16'b{init_msb_first})[{sel_expr}];"]
-    return lines
+    return [
+        f"    localparam [15:0] {lp_name} = 16'b{init_msb_first};",
+        f"    assign {z_name} = {lp_name}[{sel_expr}];",
+    ]
 
 
 def emit_luts(data: dict) -> list[str]:
@@ -456,10 +621,37 @@ def emit_luts(data: dict) -> list[str]:
     def rn(net):
         return resolve_net(net, net_name_map, const_net_map)
 
+    # Convert symbolic function-call fn tags to Verilog operator templates.
+    # Applied BEFORE port-letter substitution so arguments are still single chars.
+    _FN_RULES = [
+        (re.compile(r"^(INV|NOT)\(([abcd])\)$"),     lambda m: f"~{m.group(2)}"),
+        (re.compile(r"^BUF\(([abcd])\)$"),            lambda m: m.group(1)),
+        (re.compile(r"^AND\(([abcd]),([abcd])\)$"),   lambda m: f"{m.group(1)} & {m.group(2)}"),
+        (re.compile(r"^OR\(([abcd]),([abcd])\)$"),    lambda m: f"{m.group(1)} | {m.group(2)}"),
+        (re.compile(r"^XOR\(([abcd]),([abcd])\)$"),   lambda m: f"{m.group(1)} ^ {m.group(2)}"),
+        (re.compile(r"^NAND\(([abcd]),([abcd])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
+        (re.compile(r"^NOR\(([abcd]),([abcd])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
+        (re.compile(r"^XNOR\(([abcd]),([abcd])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
+    ]
+    def _fn_to_vlog(fn: str) -> str:
+        for pat, xform in _FN_RULES:
+            m = pat.match(fn)
+            if m:
+                return xform(m)
+        return fn
+
     lines = [
         "    // ── LUTs ──────────────────────────────────────────────────────────────",
         f"    // {len(luts)} LUTs — structured fn → assign expression; COMBO → case bit-select",
     ]
+
+    # Track which output net identifiers have already been assigned.
+    # The lifter can extract DPRAM tiles as both a dpram_* cell AND a lut_* cell,
+    # both mapped to the same output net.  Emitting both creates conflicting
+    # continuous assigns; keep only the first (dpram_* sorts before lut_* in the
+    # DB ORDER BY cell, so the DPRAM interpretation wins — it has the correct
+    # address/data wiring while the lut_* entry reflects the raw init table).
+    _assigned_lut_outputs: set[str] = set()
 
     for cell, init, pa, pb, pc, pd, out_z, fn in luts:
         if out_z is None:
@@ -467,15 +659,24 @@ def emit_luts(data: dict) -> list[str]:
             continue
 
         z_name    = rn(out_z)
-        cell_name = resolve_cell(cell, cell_name_map)
+        # Skip LUTs whose output is a power/ground net — can't assign to a constant
+        if z_name in ("1'b0", "1'b1"):
+            continue
+
+        # Skip duplicate drivers: a previous LUT already drives this net.
+        if z_name in _assigned_lut_outputs:
+            continue
+        cell_human = cell_name_map.get(cell)          # None if no human annotation
+        cell_name  = resolve_cell(cell, cell_name_map)  # for display/comments
         a_expr = rn(pa)
         b_expr = rn(pb)
         c_expr = rn(pc)
         d_expr = rn(pd)
 
         if fn is None or fn.startswith("COMBO"):
-            # No symbolic simplification — emit bit-select case
-            lut_lines = _lut_init_to_case(init, z_name, a_expr, b_expr, c_expr, d_expr)
+            # Pass human name for localparam naming; empty → use z_name (avoids lut_lut_lut…)
+            lp_key = _sanitise(cell_human) if cell_human else ""
+            lut_lines = _lut_init_to_case(init, z_name, a_expr, b_expr, c_expr, d_expr, lp_key)
             lut_lines[-1] += f"  // {cell_name}  init={init}"
             lines.extend(lut_lines)
 
@@ -486,20 +687,23 @@ def emit_luts(data: dict) -> list[str]:
             lines.append(f"    assign {z_name} = 1'b1;  // {cell_name} CONST1")
 
         else:
-            # Structured fn: substitute port letters with resolved net names.
-            # Standalone port letter a/b/c/d → actual Verilog expression.
+            # Structured fn: convert function-call syntax to operators first,
+            # then substitute port letters with resolved net names.
+            fn_op = _fn_to_vlog(fn)
             port_map = {"a": a_expr, "b": b_expr, "c": c_expr, "d": d_expr}
 
             def replace_port(m):
                 letter = m.group(0)
                 expr = port_map.get(letter, letter)
-                # Wrap complex expressions in parentheses for clarity
+                # Wrap complex expressions in parentheses for safety
                 if " " in expr or "," in expr:
                     return f"({expr})"
                 return expr
 
-            vlog_expr = re.sub(r"\b([abcd])\b", replace_port, fn)
+            vlog_expr = re.sub(r"\b([abcd])\b", replace_port, fn_op)
             lines.append(f"    assign {z_name} = {vlog_expr};  // {cell_name}")
+
+        _assigned_lut_outputs.add(z_name)
 
     lines.append("")
     return lines
@@ -514,12 +718,13 @@ def emit_ffs(data: dict) -> list[str]:
       comment showing the count.  They never change state.
     - All other FFs are emitted individually.
     """
-    ffs           = data["ffs"]
-    net_name_map  = data["net_name_map"]
-    const_net_map = data["const_net_map"]
-    cell_name_map = data["cell_name_map"]
-
+    ffs              = data["ffs"]
+    net_name_map     = data["net_name_map"]
+    const_net_map    = data["const_net_map"]
+    cell_name_map    = data["cell_name_map"]
     cell_clkname_map = data["cell_clkname_map"]
+    ff_q_wire_map    = data["ff_q_wire_map"]
+    port_names       = data["port_names"]
 
     def rn(net):
         return resolve_net(net, net_name_map, const_net_map)
@@ -527,10 +732,23 @@ def emit_ffs(data: dict) -> list[str]:
     def rc(cell):
         return resolve_cell(cell, cell_name_map, cell_clkname_map)
 
+    def reg_id(cell: str) -> str:
+        """Verilog reg identifier for the reg declaration and always-block writes.
+
+        Uses rc() (cell-derived name) so the identifier never conflicts with Q wire
+        names, port declarations, or LUT continuous assigns.  A separate connect
+        assign `assign q_wire = reg_id;` is emitted after all always blocks for
+        Q nets that are not also LUT-driven.
+        """
+        return rc(cell)
+
     # ── Classify each FF ────────────────────────────────────────────────────
-    # "stuck": d is '1'b0' and ce is effectively '1'b1' (NULL or literal 1)
-    stuck_ffs:  list[tuple] = []   # (cell, clk, ce, d, q, lsr)
-    active_ffs: list[tuple] = []
+    # "stuck"   : d=1'b0, ce=VCC — permanently zero, collapsed into groups
+    # "ce_clear": d=1'b0, ce=fabric net — clears to 0 when CE fires, grouped
+    # "active"  : d is a real fabric net — emitted individually
+    stuck_ffs:    list[tuple] = []   # (cell, clk, ce, d, q, lsr)
+    ce_clear_ffs: list[tuple] = []
+    active_ffs:   list[tuple] = []
 
     for row in ffs:
         cell, clk, ce, d, q, lsr = row
@@ -538,17 +756,26 @@ def emit_ffs(data: dict) -> list[str]:
         d_resolved  = rn(d)  if d  is not None else "NC"
         if d_resolved == "1'b0" and ce_resolved == "1'b1":
             stuck_ffs.append(row)
+        elif d_resolved == "1'b0":
+            ce_clear_ffs.append(row)
         else:
             active_ffs.append(row)
 
     lines = [
         "    // ── Flip-flops ─────────────────────────────────────────────────────────",
-        f"    // {len(ffs)} total FFs: {len(stuck_ffs)} stuck-at-reset, {len(active_ffs)} active",
+        f"    // {len(ffs)} total FFs: {len(stuck_ffs)} stuck-at-VCC, "
+        f"{len(ce_clear_ffs)} CE-gated-clear, {len(active_ffs)} real-D",
     ]
 
     # ── Reg declarations ────────────────────────────────────────────────────
+    # Multiple FFs can share the same Q net (bus structure); declare each reg
+    # only once.  All associated always blocks still write to the shared reg.
+    _declared_regs: set[str] = set()
     for cell, clk, ce, d, q, lsr in ffs:
-        cell_ident  = rc(cell)
+        cell_ident  = reg_id(cell)
+        if cell_ident in _declared_regs:
+            continue
+        _declared_regs.add(cell_ident)
         human_label = cell_name_map.get(cell, "")
         clk_name    = rn(clk) if clk else "?"
         ce_name     = rn(ce)  if ce  else "1'b1"
@@ -572,38 +799,65 @@ def emit_ffs(data: dict) -> list[str]:
         lines.append("    // LSR toggles, which it never does in normal operation.")
         lines.append("")
 
-        # Group by (clk, lsr)
+        # Group by clock only — d=0 in all cases so LSR is irrelevant
         from collections import defaultdict
-        stuck_groups: dict[tuple, list] = defaultdict(list)
+        stuck_groups: dict[str, list] = defaultdict(list)
         for row in stuck_ffs:
             cell, clk, ce, d, q, lsr = row
             clk_expr = rn(clk) if clk else "/* no_clk */"
-            lsr_expr = rn(lsr) if lsr else None
-            stuck_groups[(clk_expr, lsr_expr)].append(cell)
+            stuck_groups[clk_expr].append(cell)
 
-        for (clk_expr, lsr_expr), cells in sorted(stuck_groups.items()):
+        for clk_expr, cells in sorted(stuck_groups.items()):
             lines.append(f"    // {len(cells)} FFs stuck at 0 on posedge {clk_expr}")
             lines.append(f"    always @(posedge {clk_expr}) begin")
-            if lsr_expr and lsr_expr != "1'b0":
-                lines.append(f"        if ({lsr_expr}) begin")
-                for cell in cells:
-                    lines.append(f"            {rc(cell)} <= 1'b0;")
-                lines.append("        end else begin")
-                for cell in cells:
-                    lines.append(f"            {rc(cell)} <= 1'b0;  // d stuck")
-                lines.append("        end")
-            else:
-                for cell in cells:
-                    lines.append(f"        {rc(cell)} <= 1'b0;  // d stuck")
+            for cell in cells:
+                lines.append(f"        {reg_id(cell)} <= 1'b0;")
             lines.append("    end")
             lines.append("")
 
-    # ── Active FFs ───────────────────────────────────────────────────────────
+    # ── CE-gated clear FFs — collapsed by (clk, combined-condition) ─────────
+    if ce_clear_ffs:
+        from collections import defaultdict as _dd
+        lines.append(
+            f"    // ── CE-gated clear FFs ({len(ce_clear_ffs)}) — d=0, clear when CE asserted ─"
+        )
+        lines.append(
+            "    // D=0 with a real CE: the register clears to 0 whenever CE fires."
+        )
+        lines.append(
+            "    // Where LSR is also present both paths → 0, so condition is (LSR | CE)."
+        )
+        lines.append("")
+
+        ce_groups: dict[tuple, list] = _dd(list)
+        for row in ce_clear_ffs:
+            cell, clk, ce, d, q, lsr = row
+            clk_expr = rn(clk) if clk else "/* no_clk */"
+            ce_expr  = rn(ce)  if ce  else "1'b1"
+            lsr_expr = rn(lsr) if lsr else None
+            # Merge lsr + ce into one condition when both lead to 0
+            if lsr_expr and lsr_expr not in ("1'b0", "NC"):
+                cond = f"{lsr_expr} | {ce_expr}"
+            else:
+                cond = ce_expr
+            ce_groups[(clk_expr, cond)].append(cell)
+
+        for (clk_expr, cond), cells in sorted(ce_groups.items()):
+            lines.append(f"    // {len(cells)} FFs clear on ({cond}) @ posedge {clk_expr}")
+            lines.append(f"    always @(posedge {clk_expr}) begin")
+            lines.append(f"        if ({cond}) begin")
+            for cell in cells:
+                lines.append(f"            {reg_id(cell)} <= 1'b0;")
+            lines.append("        end")
+            lines.append("    end")
+            lines.append("")
+
+    # ── Active (real-D) FFs ──────────────────────────────────────────────────
     if active_ffs:
-        lines.append(f"    // ── Active FFs ({len(active_ffs)}) ─────────────────────────────────────────")
+        lines.append(f"    // ── Real-D FFs ({len(active_ffs)}) — D inputs from fabric ────────────────────")
 
         for cell, clk, ce, d, q, lsr in active_ffs:
-            cell_ident = rc(cell)
+            cell_ident = reg_id(cell)
             clk_expr   = rn(clk)  if clk  else "/* no_clk */"
             ce_expr    = rn(ce)   if ce   else "1'b1"
             d_expr     = rn(d)    if d    else "NC"
@@ -628,8 +882,100 @@ def emit_ffs(data: dict) -> list[str]:
                 lines.append(f"        {cell_ident} <= {d_expr};")
             lines.append("    end")
 
+    # ── Q-output connect assigns ──────────────────────────────────────────────
+    # reg_id() = cell-derived name; Q wire = what downstream LUTs reference.
+    # They differ for every FF, so we emit `assign q_wire = reg;` to connect them.
+    #
+    # Skip cases where the assign would conflict:
+    #   - Q net is also a LUT z-output (continuous assign already drives it →
+    #     adding a second assign would create an ambiguous multi-driver).
+    #   - Q net is a module port (port wire is declared in emit_ports; assign is
+    #     fine, but we rely on emit_ports to wire it up instead).
+    #   - Q net has no wire mapping (no-op).
+    lut_driven_nets: set[str] = {
+        fw for fw, _map in [(ff_q_wire_map.get(c), c) for c, *_ in ffs]
+        if fw is not None
+    }
+    # Build set of Q net wire names that are also driven by a LUT assign in emit_luts.
+    # We can detect this by checking if the Q net itself is a LUT z-output: the
+    # lut output name (rn(lut.z)) would equal the Q wire name for that net.
+    # Simpler: build from ff_q_wire_map vs luts data we don't have here —
+    # instead pre-compute in load_data and pass as data["dual_driven_q_wires"].
+    dual_driven = data.get("dual_driven_q_wires", set())
+
+    seen_q_assigns: set[str] = set()
+    for cell, _clk, _ce, _d, q, _lsr in ffs:
+        if q is None:
+            continue
+        q_wire = ff_q_wire_map.get(cell)
+        if q_wire is None:
+            continue
+        if q_wire in seen_q_assigns:
+            continue
+        if q_wire in port_names:
+            continue  # port: pad logic handles the connection
+        if q_wire in dual_driven:
+            continue  # LUT already drives this wire; second assign would conflict
+        r = reg_id(cell)
+        seen_q_assigns.add(q_wire)
+        lines.append(f"    assign {q_wire} = {r};  // Q output")
+    if seen_q_assigns:
+        lines.append("")
+
     lines.append("")
     return lines
+
+
+def emit_trigger_comment(data: dict) -> list[str]:
+    """Comment block explaining the trigger / capture-arm architecture.
+
+    The trigger comparator and EBR write-counter live inside EFB hard IP and
+    are invisible to the fabric netlist.  This block documents the inferred
+    architecture so the ghost nets in the Verilog are interpretable.
+    """
+    return [
+        "    // ── Trigger & capture-arm architecture ──────────────────────────────",
+        "    //",
+        "    // The trigger comparator is inside EFB hard IP — NOT in synthesisable",
+        "    // fabric.  This is why Yosys post-opt reduces the design to 4 cells.",
+        "    //",
+        "    // Sequence (from fpga-spi.md §8 + netlist inference):",
+        "    //",
+        "    //   1. MCU writes CTRL 0xc8/0x00/0x07 (ARM_TRIGGER|RUN|ENABLE_ACQ)",
+        "    //      → EFB sets ebr_arm = 1 via ghost path (not visible in fabric)",
+        "    //      → EBR JLSR deasserted → ADC ring-buffer write counters running",
+        "    //",
+        "    //   2. ADC samples flow continuously: ADC_D[7:0]A/B → EBR write ports",
+        "    //      via ghost FFs (ghost_d_* in this Verilog).  The write address",
+        "    //      is a free-running counter in the EFB (ebr_waddr_* shared bus).",
+        "    //",
+        "    //   3. EFB compares each sample against trigger level (REG 0x06/0x08)",
+        "    //      and hysteresis band (REG 0x03).  When edge condition is met",
+        "    //      (polarity = REG 0x17 bit 0) the comparator asserts three ghost",
+        "    //      outputs: n613, n614, n615.",
+        "    //",
+        "    //   4. ebr_waddr_ce = COMBO3(n613, n614, n615)  [fabric LUT, visible]",
+        "    //      On the next ADC clock edge, the arm FF captures D=1'b0:",
+        "    //        always @(posedge clk_h2_adc_a_pipe)",
+        "    //            if (ebr_arm_ce) ebr_arm <= 1'b0;",
+        "    //      ebr_arm → 0 deasserts EBR JLSR → write counters stop.",
+        "    //",
+        "    //   5. MCU polls STATUS (0xa0/0x00) bit 1 = BUSY until 0.",
+        "    //      Then reads ring-buffer end address (0xa0/0x03) and bursts",
+        "    //      6144 bytes via 0xa4 cmd (fw_fpga_read_samples).",
+        "    //",
+        "    // Ghost nets in trigger path (EFB outputs, fanin=0 in fabric):",
+        "    //   n613, n614, n615 — trigger comparator outputs → ebr_waddr_ce LUT",
+        "    //   ebr_arm_ce (n1881) — ARM strobe from EFB → arm FF clock-enable",
+        "    //",
+        "    // Surviving fabric cells after Yosys opt (the rest is constant-0):",
+        "    //   U1_DS  = NOR(n1267, reg_r7c11_q[4])  — CH1 AFE serial data bit",
+        "    //   U1_SHCP = LUT({reg_r9c6_q[7],0,n1525}) — CH1 shift clock mux",
+        "    //   U7_SHCP = LUT({n1526,0,n1525})         — CH2 shift clock mux",
+        "    //   ADC_D5B pass-through (n1713)            — ghost EBR write feed",
+        "    // ─────────────────────────────────────────────────────────────────────",
+        "",
+    ]
 
 
 def emit_clock_comment(data: dict) -> list[str]:
@@ -678,6 +1024,200 @@ def emit_unresolved_pads_comment(data: dict) -> list[str]:
     return lines
 
 
+def emit_ebr(data: dict) -> list[str]:
+    """Emit behavioral models for EBR blocks.
+
+    Block classification is derived entirely from net names in the DB —
+    no tile positions are hardcoded so layout changes in awto-2000 or the
+    Pluribus DB are automatically reflected here.
+
+    Classification rules (applied to all nets connected to each block):
+      awg_*  nets present → AWG waveform table  (INITVAL: 0xDEAD, no ramp)
+      ebr_waddr_* / ebr_raddr_* present → ADC ring buffer (INITVAL: ramp)
+      neither → unknown / generic (INITVAL: 0)
+    """
+    rn = lambda net: resolve_net(net, data["net_name_map"], data["const_net_map"])
+    nm = data["net_name_map"]
+
+    from collections import defaultdict
+
+    # Gather per-block connectivity
+    buses: dict[str, dict] = defaultdict(lambda: {"write_data": {}, "read_data": {},
+                                                    "write_addr": {}, "read_addr": {}})
+    for row in data["ebr_buses"]:
+        buses[row.block][row.bus_role][row.bit_index] = row.net
+
+    ctrl: dict[str, dict] = defaultdict(dict)
+    for row in data["ebr_ctrl"]:
+        ctrl[row.block][row.port] = row.net
+
+    # Classify blocks from net names — no hardcoded tile positions
+    def _block_kind(block):
+        all_nets = (
+            list(buses[block].get("write_data", {}).values()) +
+            list(buses[block].get("read_data",  {}).values()) +
+            list(buses[block].get("write_addr", {}).values()) +
+            list(buses[block].get("read_addr",  {}).values()) +
+            list(ctrl[block].values())
+        )
+        names = {nm.get(n, "") for n in all_nets if n}
+        if any(name.startswith("awg_") for name in names):
+            return "awg"
+        if any(name.startswith(("ebr_waddr_", "ebr_raddr_")) for name in names):
+            return "adc"
+        return "unknown"
+
+    all_blocks = sorted(set(r.block for r in data["ebr_buses"]) |
+                        set(r.block for r in data["ebr_ctrl"]))
+
+    adc_blocks = [b for b in all_blocks if _block_kind(b) == "adc"]
+    awg_blocks = [b for b in all_blocks if _block_kind(b) == "awg"]
+    unk_blocks = [b for b in all_blocks if _block_kind(b) == "unknown"]
+
+    adc_label = "/".join(adc_blocks) if adc_blocks else "none"
+    awg_label = "/".join(awg_blocks) if awg_blocks else "none"
+
+    lines: list[str] = [
+        "",
+        "    // =========================================================",
+        "    // EBR (Embedded Block RAM) — behavioral models",
+        "    // =========================================================",
+        "    // WARNING: EBR is hard IP. These behavioral models represent",
+        "    // structural connections recovered from the bitstream.",
+        "    // INITVAL is synthetic (ramp / 0xDEAD) — not real data.",
+        "    // Real data is written at runtime by the MCU via SPI.",
+        "    //",
+        "    // Block classification is derived from net names in the DB.",
+        "    // Layout may differ from awto-2000 docs — treat both as",
+        "    // provisional until explicitly reconciled.",
+        "    //",
+        f"    // ADC ring ({adc_label}): write=ADC 75 MHz, read=SPI 0xa4 burst.",
+        f"    // AWG table ({awg_label}): write=SPI 0x50 cmd, read=DDS addr → DAC.",
+        "    // =========================================================",
+        "",
+    ]
+
+    def _net(n):
+        return rn(n) if n else "NC"
+
+    _ebr_assigned: set[str] = set()
+
+    def _bus_ports(block_buses, role):
+        return sorted(block_buses.get(role, {}).items())
+
+    def _vec(pairs, width, default="1'b0"):
+        bits = dict(pairs)
+        return "{" + ", ".join(
+            _net(bits[i]) if i in bits else default
+            for i in range(width - 1, -1, -1)
+        ) + "}"
+
+    def _emit_block(block, kind):
+        b = buses[block]
+        c = ctrl[block]
+        tag = block.lower().replace("r", "r").replace("c", "c")  # R6C20 → r6c20
+
+        wdata_pairs = _bus_ports(b, "write_data")
+        rdata_pairs = _bus_ports(b, "read_data")
+        waddr_pairs = _bus_ports(b, "write_addr")
+        raddr_pairs = _bus_ports(b, "read_addr")
+
+        wdw = (max(i for i, _ in wdata_pairs) + 1) if wdata_pairs else 1
+        rdw = (max(i for i, _ in rdata_pairs) + 1) if rdata_pairs else 1
+        raw = (max(i for i, _ in raddr_pairs) + 1) if raddr_pairs else 1
+        dep = 1 << raw
+
+        wclk = _net(c.get("JCLK0"))
+        rclk = _net(c.get("JCLK3"))
+        lsr  = _net(c.get("JLSR0") or c.get("JLSR1"))
+
+        if kind == "awg":
+            dead = ((1 << wdw) - 1) & 0xDEAD
+            init_line = f"            ebr_{tag}_mem[_ebr_{tag}_i] = {wdw}'h{dead:X};  // 0xDEAD truncated to width"
+            kind_comment = "AWG waveform table — write: SPI 0x50 cmd  read: DDS addr → DAC"
+        elif kind == "adc":
+            init_line = f"            ebr_{tag}_mem[_ebr_{tag}_i] = _ebr_{tag}_i[{wdw-1}:0];  // ramp"
+            kind_comment = "ADC ring buffer — write: ADC data  read: SPI 0xa4 burst"
+        else:
+            init_line = f"            ebr_{tag}_mem[_ebr_{tag}_i] = {wdw}'h0;  // unknown block"
+            kind_comment = "Unknown EBR block — classification pending"
+
+        out = [
+            f"    // --- EBR {block}: {kind_comment} ---",
+            f"    // Write clock: {wclk}  Read clock: {rclk}",
+            f"    // {dep}-entry × {wdw}-bit  (DB-visible address bits: {raw})",
+            f"    reg [{wdw-1}:0] ebr_{tag}_mem [0:{dep-1}];",
+            f"    integer _ebr_{tag}_i;",
+            f"    initial begin",
+            f"        for (_ebr_{tag}_i = 0; _ebr_{tag}_i < {dep}; _ebr_{tag}_i = _ebr_{tag}_i + 1)",
+            f"            {init_line}",
+            f"    end",
+        ]
+
+        # Write port
+        waddr_e = _vec(waddr_pairs, raw)
+        wdata_e = _vec(wdata_pairs, wdw)
+        if lsr and lsr not in ("NC", "1'b0", "1'b1"):
+            out += [
+                f"    always @(posedge {wclk}) begin",
+                f"        if (!{lsr})",
+                f"            ebr_{tag}_mem[{waddr_e}] <= {wdata_e};",
+                f"    end",
+            ]
+        else:
+            out += [
+                f"    always @(posedge {wclk})",
+                f"        ebr_{tag}_mem[{waddr_e}] <= {wdata_e};",
+            ]
+
+        # Read port
+        raddr_e = _vec(raddr_pairs, raw)
+        out += [
+            f"    reg [{rdw-1}:0] ebr_{tag}_dout;",
+            f"    always @(posedge {rclk})",
+            f"        ebr_{tag}_dout <= ebr_{tag}_mem[{raddr_e}];",
+        ]
+        lut_driven = data.get("lut_driven_net_ids", set())
+        ff_q_wires = data.get("ff_q_all_wire_ids", set())
+        for bit_idx, net in rdata_pairs:
+            net_expr = _net(net)
+            if net_expr not in ("NC", "1'b0", "1'b1") and net_expr not in _ebr_assigned:
+                if net_expr in lut_driven:
+                    # LUT buffering stage already drives this net; skip to avoid conflict.
+                    out.append(f"    // {net_expr}[{bit_idx}] driven by LUT path from {block}")
+                elif net_expr in ff_q_wires:
+                    # FF always block drives this net; EBR assign would conflict.
+                    out.append(f"    // {net_expr}[{bit_idx}] also FF Q from {block} — FF path takes precedence")
+                else:
+                    out.append(f"    assign {net_expr} = ebr_{tag}_dout[{bit_idx}];")
+                _ebr_assigned.add(net_expr)
+            elif net_expr in _ebr_assigned:
+                out.append(f"    // {net_expr}[{bit_idx}] also from {block} — shared bus, first driver wins")
+        out.append("")
+        return out
+
+    # Emit AWG first, then ADC, then unknown
+    if awg_blocks:
+        lines += [f"    // AWG waveform table block(s): {awg_label}", ""]
+    for block in awg_blocks:
+        lines += _emit_block(block, "awg")
+
+    if adc_blocks:
+        lines += [
+            f"    // ADC ring buffer block(s): {adc_label}",
+            "    // Shared write-address bus: ebr_waddr_* nets.",
+            "    // Shared read-address bus:  ebr_raddr_* nets.",
+            "",
+        ]
+    for block in adc_blocks:
+        lines += _emit_block(block, "adc")
+
+    for block in unk_blocks:
+        lines += _emit_block(block, "unknown")
+
+    return lines
+
+
 def emit_footer() -> list[str]:
     """End the module."""
     return ["endmodule", ""]
@@ -695,7 +1235,7 @@ def main():
     ap.add_argument("--bitstream", default="V07",
                     help="Bitstream label to emit (default: V07)")
     ap.add_argument("--out",       default=None,
-                    help="Output file path (default: stdout)")
+                    help="Output file path (default: tmp/<bitstream>.v)")
     ap.add_argument("--top",       default="top",
                     help="Verilog module name (default: top)")
     args = ap.parse_args()
@@ -719,6 +1259,8 @@ def main():
         emit_clock_comment(data),
         emit_luts(data),
         emit_ffs(data),
+        emit_trigger_comment(data),
+        emit_ebr(data),
         emit_unresolved_pads_comment(data),
         emit_footer(),
     ]
@@ -729,7 +1271,10 @@ def main():
 
     output = "\n".join(lines)
 
+    if args.out is None:
+        args.out = f"tmp/{args.bitstream}.v"
     if args.out:
+        import subprocess
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(output, encoding="utf-8")
@@ -743,6 +1288,54 @@ def main():
             f"nets {n_named_nets}/{n_total_nets} named, "
             f"cells {n_named_cells}/{n_total_cells} named)"
         )
+        # Lint with iverilog if available
+        iverilog = subprocess.run(["which", "iverilog"], capture_output=True)
+        if iverilog.returncode == 0:
+            result = subprocess.run(
+                ["iverilog", "-Wall", "-g2012", "-t", "null", str(out_path)],
+                capture_output=True, text=True
+            )
+            msgs = (result.stdout + result.stderr).strip()
+            if msgs:
+                n_err = sum(1 for l in msgs.splitlines() if "error:" in l)
+                n_warn = sum(1 for l in msgs.splitlines() if "warning:" in l)
+                print(f"iverilog: {n_err} errors, {n_warn} warnings")
+                print(msgs)
+            else:
+                print("iverilog: OK (0 errors, 0 warnings)")
+
+        # Yosys elaboration: counts surviving logic after constant folding.
+        # Most FFs optimise away (d=0) — surviving cells are the real fabric logic.
+        # NOTE: EBR/PLL hard IP not visible to Yosys — cell count is expected to be tiny.
+        yosys = subprocess.run(["which", "yosys"], capture_output=True)
+        if yosys.returncode == 0:
+            yosys_script = "read_verilog -sv {v}; proc; opt; stat".format(v=out_path)
+            result = subprocess.run(
+                ["yosys", "-p", yosys_script],
+                capture_output=True, text=True
+            )
+            combined = result.stdout + result.stderr
+            # Extract stat block (between "=== <module> ===" and "End of script")
+            in_stat = False
+            stat_lines = []
+            for line in combined.splitlines():
+                if re.match(r"\s*===\s+\S+\s+===", line):
+                    in_stat = True
+                if "End of script" in line:
+                    in_stat = False
+                if in_stat:
+                    stat_lines.append(line)
+            if stat_lines:
+                print("yosys (post-opt, EBR/PLL not visible):")
+                for l in stat_lines:
+                    if l.strip():
+                        print(" ", l)
+            else:
+                yosys_errors = [l for l in combined.splitlines() if "ERROR" in l or "error" in l.lower()]
+                if yosys_errors:
+                    print("yosys ERROR:")
+                    for l in yosys_errors[:5]:
+                        print(" ", l)
     else:
         sys.stdout.write(output)
         if not output.endswith("\n"):
