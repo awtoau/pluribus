@@ -23,6 +23,8 @@ raise to 4 on a machine with enough RAM; Diamond uses ~2 GB per instance).
 
 import argparse
 import fnmatch
+import hashlib
+import json
 import os
 import queue
 import re
@@ -47,12 +49,16 @@ DIAMOND_ROOT = Path("/home/dan/lscc/diamond/3.14")
 DIAMONDC     = DIAMOND_ROOT / "bin" / "lin64" / "diamondc"
 LICENSE      = DIAMOND_ROOT / "license" / "license.dat"
 
-ECPUNPACK    = ROOT / "debris/tmp/prjtrellis/libtrellis/build/ecpunpack"
-TRELLIS_DB   = ROOT / "debris/tmp/prjtrellis/database"
-ECPUNPACK_LD = ROOT / "debris/tmp/prjtrellis/libtrellis/build"
+# prjtrellis lives in the RE project; overridable via TRELLIS_ROOT (was a
+# ROOT/debris/... path from the pre-migration awto-2000 layout).
+_TRELLIS     = Path(os.environ.get("TRELLIS_ROOT",
+                    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis"))
+ECPUNPACK    = _TRELLIS / "libtrellis/build/ecpunpack"
+TRELLIS_DB   = _TRELLIS / "database"
+ECPUNPACK_LD = _TRELLIS / "libtrellis/build"
 
-PLURIBUS     = ROOT / "fpga" / "pluribus"
-FUZZ_PINS    = ROOT / "fpga" / "aw2" / "aw2-pins.tsv"
+PLURIBUS     = ROOT                                   # load.py at repo root post-migration
+FUZZ_PINS    = ROOT / "boards" / "aw2-2d82auto" / "pins.tsv"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -306,10 +312,23 @@ def pluribus_worker(done_q: queue.Queue,
             done_q.task_done()
             continue
 
+        # Change-detection: if the freshly-unpacked .config is byte-identical
+        # to what we last loaded for this target, the DB already holds the same
+        # result — throw the rebuild away and skip the reload (idempotent runs).
+        cfg_sha = hashlib.sha256(br.config_path.read_bytes()).hexdigest()
+        with stats_lock:
+            unchanged = stats["hashes"].get(name) == cfg_sha
+        if unchanged:
+            with stats_lock:
+                stats["unchanged"] += 1
+            done_q.task_done()
+            continue
+
         ok_load, detail = load_fuzz_config(name, br.config_path)
         with stats_lock:
             if ok_load:
                 stats["loaded"] += 1
+                stats["hashes"][name] = cfg_sha
             else:
                 stats["load_failures"].append((name, detail))
                 log(f"  LOAD-FAIL  {name}: {detail[:120]}")
@@ -350,11 +369,20 @@ def main() -> None:
     log("")
 
     # Shared state
+    # Change-detection manifest: target -> sha of the .config last loaded.
+    hash_manifest = RESULTS_DIR / "loaded_hashes.json"
+    try:
+        loaded_hashes = json.loads(hash_manifest.read_text())
+    except Exception:
+        loaded_hashes = {}
+
     stats = {
         "built":         0,
         "skipped":       0,
         "failed":        0,
         "loaded":        0,
+        "unchanged":     0,
+        "hashes":        loaded_hashes,
         "failures":      [],   # list of (name, detail)
         "load_failures": [],
     }
@@ -362,6 +390,11 @@ def main() -> None:
 
     work_q = queue.Queue()
     done_q = queue.Queue()
+
+    # Missing-first: queue targets without a built bitstream ahead of cached
+    # ones, so newly-added targets get built + loaded first and are usable
+    # immediately (False < True → unbuilt sorts first).
+    targets.sort(key=lambda t: (t / "impl1" / "fuzz_impl1.bit").exists())
 
     # Fill work queue
     for t in targets:
@@ -394,6 +427,10 @@ def main() -> None:
     if not args.no_pluribus:
         done_q.put(_SENTINEL)
         pluribus_t.join()
+        # Persist the change-detection manifest for the next run.
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        hash_manifest.write_text(
+            json.dumps(stats["hashes"], indent=1, sort_keys=True))
 
     # Write summary
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -405,6 +442,7 @@ def main() -> None:
         f"  Built:           {stats['built']} ({stats['skipped']} cached)",
         f"  Failed (Diamond):{stats['failed']}",
         f"  Loaded (pluribus):{stats['loaded']}",
+        f"  Unchanged (reload skipped):{stats['unchanged']}",
         "",
     ]
     if stats["failures"]:
