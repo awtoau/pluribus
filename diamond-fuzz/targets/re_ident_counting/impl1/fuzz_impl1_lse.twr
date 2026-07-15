@@ -1,0 +1,145 @@
+--------------------------------------------------------------------------------
+Lattice Synthesis Timing Report, Version  
+Wed Jul 15 23:37:48 2026
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+
+Report Information
+------------------
+Design:     fuzz
+Constraint file:  
+Report level:    verbose report, limited to 3 items per constraint
+--------------------------------------------------------------------------------
+
+
+
+================================================================================
+Constraint: create_clock -period 5.000000 -name clk0 [get_nets sck_c]
+            23 items scored, 0 timing errors detected.
+--------------------------------------------------------------------------------
+
+
+Passed:  The following path meets requirements by 1.019ns
+
+ Logical Details:  Cell type  Pin type       Cell name  (clock net +/-)
+
+   Source:         FD1S3IX    CK             cnt_24__i0  (from sck_c +)
+   Destination:    FD1S3IX    D              cnt_24__i5  (to sck_c +)
+
+   Delay:                   3.835ns  (51.8% logic, 48.2% route), 5 logic levels.
+
+ Constraint Details:
+
+      3.835ns data_path cnt_24__i0 to cnt_24__i5 meets
+      5.000ns delay constraint less
+      0.146ns L_S requirement (totaling 4.854ns) by 1.019ns
+
+ Path Details: cnt_24__i0 to cnt_24__i5
+
+   Name    Fanout   Delay (ns)          Pins               Resource(Cell.Net)
+L_CO        ---     0.403             CK to Q              cnt_24__i0 (from sck_c)
+Route         2   e 1.002                                  cnt[0]
+A1_TO_FCO   ---     0.752           A[2] to COUT           cnt_24_add_4_1
+Route         1   e 0.020                                  n140
+FCI_TO_FCO  ---     0.143            CIN to COUT           cnt_24_add_4_3
+Route         1   e 0.020                                  n141
+FCI_TO_FCO  ---     0.143            CIN to COUT           cnt_24_add_4_5
+Route         1   e 0.020                                  n142
+FCI_TO_F    ---     0.544            CIN to S[2]           cnt_24_add_4_7
+Route         1   e 0.788                                  n30
+                  --------
+                    3.835  (51.8% logic, 48.2% route), 5 logic levels.
+
+
+Passed:  The following path meets requirements by 1.085ns
+
+ Logical Details:  Cell type  Pin type       Cell name  (clock net +/-)
+
+   Source:         FD1S3IX    CK             cnt_24__i1  (from sck_c +)
+   Destination:    FD1S3IX    D              cnt_24__i5  (to sck_c +)
+
+   Delay:                   3.769ns  (48.9% logic, 51.1% route), 4 logic levels.
+
+ Constraint Details:
+
+      3.769ns data_path cnt_24__i1 to cnt_24__i5 meets
+      5.000ns delay constraint less
+      0.146ns L_S requirement (totaling 4.854ns) by 1.085ns
+
+ Path Details: cnt_24__i1 to cnt_24__i5
+
+   Name    Fanout   Delay (ns)          Pins               Resource(Cell.Net)
+L_CO        ---     0.403             CK to Q              cnt_24__i1 (from sck_c)
+Route         3   e 1.099                                  cnt[1]
+A1_TO_FCO   ---     0.752           A[2] to COUT           cnt_24_add_4_3
+Route         1   e 0.020                                  n141
+FCI_TO_FCO  ---     0.143            CIN to COUT           cnt_24_add_4_5
+Route         1   e 0.020                                  n142
+FCI_TO_F    ---     0.544            CIN to S[2]           cnt_24_add_4_7
+Route         1   e 0.788                                  n30
+                  --------
+                    3.769  (48.9% logic, 51.1% route), 4 logic levels.
+
+
+Passed:  The following path meets requirements by 1.182ns
+
+ Logical Details:  Cell type  Pin type       Cell name  (clock net +/-)
+
+   Source:         FD1S3IX    CK             cnt_24__i2  (from sck_c +)
+   Destination:    FD1S3IX    D              cnt_24__i5  (to sck_c +)
+
+   Delay:                   3.672ns  (50.2% logic, 49.8% route), 4 logic levels.
+
+ Constraint Details:
+
+      3.672ns data_path cnt_24__i2 to cnt_24__i5 meets
+      5.000ns delay constraint less
+      0.146ns L_S requirement (totaling 4.854ns) by 1.182ns
+
+ Path Details: cnt_24__i2 to cnt_24__i5
+
+   Name    Fanout   Delay (ns)          Pins               Resource(Cell.Net)
+L_CO        ---     0.403             CK to Q              cnt_24__i2 (from sck_c)
+Route         2   e 1.002                                  cnt[2]
+A1_TO_FCO   ---     0.752           A[2] to COUT           cnt_24_add_4_3
+Route         1   e 0.020                                  n141
+FCI_TO_FCO  ---     0.143            CIN to COUT           cnt_24_add_4_5
+Route         1   e 0.020                                  n142
+FCI_TO_F    ---     0.544            CIN to S[2]           cnt_24_add_4_7
+Route         1   e 0.788                                  n30
+                  --------
+                    3.672  (50.2% logic, 49.8% route), 4 logic levels.
+
+Report: 3.981 ns is the maximum delay for this constraint.
+
+
+Timing Report Summary
+--------------
+--------------------------------------------------------------------------------
+Constraint                              |   Constraint|       Actual|Levels
+--------------------------------------------------------------------------------
+                                        |             |             |
+create_clock -period 5.000000 -name     |             |             |
+clk0 [get_nets sck_c]                   |     5.000 ns|     3.981 ns|     5  
+                                        |             |             |
+--------------------------------------------------------------------------------
+
+
+All constraints were met.
+
+
+
+Timing summary:
+---------------
+
+Timing errors: 0  Score: 0
+
+Constraints cover  23 paths, 16 nets, and 21 connections (56.8% coverage)
+
+
+Peak memory: 181497856 bytes, TRCE: 684032 bytes, DLYMAN: 0 bytes
+CPU_TIME_REPORT: 0 secs 
