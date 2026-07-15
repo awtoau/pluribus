@@ -31,11 +31,11 @@
 
 
 -lpf 1
--p "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_14p00_caen"
--ver "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_14p00_caen/fuzz.v"
+-p "/mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_14p00_caen"
+-ver "/mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_14p00_caen/fuzz.v"
 
 
--p "/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data" "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_14p00_caen/impl1" "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_14p00_caen"
+-p "/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data" "/mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_14p00_caen/impl1" "/mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_14p00_caen"
 
 -ngd "fuzz_impl1.ngd"
 

@@ -1,6 +1,6 @@
 module fuzz(input wire clk,output wire out0);
  wire g=1'b0; wire [7:0] o;
- DP8KC #(.DATA_WIDTH_A(9),.DATA_WIDTH_B(1),.REGMODE_A("NOREG"),.REGMODE_B("NOREG"),.WRITEMODE_A("NORMAL"),.WRITEMODE_B("WRITETHROUGH"))
+ DP8KC #(.DATA_WIDTH_A(9),.DATA_WIDTH_B(1),.REGMODE_A("NOREG"),.REGMODE_B("NOREG"),.WRITEMODE_A("NORMAL"),.WRITEMODE_B("WRITETHROUGH")
 ) u0 (
     .CLKA(clk),.CEA(g),.OCEA(g),.WEA(g),.CSA2(g),.CSA1(g),.CSA0(g),.RSTA(g),
     .ADA9(g),.ADA8(g),.ADA7(g),.ADA6(g),.ADA5(g),.ADA4(g),.ADA3(g),.ADA2(g),.ADA1(g),.ADA0(g),

@@ -2,8 +2,8 @@
 <BuildStatus>
     <Strategy name="Strategy1">
         <Milestone name="Export" build_result="0" build_time="0"/>
-        <Milestone name="Map" build_result="1" build_time="1782774518">
-            <Task name="Map" build_result="1" update_result="2" update_time="1782774518"/>
+        <Milestone name="Map" build_result="1" build_time="1784121963">
+            <Task name="Map" build_result="1" update_result="2" update_time="1784121963"/>
             <Task name="MapTrace" build_result="0" update_result="3" update_time="0"/>
             <Task name="MapVerilogSimFile" build_result="0" update_result="3" update_time="0"/>
             <Task name="MapVHDLSimFile" build_result="0" update_result="3" update_time="0"/>
@@ -13,13 +13,13 @@
             <Task name="PARTrace" build_result="0" update_result="3" update_time="0"/>
             <Task name="IOTiming" build_result="0" update_result="3" update_time="0"/>
         </Milestone>
-        <Milestone name="Synthesis" build_result="2" build_time="1782774518">
-            <Task name="Lattice_Synthesis" build_result="2" update_result="0" update_time="1782774518"/>
-            <Task name="LSE_Compile" build_result="2" update_result="0" update_time="1782774518"/>
+        <Milestone name="Synthesis" build_result="2" build_time="1784121963">
+            <Task name="Lattice_Synthesis" build_result="2" update_result="0" update_time="1784121963"/>
+            <Task name="LSE_Compile" build_result="2" update_result="0" update_time="1784121963"/>
         </Milestone>
         <Report name=".vdbs/fuzz_impl1_map.vdb" last_build_time="0" last_build_size="0"/>
-        <Report name="fuzz_impl1.lsedata" last_build_time="1782774518" last_build_size="2011"/>
-        <Report name="fuzz_impl1.ngd" last_build_time="1782774518" last_build_size="3491"/>
+        <Report name="fuzz_impl1.lsedata" last_build_time="1784121963" last_build_size="2011"/>
+        <Report name="fuzz_impl1.ngd" last_build_time="1784121963" last_build_size="3491"/>
         <Report name="fuzz_impl1_map.ncd" last_build_time="0" last_build_size="0"/>
     </Strategy>
 </BuildStatus>

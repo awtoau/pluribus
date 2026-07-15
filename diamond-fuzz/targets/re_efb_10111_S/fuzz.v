@@ -1,6 +1,6 @@
 module fuzz(input wire clk,output wire out0);
  wire g=1'b0; wire [7:0] o; wire a;
- EFB #(.EFB_I2C1("ENABLED"),.EFB_I2C2("DISABLED"),.EFB_SPI("ENABLED"),.EFB_TC("ENABLED"),.EFB_UFM("ENABLED"),.SPI_MODE("SLAVE"),.EFB_WB_CLK_FREQ("100.0"))
+ EFB #(.EFB_I2C1("ENABLED"),.EFB_I2C2("DISABLED"),.EFB_SPI("ENABLED"),.EFB_TC("ENABLED"),.EFB_UFM("ENABLED"),.SPI_MODE("SLAVE"),.EFB_WB_CLK_FREQ("100.0")
 ) u0 (
     .WBCLKI(clk),.WBRSTI(g),.WBCYCI(g),.WBSTBI(g),.WBWEI(g),
     .WBADRI7(g),.WBADRI6(g),.WBADRI5(g),.WBADRI4(g),.WBADRI3(g),.WBADRI2(g),.WBADRI1(g),.WBADRI0(g),

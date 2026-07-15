@@ -7,7 +7,7 @@ Copyright (c) 1995 AT&T Corp.   All rights reserved.
 Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
 Copyright (c) 2001 Agere Systems   All rights reserved.
 Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
-Tue Jun 30 09:08:42 2026
+Wed Jul 15 23:26:04 2026
 
 
 Command Line:  synthesis -f fuzz_impl1_lattice.synproj 
@@ -64,11 +64,11 @@ ROM style = auto
 RAM style = auto
 The -comp option is FALSE.
 The -syn option is FALSE.
--p /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen (searchpath added)
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen (searchpath added)
 -p /home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data (searchpath added)
--p /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen/impl1 (searchpath added)
--p /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen (searchpath added)
-Verilog design file = /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen/fuzz.v
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen/impl1 (searchpath added)
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen (searchpath added)
+Verilog design file = /mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen/fuzz.v
 NGD file = fuzz_impl1.ngd
 -sdc option: SDC file input not used.
 -lpf option: Output file option is ON.
@@ -80,10 +80,10 @@ Technology check ok...
 Analyzing Verilog file /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v. VERI-1482
 Compile design.
 Compile Design Begin
-Analyzing Verilog file /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen/fuzz.v. VERI-1482
+Analyzing Verilog file /mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen/fuzz.v. VERI-1482
 Analyzing Verilog file /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v. VERI-1482
 Top module name (Verilog): fuzz
-INFO - synthesis: /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen/fuzz.v(1): compiling module fuzz. VERI-1018
+INFO - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen/fuzz.v(1): compiling module fuzz. VERI-1018
 INFO - synthesis: /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v(1553): compiling module SEDFA(SED_CLK_FREQ="5.78",CHECKALWAYS="ENABLED"). VERI-1018
 Last elaborated design is fuzz()
 Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00a/data/xo2alib.ngl'...
@@ -159,13 +159,13 @@ clk0 [get_nets clk_c]                   |            -|            -|     0
 All constraints were met.
 
 
-Peak Memory Usage: 174.863  MB
+Peak Memory Usage: 174.871  MB
 
 --------------------------------------------------------------
-Elapsed CPU time for LSE flow : 0.104  secs
+Elapsed CPU time for LSE flow : 0.095  secs
 --------------------------------------------------------------
 
-map -a "MachXO2" -p LCMXO2-1200HC -t TQFP100 -s 5 -oc Commercial   "fuzz_impl1.ngd" -o "fuzz_impl1_map.ncd" -pr "fuzz_impl1.prf" -mp "fuzz_impl1.mrp" -lpf "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen/impl1/fuzz_impl1.lpf" -lpf "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen/fuzz.lpf"  -c 0           
+map -a "MachXO2" -p LCMXO2-1200HC -t TQFP100 -s 5 -oc Commercial   "fuzz_impl1.ngd" -o "fuzz_impl1_map.ncd" -pr "fuzz_impl1.prf" -mp "fuzz_impl1.mrp" -lpf "/mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen/impl1/fuzz_impl1.lpf" -lpf "/mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen/fuzz.lpf"  -c 0           
 map:  version Diamond (64-bit) 3.14.0.75.2
 
 Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
@@ -205,4 +205,4 @@ INFO - map: Errors found in user's design.  Output files not written. Check map 
 Running milestone "PAR" failed
     while executing
 "prj_run PAR    -impl impl1"
-    (file "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_5p78_caen/run.tcl" line 2)
+    (file "/mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_5p78_caen/run.tcl" line 2)

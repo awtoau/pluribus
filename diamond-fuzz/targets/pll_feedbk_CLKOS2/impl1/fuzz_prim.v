@@ -1,22 +1,22 @@
 // Verilog netlist produced by program LSE :  version Diamond (64-bit) 3.14.0.75.2
-// Netlist written on Tue Jun 30 08:57:42 2026
+// Netlist written on Wed Jul 15 23:25:56 2026
 //
 // Verilog Description of module fuzz
 //
 
-module fuzz (clk, out0) /* synthesis syn_module_defined=1 */ ;   // /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(1[8:12])
-    input clk;   // /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(2[16:19])
-    output out0;   // /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(3[17:21])
+module fuzz (clk, out0) /* synthesis syn_module_defined=1 */ ;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(1[8:12])
+    input clk;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(2[16:19])
+    output out0;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(3[17:21])
     
-    wire clk_c /* synthesis is_clock=1 */ ;   // /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(2[16:19])
-    wire clkop_w /* synthesis is_clock=1, SET_AS_NETWORK=clkop_w */ ;   // /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(8[6:13])
+    wire clk_c /* synthesis is_clock=1 */ ;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(2[16:19])
+    wire clkop_w /* synthesis is_clock=1, SET_AS_NETWORK=clkop_w */ ;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(8[6:13])
     
     wire GND_net, VCC_net, out0_c, lock_w;
     
     VHI i2 (.Z(VCC_net));
-    OB out0_pad (.I(out0_c), .O(out0));   // /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(3[17:21])
+    OB out0_pad (.I(out0_c), .O(out0));   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(3[17:21])
     TSALL TSALL_INST (.TSALL(GND_net));
-    IB clk_pad (.I(clk), .O(clk_c));   // /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(2[16:19])
+    IB clk_pad (.I(clk), .O(clk_c));   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(2[16:19])
     EHXPLLJ u0 (.CLKI(clk_c), .CLKFB(GND_net), .PHASESEL0(GND_net), .PHASESEL1(GND_net), 
             .PHASEDIR(GND_net), .PHASESTEP(GND_net), .LOADREG(GND_net), 
             .STDBY(GND_net), .PLLWAKESYNC(GND_net), .RST(GND_net), .RESETC(GND_net), 
@@ -75,7 +75,7 @@ module fuzz (clk, out0) /* synthesis syn_module_defined=1 */ ;   // /mnt/2tb/git
     defparam u0.DDRST_ENA = "DISABLED";
     defparam u0.INTFB_WAKE = "DISABLED";
     GSR GSR_INST (.GSR(VCC_net));
-    FD1S3AX out0_r_5 (.D(lock_w), .CK(clkop_w), .Q(out0_c));   // /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(27[8:44])
+    FD1S3AX out0_r_5 (.D(lock_w), .CK(clkop_w), .Q(out0_c));   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS2/fuzz.v(27[8:44])
     defparam out0_r_5.GSR = "ENABLED";
     PUR PUR_INST (.PUR(VCC_net));
     defparam PUR_INST.RST_PULSE = 1;

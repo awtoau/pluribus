@@ -31,11 +31,11 @@
 
 
 -lpf 1
--p "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_INT_DIVB"
--ver "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_INT_DIVB/fuzz.v"
+-p "/mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_INT_DIVB"
+-ver "/mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_INT_DIVB/fuzz.v"
 
 
--p "/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data" "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_INT_DIVB/impl1" "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_INT_DIVB"
+-p "/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data" "/mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_INT_DIVB/impl1" "/mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_INT_DIVB"
 
 -ngd "fuzz_impl1.ngd"
 

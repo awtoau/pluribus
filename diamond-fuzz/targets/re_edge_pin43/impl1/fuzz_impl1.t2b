@@ -1,0 +1,5 @@
+
+
+-g RamCfg:Reset
+
+-path "/mnt/2tb/git/pluribus/diamond-fuzz/targets/re_edge_pin43"  

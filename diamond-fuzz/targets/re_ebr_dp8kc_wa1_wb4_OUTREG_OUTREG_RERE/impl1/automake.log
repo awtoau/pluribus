@@ -1,0 +1,77 @@
+
+synthesis -f "fuzz_impl1_lattice.synproj"
+synthesis:  version Diamond (64-bit) 3.14.0.75.2
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+Thu Jul 16 00:10:07 2026
+
+
+Command Line:  synthesis -f fuzz_impl1_lattice.synproj 
+
+INFO - synthesis: Lattice Synthesis Engine Launched.
+Synthesis options:
+The -a option is MachXO2.
+The -s option is 5.
+The -t option is TQFP100.
+The -d option is LCMXO2-1200HC.
+Using package TQFP100.
+Using performance grade 5.
+                                                          
+
+##########################################################
+
+### Lattice Family : MachXO2
+
+### Device  : LCMXO2-1200HC
+
+### Package : TQFP100
+
+### Speed   : 5
+
+##########################################################
+
+                                                          
+
+INFO - synthesis: User-Selected Strategy Settings
+Optimization goal = Balanced
+The -top option is not used.
+Target frequency = 200.000000 MHz.
+Maximum fanout = 1000.
+Timing path count = 3
+BRAM utilization = 100.000000 %
+DSP usage = true
+DSP utilization = 100.000000 %
+fsm_encoding_style = auto
+resolve_mixed_drivers = 0
+fix_gated_clocks = 1
+
+Mux style = Auto
+Use Carry Chain = true
+carry_chain_length = 0
+Loop Limit = 1950.
+Use IO Insertion = TRUE
+Use IO Reg = AUTO
+
+Resource Sharing = TRUE
+Propagate Constants = TRUE
+Remove Duplicate Registers = TRUE
+force_gsr = auto
+ROM style = auto
+RAM style = auto
+The -comp option is FALSE.
+The -syn option is FALSE.
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa1_wb4_OUTREG_OUTREG_RERE (searchpath added)
+-p /home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data (searchpath added)
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa1_wb4_OUTREG_OUTREG_RERE/impl1 (searchpath added)
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa1_wb4_OUTREG_OUTREG_RERE (searchpath added)
+Verilog design file = /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa1_wb4_OUTREG_OUTREG_RERE/fuzz.v
+NGD file = fuzz_impl1.ngd
+-sdc option: SDC file input not used.
+-lpf option: Output file option is ON.
+Hardtimer checking is enabled (default). The -dt option is not used.
+The -r option is OFF. [ Remove LOC Properties is OFF. ]
+ERROR - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa1_wb4_OUTREG_OUTREG_RERE/fuzz.v(4): syntax error near ). VERI-1137

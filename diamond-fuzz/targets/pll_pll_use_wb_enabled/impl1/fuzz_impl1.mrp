@@ -7,14 +7,15 @@ Design Information
 
 Command line:   map -a MachXO2 -p LCMXO2-1200HC -t TQFP100 -s 5 -oc Commercial
      fuzz_impl1.ngd -o fuzz_impl1_map.ncd -pr fuzz_impl1.prf -mp fuzz_impl1.mrp
-     -lpf /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_pll_use_wb_enable
-     d/impl1/fuzz_impl1.lpf -lpf /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/target
-     s/pll_pll_use_wb_enabled/fuzz.lpf -c 0 
+     -lpf /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_pll_use_wb_enabled/impl
+     1/fuzz_impl1.lpf -lpf
+     /mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_pll_use_wb_enabled/fuzz.lpf
+     -c 0 
 Target Vendor:  LATTICE
 Target Device:  LCMXO2-1200HCTQFP100
 Target Performance:   5
 Mapper:  xo2c00,  version:  Diamond (64-bit) 3.14.0.75.2
-Mapped on:  06/30/26  09:08:00
+Mapped on:  07/15/26  23:25:58
 
 
 
@@ -59,17 +60,17 @@ PLL 1:                                     Pin/Node Value
   PLL Instance Name:                                u0
   PLL Type:                                         EHXPLLJ
   Input Clock:                             PIN      clk_c
-  Output Clock(P):                         NODE     clkop_w
 
                                     Page 1
 
 
 
 
-Design:  fuzz                                          Date:  06/30/26  09:08:00
+Design:  fuzz                                          Date:  07/15/26  23:25:58
 
 PLL/DLL Summary (cont)
 ----------------------
+  Output Clock(P):                         NODE     clkop_w
   Output Clock(S):                                  NONE
   Output Clock(S2):                                 NONE
   Output Clock(S3):                                 NONE
@@ -125,17 +126,17 @@ PLL/DLL Summary (cont)
   VCO Bypass D Input:                               VCO_PHASE
   FB_MODE:                                          INT_CLKOP
   CLKI Divider:                                     1
-  CLKFB Divider:                                    1
 
                                     Page 2
 
 
 
 
-Design:  fuzz                                          Date:  06/30/26  09:08:00
+Design:  fuzz                                          Date:  07/15/26  23:25:58
 
 PLL/DLL Summary (cont)
 ----------------------
+  CLKFB Divider:                                    1
   CLKOP Divider:                                    1
   CLKOS Divider:                                    8
   CLKOS2 Divider:                                   8
@@ -155,7 +156,6 @@ ASIC Components
 
 Instance Name: u0
          Type: EHXPLLJ
-
 
 
 

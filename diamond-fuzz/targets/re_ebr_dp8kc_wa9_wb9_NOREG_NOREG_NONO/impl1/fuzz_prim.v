@@ -1,0 +1,106 @@
+// Verilog netlist produced by program LSE :  version Diamond (64-bit) 3.14.0.75.2
+// Netlist written on Thu Jul 16 00:13:40 2026
+//
+// Verilog Description of module fuzz
+//
+
+module fuzz (clk, out0) /* synthesis syn_module_defined=1 */ ;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(1[8:12])
+    input clk;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(1[24:27])
+    output out0;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(1[40:44])
+    
+    wire clk_c /* synthesis is_clock=1 */ ;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(1[24:27])
+    
+    wire GND_net, out0_c;
+    wire [7:0]o;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(2[26:27])
+    
+    wire out0_N_1, VCC_net, n14, n10;
+    
+    VHI i16 (.Z(VCC_net));
+    OB out0_pad (.I(out0_c), .O(out0));   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(1[40:44])
+    DP8KC u0 (.DIA0(GND_net), .DIA1(GND_net), .DIA2(GND_net), .DIA3(GND_net), 
+          .DIA4(GND_net), .DIA5(GND_net), .DIA6(GND_net), .DIA7(GND_net), 
+          .DIA8(GND_net), .ADA0(GND_net), .ADA1(GND_net), .ADA2(GND_net), 
+          .ADA3(GND_net), .ADA4(GND_net), .ADA5(GND_net), .ADA6(GND_net), 
+          .ADA7(GND_net), .ADA8(GND_net), .ADA9(GND_net), .ADA10(GND_net), 
+          .ADA11(GND_net), .ADA12(GND_net), .CEA(GND_net), .OCEA(GND_net), 
+          .CLKA(clk_c), .WEA(GND_net), .CSA0(GND_net), .CSA1(GND_net), 
+          .CSA2(GND_net), .RSTA(GND_net), .DIB0(GND_net), .DIB1(GND_net), 
+          .DIB2(GND_net), .DIB3(GND_net), .DIB4(GND_net), .DIB5(GND_net), 
+          .DIB6(GND_net), .DIB7(GND_net), .DIB8(GND_net), .ADB0(GND_net), 
+          .ADB1(GND_net), .ADB2(GND_net), .ADB3(GND_net), .ADB4(GND_net), 
+          .ADB5(GND_net), .ADB6(GND_net), .ADB7(GND_net), .ADB8(GND_net), 
+          .ADB9(GND_net), .ADB10(GND_net), .ADB11(GND_net), .ADB12(GND_net), 
+          .CEB(GND_net), .OCEB(GND_net), .CLKB(clk_c), .WEB(GND_net), 
+          .CSB0(GND_net), .CSB1(GND_net), .CSB2(GND_net), .RSTB(GND_net), 
+          .DOA0(o[0]), .DOA1(o[1]), .DOA2(o[2]), .DOA3(o[3]), .DOA4(o[4]), 
+          .DOA5(o[5]), .DOA6(o[6]), .DOA7(o[7])) /* synthesis syn_instantiated=1 */ ;
+    defparam u0.DATA_WIDTH_A = 9;
+    defparam u0.DATA_WIDTH_B = 9;
+    defparam u0.REGMODE_A = "NOREG";
+    defparam u0.REGMODE_B = "NOREG";
+    defparam u0.CSDECODE_A = "0b000";
+    defparam u0.CSDECODE_B = "0b000";
+    defparam u0.WRITEMODE_A = "NORMAL";
+    defparam u0.WRITEMODE_B = "NORMAL";
+    defparam u0.GSR = "ENABLED";
+    defparam u0.RESETMODE = "SYNC";
+    defparam u0.ASYNC_RESET_RELEASE = "SYNC";
+    defparam u0.INIT_DATA = "STATIC";
+    defparam u0.INITVAL_00 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_01 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_02 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_03 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_04 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_05 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_06 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_07 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_08 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_09 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_0A = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_0B = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_0C = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_0D = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_0E = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_0F = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_10 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_11 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_12 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_13 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_14 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_15 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_16 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_17 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_18 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_19 = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_1A = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_1B = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_1C = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_1D = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_1E = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    defparam u0.INITVAL_1F = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    LUT4 i2_2_lut (.A(o[2]), .B(o[4]), .Z(n10)) /* synthesis lut_function=(!(A (B)+!A !(B))) */ ;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(13[34:36])
+    defparam i2_2_lut.init = 16'h6666;
+    LUT4 i7_4_lut (.A(o[0]), .B(n14), .C(n10), .D(o[6]), .Z(out0_N_1)) /* synthesis lut_function=(!(A (B (C (D)+!C !(D))+!B !(C (D)+!C !(D)))+!A !(B (C (D)+!C !(D))+!B !(C (D)+!C !(D))))) */ ;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(13[34:36])
+    defparam i7_4_lut.init = 16'h6996;
+    VLO i1 (.Z(GND_net));
+    PUR PUR_INST (.PUR(VCC_net));
+    defparam PUR_INST.RST_PULSE = 1;
+    TSALL TSALL_INST (.TSALL(GND_net));
+    LUT4 i6_4_lut (.A(o[3]), .B(o[1]), .C(o[5]), .D(o[7]), .Z(n14)) /* synthesis lut_function=(!(A (B (C (D)+!C !(D))+!B !(C (D)+!C !(D)))+!A !(B (C (D)+!C !(D))+!B !(C (D)+!C !(D))))) */ ;   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(13[34:36])
+    defparam i6_4_lut.init = 16'h6996;
+    IB clk_pad (.I(clk), .O(clk_c));   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(1[24:27])
+    GSR GSR_INST (.GSR(VCC_net));
+    FD1S3AX r_6 (.D(out0_N_1), .CK(clk_c), .Q(out0_c));   // /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.v(13[16:37])
+    defparam r_6.GSR = "ENABLED";
+    
+endmodule
+//
+// Verilog Description of module PUR
+// module not written out since it is a black-box. 
+//
+
+//
+// Verilog Description of module TSALL
+// module not written out since it is a black-box. 
+//
+

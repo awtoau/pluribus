@@ -7,14 +7,15 @@ Design Information
 
 Command line:   map -a MachXO2 -p LCMXO2-1200HC -t TQFP100 -s 5 -oc Commercial
      fuzz_impl1.ngd -o fuzz_impl1_map.ncd -pr fuzz_impl1.prf -mp fuzz_impl1.mrp
-     -lpf /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/sedfa_freq_10p64_caen
-     /impl1/fuzz_impl1.lpf -lpf /mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets
-     /sedfa_freq_10p64_caen/fuzz.lpf -c 0 
+     -lpf /mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_10p64_caen/impl1
+     /fuzz_impl1.lpf -lpf
+     /mnt/2tb/git/pluribus/diamond-fuzz/targets/sedfa_freq_10p64_caen/fuzz.lpf
+     -c 0 
 Target Vendor:  LATTICE
 Target Device:  LCMXO2-1200HCTQFP100
 Target Performance:   5
 Mapper:  xo2c00,  version:  Diamond (64-bit) 3.14.0.75.2
-Mapped on:  06/30/26  09:08:13
+Mapped on:  07/15/26  23:25:58
 
 
 
@@ -46,7 +47,6 @@ ASIC Components
 
 Instance Name: u0
          Type: SEDFA
-
 
 
 

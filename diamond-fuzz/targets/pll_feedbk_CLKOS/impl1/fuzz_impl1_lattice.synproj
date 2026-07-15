@@ -31,11 +31,11 @@
 
 
 -lpf 1
--p "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS"
--ver "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS/fuzz.v"
+-p "/mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS"
+-ver "/mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS/fuzz.v"
 
 
--p "/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data" "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS/impl1" "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_feedbk_CLKOS"
+-p "/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data" "/mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS/impl1" "/mnt/2tb/git/pluribus/diamond-fuzz/targets/pll_feedbk_CLKOS"
 
 -ngd "fuzz_impl1.ngd"
 

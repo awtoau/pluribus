@@ -107,11 +107,11 @@ PDPW_PORTS = '''\
 def ebr_dp8kc(wa, wb, rega, regb, wma, wmb):
     return (f"module fuzz(input wire clk,output wire out0);\n wire g=1'b0; wire [7:0] o;\n"
             f" DP8KC #(.DATA_WIDTH_A({wa}),.DATA_WIDTH_B({wb}),.REGMODE_A(\"{rega}\"),"
-            f".REGMODE_B(\"{regb}\"),.WRITEMODE_A(\"{wma}\"),.WRITEMODE_B(\"{wmb}\"))\n"
+            f".REGMODE_B(\"{regb}\"),.WRITEMODE_A(\"{wma}\"),.WRITEMODE_B(\"{wmb}\")\n"
             f"{DP8KC_PORTS}\n reg r; always @(posedge clk) r<=^o; assign out0=r;\nendmodule\n")
 def ebr_pdpw(ww, wr, reg):
     return (f"module fuzz(input wire clk,output wire out0);\n wire g=1'b0; wire [17:0] o;\n"
-            f" PDPW8KC #(.DATA_WIDTH_W({ww}),.DATA_WIDTH_R({wr}),.REGMODE(\"{reg}\"))\n"
+            f" PDPW8KC #(.DATA_WIDTH_W({ww}),.DATA_WIDTH_R({wr}),.REGMODE(\"{reg}\")\n"
             f"{PDPW_PORTS}\n reg r; always @(posedge clk) r<=^o; assign out0=r;\nendmodule\n")
 
 # ── EFB: exhaustive feature-combo sweep, WBDATO -> fabric ────────────────────
@@ -132,7 +132,7 @@ def efb(i2c1, i2c2, spi, tc, ufm, spi_mode):
     def e(b): return '"ENABLED"' if b else '"DISABLED"'
     return (f"module fuzz(input wire clk,output wire out0);\n wire g=1'b0; wire [7:0] o; wire a;\n"
             f" EFB #(.EFB_I2C1({e(i2c1)}),.EFB_I2C2({e(i2c2)}),.EFB_SPI({e(spi)}),"
-            f".EFB_TC({e(tc)}),.EFB_UFM({e(ufm)}),.SPI_MODE(\"{spi_mode}\"),.EFB_WB_CLK_FREQ(\"100.0\"))\n"
+            f".EFB_TC({e(tc)}),.EFB_UFM({e(ufm)}),.SPI_MODE(\"{spi_mode}\"),.EFB_WB_CLK_FREQ(\"100.0\")\n"
             f"{EFB_PORTS}\n reg r; always @(posedge clk) r<=a^(^o); assign out0=r;\nendmodule\n")
 
 # ── IO standards: exhaustive BASE_TYPE x PULLMODE x DRIVE on edge pads ───────
@@ -169,11 +169,14 @@ def main():
         emit(f"re_jtag_{tag}", jtag_v(a,b), simple_lpf({"clk":"88","out0":"84"}))
 
     # EBR — every DP8KC width x regmode x writemode
-    W = [1,2,4,9,18]; REG=["NOREG","OUTREG"]; WM=["NORMAL","WRITETHROUGH","READBEFOREWRITE"]
+    # DP8KC is a true dual-port 8K x 9 — max 9 bits/port (w18 is PDPW8KC-only
+    # and fails elaboration, verified).  Sweep the full VALID domain, no pruning.
+    W = [1,2,4,9]; REG=["NOREG","OUTREG"]; WM=["NORMAL","WRITETHROUGH","READBEFOREWRITE"]
     for wa,wb,ra,rb,wma,wmb in itertools.product(W,W,REG,REG,WM,WM):
         emit(f"re_ebr_dp8kc_wa{wa}_wb{wb}_{ra}_{rb}_{wma[:2]}{wmb[:2]}",
              ebr_dp8kc(wa,wb,ra,rb,wma,wmb), simple_lpf({"clk":"88","out0":"84"}))
-    for ww,wr,reg in itertools.product([1,2,4,9,18],[1,2,4,9,18],REG):
+    # PDPW8KC: write side up to 18, read side up to 9.
+    for ww,wr,reg in itertools.product([1,2,4,9,18],[1,2,4,9],REG):
         emit(f"re_ebr_pdpw_ww{ww}_wr{wr}_{reg}", ebr_pdpw(ww,wr,reg),
              simple_lpf({"clk":"88","out0":"84"}))
 
