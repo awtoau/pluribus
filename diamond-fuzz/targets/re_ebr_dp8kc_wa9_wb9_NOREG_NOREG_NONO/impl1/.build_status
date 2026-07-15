@@ -5,31 +5,31 @@
             <Task name="IBIS" build_result="0" update_result="3" update_time="0"/>
             <Task name="TimingSimFileVlg" build_result="0" update_result="3" update_time="0"/>
             <Task name="TimingSimFileVHD" build_result="0" update_result="3" update_time="0"/>
-            <Task name="Bitgen" build_result="2" update_result="0" update_time="1784124824"/>
+            <Task name="Bitgen" build_result="2" update_result="0" update_time="1784125935"/>
             <Task name="Jedecgen" build_result="0" update_result="3" update_time="0"/>
         </Milestone>
-        <Milestone name="Map" build_result="2" build_time="1784124821">
-            <Task name="Map" build_result="2" update_result="0" update_time="1784124821"/>
+        <Milestone name="Map" build_result="2" build_time="1784125931">
+            <Task name="Map" build_result="2" update_result="0" update_time="1784125931"/>
             <Task name="MapTrace" build_result="0" update_result="3" update_time="0"/>
             <Task name="MapVerilogSimFile" build_result="0" update_result="3" update_time="0"/>
             <Task name="MapVHDLSimFile" build_result="0" update_result="3" update_time="0"/>
         </Milestone>
-        <Milestone name="PAR" build_result="2" build_time="1784124824">
-            <Task name="PAR" build_result="2" update_result="0" update_time="1784124824"/>
-            <Task name="PARTrace" build_result="2" update_result="0" update_time="1784124824"/>
+        <Milestone name="PAR" build_result="2" build_time="1784125934">
+            <Task name="PAR" build_result="2" update_result="0" update_time="1784125934"/>
+            <Task name="PARTrace" build_result="2" update_result="0" update_time="1784125935"/>
             <Task name="IOTiming" build_result="0" update_result="3" update_time="0"/>
         </Milestone>
-        <Milestone name="Synthesis" build_result="2" build_time="1784124820">
-            <Task name="Lattice_Synthesis" build_result="2" update_result="0" update_time="1784124820"/>
-            <Task name="LSE_Compile" build_result="2" update_result="0" update_time="1784124824"/>
+        <Milestone name="Synthesis" build_result="2" build_time="1784125931">
+            <Task name="Lattice_Synthesis" build_result="2" update_result="0" update_time="1784125931"/>
+            <Task name="LSE_Compile" build_result="2" update_result="0" update_time="1784125935"/>
         </Milestone>
-        <Report name=".vdbs/fuzz_impl1_map.vdb" last_build_time="1784124821" last_build_size="32603"/>
-        <Report name="fuzz_impl1.bgn" last_build_time="1784124824" last_build_size="4089"/>
-        <Report name="fuzz_impl1.bit" last_build_time="1784124824" last_build_size="6174"/>
-        <Report name="fuzz_impl1.lsedata" last_build_time="1784124820" last_build_size="6013"/>
-        <Report name="fuzz_impl1.ncd" last_build_time="1784124824" last_build_size="11440"/>
-        <Report name="fuzz_impl1.ngd" last_build_time="1784124820" last_build_size="9255"/>
-        <Report name="fuzz_impl1.twr" last_build_time="1784124824" last_build_size="32853"/>
-        <Report name="fuzz_impl1_map.ncd" last_build_time="1784124820" last_build_size="9875"/>
+        <Report name=".vdbs/fuzz_impl1_map.vdb" last_build_time="1784125931" last_build_size="32603"/>
+        <Report name="fuzz_impl1.bgn" last_build_time="1784125935" last_build_size="4089"/>
+        <Report name="fuzz_impl1.bit" last_build_time="1784125935" last_build_size="6174"/>
+        <Report name="fuzz_impl1.lsedata" last_build_time="1784125931" last_build_size="6013"/>
+        <Report name="fuzz_impl1.ncd" last_build_time="1784125934" last_build_size="11440"/>
+        <Report name="fuzz_impl1.ngd" last_build_time="1784125931" last_build_size="9255"/>
+        <Report name="fuzz_impl1.twr" last_build_time="1784125935" last_build_size="32853"/>
+        <Report name="fuzz_impl1_map.ncd" last_build_time="1784125931" last_build_size="9875"/>
     </Strategy>
 </BuildStatus>

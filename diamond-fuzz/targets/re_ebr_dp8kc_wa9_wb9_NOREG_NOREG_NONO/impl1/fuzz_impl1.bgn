@@ -4,7 +4,7 @@ Copyright (c) 1995 AT&T Corp.   All rights reserved.
 Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
 Copyright (c) 2001 Agere Systems   All rights reserved.
 Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
-Thu Jul 16 00:13:44 2026
+Thu Jul 16 00:32:15 2026
 
 
 Command: bitgen -g RamCfg:Reset -path /mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO -w fuzz_impl1.ncd fuzz_impl1.prf 

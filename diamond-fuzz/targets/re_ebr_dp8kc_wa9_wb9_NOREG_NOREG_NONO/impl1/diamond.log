@@ -7,7 +7,7 @@ Copyright (c) 1995 AT&T Corp.   All rights reserved.
 Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
 Copyright (c) 2001 Agere Systems   All rights reserved.
 Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
-Thu Jul 16 00:13:40 2026
+Thu Jul 16 00:32:11 2026
 
 
 Command Line:  synthesis -f fuzz_impl1_lattice.synproj 
@@ -180,7 +180,7 @@ clk0 [get_nets clk_c]                   |  200.000 MHz|  127.097 MHz|     3 *
 Peak Memory Usage: 175.016  MB
 
 --------------------------------------------------------------
-Elapsed CPU time for LSE flow : 0.100  secs
+Elapsed CPU time for LSE flow : 0.101  secs
 --------------------------------------------------------------
 
 map -a "MachXO2" -p LCMXO2-1200HC -t TQFP100 -s 5 -oc Commercial   "fuzz_impl1.ngd" -o "fuzz_impl1_map.ncd" -pr "fuzz_impl1.prf" -mp "fuzz_impl1.mrp" -lpf "/mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/impl1/fuzz_impl1.lpf" -lpf "/mnt/2tb/git/pluribus/diamond-fuzz/targets/re_ebr_dp8kc_wa9_wb9_NOREG_NOREG_NONO/fuzz.lpf"  -c 0           
@@ -292,7 +292,7 @@ Removing old design directory at request of -rem command line option to this pro
 Running par. Please wait . . .
 
 Lattice Place and Route Report for Design "fuzz_impl1_map.ncd"
-Thu Jul 16 00:13:41 2026
+Thu Jul 16 00:32:11 2026
 
 PAR: Place And Route Diamond (64-bit) 3.14.0.75.2.
 Command Line: par -w -l 5 -i 6 -t 1 -c 0 -e 0 -exp parUseNBR=1:parCDP=0:parCDR=0:parPathBased=OFF:parASE=1 fuzz_impl1_map.ncd fuzz_impl1.dir/5_1.ncd fuzz_impl1.prf
@@ -398,7 +398,7 @@ WARNING - par: The following clock signals will be routed by using generic routi
 
 Completed router resource preassignment. Real time: 0 secs 
 
-Start NBR router at Thu Jul 16 00:13:41 AEST 2026
+Start NBR router at Thu Jul 16 00:32:12 AEST 2026
 
 *****************************************************************
 Info: NBR allows conflicts(one node used by more than one signal)
@@ -413,9 +413,9 @@ Note: NBR uses a different method to calculate timing slacks. The
       your design.                                               
 *****************************************************************
 
-Start NBR special constraint process at Thu Jul 16 00:13:41 AEST 2026
+Start NBR special constraint process at Thu Jul 16 00:32:12 AEST 2026
 
-Start NBR section for initial routing at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for initial routing at Thu Jul 16 00:32:12 AEST 2026
 Level 1, iteration 1
 1(0.00%) conflict; 8(53.33%) untouched conns; 0 (nbr) score; 
 Estimated worst slack/total negative slack<setup>: 2.803ns/0.000ns; real time: 0 secs 
@@ -432,7 +432,7 @@ Estimated worst slack/total negative slack<setup>: 2.418ns/0.000ns; real time: 0
 Info: Initial congestion level at 75% usage is 0
 Info: Initial congestion area  at 75% usage is 0 (0.00%)
 
-Start NBR section for normal routing at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for normal routing at Thu Jul 16 00:32:12 AEST 2026
 Level 1, iteration 1
 0(0.00%) conflict; 1(6.67%) untouched conn; 0 (nbr) score; 
 Estimated worst slack/total negative slack<setup>: 2.418ns/0.000ns; real time: 0 secs 
@@ -440,14 +440,14 @@ Level 4, iteration 1
 0(0.00%) conflict; 0(0.00%) untouched conn; 0 (nbr) score; 
 Estimated worst slack/total negative slack<setup>: 2.418ns/0.000ns; real time: 0 secs 
 
-Start NBR section for setup/hold timing optimization with effort level 3 at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for setup/hold timing optimization with effort level 3 at Thu Jul 16 00:32:12 AEST 2026
 
-Start NBR section for re-routing at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for re-routing at Thu Jul 16 00:32:12 AEST 2026
 Level 4, iteration 1
 0(0.00%) conflict; 0(0.00%) untouched conn; 0 (nbr) score; 
 Estimated worst slack/total negative slack<setup>: 2.418ns/0.000ns; real time: 0 secs 
 
-Start NBR section for post-routing at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for post-routing at Thu Jul 16 00:32:12 AEST 2026
 
 End NBR router with 0 unrouted connection
 
@@ -523,7 +523,7 @@ Setup and Hold Report
 
 --------------------------------------------------------------------------------
 Lattice TRACE Report - Setup, Version Diamond (64-bit) 3.14.0.75.2
-Thu Jul 16 00:13:44 2026
+Thu Jul 16 00:32:15 2026
 
 Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
 Copyright (c) 1995 AT&T Corp.   All rights reserved.
@@ -556,7 +556,7 @@ Constraints cover 8 paths, 1 nets, and 14 connections (93.33% coverage)
 
 --------------------------------------------------------------------------------
 Lattice TRACE Report - Hold, Version Diamond (64-bit) 3.14.0.75.2
-Thu Jul 16 00:13:44 2026
+Thu Jul 16 00:32:15 2026
 
 Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
 Copyright (c) 1995 AT&T Corp.   All rights reserved.

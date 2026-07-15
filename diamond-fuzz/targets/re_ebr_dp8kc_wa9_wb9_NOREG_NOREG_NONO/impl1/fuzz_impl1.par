@@ -4,7 +4,7 @@ Copyright (c) 1995 AT&T Corp.   All rights reserved.
 Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
 Copyright (c) 2001 Agere Systems   All rights reserved.
 Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
-Thu Jul 16 00:13:41 2026
+Thu Jul 16 00:32:11 2026
 
 /home/dan/lscc/diamond/3.14/ispfpga/bin/lin64/par -f fuzz_impl1.p2t
 fuzz_impl1_map.ncd fuzz_impl1.dir fuzz_impl1.prf
@@ -26,7 +26,7 @@ par done!
 Note: user must run 'Trace' for timing closure signoff.
 
 Lattice Place and Route Report for Design "fuzz_impl1_map.ncd"
-Thu Jul 16 00:13:41 2026
+Thu Jul 16 00:32:11 2026
 
 PAR: Place And Route Diamond (64-bit) 3.14.0.75.2.
 Command Line: par -w -l 5 -i 6 -t 1 -c 0 -e 0 -exp parUseNBR=1:parCDP=0:parCDR=0:parPathBased=OFF:parASE=1 fuzz_impl1_map.ncd fuzz_impl1.dir/5_1.ncd fuzz_impl1.prf
@@ -132,7 +132,7 @@ WARNING - par: The following clock signals will be routed by using generic routi
 
 Completed router resource preassignment. Real time: 0 secs 
 
-Start NBR router at Thu Jul 16 00:13:41 AEST 2026
+Start NBR router at Thu Jul 16 00:32:12 AEST 2026
 
 *****************************************************************
 Info: NBR allows conflicts(one node used by more than one signal)
@@ -147,9 +147,9 @@ Note: NBR uses a different method to calculate timing slacks. The
       your design.                                               
 *****************************************************************
 
-Start NBR special constraint process at Thu Jul 16 00:13:41 AEST 2026
+Start NBR special constraint process at Thu Jul 16 00:32:12 AEST 2026
 
-Start NBR section for initial routing at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for initial routing at Thu Jul 16 00:32:12 AEST 2026
 Level 1, iteration 1
 1(0.00%) conflict; 8(53.33%) untouched conns; 0 (nbr) score; 
 Estimated worst slack/total negative slack<setup>: 2.803ns/0.000ns; real time: 0 secs 
@@ -166,7 +166,7 @@ Estimated worst slack/total negative slack<setup>: 2.418ns/0.000ns; real time: 0
 Info: Initial congestion level at 75% usage is 0
 Info: Initial congestion area  at 75% usage is 0 (0.00%)
 
-Start NBR section for normal routing at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for normal routing at Thu Jul 16 00:32:12 AEST 2026
 Level 1, iteration 1
 0(0.00%) conflict; 1(6.67%) untouched conn; 0 (nbr) score; 
 Estimated worst slack/total negative slack<setup>: 2.418ns/0.000ns; real time: 0 secs 
@@ -174,14 +174,14 @@ Level 4, iteration 1
 0(0.00%) conflict; 0(0.00%) untouched conn; 0 (nbr) score; 
 Estimated worst slack/total negative slack<setup>: 2.418ns/0.000ns; real time: 0 secs 
 
-Start NBR section for setup/hold timing optimization with effort level 3 at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for setup/hold timing optimization with effort level 3 at Thu Jul 16 00:32:12 AEST 2026
 
-Start NBR section for re-routing at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for re-routing at Thu Jul 16 00:32:12 AEST 2026
 Level 4, iteration 1
 0(0.00%) conflict; 0(0.00%) untouched conn; 0 (nbr) score; 
 Estimated worst slack/total negative slack<setup>: 2.418ns/0.000ns; real time: 0 secs 
 
-Start NBR section for post-routing at Thu Jul 16 00:13:41 AEST 2026
+Start NBR section for post-routing at Thu Jul 16 00:32:12 AEST 2026
 
 End NBR router with 0 unrouted connection
 

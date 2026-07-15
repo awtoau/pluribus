@@ -107,11 +107,13 @@ PDPW_PORTS = '''\
 def ebr_dp8kc(wa, wb, rega, regb, wma, wmb):
     return (f"module fuzz(input wire clk,output wire out0);\n wire g=1'b0; wire [7:0] o;\n"
             f" DP8KC #(.DATA_WIDTH_A({wa}),.DATA_WIDTH_B({wb}),.REGMODE_A(\"{rega}\"),"
-            f".REGMODE_B(\"{regb}\"),.WRITEMODE_A(\"{wma}\"),.WRITEMODE_B(\"{wmb}\")\n"
+            f".REGMODE_B(\"{regb}\"),.WRITEMODE_A(\"{wma}\"),.WRITEMODE_B(\"{wmb}\"),"
+            f".INITVAL_00(\"0x{'0'*80}\")\n"
             f"{DP8KC_PORTS}\n reg r; always @(posedge clk) r<=^o; assign out0=r;\nendmodule\n")
 def ebr_pdpw(ww, wr, reg):
     return (f"module fuzz(input wire clk,output wire out0);\n wire g=1'b0; wire [17:0] o;\n"
-            f" PDPW8KC #(.DATA_WIDTH_W({ww}),.DATA_WIDTH_R({wr}),.REGMODE(\"{reg}\")\n"
+            f" PDPW8KC #(.DATA_WIDTH_W({ww}),.DATA_WIDTH_R({wr}),.REGMODE(\"{reg}\"),"
+            f".INITVAL_00(\"0x{'0'*80}\")\n"
             f"{PDPW_PORTS}\n reg r; always @(posedge clk) r<=^o; assign out0=r;\nendmodule\n")
 
 # ── EFB: exhaustive feature-combo sweep, WBDATO -> fabric ────────────────────

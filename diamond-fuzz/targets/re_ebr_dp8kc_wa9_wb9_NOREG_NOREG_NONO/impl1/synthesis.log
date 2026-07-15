@@ -5,7 +5,7 @@ Copyright (c) 1995 AT&T Corp.   All rights reserved.
 Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
 Copyright (c) 2001 Agere Systems   All rights reserved.
 Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
-Thu Jul 16 00:13:40 2026
+Thu Jul 16 00:32:11 2026
 
 
 Command Line:  synthesis -f fuzz_impl1_lattice.synproj 
@@ -167,5 +167,5 @@ clk0 [get_nets clk_c]                   |  200.000 MHz|  127.097 MHz|     3 *
 Peak Memory Usage: 175.016  MB
 
 --------------------------------------------------------------
-Elapsed CPU time for LSE flow : 0.100  secs
+Elapsed CPU time for LSE flow : 0.101  secs
 --------------------------------------------------------------
