@@ -136,22 +136,18 @@ def run_diamond(target_dir: Path, log_path: Path) -> tuple[bool, str]:
             env=env,
         )
 
-    bit = target_dir / "impl1" / "fuzz_impl1.bit"
-    bit_ok = bit.exists() and bit.stat().st_size > 1000  # a Final MachXO2 bit is KBs
-    errors = check_diamond_log(log_path)
+    if proc.returncode != 0:
+        return False, f"diamondc exited {proc.returncode}"
 
-    # diamondc exits non-zero on *benign* warnings too (e.g. a Bitgen IO-DRC note
-    # when a high-speed standard lands on a pad Diamond flags) while still writing
-    # a Final bitstream.  Trust the artifact, not the exit code: a valid .bit with
-    # no ERROR patterns in the log is a success — dropping it would discard real
-    # fuzz data over a non-fatal warning (the never-prune principle applies here).
-    if bit_ok and not errors:
-        return (True, "ok") if proc.returncode == 0 else \
-               (True, f"ok (diamondc rc={proc.returncode}, warnings only)")
-    if not bit_ok:
-        return False, (f"diamondc exited {proc.returncode}, no valid .bit"
-                       if proc.returncode != 0 else ".bit file not produced")
-    return False, "; ".join(errors)
+    bit = target_dir / "impl1" / "fuzz_impl1.bit"
+    if not bit.exists():
+        return False, ".bit file not produced"
+
+    errors = check_diamond_log(log_path)
+    if errors:
+        return False, "; ".join(errors)
+
+    return True, "ok"
 
 
 def build_target(target_dir: Path, dry_run: bool = False) -> tuple[bool, str]:
