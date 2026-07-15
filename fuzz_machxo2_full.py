@@ -42,7 +42,7 @@ import sqlite3
 # ---------------------------------------------------------------------------
 _HERE   = Path(__file__).parent
 _ROOT   = _HERE.parent.parent
-_AWTO   = Path("/mnt/2tb/git/awto-2000")
+_AWTO   = Path(os.environ.get("AWTO_ROOT", "/mnt/2tb/git/awto-2000"))
 _LOG     = _HERE / "tmp" / "fuzz_full.log"
 _FUZZ_DB = Path(os.environ.get("FUZZ_DB",
     str(_HERE / "tmp" / "fuzz_full2.db")))

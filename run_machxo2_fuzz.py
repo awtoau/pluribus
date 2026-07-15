@@ -24,7 +24,8 @@ from pathlib import Path
 _ROOT   = Path(__file__).parent
 _LOG    = _ROOT / "tmp" / "fuzz_full.log"
 _FUZZER = _ROOT / "fuzz_machxo2_full.py"
-_PRJT   = Path("/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis")
+_PRJT   = Path(os.environ.get("TRELLIS_ROOT",
+               "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis"))
 
 
 def status():

@@ -34,7 +34,8 @@ _FUZZ_ROOT  = _SCRIPTS.parent
 _PLURIBUS   = _FUZZ_ROOT.parent
 TARGETS_DIR = _FUZZ_ROOT / "targets"
 RESULTS_DIR = _FUZZ_ROOT / "results"
-_PRJT       = Path("/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis")
+_PRJT       = Path(os.environ.get("TRELLIS_ROOT",
+                   "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis"))
 ECPUNPACK   = _PRJT / "libtrellis/build/ecpunpack"
 TRELLIS_DB  = _PRJT / "database"
 DIAMOND_LIB = _PRJT / "libtrellis/build"
