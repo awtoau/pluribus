@@ -107,24 +107,29 @@ def _a():
            (CONTRADICTED, "no F24-F27 unknowns in V07")
 
 # ── IO standards / #11 ───────────────────────────────────────────────────────
-@assertion("iostd-misdecode-11", "pluribus#11 / #29 item4",
-           "prjtrellis mis-decodes LVCMOS/LVTTL output pads as SSTL25_I/MIPI (PULLMODE/BASE_TYPE bit overlap)")
+@assertion("iostd-misdecode-11", "pluribus#11 / #29 item4 (DECODED)",
+           "prjtrellis silently mis-decodes single-ended LVCMOS/LVTTL outputs to SSTL25_I/PCI33 "
+           "(BASE_TYPE/PULLMODE bit overlap); SSTL25_I is the universal wrong-answer target")
 def _a():
-    cfgs = (_fuzz_configs("re_iostd_LVCMOS33_") + _fuzz_configs("re_iostd_LVCMOS12_")
-            + _fuzz_configs("re_iostd_LVTTL33_"))
-    if not cfgs: return INCONCLUSIVE, "no re_iostd LVCMOS/LVTTL configs built"
-    mis, total, examples = 0, 0, []
+    # Sweep every single-ended LVCMOS/LVTTL rail we built (not the *D differential
+    # variants — those legitimately map to MLVDS25E/SSTL25D_I).
+    cfgs = []
+    for rail in ("LVCMOS12", "LVCMOS15", "LVCMOS18", "LVCMOS25", "LVCMOS33", "LVTTL33"):
+        for c in _fuzz_configs(f"re_iostd_{rail}_"):
+            if re.search(rf"re_iostd_{rail}D_", c): continue  # skip differential
+            cfgs.append(c)
+    if not cfgs: return INCONCLUSIVE, "no re_iostd single-ended LVCMOS/LVTTL configs built"
+    mis, total, targets = 0, 0, {}
     for c in cfgs:
         dec = re.findall(r"PIO[A-D]\.BASE_TYPE (\S+)", _read(c) or "")
-        pad = [d for d in dec if d not in ("INPUT_LVTTL33", "OUTPUT_LVTTL33") or "SSTL" in d or "MIPI" in d]
         if not dec: continue
         total += 1
-        bad = [d for d in dec if "SSTL" in d or "MIPI" in d]
+        bad = [d for d in dec if "SSTL" in d or "MIPI" in d or "PCI33" in d]
         if bad:
             mis += 1
-            if len(examples) < 3: examples.append(f"{Path(c).stem.replace('re_iostd_','')}→{bad[0]}")
+            for d in bad: targets[d] = targets.get(d, 0) + 1
     if total == 0: return INCONCLUSIVE, "no PIO BASE_TYPE decoded"
-    return (CONFIRMED, f"{mis}/{total} LVCMOS/LVTTL configs mis-decode to SSTL/MIPI, e.g. {examples}") if mis else \
+    return (CONFIRMED, f"{mis}/{total} single-ended configs mis-decode; wrong-answer targets {targets}") if mis else \
            (CONTRADICTED, f"0/{total} mis-decode — #11 not reproduced")
 
 # ── lifter invariants ────────────────────────────────────────────────────────
