@@ -161,6 +161,39 @@ def edge_out_lpf(pin, iotype, pull, drive):
             f'IOBUF PORT "d" IO_TYPE={iotype} PULLMODE={pull} DRIVE={drive};\n\n'
             'FREQUENCY PORT "clk" 100.000000 MHz;\n')
 
+# ── Edge high-speed: MULTIPLE ADJACENT pads at high-speed standards ──────────
+# A single pad never triggers the CIB F24-F27 config (verified: re_edge_pin*
+# decodes to 0 F24-F27 unknowns).  The gap is the fabric->bottom-edge routing
+# mux, which only lights up when several bonded-adjacent pads carry high-speed
+# IO together (pluribus#29 item3).  So this family drives N consecutive edge
+# pins as a bus at each high-speed standard — the productive form of re_edge.
+HS_IOSTD = ["MIPI", "SSTL25_I", "SSTL18_I", "HSTL18_I", "LVDS25", "SSTL25_II"]
+
+def edge_bus_v(n):
+    ports = ",".join(f"output wire d{i}" for i in range(n))
+    regs = "\n".join(f" reg t{i}; always @(posedge clk) t{i}<=~t{i}; assign d{i}=t{i};"
+                     for i in range(n))
+    return f"module fuzz(input wire clk,{ports});\n{regs}\nendmodule\n"
+
+def edge_bus_lpf(pins, iotype):
+    out = ["BLOCK RESETPATHS;", "BLOCK ASYNCPATHS;", "",
+           'LOCATE COMP "clk" SITE "88";', 'IOBUF PORT "clk" IO_TYPE=LVCMOS33;', ""]
+    for i, p in enumerate(pins):
+        out += [f'LOCATE COMP "d{i}" SITE "{p}";',
+                f'IOBUF PORT "d{i}" IO_TYPE={iotype};', ""]
+    out.append('FREQUENCY PORT "clk" 100.000000 MHz;')
+    return "\n".join(out) + "\n"
+
+def adjacent_windows(pins, size):
+    """Consecutive-package-pin windows (physically-adjacent bonded pads)."""
+    nums = sorted(int(p) for p in pins if p != "88")  # 88 is the clk pin
+    wins = []
+    for i in range(len(nums) - size + 1):
+        w = nums[i:i + size]
+        if w[-1] - w[0] == size - 1:          # truly consecutive pin numbers
+            wins.append([str(x) for x in w])
+    return wins
+
 def main():
     print("generating RE fuzz targets (exhaustive):")
     for tag, hx in IDENTS.items():
@@ -196,6 +229,15 @@ def main():
              edge_out_lpf("36", iotype, pull, drive))
     for pin in EDGE_PINS:
         emit(f"re_edge_pin{pin}", io_v("out"), edge_out_lpf(pin, "LVCMOS33", "NONE", "8"))
+
+    # Edge high-speed buses — N adjacent bonded pads at each high-speed standard,
+    # the form that actually triggers CIB F24-F27 (pluribus#29 item3).  Sweep
+    # window sizes 2..4 x every high-speed standard, no pruning.
+    for size in (2, 3, 4):
+        for win in adjacent_windows(EDGE_PINS, size):
+            for iotype in HS_IOSTD:
+                tag = f"{iotype}_{win[0]}-{win[-1]}"
+                emit(f"re_edgehs_{tag}", edge_bus_v(size), edge_bus_lpf(win, iotype))
 
     print(f"done. {N} targets. build with: "
           "python3 diamond-fuzz/scripts/run_all_fuzz.py --targets 're_*' -j 4")

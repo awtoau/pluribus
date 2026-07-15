@@ -107,7 +107,7 @@ def _a():
            (CONTRADICTED, "no F24-F27 unknowns in V07")
 
 # ── IO standards / #11 ───────────────────────────────────────────────────────
-@assertion("iostd-misdecode-11", "pluribus#11 / #29 item4 (DECODED)",
+@assertion("iostd-misdecode-11", "awto-2000#11 / pluribus#29 item4 (DECODED)",
            "prjtrellis silently mis-decodes single-ended LVCMOS/LVTTL outputs to SSTL25_I/PCI33 "
            "(BASE_TYPE/PULLMODE bit overlap); SSTL25_I is the universal wrong-answer target")
 def _a():
