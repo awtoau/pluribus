@@ -107,17 +107,25 @@ def _a():
            (CONTRADICTED, "no F24-F27 unknowns in V07")
 
 # ── IO standards / #11 ───────────────────────────────────────────────────────
-@assertion("iostd-fuzz-effective", "pluribus#11 / #29 item4",
-           "re_iostd_* targets actually vary the decoded IO bits across BASE_TYPE/PULLMODE (not LSE-collapsed)")
+@assertion("iostd-misdecode-11", "pluribus#11 / #29 item4",
+           "prjtrellis mis-decodes LVCMOS/LVTTL output pads as SSTL25_I/MIPI (PULLMODE/BASE_TYPE bit overlap)")
 def _a():
-    cfgs = _fuzz_configs("re_iostd_")
-    if len(cfgs) < 5: return INCONCLUSIVE, f"only {len(cfgs)} re_iostd configs built"
-    sigs = set()
-    for c in cfgs[:60]:
-        txt = _read(c) or ""
-        sigs.add("|".join(sorted(re.findall(r"enum: PIO[A-D]\.(BASE_TYPE|PULLMODE) \S+", txt))))
-    return (CONFIRMED, f"{len(sigs)} distinct IO-bit signatures across {min(60,len(cfgs))} configs") if len(sigs) > 3 else \
-           (CONTRADICTED, f"only {len(sigs)} distinct signatures — IO sweep collapsed too")
+    cfgs = (_fuzz_configs("re_iostd_LVCMOS33_") + _fuzz_configs("re_iostd_LVCMOS12_")
+            + _fuzz_configs("re_iostd_LVTTL33_"))
+    if not cfgs: return INCONCLUSIVE, "no re_iostd LVCMOS/LVTTL configs built"
+    mis, total, examples = 0, 0, []
+    for c in cfgs:
+        dec = re.findall(r"PIO[A-D]\.BASE_TYPE (\S+)", _read(c) or "")
+        pad = [d for d in dec if d not in ("INPUT_LVTTL33", "OUTPUT_LVTTL33") or "SSTL" in d or "MIPI" in d]
+        if not dec: continue
+        total += 1
+        bad = [d for d in dec if "SSTL" in d or "MIPI" in d]
+        if bad:
+            mis += 1
+            if len(examples) < 3: examples.append(f"{Path(c).stem.replace('re_iostd_','')}→{bad[0]}")
+    if total == 0: return INCONCLUSIVE, "no PIO BASE_TYPE decoded"
+    return (CONFIRMED, f"{mis}/{total} LVCMOS/LVTTL configs mis-decode to SSTL/MIPI, e.g. {examples}") if mis else \
+           (CONTRADICTED, f"0/{total} mis-decode — #11 not reproduced")
 
 # ── lifter invariants ────────────────────────────────────────────────────────
 @assertion("regsd-polarity-fixed", "lift ff_d_source",
