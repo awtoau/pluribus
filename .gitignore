@@ -11,3 +11,4 @@ build/
 *.db-wal
 docs/issues/
 diamond-fuzz/results/
+diamond-fuzz/targets/**/impl1/
