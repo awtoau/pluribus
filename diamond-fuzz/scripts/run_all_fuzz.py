@@ -35,8 +35,10 @@ from pathlib import Path
 
 # ── Repo layout ──────────────────────────────────────────────────────────────
 
-ROOT        = Path(__file__).resolve().parents[4]   # /mnt/2tb/git/awto-2000
-FUZZ_DIR    = ROOT / "fpga" / "diamond" / "fuzz"
+# Post-migration layout: this script lives at <repo>/diamond-fuzz/scripts/.
+# (Was parents[4] + fpga/diamond/fuzz when diamond-fuzz lived under awto-2000.)
+FUZZ_DIR    = Path(__file__).resolve().parents[1]   # <repo>/diamond-fuzz
+ROOT        = FUZZ_DIR.parent                        # pluribus repo root
 TARGETS_DIR = FUZZ_DIR / "targets"
 RESULTS_DIR = FUZZ_DIR / "results"
 LOG_DIR     = ROOT / "tmp"
