@@ -1,6 +1,6 @@
 """Pluribus — database helpers (dual SQLite / PostgreSQL backend).
 
-Backend selected via PLURIBUS_DB_BACKEND env var (default: postgres).
+Backend selected via PLURIBUS_DB_BACKEND env var (default: sqlite).
 
 Public API
 ----------
@@ -15,7 +15,7 @@ import os
 import re
 import sys
 
-BACKEND = os.environ.get("PLURIBUS_DB_BACKEND", "postgres").lower()
+BACKEND = os.environ.get("PLURIBUS_DB_BACKEND", "sqlite").lower()
 
 _DB     = os.environ.get("PGDATABASE",          "fpga_re")
 _USR    = os.environ.get("PGUSER",              os.environ.get("USER", "dan"))

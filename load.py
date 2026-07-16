@@ -1399,7 +1399,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--label",   help="bitstream label e.g. V07")
+    ap.add_argument("--label",   help="bitstream label e.g. rev1")
     ap.add_argument("--config",  required=True, help="path to .bin.config file")
     ap.add_argument("--board",   help="path to board config directory containing board.toml")
     ap.add_argument("--pins",    help="path to pins TSV annotation file (overrides --board)")
