@@ -1,2 +1,7 @@
+# The pipeline runs under python3.14t (free-threaded NoGIL) and requires it.
+# sqlalchemy >= 2.1.0b3 is REQUIRED: it ships the cp314t free-threaded wheel
+# (upstream #12881) whose cyextensions declare GIL-safety, so importing it does
+# NOT re-enable the GIL. sqlalchemy 2.0.x only has cp314 (standard-ABI) .so files,
+# which force the GIL back on under 3.14t.
+sqlalchemy>=2.1.0b3
 pg8000
-sqlalchemy
