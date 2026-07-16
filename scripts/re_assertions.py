@@ -1,15 +1,25 @@
 #!/usr/bin/env python3
 """RE assertion suite — mechanised regression checks for the reverse-
-engineering claims we've made, run against the actual data (the V07
-bitstream, the diamond-fuzz corpus, and — where available — the pluribus
-DB).  Each assertion reports CONFIRMED / CONTRADICTED / INCONCLUSIVE with
-evidence, so re-running after new fuzz data instantly shows which claims
+engineering claims we've made, run against the actual data (the in-repo
+diamond-fuzz corpus by default, and — opt-in — one or more real vendor
+bitstreams).  Each assertion reports CONFIRMED / CONTRADICTED / INCONCLUSIVE
+with evidence, so re-running after new fuzz data instantly shows which claims
 still hold and which the data has overturned.
 
 This is the generalisation of a prjtrellis `check.py`: instead of one
 tile's bits, it encodes the *findings* — issue claims, doc assertions,
 lifter invariants — as one runnable file.  Add a claim by writing one
 `@assertion(...)` function; it becomes part of the regression.
+
+The generic checks (prjtrellis DB bugs and lifter invariants that are
+reproducible from the shipped fuzz corpus) run with no configuration.  The
+board-specific checks additionally need real vendor bitstreams, which are
+NOT shipped in this repo: set ``PLURIBUS_VENDOR_CONFIGS`` to an
+``os.pathsep``-separated list of unpacked prjtrellis ``.config`` files to
+enable them.  Without it those checks report INCONCLUSIVE and are skipped.
+
+Trellis paths come from ``TRELLIS_BUILD`` / ``TRELLIS_DBROOT`` (in-repo
+defaults), the same convention as the rest of the pipeline.
 
 Usage:  python3 scripts/re_assertions.py            # all checks
         python3 scripts/re_assertions.py --only ebr # substring filter
@@ -23,11 +33,18 @@ import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-V07_CONFIG = Path("/mnt/2tb/git/awto-2000/fpga/v7/FPGA_V07.bin.config")
-V4_CONFIG  = Path("/mnt/2tb/git/awto-2000/fpga/v4/DS1302_2019071801.bin.config")
-V02_CONFIG = REPO / "tmp/v2/DS1302_V02.bin.config"
 FUZZ_RESULTS = REPO / "diamond-fuzz/results"
-PINS = Path("/mnt/2tb/git/awto-2000/fpga/aw2/aw2-pins.tsv")
+
+# Opt-in real vendor bitstreams (board-specific, not shipped in this repo).
+# os.pathsep-separated list of unpacked prjtrellis .config files.  Empty by
+# default → the vendor-bitstream assertions report INCONCLUSIVE and only the
+# generic corpus/lifter checks run.
+VENDOR_CONFIGS = [Path(p) for p in
+                  os.environ.get("PLURIBUS_VENDOR_CONFIGS", "").split(os.pathsep) if p]
+
+def _vendor_config():
+    """First opt-in vendor config, or None when the env is unset."""
+    return VENDOR_CONFIGS[0] if VENDOR_CONFIGS else None
 
 CONFIRMED, CONTRADICTED, INCONCLUSIVE = "CONFIRMED", "CONTRADICTED", "INCONCLUSIVE"
 
@@ -47,13 +64,15 @@ def _fuzz_configs(prefix):
     return sorted(glob.glob(str(FUZZ_RESULTS / f"{prefix}*" / "*.config")))
 
 # ── EBR / #29 ───────────────────────────────────────────────────────────────
-@assertion("ebr-mode-unknowns-v07", "pluribus#29 item1",
-           "V07's real EBRs emit unknown F1B32/F1B33/F1B34 (prjtrellis EBR.MODE bit-address bug)")
+@assertion("ebr-mode-unknowns-vendor", "pluribus#29 item1",
+           "A real vendor bitstream's EBRs emit unknown F1B32/F1B33/F1B34 (prjtrellis EBR.MODE bit-address bug)")
 def _a():
-    c = _read(V07_CONFIG)
-    if c is None: return INCONCLUSIVE, "V07 config not found"
+    cfg = _vendor_config()
+    if cfg is None: return INCONCLUSIVE, "PLURIBUS_VENDOR_CONFIGS not set"
+    c = _read(cfg)
+    if c is None: return INCONCLUSIVE, f"vendor config not found: {cfg}"
     hits = sorted(set(re.findall(r"unknown: (F1B3[234])", c)))
-    return (CONFIRMED, f"V07 has {hits}") if hits else (CONTRADICTED, "no F1B32/33/34 unknowns in V07")
+    return (CONFIRMED, f"vendor stream has {hits}") if hits else (CONTRADICTED, "no F1B32/33/34 unknowns in vendor stream")
 
 def _corpus(t):
     return _read(FUZZ_RESULTS / t / f"{t}.config")
@@ -97,17 +116,19 @@ def _a():
     return (CONFIRMED, f"both set {sorted(db & pb)}; no distinguishing bit") if db == pb else \
            (CONTRADICTED, f"differ: dp={sorted(db)} pd={sorted(pb)}")
 
-@assertion("cib-f24-27-gap-v07", "pluribus#29 item3",
-           "V07 bottom-edge pads write config into un-fuzzed CIB frames F24-F27 (DAC driver gap)")
+@assertion("cib-f24-27-gap-vendor", "pluribus#29 item3",
+           "A real vendor bitstream's bottom-edge high-speed pads write config into un-fuzzed CIB frames F24-F27")
 def _a():
-    c = _read(V07_CONFIG)
-    if c is None: return INCONCLUSIVE, "V07 config not found"
+    cfg = _vendor_config()
+    if cfg is None: return INCONCLUSIVE, "PLURIBUS_VENDOR_CONFIGS not set"
+    c = _read(cfg)
+    if c is None: return INCONCLUSIVE, f"vendor config not found: {cfg}"
     hits = sorted(set(re.findall(r"unknown: (F2[4-7]B\d+)", c)))
-    return (CONFIRMED, f"V07 has {len(hits)} F24-F27 unknown bits e.g. {hits[:4]}") if hits else \
-           (CONTRADICTED, "no F24-F27 unknowns in V07")
+    return (CONFIRMED, f"vendor stream has {len(hits)} F24-F27 unknown bits e.g. {hits[:4]}") if hits else \
+           (CONTRADICTED, "no F24-F27 unknowns in vendor stream")
 
 # ── IO standards / #11 ───────────────────────────────────────────────────────
-@assertion("iostd-misdecode-11", "awto-2000#11 / pluribus#29 item4 (DECODED)",
+@assertion("iostd-misdecode-11", "pluribus#29 item4 (DECODED)",
            "prjtrellis silently mis-decodes single-ended LVCMOS/LVTTL outputs to SSTL25_I/PCI33 "
            "(BASE_TYPE/PULLMODE bit overlap); SSTL25_I is the universal wrong-answer target")
 def _a():
@@ -134,14 +155,16 @@ def _a():
 
 # ── lifter invariants ────────────────────────────────────────────────────────
 @assertion("regsd-polarity-fixed", "lift ff_d_source",
-           "V07 recovers FF D-inputs (REG.SD polarity) — <10% constant-D, not 1081/1090")
+           "The lifter recovers FF D-inputs (REG.SD polarity) on a real vendor bitstream — <10% constant-D")
 def _a():
-    if not V07_CONFIG.exists(): return INCONCLUSIVE, "V07 config not found"
+    cfg = _vendor_config()
+    if cfg is None: return INCONCLUSIVE, "PLURIBUS_VENDOR_CONFIGS not set"
+    if not cfg.exists(): return INCONCLUSIVE, f"vendor config not found: {cfg}"
     env = dict(os.environ)
-    env.setdefault("TRELLIS_BUILD", "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/libtrellis/build")
-    env.setdefault("TRELLIS_DBROOT", "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis/database")
+    env.setdefault("TRELLIS_BUILD", "tmp/prjtrellis/libtrellis/build")
+    env.setdefault("TRELLIS_DBROOT", "tmp/prjtrellis/database")
     try:
-        r = subprocess.run([sys.executable, str(REPO / "scripts/ffd_stats.py"), str(V07_CONFIG)],
+        r = subprocess.run([sys.executable, str(REPO / "scripts/ffd_stats.py"), str(cfg)],
                            capture_output=True, text=True, env=env, cwd=str(REPO), timeout=120)
     except Exception as e:
         return INCONCLUSIVE, f"ffd_stats failed: {e}"
@@ -154,22 +177,25 @@ def _a():
 
 # ── pinout corroboration ─────────────────────────────────────────────────────
 @assertion("ident-not-static-constants", "fpga-pluribus-recovery.md",
-           "The REG 0x05 ident is NOT recoverable static constants (const structure is version-invariant)")
+           "A version-differentiating identity is NOT recoverable as static const LUTs "
+           "(const-LUT structure is invariant across vendor bitstream versions)")
 def _a():
-    # Version-invariant constant LUT count across V02/V4/V07 would mean the
-    # constants cannot encode the differing version byte.  Checked structurally
-    # from the configs: count no-input-const LUT INIT words.
+    # A version-invariant constant-LUT count across several versioned vendor
+    # bitstreams means the constants cannot encode the differing version byte.
+    # Checked structurally from the configs: count no-input-const LUT INIT words.
+    # Supply >=2 versioned vendor configs via PLURIBUS_VENDOR_CONFIGS.
+    if len(VENDOR_CONFIGS) < 2:
+        return INCONCLUSIVE, "need >=2 vendor configs in PLURIBUS_VENDOR_CONFIGS"
     def const_luts(cfg):
         txt = _read(cfg)
         if txt is None: return None
         return len(re.findall(r"word: SLICE[A-D]\.K[01]\.INIT (1111000000000000|0000000000000000)", txt))
-    counts = {n: const_luts(p) for n, p in
-              (("V02", V02_CONFIG), ("V4", V4_CONFIG), ("V07", V07_CONFIG))}
+    counts = {p.name: const_luts(p) for p in VENDOR_CONFIGS}
     if any(v is None for v in counts.values()):
         return INCONCLUSIVE, f"missing config(s): {counts}"
     # (heuristic proxy for the fuller const-net analysis in scripts/probe_constdiff)
-    return CONFIRMED, (f"const-LUT-INIT counts {counts} — the ident is FSM-streamed over "
-                       "JWBDATI, not static nets (see doc); flag if these ever diverge")
+    return CONFIRMED, (f"const-LUT-INIT counts {counts} — the ident is FSM-streamed, not "
+                       "static nets (see doc); flag if these ever diverge")
 
 def main():
     only = None
