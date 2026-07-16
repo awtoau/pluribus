@@ -24,14 +24,16 @@ from pathlib import Path
 _ROOT   = Path(__file__).parent
 _LOG    = _ROOT / "tmp" / "fuzz_full.log"
 _FUZZER = _ROOT / "fuzz_machxo2_full.py"
-_PRJT   = Path(os.environ.get("TRELLIS_ROOT",
-               "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis"))
+_PRJT   = Path(os.environ.get("TRELLIS_ROOT", "tmp/prjtrellis"))
 
 
 def status():
-    import psycopg2
-    dsn = os.environ.get("PLURIBUS_DSN", "dbname=fpga_re")
-    con = psycopg2.connect(dsn)
+    import pg8000.dbapi as pg8000  # pg8000 only (psycopg2 removed from this system)
+    con = pg8000.connect(
+        database=os.environ.get("PGDATABASE", "fpga_re"),
+        user=os.environ.get("PGUSER") or os.environ.get("USER"),
+        unix_sock=os.environ.get("PGUNIXSOCKET", "/run/postgresql/.s.PGSQL.5432"),
+    )
     cur = con.cursor()
     cur.execute(
         "SELECT device, status, COUNT(*) as n FROM fuzz_runs "
