@@ -57,25 +57,35 @@ ENUM_RE = re.compile(r"^\s*enum:\s+PIO([A-D])\.(\w+)\s+(\S+)")
 
 
 def tile_grid_map(cache=os.path.join(REPO, "tmp", "lcmxo2_tile_rowcol.json")):
-    """Return {tile_name: (row, col)} for every tile, via pytrellis (cached)."""
+    """Return {tile_name: (row, col)} for every tile.
+
+    Native pure-Python chip geometry (no pytrellis .so); the legacy .so path is
+    kept behind PLURIBUS_TRELLIS_BACKEND=so for A/B parity.  Cheap enough that
+    the cache is optional, but honoured when present.
+    """
     if os.path.exists(cache):
         with open(cache) as fh:
             return {k: tuple(v) for k, v in json.load(fh).items()}
 
-    sys.path.insert(0, BUILD_DIR)
-    import pytrellis  # noqa: E402  (only needed to build the cache)
-
-    pytrellis.load_database(DBROOT)
-    chip = pytrellis.Chip(DEVICE)
-    found = {}
-    for r in range(chip.get_max_row() + 1):
-        for c in range(chip.get_max_col() + 1):
-            try:
-                tiles = chip.get_tiles_by_position(r, c)
-            except Exception:
-                tiles = []
-            for t in tiles:
-                found[t.info.name] = (r, c)
+    if os.environ.get("PLURIBUS_TRELLIS_BACKEND", "native") == "so":
+        sys.path.insert(0, BUILD_DIR)
+        import pytrellis  # noqa: E402
+        pytrellis.load_database(DBROOT)
+        chip = pytrellis.Chip(DEVICE)
+        found = {}
+        for r in range(chip.get_max_row() + 1):
+            for c in range(chip.get_max_col() + 1):
+                try:
+                    tiles = chip.get_tiles_by_position(r, c)
+                except Exception:
+                    tiles = []
+                for t in tiles:
+                    found[t.info.name] = (r, c)
+    else:
+        sys.path.insert(0, REPO)
+        from native_trellis.geometry import ChipGeometry
+        geom = ChipGeometry(DEVICE, DBROOT)
+        found = dict(geom.tile_rc)
 
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     with open(cache, "w") as fh:

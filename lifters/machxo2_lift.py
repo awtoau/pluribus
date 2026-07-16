@@ -208,9 +208,17 @@ class MachXO2Lift:
 
     def __init__(self, device, build_dir=DEF_BUILD_DIR, dbroot=DEF_DBROOT):
         import sys
-        if build_dir not in sys.path:
-            sys.path.insert(0, build_dir)
-        import pytrellis
+        # Backend: pure-Python native routing graph (default, no .so) or the
+        # legacy pytrellis .so (PLURIBUS_TRELLIS_BACKEND=so) for A/B parity.
+        if os.environ.get("PLURIBUS_TRELLIS_BACKEND", "native") == "so":
+            if build_dir not in sys.path:
+                sys.path.insert(0, build_dir)
+            import pytrellis
+        else:
+            _repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if _repo not in sys.path:
+                sys.path.insert(0, _repo)
+            from native_trellis import pytrellis_compat as pytrellis
         self._pt = pytrellis
         pytrellis.load_database(dbroot)
         self.device = device
