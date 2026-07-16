@@ -1,5 +1,11 @@
 """Immortalize long-lived shared read-only objects under free-threaded CPython.
 
+Published as the `immortalize` package (github.com/awtoau/immortalize); this
+is the vendored copy so the pipeline has no pip dependency.  The package has
+the hardened walker (weakref-proxy/raising-__dict__ tolerance, container
+subclasses, exact limit semantics) — prefer it for new code and keep fixes in
+sync.
+
 Why this exists
 ---------------
 In a free-threaded build (PEP 703), every thread that touches a shared object
