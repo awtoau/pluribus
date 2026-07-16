@@ -2,6 +2,13 @@
 """Probe: figure out the free-threaded PyObject refcount layout and verify we
 can immortalize an object + enable deferred refcounting, on whatever interpreter
 runs this.  Prints the discovered offsets so the benchmark can reuse them.
+
+NOTE: this offset-based header write is a diagnostic ONLY.  It is intentionally
+kept to document the layout, but it is NOT the way to immortalize in
+production: it writes ob_ref_local/ob_ref_shared but skips ob_tid and the
+GC-untrack that CPython's own _Py_SetImmortal performs, and the offsets are
+build-specific.  The production path is `ft_immortal` (repo root), which calls
+the exported _Py_SetImmortal via ctypes -- correct, complete, offset-free.
 """
 import ctypes
 import sys
