@@ -32,7 +32,7 @@ the ~1.4 GB fuzz DB).
 Reach for the oracle when:
 
 - **Routing is recorded incompletely by prjtrellis** — long-line
-  (H06E/H06W/V06/V02…) *taps* (prjtrellis stores the source arc, not the
+  (H06E/H06W/V06…) *taps* (prjtrellis stores the source arc, not the
   downstream pickups), or signals that enter the fabric through the
   **config corner** (sysCONFIG slave-SPI, JTAG-ER) rather than a normal
   PIO.  Symptom: a net that "dead-ends" or a pad that reads
@@ -103,7 +103,7 @@ problems, not code bugs:
 - Strategy 1 recovers the config-corner entry (→ trace SPI pins to the
   shift register).
 - Strategy 2 with a *known* ident teaches us how Diamond encodes
-  "hardcoded byte → SPI readback mux"; we then read V07's real bytes.
+  "hardcoded byte → SPI readback mux"; we then read the target's real bytes.
 
 This is the correct path.  The session that discovered this first tried
 to hand-patch `gkey()` to recover the long-line taps and regressed the
@@ -114,7 +114,8 @@ canonicalizer — exactly the mistake this doc exists to prevent.
 Pluribus is a board-agnostic engine ([boards/README.md](../boards/README.md)).
 The **methodology and the tooling gaps it closes are generic** and mostly
 belong upstream; the **recovered facts about one board's design are
-specific** and belong with that board's RE project (here, `awto-2000`).
+specific** and belong with that board's RE project (the downstream board
+project that consumes the engine).
 The rule of thumb: *the method to recover any X is generic; the value of
 this board's X is specific.*
 
@@ -128,11 +129,11 @@ this board's X is specific.*
 | IOLOGIC (`IDDRXE`/`ODDRXE`/…) mode encodings | **generic** | prjcombine → nextpnr-machxo2 (tracked: pluribus#19) |
 | EFB support in nextpnr-machxo2 | **generic** | nextpnr (already contributed) |
 | — | — | — |
-| The 8-byte REG 0x05 **ident values** and their meaning | **specific** | awto-2000 (`fpga-spi.md` §REG 0x05) |
-| The SPI register map (0x00–0x1e: front-end, trigger, DAC, AWG, timebase) | **specific** | awto-2000 (`fpga-spi.md`) |
-| Which fabric logic is *this board's* soft SPI decoder / ident mux | **specific** | awto-2000 |
-| ADC/DAC/AFE pin assignments, U1/U7 shift-register wiring | **specific** | `boards/aw2-2d82auto/` + awto-2000 |
-| Per-model bandwidth/timebase behaviour, calibration flow | **specific** | awto-2000 |
+| The 8-byte REG 0x05 **ident values** and their meaning | **specific** | the board project (`fpga-spi.md` §REG 0x05) |
+| The SPI register map (0x00–0x1e: front-end, trigger, DAC, AWG, timebase) | **specific** | the board project (`fpga-spi.md`) |
+| Which fabric logic is *this board's* soft SPI decoder / ident mux | **specific** | the board project |
+| ADC/DAC/AFE pin assignments, shift-register wiring | **specific** | `boards/<board>/` + the board project |
+| Per-model bandwidth/timebase behaviour, calibration flow | **specific** | the board project |
 
 Note the useful pairing: recovering *this board's* ident (specific) is
 what forces us to close the config-corner-SPI and EFB decode gaps

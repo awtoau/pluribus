@@ -67,11 +67,42 @@ patterns where fuzzing gives a direct answer that hand-RE gave slowly or wrong.
 **Prospective — open issues fuzz resolves:** pluribus#29 (all items), #179
 ident, #138/#25 config-corner SPI — already served by the `re_*` families and
 the existing `efb_*`/`ebr_*` corpus; mostly need *running and diffing against
-V07*, not inventing.
+the reference vendor bitstream*, not inventing.
 
-**Honest boundary — NOT fuzz:** live-device reads (USERCODE/TraceID/die-temp,
+**Hard boundary — NOT fuzz:** live-device reads (USERCODE/TraceID/die-temp,
 SWD register captures) and off-chip pin destinations (#58/#27/#8) cannot come
 from a static bitstream, no matter how much you fuzz.
+
+## Verified dead-ends (negative results are data too)
+
+Two families were built out and *disproved* their own premise — recorded here
+so the result isn't paid for twice.  Both were caught only by unpacking the
+bitstreams and checking, not by trusting the build:
+
+- **`re_efb_*` is blocked at DECODE, not build.**  Diamond builds an active EFB
+  fine (the block survives synthesis, `.bit` is Final), but prjtrellis
+  `ecpunpack` **cannot parse any bitstream containing an active hard EFB** — it
+  aborts on `Bitstream Parse Error: unsupported command 0x72`, *compressed or
+  uncompressed* (tested both).  So all 48 targets decode to an empty config; more
+  CPUs just produce more undecodable bitstreams.  This is the concrete mechanism
+  behind #141's "zero EFB evidence" and the reference stream's EFB-tile-free config — a prjtrellis
+  bitstream-parser gap, upstream of the `bits.db` gaps.  Fixing it needs a
+  parser change (handle cmd `0x72`), not fuzzing.
+- **`re_edgehs_*` can't reach CIB F24–F27 generically.**  Adjacent-pad
+  high-speed buses at the standards that *place* on generic edge pins (HSTL18_I,
+  SSTL18_I) decode to **0** F24–F27 unknowns; the standards the reference stream
+  uses on its high-speed pads (MIPI, SSTL25_I) won't place on arbitrary pins —
+  they need the specific bonded pad sites.  So the F24–F27 config is
+  **board-pad-specific** (a board-project follow-up with the real pins), not a
+  generic sweep.  Also note
+  ~⅔ of windows fail PAR legitimately: a high-speed data pad forces its I/O
+  bank's VCCIO incompatible with the 3.3 V `clk` sharing that bank — real design
+  errors, correctly reported by Diamond (exit 1, no `.bit`).
+
+Method note: `run_all_fuzz` correctly reports these as FAILED — a non-zero
+diamondc exit with no `.bit` **is** a genuine failure.  Do not "fix" that by
+trusting the artifact over the exit code; there is no exit-1-with-valid-`.bit`
+case here (verified 0 of 205).
 
 ## Highest-value investments (ranked)
 
@@ -87,7 +118,8 @@ from a static bitstream, no matter how much you fuzz.
    than a visible `fan=0`.
 4. **EFB WISHBONE/SPI output → fabric** (`re_efb_*`) — replaces the `EFB_JF`
    guess with ground truth.
-5. **Run `re_cfgspi_*` + `re_ident_*` and diff against V07** — no new fuzzing;
+5. **Run `re_cfgspi_*` + `re_ident_*` and diff against the reference vendor
+   bitstream** — no new fuzzing;
    directly attacks #179/#138 via oracle strategies 1 and 2.
 
 ## Extending

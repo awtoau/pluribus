@@ -363,6 +363,9 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             schema.clock_domains,
             schema.nets,
             schema.ebr_ports,
+            schema.ebr_init,
+            schema.ebr_init_blocks,
+            schema.efb_config,
             schema.efb_ports,
         ):
             conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
@@ -716,6 +719,93 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     )
                     ebr_count += 1
         print(f"  {ebr_count} EBR port arcs")
+
+        # ── ebr_init + ebr_init_blocks (EBR block-RAM contents) ───────────────
+        # The native decoder recovers `.bram_init <index>` sections — the EBR
+        # block-RAM contents the old pytrellis path silently dropped.  `<index>`
+        # is the sequential EBR *write index* from the bitstream's
+        # LSC_EBR_ADDRESS command, NOT a tile.  We map it to a physical EBR9K
+        # block via the EBR.WID config word already decoded into each EBR1
+        # tile: EBR.WID == that write index.  (Basis: Diamond assigns each
+        # instantiated EBR a Write-ID; LSC_EBR_ADDRESS targets it as
+        # current_ebr=(data>>11), and EBR.WID stores the same value.  Validated
+        # by set inclusion: every .bram_init index has a matching EBR.WID tile;
+        # any EBR.WID with no .bram_init is an all-zero-init block Diamond omits
+        # from the stream.)  Raw physical words are 9-bit; the logical word
+        # width (EBR.MODE / *DATA_WIDTH* / REGMODE) is recorded per block so a
+        # consumer can regroup them.
+        wid_to_block = {}   # write-index (int) -> "R{er}C{ec}"
+        block_geom   = {}   # block -> geometry dict
+        for (er, ec), ttype in pc.tile_type.items():
+            if ttype != "EBR1":
+                continue
+            en = pc.enums.get((er, ec), {})
+            wd = pc.words.get((er, ec), {})
+            wid_bits = wd.get("EBR.WID")
+            wid = int(wid_bits, 2) if wid_bits else 0   # WID omitted ⇒ default 0
+            block = f"R{er}C{ec}"
+            if wid in wid_to_block and wid_to_block[wid] != block:
+                die(f"EBR.WID collision: index {wid} claimed by both "
+                    f"{wid_to_block[wid]} and {block}")
+            wid_to_block[wid] = block
+            widths = [int(v) for k, v in en.items()
+                      if "DATA_WIDTH" in k and v.isdigit()]
+            block_geom[block] = {
+                "mode":       en.get("EBR.MODE") or "DP8KC",
+                "data_width": max(widths) if widths else None,
+                "regmode_a":  en.get("EBR.REGMODE_A", "NOREG"),
+                "regmode_b":  en.get("EBR.REGMODE_B", "NOREG"),
+            }
+
+        ebr_init_rows   = []
+        ebr_block_rows  = []
+        for idx, words in sorted(pc.bram_init.items()):
+            block = wid_to_block.get(idx)
+            if block is None:
+                die(f".bram_init {idx} has no EBR1 tile with EBR.WID={idx} "
+                    f"(known WIDs: {sorted(wid_to_block)})")
+            if len(words) != 1024:
+                die(f".bram_init {idx} ({block}) has {len(words)} words, "
+                    f"expected 1024 (one 9Kb EBR block)")
+            geom = block_geom[block]
+            ebr_block_rows.append({
+                "bitstream": bs_id, "block": block, "wid": idx,
+                "mode": geom["mode"], "data_width": geom["data_width"],
+                "regmode_a": geom["regmode_a"], "regmode_b": geom["regmode_b"],
+                "n_words": len(words),
+                "n_nonzero": sum(1 for w in words if w),
+            })
+            for addr, w in enumerate(words):
+                ebr_init_rows.append({"bitstream": bs_id, "block": block,
+                                      "wid": idx, "addr": addr, "word9": w})
+
+        if ebr_block_rows:
+            conn.execute(insert(schema.ebr_init_blocks), ebr_block_rows)
+        _CHUNK = 5000
+        for i in range(0, len(ebr_init_rows), _CHUNK):
+            conn.execute(insert(schema.ebr_init), ebr_init_rows[i:i+_CHUNK])
+        ebr_init_count = conn.execute(
+            select(func.count()).select_from(schema.ebr_init)
+            .where(schema.ebr_init.c.bitstream == bs_id)
+        ).scalar()
+        assert_eq("ebr_init word count in DB", ebr_init_count, len(ebr_init_rows))
+        print(f"  {len(ebr_block_rows)} EBR init blocks  {len(ebr_init_rows)} "
+              f"init words  (write indices {sorted(pc.bram_init)})")
+
+        # ── efb_config (0x72 EFB peripheral config-register preloads) ─────────
+        # docs/cmd-0x72.md: sel 0x54 = SPI EFB config, 0x5e = TC (timer/counter).
+        _EFB_SEL_KIND = {0x54: "SPI", 0x5e: "TC"}
+        efb_cfg_rows = [
+            {"bitstream": bs_id, "sel": sel,
+             "kind": _EFB_SEL_KIND.get(sel, "unknown"),
+             "length": len(payload), "payload": list(payload)}
+            for sel, payload in sorted(pc.efb_blocks.items())
+        ]
+        if efb_cfg_rows:
+            conn.execute(insert(schema.efb_config), efb_cfg_rows)
+        print(f"  {len(efb_cfg_rows)} EFB config blocks" +
+              ("".join(f"  [{r['kind']} sel=0x{r['sel']:02x} len={r['length']}]"
+                       for r in efb_cfg_rows)))
 
         # ── ebr read-side fanout → net_fanout ─────────────────────────────────
         # EBR read nets (JC/JD ports) appear as inputs to LUTs/FFs but are not
@@ -1309,7 +1399,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--label",   help="bitstream label e.g. V07")
+    ap.add_argument("--label",   help="bitstream label e.g. rev1")
     ap.add_argument("--config",  required=True, help="path to .bin.config file")
     ap.add_argument("--board",   help="path to board config directory containing board.toml")
     ap.add_argument("--pins",    help="path to pins TSV annotation file (overrides --board)")

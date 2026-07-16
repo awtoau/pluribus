@@ -1,5 +1,0 @@
-
-
--g RamCfg:Reset
-
--path "/mnt/2tb/git/pluribus/diamond-fuzz/targets/re_bottomio_lvcmos25"  

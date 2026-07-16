@@ -1,5 +1,0 @@
--rem
--distrce
--log "fuzz_impl1.log"
--o "fuzz_impl1.csv"
--pr "fuzz_impl1.prf"

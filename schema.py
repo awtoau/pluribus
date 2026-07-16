@@ -111,6 +111,54 @@ ebr_ports = Table("ebr_ports", metadata,
     UniqueConstraint("bitstream", "block", "port"),
 )
 
+# EBR block-RAM initial contents recovered from the bitstream 0x72 sections
+# (native decoder).  `block` is the physical EBR9K block name (R{row}C{col},
+# same convention as ebr_ports); `wid` is the bitstream EBR write index that
+# the block's EBR.WID config word decodes to (the RE key linking .bram_init
+# <index> to a tile).  `word9` is the raw 9-bit physical word at `addr`
+# (0..1023).  Logical word width / mode live in ebr_init_blocks.
+ebr_init = Table("ebr_init", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("block", Text,    nullable=False),
+    Column("wid",   Integer, nullable=False),
+    Column("addr",  Integer, nullable=False),
+    Column("word9", Integer, nullable=False),
+    UniqueConstraint("bitstream", "block", "addr"),
+)
+Index("idx_ebr_init_block", ebr_init.c.bitstream, ebr_init.c.block)
+
+# One row per initialised EBR block: the logical geometry (mode + data width +
+# output-register mode) needed to regroup the raw 9-bit words into logical
+# words, plus the write index and a non-zero-word count for quick triage.
+ebr_init_blocks = Table("ebr_init_blocks", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("block",      Text,    nullable=False),
+    Column("wid",        Integer, nullable=False),
+    Column("mode",       Text),
+    Column("data_width", Integer),
+    Column("regmode_a",  Text),
+    Column("regmode_b",  Text),
+    Column("n_words",    Integer, nullable=False),
+    Column("n_nonzero",  Integer, nullable=False),
+    UniqueConstraint("bitstream", "block"),
+)
+
+# EFB (Embedded Function Block) config-register preloads from bitstream
+# command 0x72 (docs/cmd-0x72.md).  `sel` is the peripheral selector
+# (0x54=SPI, 0x5e=TC); `kind` is the decoded name; `payload` is the raw
+# config-register bytes as a JSON list of ints.
+efb_config = Table("efb_config", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("sel",     Integer, nullable=False),
+    Column("kind",    Text),
+    Column("length",  Integer, nullable=False),
+    Column("payload", JSON,    nullable=False),  # list of byte ints
+    UniqueConstraint("bitstream", "sel"),
+)
+
 clock_domains = Table("clock_domains", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),

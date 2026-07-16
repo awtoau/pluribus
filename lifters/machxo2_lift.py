@@ -65,6 +65,17 @@ SENUM_RE = re.compile(r"^enum:\s+SLICE([A-D])\.(\S+)\s+(\S+)")
 ENUM_RE = re.compile(r"^enum:\s+(\S+)\s+(\S+)")
 WORD_RE = re.compile(r"^word:\s+(\S+)\s+(\S+)")
 
+# Additive sections emitted by scripts/native_config.py AFTER the tile blocks
+# (the config pytrellis silently dropped at bitstream command 0x72):
+#   .bram_init <index>  -- recovered EBR block-RAM contents.  <index> is the
+#     sequential EBR *write index* from LSC_EBR_ADDRESS (native_config
+#     build_bram_data), NOT a tile.  1024 whitespace-separated 9-bit hex words.
+#   .efb_block sel <hex> flags <hex> len <n>  then  data: <hex bytes>
+#     -- the 0x72 EFB peripheral config-register preloads (docs/cmd-0x72.md).
+BRAM_INIT_RE = re.compile(r"^\.bram_init\s+(\d+)")
+EFB_BLOCK_RE = re.compile(r"^\.efb_block\s+sel\s+(\S+)\s+flags\s+(\S+)\s+len\s+(\d+)")
+EFB_DATA_RE = re.compile(r"^data:\s*(.*)$")
+
 # Known buggy BASE_TYPE values that are actually PULLMODE=NONE artefacts.
 # The prjtrellis MachXO2 database assigns overlapping bit patterns to PULLMODE=NONE
 # and to OUTPUT_MIPI / SSTL25_I in the BASE_TYPE enum.  The result: any LVTTL33
@@ -171,6 +182,11 @@ class ParsedConfig:
         self.tile_type = {}                  # (row,col) -> type
         self.enums = defaultdict(dict)       # (row,col) -> {enum_key:val}
         self.words = defaultdict(dict)       # (row,col) -> {word_key:bits}
+        # Additive 0x72 sections (native_config).  bram_init keys are EBR
+        # write indices (map to physical EBR1 tiles via that tile's EBR.WID
+        # word — see load.py); efb_blocks keys are the 0x72 `sel` selector.
+        self.bram_init = {}                  # ebr_write_index -> [1024 ints] (9-bit words)
+        self.efb_blocks = {}                 # sel(int) -> [payload bytes]
 
 
 class Design:
@@ -251,6 +267,12 @@ class MachXO2Lift:
     _SEG_NORTH = re.compile(r'^N(\d)_')   # northward N-hop → walk south (row+1)
     _SEG_SOUTH = re.compile(r'^S(\d)_')   # southward N-hop → walk north (row-1)
 
+    # Vertical span longline base name (V<span><N|S><idx>).  At the top edge
+    # (globalised row 0) a V##N/V##S span wire (span >= 2) is a truncated end of
+    # a vertical longline whose continuation lands one row into the interior as
+    # the opposite-direction wire of the same span/index.  See gkey().
+    _VSPAN = re.compile(r'^V(\d+)([NS])(\d+)$')
+
     @staticmethod
     def _mirror_e_h06e(name):
         """Remap an E{N}_H06E{M} wire name to W{N}_H06W{M} for PIC_R tiles.
@@ -286,6 +308,32 @@ class MachXO2Lift:
         causing a net-merge bug."""
         g = self.rg.globalise_net(row, col, name)
         if g.loc.x >= 0 and g.loc.y >= 0:
+            # Top/bottom-edge vertical-span canonicalization (net_merge_gap
+            # defect).  When a name globalises to row 0 (top) or the max row
+            # (bottom) and is a V##N/V##S span wire (span >= 2) it is a truncated
+            # end of a vertical longline: the two ends land as V##N@(col,edge)
+            # (driver/injection side) and V##S@(col,edge) (load/source side),
+            # while the wire's load-bearing continuation lands one row into the
+            # interior as the opposite-direction wire of the same span/index
+            # (V##S resp. V##N).  globalise_net hands the two ends distinct keys,
+            # so a signal driven onto the edge wire and consumed on its
+            # continuation never unions -- leaving the recovered output/clock net
+            # dangling.  Remap the truncated end onto its interior continuation
+            # (one row inward) so they fuse into one net.  Keys off the
+            # globalised RESULT row (not the input row) so hop-prefixed
+            # references (e.g. a "N1_V<span>N<idx>" vertical longline) -- which
+            # resolve to the edge from an interior tile -- are caught too.
+            max_row = self.chip.get_max_row()
+            if g.loc.y in (0, max_row):
+                mv = self._VSPAN.match(self.rg.to_str(g.id))
+                if mv and int(mv.group(1)) >= 2:
+                    flip = "S" if mv.group(2) == "N" else "N"
+                    cname = f"V{mv.group(1)}{flip}{mv.group(3)}"
+                    crow = 1 if g.loc.y == 0 else max_row - 1
+                    if self.wname_id(g.loc.x, crow, cname) is not None:
+                        gc = self.rg.globalise_net(crow, g.loc.x, cname)
+                        if gc.loc.x >= 0 and gc.loc.y >= 0:
+                            return (gc.loc.x, gc.loc.y, gc.id)
             return (g.loc.x, g.loc.y, g.id)
 
         # Walk-back recovery for segment longlines near chip boundaries.
@@ -318,6 +366,20 @@ class MachXO2Lift:
                         if gm.loc.x >= 0 and gm.loc.y >= 0:
                             # Anchor at max_col, not col-N, to match H06W{M} local refs.
                             return (col, gm.loc.y, gm.id)
+                    # General right-edge horizontal span (net_merge_gap defect):
+                    # an off-right-edge E{N}_H##{E|W}{idx} stub is the same
+                    # physical wire as the opposite-direction H## wire of the
+                    # same index at max_col (mirror of the top-edge vertical fix,
+                    # on the column axis).  Columns are 1-based with no dedicated
+                    # left/right PIO tiles, so the stub globalises off-chip; remap
+                    # it onto the interior continuation so the net does not dangle.
+                    hme = re.match(r'^E\d+_H(\d+)([EW])(\d+)$', name)
+                    if hme and hme.group(1) != "06":
+                        flip = "W" if hme.group(2) == "E" else "E"
+                        cname = f"H{hme.group(1)}{flip}{hme.group(3)}"
+                        gc = self.rg.globalise_net(row, max_col, cname)
+                        if gc.loc.x >= 0 and gc.loc.y >= 0:
+                            return (gc.loc.x, gc.loc.y, gc.id)
                 # No valid canonical (off-chip stub or mirror failed).
                 return None
 
@@ -331,6 +393,18 @@ class MachXO2Lift:
                         gm = self.rg.globalise_net(row, col, mirrored)
                         if gm.loc.x >= 0 and gm.loc.y >= 0:
                             return (gm.loc.x, gm.loc.y, gm.id)
+                    # General left-edge horizontal span (net_merge_gap defect):
+                    # an off-left-edge W{N}_H##{E|W}{idx} stub is the same
+                    # physical wire as the opposite-direction H## wire of the
+                    # same index at col 0 (mirror of the top-edge vertical fix,
+                    # on the column axis).  Remap it onto that continuation.
+                    hmw = re.match(r'^W\d+_H(\d+)([EW])(\d+)$', name)
+                    if hmw and hmw.group(1) != "06":
+                        flip = "E" if hmw.group(2) == "W" else "W"
+                        cname = f"H{hmw.group(1)}{flip}{hmw.group(3)}"
+                        gc = self.rg.globalise_net(row, 0, cname)
+                        if gc.loc.x >= 0 and gc.loc.y >= 0:
+                            return (gc.loc.x, gc.loc.y, gc.id)
                 return None
 
             for delta in range(1, hops + 1):
@@ -371,14 +445,46 @@ class MachXO2Lift:
     def parse_config(self, path):
         pc = ParsedConfig()
         cur_rc = None
+        # Additive-section state.  The `.bram_init` / `.efb_block` sections are
+        # emitted AFTER every `.tile` block; `mode` switches the parser out of
+        # tile mode so their body lines are captured instead of silently
+        # dropped by the tile-mode dispatch below.
+        mode = "tile"          # "tile" | "bram" | "efb"
+        cur_bram = None        # list currently being filled (points into pc.bram_init)
+        cur_efb_sel = None     # sel of the .efb_block being filled
         with open(path) as fh:
             for line in fh:
                 s = line.strip()
+                # -- additive section headers (may follow the last tile) -------
+                mb = BRAM_INIT_RE.match(s)
+                if mb:
+                    mode, cur_rc = "bram", None
+                    cur_bram = []
+                    pc.bram_init[int(mb.group(1))] = cur_bram
+                    continue
+                mf = EFB_BLOCK_RE.match(s)
+                if mf:
+                    mode, cur_rc = "efb", None
+                    cur_efb_sel = int(mf.group(1), 0)   # group(1)=sel, (2)=flags, (3)=len
+                    continue
                 m = TILE_RE.match(s)
                 if m:
+                    mode = "tile"
                     cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
                     if cur_rc:
                         pc.tile_type[cur_rc] = m.group(2)
+                    continue
+                # -- additive section bodies -----------------------------------
+                if mode == "bram":
+                    if s:  # whitespace-separated 9-bit hex words, 8 per line
+                        cur_bram.extend(int(tok, 16) for tok in s.split())
+                    continue
+                if mode == "efb":
+                    md = EFB_DATA_RE.match(s)
+                    if md:
+                        pc.efb_blocks[cur_efb_sel] = [
+                            int(tok, 16) for tok in md.group(1).split()
+                        ]
                     continue
                 if cur_rc is None:
                     continue
@@ -486,6 +592,38 @@ class MachXO2Lift:
         def connected(key):
             return key in dsu.p
 
+        # ---- degenerate (constant) LUTs ----
+        # A LUT whose INIT is all-0 / all-1 computes a constant regardless of its
+        # inputs.  Such cells are not emitted as logic, but their fabric output
+        # net must resolve to the constant: without this a downstream FF/LUT that
+        # reads an all-1 LUT falls through to the "1'b0" default and a constant 1
+        # is silently recovered as 0.  Map the DSU root of each constant LUT's F
+        # output to the literal here (after all arc/EFB unions, before any net is
+        # named) so both LUT-input and FF-input resolution see it.
+        const_by_root = {}
+        for (r, c, sl, k), init in pc.lut_init.items():
+            s = set(init)
+            if s not in ({"0"}, {"1"}):
+                continue
+            pins = self.bels_of(r, c).get(f"SLICE{sl}.K{k}")
+            if not pins:
+                continue
+            fkey = pins.get("F")
+            if fkey is None:
+                continue
+            dsu.union(fkey, fkey)          # ensure the root exists in the DSU
+            const_by_root[dsu.find(fkey)] = "1'b1" if s == {"1"} else "1'b0"
+
+        def resolve(key, default):
+            """Net name for key, a constant literal if the key resolves to a
+            degenerate (constant) LUT output, or `default` if unconnected."""
+            if key is None or not connected(key):
+                return default
+            root = dsu.find(key)
+            if root in const_by_root:
+                return const_by_root[root]
+            return net_of(key)
+
         # ---- LUT4s ----
         for (r, c, sl, k), init in pc.lut_init.items():
             if set(init) in ({"0"}, {"1"}):
@@ -495,8 +633,7 @@ class MachXO2Lift:
                 continue
 
             def innet(pn):
-                key = pins.get(pn)
-                return net_of(key) if (key and connected(key)) else None
+                return resolve(pins.get(pn), None)
 
             fkey = pins.get("F")
             z = net_of(fkey) if fkey is not None else None
@@ -528,20 +665,33 @@ class MachXO2Lift:
                     # internal fixed path), so the DI case resolves
                     # straight to the paired LUT's F output key.
                     sd = senum.get(f"REG{j}.SD", "1")
+                    d_default = "1'b0"
                     if ff_d_source(senum, j) == "F":
                         dkey = bels.get(f"SLICE{sl}.K{j}", {}).get("F")
+                        # A used register whose paired LUT slot carries no INIT
+                        # word has had that LUT optimized to a constant and
+                        # removed; its DI has no logic source and floats to the
+                        # slice VCC, so the register loads a constant 1.  (A
+                        # constant-0 register is dropped entirely by the vendor
+                        # tool, so a materialized register with a bare paired
+                        # slot is always the const-1 case.)  Without this the D
+                        # falls through to the 1'b0 default and a registered
+                        # constant 1 is silently recovered as 0.
+                        if ((r, c, sl, str(j)) not in pc.lut_init
+                                and (dkey is None or not connected(dkey))):
+                            d_default = "1'b1"
                     else:
                         dkey = pins.get("M")
 
-                    def net_or(key, const):
-                        return (net_of(key)
-                                if (key is not None and connected(key))
-                                else const)
+                    # net_or == resolve(): a degenerate-constant D/CLK/CE/LSR
+                    # source yields its constant literal (e.g. a const-1 LUT
+                    # feeding D gives 1'b1, not the 1'b0 fall-through default).
+                    net_or = resolve
 
                     d.ffs.append({
                         "name": f"ff_r{r}c{c}_{sl}{j}",
                         "q": net_of(qkey),
-                        "d": net_or(dkey, "1'b0"),
+                        "d": net_or(dkey, d_default),
                         "clk": net_or(pins.get("CLK"), "1'b0"),
                         "ce": net_or(pins.get("CE"), "1'b1"),
                         "lsr": net_or(pins.get("LSR"), "1'b0"),
@@ -738,10 +888,44 @@ class MachXO2Lift:
 
 
 # ---- Verilog emission (board-agnostic) -------------------------------------
+# Recovered-logic primitive wrappers.  These use NON-colliding names with local
+# behavioural definitions so a vendor synthesiser (Diamond LSE) compiles the
+# recovered logic instead of shadowing it with a library cell of the same name:
+#   * "LUT4" already ships in LSE with a different interface (no INIT) -> collides;
+#   * "MACHXO2_FF" is not a real Lattice cell at all -> undefined.
+# RLUT4 infers a LUT from its INIT truth table; RFF infers a fabric register.
+# The LUT INIT is indexed {D,C,B,A} == A + 2B + 4C + 8D, matching the raw
+# `.config` A-LSB word convention (so int(init, 2) is used verbatim, NOT
+# reversed).
+_RECOVERED_PRIM_LIB = (
+    "module RLUT4 #(parameter [15:0] INIT = 16'h0000)\n"
+    "             (input A, B, C, D, output Z);\n"
+    "  assign Z = INIT[{D, C, B, A}];\n"
+    "endmodule\n\n"
+    "module RFF #(parameter REGSET = \"RESET\", parameter SD = \"0\",\n"
+    "             parameter GSR = \"DISABLED\")\n"
+    "            (input CLK, CE, LSR, D, output reg Q);\n"
+    "  localparam RINIT = (REGSET == \"SET\") ? 1'b1 : 1'b0;\n"
+    "  initial Q = RINIT;\n"
+    "  always @(posedge CLK) if (LSR) Q <= RINIT; else if (CE) Q <= D;\n"
+    "endmodule\n\n"
+)
+
+
 def write_netlist_verilog(design, out_path, target, source,
-                          module_name="recovered_netlist"):
+                          module_name="recovered_netlist", ports=None):
+    """Emit the recovered netlist as synthesisable Verilog.
+
+    `ports`: optional list of {name, direction in {input,output,inout}, net}
+    promoting used pads to top-level module ports wired to their fabric net.
+    Without ports every net is internal, giving the design no I/O boundary --
+    the vendor tool then prunes the whole thing.  Pass the used-pad ports (see
+    used_pad_ports()) so pads are observable and the design survives synthesis.
+    """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     n_lut, n_ff = len(design.luts), len(design.ffs)
+    ports = [p for p in (ports or []) if p.get("net")]
+    net_set = set(design.all_nets)
     with open(out_path, "w") as fh:
         fh.write("// Recovered STRUCTURAL netlist (pass 2: LUT4 + FF) for the\n")
         fh.write(f"// {target}.\n")
@@ -752,20 +936,31 @@ def write_netlist_verilog(design, out_path, target, source,
         fh.write("// NOTE: functionally-equivalent primitives, not vendor "
                  "RTL.\n\n")
 
-        fh.write("(* blackbox *)\n")
-        fh.write("module LUT4 #(parameter [15:0] INIT = 16'h0000)\n")
-        fh.write("            (input A, B, C, D, output Z); endmodule\n\n")
-        fh.write("(* blackbox *)\n")
-        fh.write("module MACHXO2_FF #(parameter REGSET = \"RESET\",\n")
-        fh.write("                    parameter SD = \"0\",\n")
-        fh.write("                    parameter GSR = \"DISABLED\")\n")
-        fh.write("                   (input CLK, CE, LSR, D, output Q);\n")
-        fh.write("endmodule\n\n")
+        fh.write(_RECOVERED_PRIM_LIB)
 
-        fh.write("module %s;\n\n" % module_name)
+        if ports:
+            fh.write("module %s(\n" % module_name)
+            fh.write(",\n".join("  %s %s" % (p.get("direction", "input"),
+                                             p["name"]) for p in ports))
+            fh.write("\n);\n\n")
+        else:
+            fh.write("module %s;\n\n" % module_name)
+
         fh.write("  // %d recovered nets\n" % len(design.all_nets))
         for n in design.all_nets:
             fh.write("  wire %s;\n" % n)
+
+        if ports:
+            fh.write("\n  // top-level pad ports wired to recovered fabric nets\n")
+            for p in ports:
+                net = p["net"]
+                if net not in net_set:
+                    fh.write("  wire %s;\n" % net)
+                    net_set.add(net)
+                if p.get("direction") == "output":
+                    fh.write("  assign %s = %s;\n" % (p["name"], net))
+                else:                       # input / inout drive the fabric net
+                    fh.write("  assign %s = %s;\n" % (net, p["name"]))
 
         fh.write("\n  // %d used LUT4s\n" % n_lut)
         for lt in design.luts:
@@ -774,15 +969,18 @@ def write_netlist_verilog(design, out_path, target, source,
             cc = lt["c"] or "1'b0"
             dd = lt["d"] or "1'b0"
             z = lt["z"] or ("%s_z" % lt["name"])
-            init_hex = format(int(lt["init"][::-1], 2), "04x")
+            if not lt["z"]:
+                fh.write("  wire %s;\n" % z)
+            # A-LSB truth-table order (matches the raw .config INIT word).
+            init_hex = format(int(lt["init"], 2), "04x")
             fh.write(
-                "  LUT4 #(.INIT(16'h%s)) %s (.A(%s), .B(%s), .C(%s), "
+                "  RLUT4 #(.INIT(16'h%s)) %s (.A(%s), .B(%s), .C(%s), "
                 ".D(%s), .Z(%s));\n" % (init_hex, lt["name"], a, b, cc, dd, z))
 
         fh.write("\n  // %d flip-flops\n" % n_ff)
         for ff in design.ffs:
             fh.write(
-                "  MACHXO2_FF #(.REGSET(\"%s\"), .SD(\"%s\"), .GSR(\"%s\")) %s "
+                "  RFF #(.REGSET(\"%s\"), .SD(\"%s\"), .GSR(\"%s\")) %s "
                 "(.CLK(%s), .CE(%s), .LSR(%s), .D(%s), .Q(%s));\n"
                 % (ff["regset"], ff["sd"], ff["gsr"], ff["name"],
                    ff["clk"], ff["ce"], ff["lsr"], ff["d"], ff["q"]))
@@ -829,7 +1027,10 @@ def write_netlist_json(design, out_path, module_name="recovered_netlist",
     cells = {}
     for lt in design.luts:
         z = lt["z"] if lt["z"] is not None else f"{lt['name']}_z"
-        init = format(int(lt["init"][::-1], 2), "016b")  # 16-bit, MSB first
+        # A-LSB truth-table order (matches the raw .config INIT word); MSB-first
+        # bit string as Yosys expects.  NOT reversed -- reversing inverts the
+        # truth table vs the {D,C,B,A}-indexed convention.
+        init = format(int(lt["init"], 2), "016b")
         cells[lt["name"]] = {
             "hide_name": 0,
             "type": "LUT4",
@@ -901,6 +1102,41 @@ def pad_net(design, lift, row, col, pio, direction):
     return design.net_name.get(design.dsu.find(key))
 
 
+def used_pad_ports(design, lift, device, dbroot=DEF_DBROOT):
+    """Top-level module ports for every PIO pad that carries a named fabric net.
+
+    Returns a list of {name, direction, net} suitable for write_netlist_verilog
+    / write_netlist_json.  Package-independent: enumerates PIO sites from the
+    device iodb and keeps those whose input (JQ) or output (JA) joint node
+    unioned into a named net.  A pad is emitted as an output when its net is
+    driven inside the fabric (a LUT Z or FF Q) and as an input otherwise, so an
+    input port never fights an internal driver.  Nets are de-duplicated so a net
+    surfacing at several sites yields one port."""
+    try:
+        iodb = load_iodb(device, dbroot=dbroot)
+    except Exception:
+        return []
+    driven = {lt["z"] for lt in design.luts if lt["z"]}
+    driven |= {ff["q"] for ff in design.ffs if ff["q"]}
+    ports, seen = [], set()
+    for m in iodb.get("pio_metadata", []):
+        r, c, pio = m.get("row"), m.get("col"), m.get("pio")
+        if r is None or c is None or pio is None:
+            continue
+        onet = pad_net(design, lift, r, c, pio, "out")
+        inet = pad_net(design, lift, r, c, pio, "in")
+        base = f"pad_r{r}c{c}{pio}"
+        if onet and onet in driven and onet not in seen:
+            seen.add(onet)
+            ports.append({"name": base + "_o", "direction": "output",
+                          "net": onet})
+        elif inet and inet not in driven and inet not in seen:
+            seen.add(inet)
+            ports.append({"name": base + "_i", "direction": "input",
+                          "net": inet})
+    return ports
+
+
 def scan_unknown_bits(config_path, tile_rc=None):
     """Tally `unknown:` lines per tile type straight from a .config. Returns
     {"total": N, "by_tiletype": {type: count}, "lines": [...] }. These are bits
@@ -952,7 +1188,11 @@ def lift_netlist(config_path, out_path, device, target, source,
     lift = MachXO2Lift(device, build_dir, dbroot)
     pc = lift.parse_config(config_path)
     design = lift.recover_netlist(pc)
-    write_netlist_verilog(design, out_path, target, source, module_name)
+    # Promote used pads to top-level ports so the emitted module has an I/O
+    # boundary (a port-less module gets pruned by the vendor tool).
+    ports = used_pad_ports(design, lift, device, dbroot=dbroot)
+    write_netlist_verilog(design, out_path, target, source, module_name,
+                          ports=ports)
     return lift, pc, design
 
 

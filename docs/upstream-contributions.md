@@ -6,7 +6,11 @@ This document is the canonical record of all upstream work stemming from
 Pluribus's diamond-fuzz RE. It covers what we have, what each project needs,
 and the current status of each contribution.
 
-Patches and check.py files live in `upstream_patches/` in this repo.
+The prjtrellis check.py suite + the `nonrouting` check-functions are contributed
+directly to our fork (`awtoau/prjtrellis`: `fuzzers/machxo2/*/check.py`,
+`util/fuzz/nonrouting.py`) — pluribus no longer stages copies of them. (The old
+`deserialise_chip_forced` C++ patch is superseded by pluribus's native decoder
+and was not upstreamed; it survives in git history if ever needed.)
 
 ---
 
