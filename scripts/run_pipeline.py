@@ -2,18 +2,23 @@
 """Run the full pluribus pipeline for one bitstream, or for every
 bitstream a board declares.
 
-Stages (see CLAUDE.md):
-    [unpack]  scripts/trellis_unpack.py  BIN -> CONFIG        (python3)
-    [iomap]   scripts/fpga_iomap.py      CONFIG -> .iomap.tsv (python3)
-    [load]    load.py                                          (python3)
-    [reach]   reach.py                          (python3.14t — NoGIL)
-    [reach2]  reach2.py                                        (python3)
-    [reach3]  reach3.py                                        (python3)
-    [reach4]  reach4.py                                        (python3)
-    [report]  report.py                                        (python3)
+THIS IS THE canonical pipeline entry point.  One command, bitstream -> report.
+(build.py is an older orchestrator kept for its `init`/`annotate` helpers; its
+full-pipeline path is superseded by this script.)
 
-Only reach.py needs python3.14t.  Do NOT run load.py under it: sqlalchemy
-forces the GIL back on and the later pytrellis import segfaults.
+Stages — ALL run under python3.15t (free-threaded NoGIL):
+    [unpack]  scripts/trellis_unpack.py  BIN -> CONFIG   (native decoder)
+    [iomap]   scripts/fpga_iomap.py      CONFIG -> .iomap.tsv
+    [load]    load.py                    CONFIG -> DB netlist
+    [reach]   reach.py                   all-net BFS (raw-driver NoGIL parallel)
+    [reach2]  reach2.py
+    [reach3]  reach3.py
+    [reach4]  reach4.py
+    [report]  report.py                  human-readable status
+
+The whole stack runs GIL-free under python3.15t: pytrellis is rebuilt for
+free-threading (pybind11 mod_gil_not_used) and sqlalchemy>=2.1.0b3 keeps the
+GIL disabled, so a single interpreter serves every stage.
 
 unpack+iomap run only when a raw bitstream is known AND its .config does
 not exist yet; both generators refuse to overwrite, so an existing
@@ -50,6 +55,9 @@ sys.path.insert(0, REPO)
 
 from load import load_board_config  # noqa: E402
 
+# One interpreter for every stage — the whole stack is GIL-free under 3.15t.
+PY = os.environ.get("PLURIBUS_PYTHON", "python3.15t")
+
 
 def run(stage, label, cmd, extra_env=None):
     log = os.path.join(REPO, "tmp", f"pipeline_{label}_{stage}.log")
@@ -72,22 +80,22 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers):
     if raw_bin and not os.path.exists(config):
         os.makedirs(os.path.dirname(config) or ".", exist_ok=True)
         run("unpack", label,
-            ["python3", "scripts/trellis_unpack.py", raw_bin, config])
+            [PY, "scripts/trellis_unpack.py", raw_bin, config])
         iomap_env = {"TRELLIS_PACKAGE": package} if package else None
         run("iomap", label,
-            ["python3", "scripts/fpga_iomap.py", config], extra_env=iomap_env)
+            [PY, "scripts/fpga_iomap.py", config], extra_env=iomap_env)
 
     if not skip_load:
         run("load", label,
-            ["python3", "load.py", "--label", label,
+            [PY, "load.py", "--label", label,
              "--config", config, "--pins", pins])
 
-    reach_cmd = ["python3.14t", "reach.py", "--bitstream", label]
+    reach_cmd = [PY, "reach.py", "--bitstream", label]
     if workers:
         reach_cmd += ["--workers", str(workers)]
     run("reach", label, reach_cmd)
     for stage in ("reach2", "reach3", "reach4", "report"):
-        run(stage, label, ["python3", f"{stage}.py", "--bitstream", label])
+        run(stage, label, [PY, f"{stage}.py", "--bitstream", label])
     print(f"pipeline complete for {label}", flush=True)
 
 

@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Pluribus — build orchestrator.
+"""Pluribus — build orchestrator (legacy full-pipeline path).
+
+NOTE: the canonical one-command pipeline is now `scripts/run_pipeline.py`
+(bitstream -> report, board-driven, single python3.15t interpreter, includes the
+native-decode + iomap stages).  Prefer it:
+    python3.15t scripts/run_pipeline.py --board boards/<name> --label <LABEL>
+This module's `build` subcommand is kept for compatibility; its `init`
+(template pins from a bitstream) and `annotate` helpers remain useful.
 
 Two modes:
 
@@ -18,15 +25,15 @@ Two modes:
 Usage
 -----
   # First time — generate a template:
-  ./fpga/pluribus/build.py --init \
-    --config fpga/v7/FPGA_V07.bin.config \
-    --out fpga/pluribus/hantek2d82-pins-template.tsv
+  ./build.py init \
+    --config path/to.bin.config \
+    --out pins-template.tsv
 
   # Subsequent runs — full rebuild from annotated pin file:
-  ./fpga/pluribus/build.py \
-    --label V07 \
-    --config fpga/v7/FPGA_V07.bin.config \
-    --pins fpga/pluribus/aw2-pins.tsv
+  ./build.py build \
+    --label rev1 \
+    --config path/to.bin.config \
+    --pins pins.tsv
 
   # Every run CLEARS the database for this label and rebuilds from scratch.
   # Never use the database as a source of truth across runs — always rebuild.
@@ -134,7 +141,7 @@ def cmd_init(config, out_path, device):
         fh.write(out)
     print(f"\nTemplate written to {out_path}")
     print("Edit this file: fill in labels, functions, and confidence scores (1-10)")
-    print("Then run:  build.py --label V07 --config ... --pins <this-file>")
+    print("Then run:  build.py build --label rev1 --config ... --pins <this-file>")
 
 
 def _resolve_net(design, lift, row, col, wire):
