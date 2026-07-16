@@ -241,6 +241,25 @@ def decode_chip(cram, tilegrid, db_root=DEFAULT_DB_ROOT, family=FAMILY,
     if workers is None:
         workers = min(32, (os.cpu_count() or 4))
 
+    # ── freeze point ──────────────────────────────────────────────────────
+    # `_db_cache` holds the parsed tile-type databases: static for the life of
+    # the process, and walked by every worker for every tile, so its refcounts
+    # are a cross-thread contention hotspot.  Immortalize it once it is warm.
+    # NOTE: deliberately NOT immortalizing `cram`/`tilegrid` -- those are
+    # per-bitstream, and decode_chip is called once per bitstream by the corpus
+    # tools, so immortalizing them would leak one buffer per bitstream.
+    # PLURIBUS_IMMORTAL=0 disables.
+    if workers > 1 and os.environ.get("PLURIBUS_IMMORTAL", "1") != "0":
+        try:
+            _repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if _repo not in sys.path:
+                sys.path.insert(0, _repo)
+            import ft_immortal
+            if ft_immortal.available() and ft_immortal.gil_disabled():
+                ft_immortal.immortalize_tree(_db_cache)
+        except Exception:
+            pass  # perf-only; never fail a decode over this
+
     def work_chunk(chunk):
         out = []
         for name, meta in chunk:
