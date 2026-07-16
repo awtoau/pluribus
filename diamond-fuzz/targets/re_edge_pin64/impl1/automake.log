@@ -1,4 +1,0 @@
-
-tmcheck -par "fuzz_impl1.par" 
-
-bitgen -f "fuzz_impl1.t2b" -w "fuzz_impl1.ncd"  "fuzz_impl1.prf"

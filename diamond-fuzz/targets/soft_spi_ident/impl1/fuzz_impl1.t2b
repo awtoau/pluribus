@@ -1,5 +1,0 @@
-
-
--g RamCfg:Reset
-
--path "/mnt/2tb/git/pluribus/diamond-fuzz/targets/soft_spi_ident"  

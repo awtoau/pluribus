@@ -1,5 +1,0 @@
-
-
--g RamCfg:Reset
-
--path "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pio_clamp_pci_bank2"  

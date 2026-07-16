@@ -1,5 +1,0 @@
-
-
--g RamCfg:Reset
-
--path "/mnt/2tb/git/awto-2000/fpga/diamond/fuzz/targets/pll_outdivider_muxa2_diva"  
