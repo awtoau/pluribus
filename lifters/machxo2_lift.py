@@ -65,6 +65,17 @@ SENUM_RE = re.compile(r"^enum:\s+SLICE([A-D])\.(\S+)\s+(\S+)")
 ENUM_RE = re.compile(r"^enum:\s+(\S+)\s+(\S+)")
 WORD_RE = re.compile(r"^word:\s+(\S+)\s+(\S+)")
 
+# Additive sections emitted by scripts/native_config.py AFTER the tile blocks
+# (the config pytrellis silently dropped at bitstream command 0x72):
+#   .bram_init <index>  -- recovered EBR block-RAM contents.  <index> is the
+#     sequential EBR *write index* from LSC_EBR_ADDRESS (native_config
+#     build_bram_data), NOT a tile.  1024 whitespace-separated 9-bit hex words.
+#   .efb_block sel <hex> flags <hex> len <n>  then  data: <hex bytes>
+#     -- the 0x72 EFB peripheral config-register preloads (docs/cmd-0x72.md).
+BRAM_INIT_RE = re.compile(r"^\.bram_init\s+(\d+)")
+EFB_BLOCK_RE = re.compile(r"^\.efb_block\s+sel\s+(\S+)\s+flags\s+(\S+)\s+len\s+(\d+)")
+EFB_DATA_RE = re.compile(r"^data:\s*(.*)$")
+
 # Known buggy BASE_TYPE values that are actually PULLMODE=NONE artefacts.
 # The prjtrellis MachXO2 database assigns overlapping bit patterns to PULLMODE=NONE
 # and to OUTPUT_MIPI / SSTL25_I in the BASE_TYPE enum.  The result: any LVTTL33
@@ -171,6 +182,11 @@ class ParsedConfig:
         self.tile_type = {}                  # (row,col) -> type
         self.enums = defaultdict(dict)       # (row,col) -> {enum_key:val}
         self.words = defaultdict(dict)       # (row,col) -> {word_key:bits}
+        # Additive 0x72 sections (native_config).  bram_init keys are EBR
+        # write indices (map to physical EBR1 tiles via that tile's EBR.WID
+        # word — see load.py); efb_blocks keys are the 0x72 `sel` selector.
+        self.bram_init = {}                  # ebr_write_index -> [1024 ints] (9-bit words)
+        self.efb_blocks = {}                 # sel(int) -> [payload bytes]
 
 
 class Design:
@@ -371,14 +387,46 @@ class MachXO2Lift:
     def parse_config(self, path):
         pc = ParsedConfig()
         cur_rc = None
+        # Additive-section state.  The `.bram_init` / `.efb_block` sections are
+        # emitted AFTER every `.tile` block; `mode` switches the parser out of
+        # tile mode so their body lines are captured instead of silently
+        # dropped by the tile-mode dispatch below.
+        mode = "tile"          # "tile" | "bram" | "efb"
+        cur_bram = None        # list currently being filled (points into pc.bram_init)
+        cur_efb_sel = None     # sel of the .efb_block being filled
         with open(path) as fh:
             for line in fh:
                 s = line.strip()
+                # -- additive section headers (may follow the last tile) -------
+                mb = BRAM_INIT_RE.match(s)
+                if mb:
+                    mode, cur_rc = "bram", None
+                    cur_bram = []
+                    pc.bram_init[int(mb.group(1))] = cur_bram
+                    continue
+                mf = EFB_BLOCK_RE.match(s)
+                if mf:
+                    mode, cur_rc = "efb", None
+                    cur_efb_sel = int(mf.group(1), 0)   # group(1)=sel, (2)=flags, (3)=len
+                    continue
                 m = TILE_RE.match(s)
                 if m:
+                    mode = "tile"
                     cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
                     if cur_rc:
                         pc.tile_type[cur_rc] = m.group(2)
+                    continue
+                # -- additive section bodies -----------------------------------
+                if mode == "bram":
+                    if s:  # whitespace-separated 9-bit hex words, 8 per line
+                        cur_bram.extend(int(tok, 16) for tok in s.split())
+                    continue
+                if mode == "efb":
+                    md = EFB_DATA_RE.match(s)
+                    if md:
+                        pc.efb_blocks[cur_efb_sel] = [
+                            int(tok, 16) for tok in md.group(1).split()
+                        ]
                     continue
                 if cur_rc is None:
                     continue
