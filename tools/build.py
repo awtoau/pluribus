@@ -46,8 +46,9 @@ import sys
 import time
 from pathlib import Path
 
-_HERE = Path(__file__).parent
-_SCRIPTS = _HERE.parent / "scripts"
+_TOOLS = Path(__file__).resolve().parent   # this file lives in <repo>/tools/
+_HERE  = _TOOLS.parent                      # repo root — pipeline scripts live here
+_SCRIPTS = _HERE / "scripts"
 sys.path.insert(0, str(_SCRIPTS))
 sys.path.insert(0, str(_HERE))
 

@@ -3,7 +3,7 @@
 bitstream a board declares.
 
 THIS IS THE canonical pipeline entry point.  One command, bitstream -> report.
-(build.py is an older orchestrator kept for its `init`/`annotate` helpers; its
+(tools/build.py is an older orchestrator kept for its `init`/`annotate` helpers; its
 full-pipeline path is superseded by this script.)
 
 Stages — ALL run under python3.15t (free-threaded NoGIL):

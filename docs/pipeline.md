@@ -63,6 +63,6 @@ Every run **drops and rebuilds** all rows for the label — no incremental state
 no stale data. Never treat the DB as a source of truth across runs; always
 rebuild. (See `CLAUDE.md` design rules.)
 
-`build.py` is an older orchestrator; its `build` (full-pipeline) path is
+`tools/build.py` is an older orchestrator; its `build` (full-pipeline) path is
 superseded by this script. Its `init` (generate a template pins TSV from a
 bitstream) and `annotate` (re-import annotations) helpers remain useful.

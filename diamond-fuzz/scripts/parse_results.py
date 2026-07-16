@@ -2,9 +2,8 @@
 """
 parse_results.py — Diff fuzz .config files against baseline, extract changed bits.
 
-Usage:
-    cd /mnt/2tb/git/awto-2000
-    python3 fpga/diamond/fuzz/scripts/parse_results.py [--baseline PATH]
+Usage (from the repo root):
+    python3 diamond-fuzz/scripts/parse_results.py [--baseline PATH]
 
 Inputs:
     fuzz/baseline/empty.config          — empty design bitstream (reference)
@@ -32,8 +31,8 @@ from pathlib import Path
 
 # ── Repo layout ──────────────────────────────────────────────────────────────
 
-ROOT        = Path(__file__).resolve().parents[4]
-FUZZ_DIR    = ROOT / "fpga" / "diamond" / "fuzz"
+# This script lives at <repo>/diamond-fuzz/scripts/.
+FUZZ_DIR    = Path(__file__).resolve().parents[1]   # <repo>/diamond-fuzz
 TARGETS_DIR = FUZZ_DIR / "targets"
 RESULTS_DIR = FUZZ_DIR / "results"
 BASELINE    = FUZZ_DIR / "baseline" / "empty.config"

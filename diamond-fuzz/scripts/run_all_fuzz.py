@@ -2,9 +2,8 @@
 """
 run_all_fuzz.py — Run all Diamond fuzz targets and load results into pluribus.
 
-Usage:
-    cd /mnt/2tb/git/awto-2000
-    python3 fpga/diamond/fuzz/scripts/run_all_fuzz.py [--targets GLOB] [--dry-run] [--jobs N]
+Usage (from the repo root):
+    python3 diamond-fuzz/scripts/run_all_fuzz.py [--targets GLOB] [--dry-run] [--jobs N]
 
 What this does:
     1. Discovers all fuzz target dirs under fuzz/targets/
@@ -37,22 +36,22 @@ from pathlib import Path
 
 # ── Repo layout ──────────────────────────────────────────────────────────────
 
-# Post-migration layout: this script lives at <repo>/diamond-fuzz/scripts/.
-# (Was parents[4] + fpga/diamond/fuzz when diamond-fuzz lived under awto-2000.)
+# This script lives at <repo>/diamond-fuzz/scripts/.
 FUZZ_DIR    = Path(__file__).resolve().parents[1]   # <repo>/diamond-fuzz
 ROOT        = FUZZ_DIR.parent                        # pluribus repo root
 TARGETS_DIR = FUZZ_DIR / "targets"
 RESULTS_DIR = FUZZ_DIR / "results"
 LOG_DIR     = ROOT / "tmp"
 
-DIAMOND_ROOT = Path("/home/dan/lscc/diamond/3.14")
+# Diamond install comes from the environment (set DIAMONDDIR / LM_LICENSE_FILE
+# in your shell); no machine-specific paths baked in here.
+DIAMOND_ROOT = Path(os.environ.get("DIAMONDDIR", ""))
 DIAMONDC     = DIAMOND_ROOT / "bin" / "lin64" / "diamondc"
-LICENSE      = DIAMOND_ROOT / "license" / "license.dat"
+LICENSE      = Path(os.environ.get("LM_LICENSE_FILE",
+                    str(DIAMOND_ROOT / "license" / "license.dat")))
 
-# prjtrellis lives in the RE project; overridable via TRELLIS_ROOT (was a
-# ROOT/debris/... path from the pre-migration awto-2000 layout).
-_TRELLIS     = Path(os.environ.get("TRELLIS_ROOT",
-                    "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis"))
+# prjtrellis lives in the RE project; overridable via TRELLIS_ROOT.
+_TRELLIS     = Path(os.environ.get("TRELLIS_ROOT", "debris/tmp/prjtrellis"))
 ECPUNPACK    = _TRELLIS / "libtrellis/build/ecpunpack"
 TRELLIS_DB   = _TRELLIS / "database"
 ECPUNPACK_LD = _TRELLIS / "libtrellis/build"

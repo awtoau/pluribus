@@ -57,7 +57,7 @@ PLURIBUS_DB_BACKEND=postgres python3.14t load.py ...
 | `report.py` | — | Main RE report |
 | `report2.py` | — | Secondary report |
 | `auto_name.py` | — | Auto-naming pass from patterns |
-| `build.py` | — | High-level orchestrator |
+| `tools/build.py` | — | High-level orchestrator (build/init/annotate) |
 
 ---
 

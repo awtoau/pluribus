@@ -106,6 +106,6 @@ contents, the EFB path — the work that was blocked by the invisible config.
 
 ## Parallel (non-blocking) pipeline hygiene the inventory flagged
 `db.py` default backend postgres vs CLAUDE.md sqlite; `psycopg2` import in
-`run_machxo2_fuzz.py`; `requirements.txt` covers 2/7 deps; hardcoded absolute
+`tools/run_machxo2_fuzz.py`; `requirements.txt` covers 2/7 deps; hardcoded absolute
 paths in `re_assertions.py`; absent `aw21.sty`. Fix opportunistically; not on the
 critical path.

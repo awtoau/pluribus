@@ -21,9 +21,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-_ROOT   = Path(__file__).parent
+_TOOLS  = Path(__file__).resolve().parent   # this file lives in <repo>/tools/
+_ROOT   = _TOOLS.parent                       # repo root
 _LOG    = _ROOT / "tmp" / "fuzz_full.log"
-_FUZZER = _ROOT / "fuzz_machxo2_full.py"
+_FUZZER = _TOOLS / "fuzz_machxo2_full.py"     # sibling in tools/
 _PRJT   = Path(os.environ.get("TRELLIS_ROOT", "tmp/prjtrellis"))
 
 

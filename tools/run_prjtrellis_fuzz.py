@@ -41,9 +41,8 @@ from pathlib import Path
 import psutil
 import pg8000.native
 
-_ROOT     = Path(__file__).parent
-_PRJT     = Path(os.environ.get("TRELLIS_ROOT",
-                 "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis"))
+_ROOT     = Path(__file__).resolve().parent.parent   # repo root (this file is in <repo>/tools/)
+_PRJT     = Path(os.environ.get("TRELLIS_ROOT", "debris/tmp/prjtrellis"))
 _FUZZ_DIR = _PRJT / "fuzzers/machxo2"
 _LOG_DIR  = _ROOT / "tmp/prjtrellis_run"
 
@@ -59,9 +58,9 @@ _WATCH = {"bitgen", "diamond", "fuzzer.py", "run_prjtrellis"}
 def _make_env(trellis_jobs: int) -> dict:
     return {
         **os.environ,
-        "DIAMONDDIR":      "/home/dan/lscc/diamond/3.14",
-        "DIAMONDVER":      "3.14",
-        "LM_LICENSE_FILE": "/home/dan/lscc/diamond/3.14/license/license.dat",
+        "DIAMONDDIR":      os.environ.get("DIAMONDDIR", ""),
+        "DIAMONDVER":      os.environ.get("DIAMONDVER", "3.14"),
+        "LM_LICENSE_FILE": os.environ.get("LM_LICENSE_FILE", ""),
         "TRELLIS_JOBS":    str(trellis_jobs),
         "PYTHONPATH": ":".join([
             str(_PRJT / "libtrellis/build"),

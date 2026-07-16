@@ -35,9 +35,10 @@ import sys
 import time
 from pathlib import Path
 
-_HERE   = Path(__file__).parent
+_TOOLS  = Path(__file__).resolve().parent   # this file lives in <repo>/tools/
+_HERE   = _TOOLS.parent                      # repo root
 _TESTS  = _HERE / "tests"
-_BUILD  = _HERE / "build.py"
+_BUILD  = _TOOLS / "build.py"                # build.py is a sibling in tools/
 
 import sys as _sys
 _sys.path.insert(0, str(_HERE))

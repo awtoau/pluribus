@@ -40,23 +40,24 @@ import sqlite3
 # ---------------------------------------------------------------------------
 # Paths / toolchain
 # ---------------------------------------------------------------------------
-_HERE   = Path(__file__).parent
-_ROOT   = _HERE.parent.parent
-_AWTO   = Path(os.environ.get("AWTO_ROOT", "/mnt/2tb/git/awto-2000"))
+_TOOLS  = Path(__file__).resolve().parent   # this file lives in <repo>/tools/
+_HERE   = _TOOLS.parent                      # repo root
 _LOG     = _HERE / "tmp" / "fuzz_full.log"
 _FUZZ_DB = Path(os.environ.get("FUZZ_DB",
     str(_HERE / "tmp" / "fuzz_full2.db")))
+# Scratch dir for per-target PAR/bitgen work; override with FUZZ_WORK_DIR.
+_FUZZ_WORK = Path(os.environ.get("FUZZ_WORK_DIR", str(_HERE / "tmp" / "fuzz_work")))
 
 _TRELLIS_BUILD  = os.environ.get("TRELLIS_BUILD",
-    str(_AWTO / "debris/tmp/prjtrellis/libtrellis/build"))
+    "debris/tmp/prjtrellis/libtrellis/build")
 _TRELLIS_DBROOT = os.environ.get("TRELLIS_DBROOT",
-    str(_AWTO / "debris/tmp/prjtrellis/database"))
+    "debris/tmp/prjtrellis/database")
 
 
 import shutil as _shutil
 _NEXTPNR_BIN = (os.environ.get("NEXTPNR_MACHXO2")
                 or _shutil.which("nextpnr-machxo2")
-                or "/home/dan/opt/oss-cad-suite/bin/nextpnr-machxo2")
+                or "nextpnr-machxo2")
 
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, _TRELLIS_BUILD)
@@ -462,7 +463,7 @@ def fuzz_pads(device, package, yv, nv, L, lift):
         (s["row"], s["col"], s["pio"]) for s in pkg_map.values()
     ))
 
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     for (tile_row, tile_col, pio) in site_list:
@@ -534,7 +535,7 @@ def fuzz_luts(device, package, yv, nv, L, lift):
     """Fuzz LUT routing at every fabric (PLC) tile."""
     chip = lift.chip
     clk  = clk_pin_for(device, package)
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     for tile in chip.get_all_tiles():
@@ -594,7 +595,7 @@ def fuzz_carry(device, package, yv, nv, L, lift):
     """Fuzz carry chain routing at column-aligned PLC tile groups."""
     chip = lift.chip
     clk  = clk_pin_for(device, package)
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     # Find PLC tiles, group by column, run one carry fuzz per column
@@ -663,7 +664,7 @@ def fuzz_dpram(device, package, yv, nv, L, lift):
     """Fuzz distributed RAM routing — RAMW write and DPRAM read port arcs."""
     chip = lift.chip
     clk  = clk_pin_for(device, package)
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     for tile in chip.get_all_tiles():
@@ -729,7 +730,7 @@ def fuzz_ebr(device, package, yv, nv, L, lift):
     """Fuzz EBR (block RAM) routing arcs for all EBR tiles."""
     chip = lift.chip
     clk  = clk_pin_for(device, package)
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     ebr_tiles = [t for t in chip.get_all_tiles()
@@ -801,7 +802,7 @@ def fuzz_pll(device, package, yv, nv, L, lift):
     """Fuzz PLL output routing into the clock spine."""
     chip = lift.chip
     clk  = clk_pin_for(device, package)
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     pll_tiles = [t for t in chip.get_all_tiles()
@@ -875,7 +876,7 @@ def fuzz_iologic(device, package, yv, nv, L, lift):
         return
 
     clk = clk_pin_for(device, package)
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     site_list = sorted(set(
@@ -973,7 +974,7 @@ def fuzz_efb(device, package, yv, nv, L, lift):
     """Fuzz all EFB sub-block variants."""
     clk = clk_pin_for(device, package)
     site_tag = "EFB"
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     for variant in _EFB_VARIANTS:
@@ -1020,7 +1021,7 @@ def _longline_lpf(clk_pin):
 def fuzz_longlines(device, package, yv, nv, L, lift):
     """Fuzz long-line / global wire routing with high-fanout nets."""
     clk = clk_pin_for(device, package)
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
 
     for fanout in (16, 64):
@@ -1167,7 +1168,7 @@ def _run_one_job(job, yv, nv, L, lift):
 
     L(f"  {pclass}/{pvariant} {device}/{package} {site_tag}")
 
-    _fuzz_tmp = _ROOT / "fpga" / "tmp" / "fuzz_work"
+    _fuzz_tmp = _FUZZ_WORK
     _fuzz_tmp.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=str(_fuzz_tmp)) as td:
         status, cfg, _ = synthesise(device, package, verilog, lpf,

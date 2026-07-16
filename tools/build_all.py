@@ -10,7 +10,7 @@ Pipelines (run in this order — each feeds the next):
 All pipelines are opt-in. Run from the pluribus repo root.
 
 Note: the Pluribus RE pipeline (loading a specific bitstream and running the
-full analysis) lives in each target project — e.g. awto-2000/fpga/scripts/run_pluribus.py.
+full analysis) lives in each target project's own run wrapper, not here.
 
 Usage:
     python3 build_all.py --prjt-fuzz       # prjtrellis fuzzer → bits.db
@@ -29,7 +29,8 @@ import sys
 import time
 from pathlib import Path
 
-_ROOT = Path(__file__).parent
+_TOOLS = Path(__file__).resolve().parent   # this file lives in <repo>/tools/
+_ROOT  = _TOOLS.parent                       # repo root
 
 
 def run(label: str, cmd: list, log_path: Path | None = None) -> bool:
@@ -73,12 +74,12 @@ def main():
 
     if args.prjt_fuzz:
         if not run("1 — prjtrellis fuzzer",
-                   [sys.executable, str(_ROOT / "run_prjtrellis_fuzz.py")]):
+                   [sys.executable, str(_TOOLS / "run_prjtrellis_fuzz.py")]):
             failed.append("1-prjt-fuzz")
 
     if args.prjt_check:
         if not run("2 — prjtrellis check",
-                   [sys.executable, str(_ROOT / "run_prjtrellis_check.py")]):
+                   [sys.executable, str(_TOOLS / "run_prjtrellis_check.py")]):
             failed.append("2-prjt-check")
 
     if args.diamond:
@@ -89,7 +90,7 @@ def main():
 
     if args.fuzz:
         if not run("4 — MachXO2 routing fuzzer",
-                   [sys.executable, str(_ROOT / "run_machxo2_fuzz.py")],
+                   [sys.executable, str(_TOOLS / "run_machxo2_fuzz.py")],
                    _ROOT / "tmp/fuzz_full.log"):
             failed.append("4-fuzz")
 
