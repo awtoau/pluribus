@@ -12,3 +12,5 @@ build/
 docs/issues/
 diamond-fuzz/results/
 diamond-fuzz/targets/**/impl1/
+# Local-only: project agent instructions (external RE project); keep out of the public repo
+CLAUDE.md
