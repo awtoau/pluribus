@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Pluribus — Stage: resources report.
+"""Pluribus — resources + by-peripheral report (was report2.py).
+
+Groups recovered pins by board peripheral (ADC A/B, DAC, AFE shift regs,
+SPI-config, PLL), and reports fabric-resource utilisation, cone-of-influence
+liveness, and the edges of knowledge (unknown bits).  Distinct from report.py
+(the netlist/clock/boundary report).
 
 Generates a full per-pin resource report from the DB + bitstream, matching the
 format of fpga_resources_v7.txt (issue #126).  Replaces fpga/scripts/fpga_resources.py.

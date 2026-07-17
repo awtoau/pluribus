@@ -4,7 +4,8 @@ Pluribus recovers a full structural netlist from an FPGA bitstream and stores
 it in a relational database for fast RE queries.  It supports **SQLite**
 (default, no server required) and **PostgreSQL** for CI or shared-server use.
 
-**Runtime:** Python 3.14t (free-threaded / NoGIL) for the parallel BFS stage.
+**Runtime:** Python 3.15t (free-threaded / NoGIL); the whole stack is pure
+Python — no compiled pytrellis `.so`.
 
 ---
 
@@ -13,20 +14,12 @@ it in a relational database for fast RE queries.  It supports **SQLite**
 ```bash
 pip install -r requirements.txt
 
-# Load a bitstream into ./pluribus.db
-python3.14t load.py --config path/to/device.config --tsv path/to/pins.tsv
-
-# Run BFS reachability
-python3.14t reach.py
-
-# Continue through analysis stages
-python3.14t reach2.py
-python3.14t reach3.py
-python3.14t reach4.py
-
-# Generate reports
-python3.14t report.py
+# One command: bitstream → queryable netlist + report + recovered Verilog.
+python3.15t scripts/run_pipeline.py --board boards/<name> --label <LABEL>
 ```
+
+Deliverables land in `out/<LABEL>.v` and `out/<LABEL>-chains.txt`.  See
+[docs/pipeline.md](docs/pipeline.md) for stages, board setup, and options.
 
 ## Backend selection
 
@@ -47,17 +40,24 @@ PLURIBUS_DB_BACKEND=postgres python3.14t load.py ...
 
 ## Pipeline stages
 
+Canonical entry point: **`scripts/run_pipeline.py`** runs the whole chain
+board-driven, one command (see [docs/pipeline.md](docs/pipeline.md)).  The
+individual stages, in order:
+
 | Script | Stage | Description |
 |--------|-------|-------------|
-| `load.py` | 1 | pytrellis bitstream → database (drops and recreates all tables) |
+| `scripts/trellis_unpack.py` | unpack | bitstream `.bin` → `.config` (**native** decoder, no pytrellis) |
+| `scripts/fpga_iomap.py` | iomap | `.config` → pin↔site map |
+| `load.py` | 1 | `.config` → database (drops and recreates all rows for the label) |
 | `reach.py` | 2 | NoGIL parallel BFS — all-net reachability |
-| `reach2.py` | 3 | Net-level reachability summary |
-| `reach3.py` | 4 | Structural signal classification |
-| `reach4.py` | 5 | Chain extraction + annotation merge |
-| `report.py` | — | Main RE report |
-| `report2.py` | — | Secondary report |
-| `auto_name.py` | — | Auto-naming pass from patterns |
-| `tools/build.py` | — | High-level orchestrator (build/init/annotate) |
+| `reach2.py`/`reach3.py`/`reach4.py` | 3–5 | reverse reach, cones, 9-pass auto-naming |
+| `auto_name.py` | — | net names from LUT INIT / expression patterns |
+| `patterns.py` | — | structural-pattern table the report reads |
+| `report.py` | — | human-readable RE report (netlist, clocks, boundary, EBR, patterns) |
+| `report_resources.py` | — | resources + **by-peripheral** pin map (ADC/DAC/AFE/SPI), liveness, unknown-bit edges |
+| `chains.py` | — | signal-chain report → `out/<label>-chains.txt` |
+| `verilog.py` | — | recovered structural Verilog → `out/<label>.v` |
+| `tools/build.py` | — | `init` (template pins.tsv from a bitstream) + `annotate` helpers |
 
 ---
 
