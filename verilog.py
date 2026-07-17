@@ -127,6 +127,9 @@ def load_data(conn, bs_id: int) -> dict:
 
     # EFB ports: (port_name, net)
     efb_ports = q("SELECT port_name, net FROM efb_ports WHERE bitstream=:bs_id ORDER BY port_name")
+    # EFB config: (sel, kind, length, payload) — the 0x72 .efb_block preloads
+    # the native decoder recovers (empty on a pre-native/truncated .config).
+    efb_config = q("SELECT sel, kind, length, payload FROM efb_config WHERE bitstream=:bs_id ORDER BY sel")
 
     # EBR buses: (block, bus_role, bit_index, port, net)
     ebr_buses = q("SELECT block, bus_role, bit_index, port, net FROM ebr_buses WHERE bitstream=:bs_id ORDER BY block, bus_role, bit_index")
@@ -299,6 +302,7 @@ def load_data(conn, bs_id: int) -> dict:
         "luts":             luts,
         "pads":             pads,
         "efb_ports":        efb_ports,
+        "efb_config":       efb_config,
         "ebr_buses":        ebr_buses,
         "ebr_ctrl":         ebr_ctrl,
         "net_name_map":     net_name_map,
@@ -591,17 +595,26 @@ def emit_efb_comment(data: dict) -> list[str]:
     We document the port→net mapping as comments so a reader can trace signals.
     """
     efb_ports    = data["efb_ports"]
+    efb_config   = data.get("efb_config") or []
     net_name_map = data["net_name_map"]
     const_net_map = data["const_net_map"]
 
-    if not efb_ports:
+    if not efb_ports and not efb_config:
         return []
 
     lines = [
-        "    // ── EFB port connections ──────────────────────────────────────────────",
-        "    // EFB is hard IP — not instantiable in standard Verilog.",
-        "    // Port→net mapping is shown as comments; nets are declared as wires above.",
+        "    // ── EFB (embedded function block) ─────────────────────────────────────",
+        "    // EFB is hard IP — not instantiable in standard Verilog; a behavioral",
+        "    // model is needed to simulate it (see #49).  Recovered config + the",
+        "    // port→net mapping are shown below; nets are declared as wires above.",
     ]
+    # Recovered 0x72 config block(s): kind (e.g. SPI) is the enabled function.
+    for sel, kind, length, payload in efb_config:
+        lines.append(f"    //   config: {kind} (sel 0x{sel:02x}, {length} bytes"
+                     f" payload {payload})")
+    if not efb_config:
+        lines.append("    //   config: NONE recovered — .config truncated at cmd 0x72?"
+                     " (see #54)")
     for port_name, net in efb_ports:
         wire_name = resolve_net(net, net_name_map, const_net_map)
         lines.append(f"    // EFB.{port_name} → {wire_name}  (raw net: {net})")
