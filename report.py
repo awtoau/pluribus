@@ -56,12 +56,15 @@ def hops_str(n_hops):
 
 
 def _fetch_net_names(conn, bs_id):
-    """Return {net: name} dict for all named nets in this bitstream."""
+    """Return {net: name} for all named nets — non-confirmed names get a
+    `spec_` prefix (matching the recovered Verilog) so guesses read as guesses.
+    """
     nn = schema.net_names
     rows = conn.execute(
-        select(nn.c.net, nn.c.name).where(nn.c.bitstream == bs_id)
+        select(nn.c.net, nn.c.name, nn.c.confidence).where(nn.c.bitstream == bs_id)
     ).fetchall()
-    return dict(rows)
+    return {net: (name if conf == "confirmed" else f"spec_{name}")
+            for net, name, conf in rows}
 
 
 def _table_exists(conn, table_name):
@@ -572,7 +575,8 @@ def section_active_ffs(conn, bs_id, net_names):
         name = net_names.get(q) if q else None
         if not name:
             return "(unnamed)"
-        tok = name.split("_")[0]
+        base = name[5:] if name.startswith("spec_") else name  # strip spec_ marker
+        tok = base.split("_")[0]
         # a bare tile/coord token isn't a functional group
         return "(unnamed)" if re.fullmatch(r"r\d+c\d+|ff|n\d+", tok) else tok
 

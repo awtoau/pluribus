@@ -147,10 +147,16 @@ def load_data(conn, bs_id: int) -> dict:
                          "FROM ebr_init_blocks WHERE bitstream=:bs_id")}
 
     # Net names: net → (name, description, freq_mhz)
-    net_name_rows = q("SELECT net, name, description, freq_mhz FROM net_names WHERE bitstream=:bs_id")
-    net_name_map = {net: name for net, name, _d, _f in net_name_rows}
-    net_desc_map = {net: desc for net, _n, desc, _f in net_name_rows if desc}
-    net_freq_map = {net: f for net, _n, _d, f in net_name_rows if f is not None}
+    # `spec_` prefix marks every NON-confirmed name as speculative, right in the
+    # identifier — only confirmed names (physical pins, OSC/crystal, const nets)
+    # stay clean.  So a reader never mistakes an inferred/spatial guess for fact.
+    def _spec(name, conf):
+        return name if conf == "confirmed" else f"spec_{name}"
+
+    net_name_rows = q("SELECT net, name, description, freq_mhz, confidence FROM net_names WHERE bitstream=:bs_id")
+    net_name_map = {net: _spec(name, conf) for net, name, _d, _f, conf in net_name_rows}
+    net_desc_map = {net: desc for net, _n, desc, _f, _c in net_name_rows if desc}
+    net_freq_map = {net: f for net, _n, _d, f, _c in net_name_rows if f is not None}
     # Deduplicate: multiple nets can share a name (e.g. both K-slices of a 1-input LUT).
     # Append the net ID to disambiguate so wire declarations and references stay consistent.
     from collections import Counter as _NameCounter
@@ -164,8 +170,8 @@ def load_data(conn, bs_id: int) -> dict:
             net_name_map[net] = f"{base}_{net}"
 
     # Cell names: cell → (name, description)
-    cell_name_rows = q("SELECT cell, name, description FROM cell_names WHERE bitstream=:bs_id")
-    cell_name_map  = {cell: name for cell, name, _desc in cell_name_rows}
+    cell_name_rows = q("SELECT cell, name, description, confidence FROM cell_names WHERE bitstream=:bs_id")
+    cell_name_map  = {cell: _spec(name, conf) for cell, name, _desc, conf in cell_name_rows}
     # Deduplicate cell names the same way as net names
     _cell_name_counts = _NameCounter(cell_name_map.values())
     _cell_name_seen: dict[str, int] = {}
