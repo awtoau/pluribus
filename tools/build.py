@@ -1,47 +1,31 @@
 #!/usr/bin/env python3
-"""Pluribus — build orchestrator (legacy full-pipeline path).
+"""Pluribus — pin-annotation helpers (init + annotate).
 
-NOTE: the canonical one-command pipeline is now `scripts/run_pipeline.py`
-(bitstream -> report, board-driven, single python3.15t interpreter, includes the
-native-decode + iomap stages).  Prefer it:
+The full bitstream→report pipeline lives in `scripts/run_pipeline.py`
+(board-driven, single python3.15t interpreter, native-decode + iomap stages):
     python3.15t scripts/run_pipeline.py --board boards/<name> --label <LABEL>
-This module's `build` subcommand is kept for compatibility; its `init`
-(template pins from a bitstream) and `annotate` helpers remain useful.
 
-Two modes:
+This module keeps the two helpers that sit either side of that pipeline:
 
-  --init    Scan the bitstream and write a TEMPLATE pins.tsv.
-            The user then edits this file to add labels, functions, and
-            confidence scores.  The template is a starting point — fill in
-            what you know and leave the rest as defaults.
+  init      Scan a bitstream's .config and write a TEMPLATE pins.tsv.  The
+            user then edits it to add labels, functions, and confidence scores
+            — a starting point; fill in what you know, leave the rest default.
 
-  (normal)  Run the full pipeline:
-              Stage 1  load.py    — drop + reload netlist from bitstream
-              Stage 2  reach.py   — parallel all-net BFS (NoGIL)
-              Stage 3  (TODO)     — pattern detection
-              Stage 4  (TODO)     — annotate from extra sources
-              Stage 5  export     — write diff-friendly output TSV files
+  annotate  Re-import pin annotations from an edited pins.tsv and re-export,
+            without re-decoding the bitstream or re-running the BFS (requires a
+            prior full pipeline run for the label).
 
 Usage
 -----
-  # First time — generate a template:
-  ./build.py init \
-    --config path/to.bin.config \
-    --out pins-template.tsv
+  # Generate a template from a bitstream:
+  ./build.py init --config path/to.bin.config --out pins-template.tsv
 
-  # Subsequent runs — full rebuild from annotated pin file:
-  ./build.py build \
-    --label rev1 \
-    --config path/to.bin.config \
-    --pins pins.tsv
-
-  # Every run CLEARS the database for this label and rebuilds from scratch.
-  # Never use the database as a source of truth across runs — always rebuild.
+  # After editing the template, re-import just the annotations:
+  ./build.py annotate --label rev1 --pins pins.tsv
 """
 
 import argparse
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -53,13 +37,6 @@ sys.path.insert(0, str(_SCRIPTS))
 sys.path.insert(0, str(_HERE))
 
 from db import engine, die, EFB_JF, JF_RE, BACKEND
-
-TRELLIS_DBROOT = os.environ.get(
-    "TRELLIS_DBROOT", "debris/tmp/prjtrellis/database"
-)
-TRELLIS_PYPATH = os.environ.get(
-    "PYTHONPATH", "debris/tmp/prjtrellis/libtrellis/build"
-)
 
 
 # ── Stage: init — generate template TSV ──────────────────────────────────────
@@ -142,7 +119,10 @@ def cmd_init(config, out_path, device):
         fh.write(out)
     print(f"\nTemplate written to {out_path}")
     print("Edit this file: fill in labels, functions, and confidence scores (1-10)")
-    print("Then run:  build.py build --label rev1 --config ... --pins <this-file>")
+    print("Then run the pipeline:  "
+          "python3.15t scripts/run_pipeline.py --board boards/<name> --label <LABEL>")
+    print("  (or, to re-import just this file after a run:  "
+          "build.py annotate --label <LABEL> --pins <this-file>)")
 
 
 def _resolve_net(design, lift, row, col, wire):
@@ -153,36 +133,12 @@ def _resolve_net(design, lift, row, col, wire):
     return design.net_name.get(design.dsu.find(key))
 
 
-# ── Stage: full pipeline ──────────────────────────────────────────────────────
-
-def run_stage(name, cmd, env_extra=None, timings=None):
-    """Run a subprocess stage; die hard on failure. Appends (name, elapsed) to timings."""
-    env = dict(os.environ)
-    if env_extra:
-        env.update(env_extra)
-    t = time.time()
-    print(f"\n── {name} ──")
-    r = subprocess.run(cmd, env=env)
-    elapsed = time.time() - t
-    if r.returncode != 0:
-        die(f"Stage '{name}' failed (exit {r.returncode})")
-    print(f"  {name} OK ({elapsed:.2f}s)")
-    if timings is not None:
-        timings.append((name, elapsed))
-
-
-def reset_db():
-    """Drop and recreate all tables. Called before every build."""
-    import schema as _schema
-    _schema.drop_all()
-    _schema.init()
-    print("DB reset: all tables dropped and recreated")
-
+# ── Stage: annotate — re-import pin annotations ───────────────────────────────
 
 def cmd_annotate_only(label, pins, out_dir):
     """Re-import pin annotations and re-export without touching netlist or BFS.
 
-    Requires a prior full build to have been run for this label.
+    Requires a prior pipeline run (scripts/run_pipeline.py) for this label.
     Clears only net_names (pins_tsv source), re-imports from the TSV, then
     re-exports all output TSVs.
     """
@@ -198,7 +154,7 @@ def cmd_annotate_only(label, pins, out_dir):
             select(schema.bitstreams.c.id).where(schema.bitstreams.c.label == label)
         ).fetchone()
         if not row:
-            die(f"Bitstream {label!r} not in DB — run a full build first")
+            die(f"Bitstream {label!r} not in DB — run scripts/run_pipeline.py first")
         bs_id = row[0]
 
         # Verify netlist is present
@@ -206,7 +162,7 @@ def cmd_annotate_only(label, pins, out_dir):
             select(func.count()).select_from(schema.nets).where(schema.nets.c.bitstream == bs_id)
         ).scalar()
         if n_nets == 0:
-            die(f"Netlist for {label!r} is empty — run a full build first")
+            die(f"Netlist for {label!r} is empty — run scripts/run_pipeline.py first")
 
     with engine().begin() as conn:
         # Clear only pin-TSV-sourced annotations; keep any from other sources
@@ -265,125 +221,7 @@ def cmd_annotate_only(label, pins, out_dir):
     print(f"   Outputs in {out_dir}/")
 
 
-def cmd_build(label, config, pins, device, package, out_dir, depth, workers):
-    t0 = time.time()
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    trellis_env = {
-        "TRELLIS_DBROOT": TRELLIS_DBROOT,
-        "PYTHONPATH":     TRELLIS_PYPATH,
-    }
-
-    timings = []
-
-    # ── Reset DB before every build ───────────────────────────────────────
-    t_reset = time.time()
-    reset_db()
-    timings.append(("reset_db", time.time() - t_reset))
-
-    # ── Stage 1: load (needs pytrellis, always clears first) ──────────────
-    run_stage("load", [
-        sys.executable, str(_HERE / "load.py"),
-        "--label",   label,
-        "--config",  config,
-        "--pins",    pins,
-        "--device",  device,
-        "--package", package,
-    ], trellis_env, timings)
-
-    # ── Stage 2: reach (NoGIL parallel BFS) ───────────────────────────────
-    run_stage("reach", [
-        "python3.14t", str(_HERE / "reach.py"),
-        "--bitstream", label,
-        "--depth",     str(depth),
-        "--workers",   str(workers),
-        "--replace",
-    ], timings=timings)
-
-    # ── Stage 2b: reach2 (reverse reach, FF cones, critical paths, dominators)
-    run_stage("reach2", [
-        sys.executable, str(_HERE / "reach2.py"),
-        "--bitstream", label,
-        "--workers",   str(workers),
-    ], timings=timings)
-
-    # ── Stage 2c: reach3 (symbolic expansion, clock crossings, const nets, etc.)
-    run_stage("reach3", [
-        sys.executable, str(_HERE / "reach3.py"),
-        "--bitstream", label,
-        "--workers",   str(workers),
-        "--depth",     str(depth),
-    ], timings=timings)
-
-    # ── Stage 3: patterns (TODO — will be added) ──────────────────────────
-    patterns_py = _HERE / "patterns.py"
-    if patterns_py.exists():
-        run_stage("patterns", [sys.executable, str(patterns_py), "--bitstream", label],
-                  timings=timings)
-    else:
-        print("\n── patterns — SKIPPED (patterns.py not yet written) ──")
-
-    # ── Stage 4: annotate from external sources (TODO) ────────────────────
-    annotate_py = _HERE / "annotate.py"
-    if annotate_py.exists():
-        run_stage("annotate", [sys.executable, str(annotate_py), "--bitstream", label],
-                  timings=timings)
-    else:
-        print("\n── annotate — SKIPPED (annotate.py not yet written) ──")
-
-    # ── Stage 4b: reach4 — mechanical auto-naming ─────────────────────────
-    run_stage("reach4", [
-        sys.executable, str(_HERE / "reach4.py"),
-        "--bitstream", label,
-    ], timings=timings)
-
-    # ── Stage 5: export diff-friendly output ──────────────────────────────
-    t_exp = time.time()
-    export_summary(label, out_dir)
-
-    # Verilog emitter
-    subprocess.run([
-        sys.executable, str(_HERE / "verilog.py"),
-        "--bitstream", label,
-        "--out", str(Path(out_dir) / f"{label}.v"),
-        "--top", label.lower().replace("-", "_"),
-    ])
-
-    # Human report
-    subprocess.run([
-        sys.executable, str(_HERE / "report.py"),
-        "--bitstream", label,
-        "--out", str(Path(out_dir) / f"{label}-report.txt"),
-    ])
-
-    timings.append(("export", time.time() - t_exp))
-
-    # Resources report (issue #126) — runs after export, needs trellis env
-    run_stage("report2", [
-        sys.executable, str(_HERE / "report2.py"),
-        "--bitstream", label,
-        "--config",    config,
-        "--out", str(Path(out_dir) / f"{label}-resources.txt"),
-    ], trellis_env, timings)
-
-    # Signal chain trace (issue #127)
-    run_stage("chains", [
-        sys.executable, str(_HERE / "chains.py"),
-        "--bitstream", label,
-        "--out", str(Path(out_dir) / f"{label}-chains.txt"),
-    ], timings=timings)
-
-    total = time.time() - t0
-    print(f"\n══ Build complete: {label}  ({total:.2f}s total) ══")
-    print(f"   Outputs in {out_dir}/")
-    print(f"\n   Stage timings:")
-    for stage, elapsed in timings:
-        bar = "█" * int(elapsed / total * 30)
-        print(f"   {stage:<12}  {elapsed:5.2f}s  {bar}")
-
-
-# ── Stage 5: diff-friendly output ────────────────────────────────────────────
+# ── diff-friendly output ──────────────────────────────────────────────────────
 
 def export_summary(label, out_dir):
     """Write diff-friendly TSV summaries of the current DB state."""
@@ -395,7 +233,7 @@ def export_summary(label, out_dir):
             select(schema.bitstreams.c.id).where(schema.bitstreams.c.label == label)
         ).fetchone()
         if not row:
-            die(f"Bitstream {label!r} not in DB after build — something went wrong")
+            die(f"Bitstream {label!r} not in DB — something went wrong")
         bs_id = row[0]
 
         print(f"\n── export ──")
@@ -545,16 +383,6 @@ def main():
     p_init.add_argument("--out",     required=True, help="Output template TSV path")
     p_init.add_argument("--device",  default="LCMXO2-1200")
 
-    p_build = sub.add_parser("build", help="Full rebuild pipeline (drops and recreates entire DB)")
-    p_build.add_argument("--label",   required=True)
-    p_build.add_argument("--config",  required=True)
-    p_build.add_argument("--pins",    required=True)
-    p_build.add_argument("--device",  default="LCMXO2-1200")
-    p_build.add_argument("--package", default="TQFP100")
-    p_build.add_argument("--out-dir", default="fpga/pluribus/out")
-    p_build.add_argument("--depth",   type=int, default=8)
-    p_build.add_argument("--workers", type=int, default=24)
-
     p_ann = sub.add_parser("annotate",
         help="Re-import pin annotations and re-export (no bitstream decode, no BFS)")
     p_ann.add_argument("--label",   required=True)
@@ -566,10 +394,6 @@ def main():
     if args.cmd == "init":
         from lifters import machxo2_lift  # validates pytrellis available before proceeding
         cmd_init(args.config, args.out, args.device)
-    elif args.cmd == "build":
-        cmd_build(args.label, args.config, args.pins,
-                  args.device, args.package, args.out_dir,
-                  args.depth, args.workers)
     elif args.cmd == "annotate":
         cmd_annotate_only(args.label, args.pins, args.out_dir)
     else:
