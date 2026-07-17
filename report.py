@@ -111,6 +111,85 @@ def section_header(conn, bs_id):
     return lines
 
 
+def section_config_summary(conn, bs_id, net_names):
+    """Top-down device-configuration overview — the one-screen 'how is this
+    device configured' view, synthesised from the recovered netlist + hard-IP
+    config.  The detailed sections below expand each line.
+    """
+    import collections
+    ffs, luts, nets = schema.ffs, schema.luts, schema.nets
+    cds, nn = schema.clock_domain_summary, schema.net_names
+
+    n_ff = conn.execute(select(func.count()).where(ffs.c.bitstream == bs_id)).scalar()
+    n_lut = conn.execute(select(func.count()).where(luts.c.bitstream == bs_id)).scalar()
+    n_net = conn.execute(select(func.count()).where(nets.c.bitstream == bs_id)).scalar()
+
+    # Clocking: domains grouped by recovered frequency.  The frequency lives on
+    # the named spine net; most domains' direct clock net is unlabelled.
+    clk_nets = [r[0] for r in conn.execute(
+        select(cds.c.clk_net).where(cds.c.bitstream == bs_id)).fetchall()]
+    freq_by_net = dict(conn.execute(
+        select(nn.c.net, nn.c.freq_mhz).where(
+            and_(nn.c.bitstream == bs_id, nn.c.freq_mhz.isnot(None)))).fetchall())
+    freq_counts = collections.Counter(freq_by_net.get(n) for n in clk_nets)
+    n_dom = len(clk_nets)
+    unknown = freq_counts.pop(None, 0)
+    freq_bits = [f"{f:g} MHz×{c}" for f, c in sorted(freq_counts.items())]
+
+    # Hard IP: EFB config + EBR blocks (preloaded vs blank/runtime-loaded).
+    efb = conn.execute(
+        select(schema.efb_config.c.kind, schema.efb_config.c.sel)
+        .where(schema.efb_config.c.bitstream == bs_id)).fetchall()
+    ebr_blocks = sorted({r[0] for r in conn.execute(
+        select(schema.ebr_ports.c.block).where(
+            schema.ebr_ports.c.bitstream == bs_id)).fetchall()})
+    initb = {r[0]: r[1] for r in conn.execute(
+        select(schema.ebr_init_blocks.c.block, schema.ebr_init_blocks.c.n_nonzero)
+        .where(schema.ebr_init_blocks.c.bitstream == bs_id)).fetchall()}
+    n_preloaded = sum(1 for b in ebr_blocks if initb.get(b, 0) > 0)
+
+    # I/O peripherals grouped by pad-label prefix (board annotations).
+    pads = conn.execute(
+        select(schema.pad_map.c.label, schema.pad_map.c.direction)
+        .where(schema.pad_map.c.bitstream == bs_id)).fetchall()
+    groups = collections.defaultdict(lambda: [0, set()])
+    for lbl, direction in pads:
+        if not lbl:
+            continue
+        pre = (lbl.split("_")[0] if "_" in lbl
+               else "".join(c for c in lbl if not c.isdigit()) or lbl)
+        groups[pre][0] += 1
+        if direction:
+            groups[pre][1].add(direction)
+
+    lines = [
+        "",
+        "── Device Configuration (top-down) ─────────────────────",
+        f"  Fabric:    {n_ff} FFs, {n_lut} LUTs, {n_net} nets",
+        f"  Clocking:  {n_dom} domains"
+        + (f" — {', '.join(freq_bits)}" if freq_bits else "")
+        + (f", {unknown} unlabelled" if unknown else ""),
+        "             driven off-fabric by PLL/OSC/DCC hard IP via the HPBX spine",
+    ]
+    if efb:
+        lines.append("  EFB:       "
+                     + ", ".join(f"{k} (sel 0x{s:02x})" for k, s in efb))
+    else:
+        lines.append("  EFB:       no config recovered (truncated .config? see #54)")
+    lines.append(f"  EBR:       {len(ebr_blocks)} blocks — "
+                 f"{n_preloaded} bitstream-preloaded, "
+                 f"{len(ebr_blocks) - n_preloaded} blank/runtime-loaded")
+    for b in ebr_blocks:
+        nz = initb.get(b, 0)
+        lines.append(f"               {b}: "
+                     + (f"{nz} words preloaded" if nz else "BLANK (runtime-loaded)"))
+    if groups:
+        lines.append("  I/O (from pad annotations):")
+        for pre, (cnt, dirs) in sorted(groups.items(), key=lambda x: -x[1][0]):
+            lines.append(f"               {pre:<8} {cnt:>2} pins  ({'/'.join(sorted(dirs))})")
+    return lines
+
+
 # ---------------------------------------------------------------------------
 # Section 2: Netlist Summary
 # ---------------------------------------------------------------------------
@@ -1122,6 +1201,7 @@ def main():
         # Run all sections in order
         sections = [
             section_header(conn, bs_id),
+            section_config_summary(conn, bs_id, net_names),
             section_netlist(conn, bs_id),
             section_clocks(conn, bs_id, net_names),
             section_boundary(conn, bs_id, net_names),
