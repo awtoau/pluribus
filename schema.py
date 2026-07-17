@@ -226,6 +226,7 @@ net_names = Table("net_names", metadata,
     Column("description", Text),
     Column("confidence",  Text, nullable=False, server_default="speculative"),
     Column("source",      Text),
+    Column("freq_mhz",    Float),   # clock frequency (from the net-annotation TSV)
     Column("updated_at",  DateTime(timezone=True)),
     UniqueConstraint("bitstream", "net"),
 )

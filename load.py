@@ -596,7 +596,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     _insert_or_ignore(schema.net_names).values(
                         bitstream=bs_id, net=net, name=name,
                         description=notes or None, confidence=confidence,
-                        source="fpga_nets_tsv",
+                        source="fpga_nets_tsv", freq_mhz=freq,
                     )
                 )
                 if result.rowcount:

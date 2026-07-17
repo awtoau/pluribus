@@ -133,10 +133,11 @@ def load_data(conn, bs_id: int) -> dict:
     # EBR ports: (block, port, role, net)
     ebr_ctrl  = q("SELECT block, port, role, net FROM ebr_ports WHERE bitstream=:bs_id ORDER BY block, port")
 
-    # Net names: net → (name, description)
-    net_name_rows = q("SELECT net, name, description FROM net_names WHERE bitstream=:bs_id")
-    net_name_map = {net: name for net, name, _desc in net_name_rows}
-    net_desc_map = {net: desc for net, _name, desc in net_name_rows if desc}
+    # Net names: net → (name, description, freq_mhz)
+    net_name_rows = q("SELECT net, name, description, freq_mhz FROM net_names WHERE bitstream=:bs_id")
+    net_name_map = {net: name for net, name, _d, _f in net_name_rows}
+    net_desc_map = {net: desc for net, _n, desc, _f in net_name_rows if desc}
+    net_freq_map = {net: f for net, _n, _d, f in net_name_rows if f is not None}
     # Deduplicate: multiple nets can share a name (e.g. both K-slices of a 1-input LUT).
     # Append the net ID to disambiguate so wire declarations and references stay consistent.
     from collections import Counter as _NameCounter
@@ -248,6 +249,7 @@ def load_data(conn, bs_id: int) -> dict:
         "ebr_ctrl":         ebr_ctrl,
         "net_name_map":     net_name_map,
         "net_desc_map":     net_desc_map,
+        "net_freq_map":     net_freq_map,
         "cell_name_map":    cell_name_map,
         "cell_clkname_map": cell_clkname_map,
         "ff_q_cell_map":    ff_q_cell_map,
@@ -361,6 +363,7 @@ def emit_wires(data: dict) -> list[str]:
     """Wire declarations for all internal nets (not module ports)."""
     net_name_map      = data["net_name_map"]
     net_desc_map      = data["net_desc_map"]
+    net_freq_map      = data["net_freq_map"]
     const_net_map     = data["const_net_map"]
     net_stats_map     = data["net_stats_map"]
     cell_clkname_map  = data["cell_clkname_map"]
@@ -435,6 +438,9 @@ def emit_wires(data: dict) -> list[str]:
         if net in net_name_map:
             desc = net_desc_map.get(net)
             comment_parts.append(desc if desc else net_name_map[net])
+            freq = net_freq_map.get(net)
+            if freq is not None:
+                comment_parts.append(f"{freq:g} MHz")
         elif net in ff_q_cell_map:
             src = ff_q_cell_map[net]
             clk = cell_clkname_map.get(src, "?")
