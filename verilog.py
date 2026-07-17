@@ -927,6 +927,35 @@ def emit_ffs(data: dict) -> list[str]:
         """
         return rc(cell)
 
+    # ── Register vectorisation (#45 phase 2) ────────────────────────────────
+    # Collapse per-bit reg ids that share a base and a contiguous numeric
+    # suffix into `reg [hi:lo] base` buses.  Only when the char before the
+    # trailing digits is a LETTER (a slice/bit suffix like _A0/_A1, _Bk0/_Bk1)
+    # — never a coordinate digit — so distinct registers can't be merged.
+    # Pure rename of the reg identifier: identical semantics (LEC-equivalent).
+    def _split_idx(name):
+        m = re.match(r"^(.*[A-Za-z])(\d+)$", name)
+        return (m.group(1), int(m.group(2))) if m else (name, None)
+
+    _base_bits: dict[str, set] = {}
+    for _c, *_ in ffs:
+        _base, _idx = _split_idx(reg_id(_c))
+        if _idx is not None:
+            _base_bits.setdefault(_base, set()).add(_idx)
+    _vec_ref: dict[str, str] = {}      # scalar reg_id -> "base[idx]"
+    _vec_bases: dict[str, tuple] = {}  # base -> (hi, lo)
+    for _base, _bits in _base_bits.items():
+        if len(_bits) < 2:
+            continue
+        _vec_bases[_base] = (max(_bits), min(_bits))
+        for _i in _bits:
+            _vec_ref[f"{_base}{_i}"] = f"{_base}[{_i}]"
+
+    def reg_ref(cell: str) -> str:
+        """Reg identifier for a WRITE/READ — the vectorised bit when grouped."""
+        rid = reg_id(cell)
+        return _vec_ref.get(rid, rid)
+
     # ── Classify each FF ────────────────────────────────────────────────────
     # "stuck"   : d=1'b0, ce=VCC — permanently zero, collapsed into groups
     # "ce_clear": d=1'b0, ce=fabric net — clears to 0 when CE fires, grouped
@@ -956,21 +985,33 @@ def emit_ffs(data: dict) -> list[str]:
     # Multiple FFs can share the same Q net (bus structure); declare each reg
     # only once.  All associated always blocks still write to the shared reg.
     _declared_regs: set[str] = set()
+    _n_vec = 0
     for cell, clk, ce, d, q, lsr in ffs:
         cell_ident  = reg_id(cell)
+        base, _idx  = _split_idx(cell_ident)
+        clk_name    = rn(clk) if clk else "?"
+        if cell_ident in _vec_ref:
+            # Vectorised: one `reg [hi:lo] base;` per base.
+            if base in _declared_regs:
+                continue
+            _declared_regs.add(base)
+            hi, lo = _vec_bases[base]
+            _n_vec += 1
+            lines.append(f"    reg [{hi}:{lo}] {base};  // {hi - lo + 1}-bit reg  clk={clk_name}")
+            continue
         if cell_ident in _declared_regs:
             continue
         _declared_regs.add(cell_ident)
         human_label = cell_name_map.get(cell, "")
-        clk_name    = rn(clk) if clk else "?"
         ce_name     = rn(ce)  if ce  else "1'b1"
-        # Comment: human name if available, otherwise clock+CE for context
         if human_label:
             comment = f"  // {human_label}  clk={clk_name}"
         else:
             ce_part = f"  CE={ce_name}" if ce_name != "1'b1" else ""
             comment = f"  // clk={clk_name}{ce_part}"
         lines.append(f"    reg {cell_ident};{comment}")
+    if _n_vec:
+        lines.append(f"    // ({_n_vec} multi-bit registers vectorised into buses)")
     lines.append("")
 
     # ── Stuck-at-reset FFs — collapsed by (clk, lsr) group ─────────────────
@@ -996,7 +1037,7 @@ def emit_ffs(data: dict) -> list[str]:
             lines.append(f"    // {len(cells)} FFs stuck at 0 on posedge {clk_expr}")
             lines.append(f"    always @(posedge {clk_expr}) begin")
             for cell in cells:
-                lines.append(f"        {reg_id(cell)} <= 1'b0;")
+                lines.append(f"        {reg_ref(cell)} <= 1'b0;")
             lines.append("    end")
             lines.append("")
 
@@ -1032,7 +1073,7 @@ def emit_ffs(data: dict) -> list[str]:
             lines.append(f"    always @(posedge {clk_expr}) begin")
             lines.append(f"        if ({cond}) begin")
             for cell in cells:
-                lines.append(f"            {reg_id(cell)} <= 1'b0;")
+                lines.append(f"            {reg_ref(cell)} <= 1'b0;")
             lines.append("        end")
             lines.append("    end")
             lines.append("")
@@ -1057,7 +1098,7 @@ def emit_ffs(data: dict) -> list[str]:
             lsr_expr = rn(lsr) if lsr else None
             lsr_key  = lsr_expr if (lsr_expr and lsr_expr not in ("1'b0", "NC")) else None
             act_groups[(clk_expr, ce_expr, lsr_key)].append(
-                (reg_id(cell), d_expr, cell_name_map.get(cell, "")))
+                (reg_ref(cell), d_expr, cell_name_map.get(cell, "")))
 
         for (clk_expr, ce_expr, lsr_key), members in sorted(
                 act_groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or "")):
@@ -1120,7 +1161,7 @@ def emit_ffs(data: dict) -> list[str]:
         if q_wire in dual_driven:
             continue  # LUT already drives this wire; second assign would conflict
         seen_q_assigns.add(q_wire)
-        q_assigns.append((q_wire, reg_id(cell)))
+        q_assigns.append((q_wire, reg_ref(cell)))
     # Sorted by the driven net name so the connect block reads alphabetically.
     for q_wire, r in sorted(q_assigns):
         lines.append(f"    assign {q_wire} = {r};  // Q output")
