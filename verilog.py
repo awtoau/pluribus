@@ -1398,6 +1398,7 @@ def emit_ebr(data: dict) -> list[str]:
         return rn(n) if n else "NC"
 
     _ebr_assigned: set[str] = set()
+    read_ports: list[dict] = []          # for the sim sweep harness (#49 M4)
 
     def _bus_ports(block_buses, role):
         return sorted(block_buses.get(role, {}).items())
@@ -1469,6 +1470,15 @@ def emit_ebr(data: dict) -> list[str]:
 
         # Read port
         raddr_e = _vec(raddr_pairs, PA)
+        # Record the routed read-address leaf nets so the sim sweep harness
+        # (#49 M4) can force a clean address onto them — the fabric read-address
+        # generator is partly off-fabric (ghost bits), so left to itself the
+        # read index is X in sim.  bit_idx -> rendered leaf net (skip consts).
+        raddr_leaves = {i: _net(n) for i, n in raddr_pairs
+                        if _net(n) not in ("NC", "1'b0", "1'b1")}
+        if raddr_leaves:
+            read_ports.append({"tag": tag, "block": block, "rclk": rclk,
+                               "pw": PW, "raddr": raddr_leaves})
         out += [
             f"    reg [{PW-1}:0] ebr_{tag}_dout;",
             f"    always @(posedge {rclk})",
@@ -1516,6 +1526,7 @@ def emit_ebr(data: dict) -> list[str]:
     for block in loaded_blocks:
         lines += _emit_block(block, _block_kind(block))
 
+    data["ebr_read_ports"] = read_ports
     return lines
 
 
@@ -1639,6 +1650,44 @@ def emit_testbench(data: dict, top_name: str) -> list[str]:
         for i, n in enumerate(adc_ports):
             L.append(f"    always @* {n} = adc_ramp[{i % 8}];")
         L.append("")
+    # EBR read-address sweep harness (#49 M4).  The recovered read address is
+    # partly off-fabric (ghost bits) + a ghost read-enable, so left to itself
+    # the read index is X in closed-loop sim and no block ever streams its
+    # prefill.  Here we FORCE a clean incrementing address onto the routed
+    # read-address leaf nets (iverilog `force` overrides their fabric drivers)
+    # and observe the recovered EBR contents stream out — an end-to-end check
+    # that the recovered init + read-port model reproduce the self-test ramp.
+    read_ports = data.get("ebr_read_ports") or []
+    sweep = data.get("sim_ebr_sweep") and read_ports and clocks
+    if sweep:
+        drv = clocks[0][0]
+        forced: dict[str, int] = {}       # leaf net -> counter bit (first wins)
+        for rp in read_ports:
+            for i, leaf in rp["raddr"].items():
+                forced.setdefault(leaf, i)
+        douts = [rp["tag"] for rp in read_ports]
+        L += [
+            "    // ── EBR read-address sweep (#49 M4): force a clean address ──",
+            "    // Overrides the (partly off-fabric) recovered read-address logic",
+            "    // so each block's prefilled contents stream out of ebr_*_dout.",
+            "    // The forces are RE-APPLIED every cycle: a one-shot `force ... =",
+            "    // _ebr_sweep[b]` in an initial block latches the address at t=0",
+            "    // instead of tracking the counter (iverilog).",
+            "    reg [9:0] _ebr_sweep = 10'd0;",
+            f"    always @(posedge {drv}) begin",
+            "        _ebr_sweep <= _ebr_sweep + 10'd1;",
+        ]
+        for leaf, bit in sorted(forced.items(), key=lambda kv: kv[1]):
+            L.append(f"        force dut.{leaf} = _ebr_sweep[{bit}];")
+        L.append("    end")
+        watch = "  ".join(f"{t}=%h" for t in douts)
+        args = ", ".join(f"dut.ebr_{t}_dout" for t in douts)
+        L += [
+            f"    always @(posedge {drv}) if (_ebr_sweep < 10'd48)",
+            f'        $display("SWEEP addr=%0d  {watch}", _ebr_sweep, {args});',
+            "",
+        ]
+
     L += [
         "    initial begin",
         f'        $dumpfile("{top_name}_tb.vcd");',
@@ -1747,6 +1796,10 @@ def main():
                     help="Board-specific note file; emitted as header comments")
     ap.add_argument("--tb-out", default=None,
                     help="Also write a simulation testbench to this path (#49)")
+    ap.add_argument("--sim-ebr-sweep", action="store_true",
+                    help="In the testbench, force a clean incrementing address "
+                         "onto each EBR's routed read-address nets so the "
+                         "recovered prefill streams out (#49 M4 read-path demo)")
     args = ap.parse_args()
 
     with engine().connect() as conn:
@@ -1762,6 +1815,7 @@ def main():
     if args.header_note and Path(args.header_note).exists():
         data["header_note"] = Path(args.header_note).read_text(
             encoding="utf-8").splitlines()
+    data["sim_ebr_sweep"] = args.sim_ebr_sweep
 
     # Assemble all sections
     sections = [
