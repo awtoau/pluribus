@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Pluribus — Stage 1: recover netlist and load into fpga_re database.
 
-This is the only script that requires pytrellis.  EVERY run performs a full
+Uses the pure-Python native routing graph (native_trellis) by default — no
+pytrellis .so.  Set PLURIBUS_TRELLIS_BACKEND=so to fall back to the legacy
+pytrellis build for A/B parity checks.  EVERY run performs a full
 drop-and-rebuild for the given label — there is no incremental mode.  Any
 unexpected condition is a hard abort.
 
@@ -1201,7 +1203,9 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                 root = design.dsu.find(key)
                 net  = design.net_name.get(root)
                 gx, gy, gid = key
-                return net, gx, gy, gid
+                # Store the wire NAME, not the backend's opaque interned id
+                # (portable + reproducible; identical across trellis backends).
+                return net, gx, gy, lift.rg.to_str(gid)
 
             sink_net,   sx, sy, sid = _resolve(ks)
             source_net, dx, dy, did = _resolve(kd)

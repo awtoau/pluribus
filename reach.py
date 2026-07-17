@@ -218,6 +218,21 @@ def main():
     print(f"  {len(all_nets)} nets  {sum(len(v) for v in fwd.values())} edges  "
           f"({time.time()-t0:.1f}s)")
 
+    # ── freeze point ──────────────────────────────────────────────────────
+    # `fwd` is fully built and strictly read-only from here on, and every BFS
+    # worker walks it.  Under free-threading each traversal INCREF/DECREFs the
+    # same nodes, so all workers contend on the same refcount cache lines.
+    # Immortalizing the graph makes those refcount ops no-ops.  Safe because
+    # `fwd` lives for the rest of the process; set PLURIBUS_IMMORTAL=0 to
+    # disable (for A/B measurement).
+    if os.environ.get("PLURIBUS_IMMORTAL", "1") != "0":
+        import ft_immortal
+        if ft_immortal.available() and ft_immortal.gil_disabled():
+            ti = time.time()
+            n_imm = ft_immortal.immortalize_tree(fwd)
+            print(f"  immortalized {n_imm} shared graph objects "
+                  f"({time.time()-ti:.1f}s) — refcount contention removed")
+
     work_q = queue.Queue()
     for n in all_nets:
         work_q.put(n)

@@ -27,16 +27,22 @@ juggling.
 absent; both generators refuse to overwrite, so an existing `.config` is never
 clobbered.
 
-## Everything runs under python3.15t (free-threaded NoGIL)
+## Everything runs under python3.15t (free-threaded NoGIL) — no pytrellis .so
 
-The whole stack is GIL-free: pytrellis is rebuilt for free-threading (pybind11 +
-`mod_gil_not_used()`) and `sqlalchemy>=2.1.0b3` keeps the GIL disabled, so one
-interpreter serves every stage. Override with `PLURIBUS_PYTHON=<interp>` if
-needed.
+The whole stack is GIL-free **and pure Python**: the bitstream decode
+(`native_bitstream`) and the routing graph (`native_trellis`) are both native
+Python, so no pytrellis `.so` is needed at runtime. `sqlalchemy>=2.1.0b3` keeps
+the GIL disabled, so one interpreter serves every stage. Override the
+interpreter with `PLURIBUS_PYTHON=<interp>` if needed.
 
-Prereqs: `python3.15t` on `PATH`; a free-threaded pytrellis build; the tile DB.
-`TRELLIS_BUILD`/`TRELLIS_DBROOT` come from the board's `board.toml [trellis]`
-table (an explicit environment always wins) — so no paths on the command line.
+The native routing graph is a faithful port of prjtrellis (chip geometry,
+`globalise_net` wire canonicalization, per-tile wires + SLICE bels). It is
+validated to produce a **byte-identical netlist** to the pytrellis path — see
+`scripts/native_rgraph_parity.py`. Set `PLURIBUS_TRELLIS_BACKEND=so` to fall
+back to a legacy pytrellis build for A/B parity checks (needs `TRELLIS_BUILD`).
+
+Prereqs: `python3.15t` on `PATH`; the text tile DB (`TRELLIS_DBROOT`, from the
+board's `board.toml [trellis]` table). No compiled toolchain, no `.so`.
 
 ## Common forms
 
