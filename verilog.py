@@ -303,6 +303,14 @@ def load_data(conn, bs_id: int) -> dict:
         for _pin, label, direction, _ni, _no in pads
         if direction == "out" and label
     }
+    # INPUT port names: driven externally by the pad.  Nothing in-fabric may
+    # drive them — an EBR read-data / LUT / FF assign onto an input-pad net is a
+    # multi-driver conflict (yosys warns; Diamond LSE hard-errors).
+    input_port_names: set[str] = {
+        _sanitise(label)
+        for _pin, label, direction, _ni, _no in pads
+        if direction in ("in", "bidir") and label
+    }
 
     # Q wire names that are ALSO driven by a LUT continuous assign.
     # Adding `assign q_wire = reg;` for these would create a multi-driver conflict,
@@ -358,6 +366,7 @@ def load_data(conn, bs_id: int) -> dict:
         "ff_q_wire_map":        ff_q_wire_map,
         "port_names":           port_names,
         "output_port_names":    output_port_names,
+        "input_port_names":     input_port_names,
         "dual_driven_q_wires":  dual_driven_q_wires,
         "lut_driven_net_ids":   lut_driven_net_ids,
         "ff_q_all_wire_ids":    ff_q_all_wire_ids,
@@ -1467,10 +1476,16 @@ def emit_ebr(data: dict) -> list[str]:
         ]
         lut_driven = data.get("lut_driven_net_ids", set())
         ff_q_wires = data.get("ff_q_all_wire_ids", set())
+        input_ports = data.get("input_port_names", set())
         for bit_idx, net in rdata_pairs:
             net_expr = _net(net)
             if net_expr not in ("NC", "1'b0", "1'b1") and net_expr not in _ebr_assigned:
-                if net_expr in lut_driven:
+                if net_expr in input_ports:
+                    # Net is an INPUT pad (driven externally, e.g. an ADC data
+                    # line feeding the EBR write port).  Driving it from the EBR
+                    # dout is a multi-driver conflict (Diamond LSE hard-errors).
+                    out.append(f"    // {net_expr}[{bit_idx}] is an input pad — not driven from {block}")
+                elif net_expr in lut_driven:
                     # LUT buffering stage already drives this net; skip to avoid conflict.
                     out.append(f"    // {net_expr}[{bit_idx}] driven by LUT path from {block}")
                 elif net_expr in ff_q_wires:
