@@ -8,10 +8,18 @@ Runs Yosys on a recovered .v file and categorises warnings:
 
 Exit 0 if only expected warnings; exit 1 on unexpected issues.
 
+With --lec BASELINE it additionally runs a sequential-equivalence proof
+(yosys equiv_induct) between the checked file and BASELINE — the regression
+gate used to prove an emitter change is logic-preserving.  The recovered
+netlist has no original RTL to check against, so the meaningful baseline is a
+PRIOR emission of the same label.  Divergence is reported but non-fatal by
+default (a DB change legitimately alters logic); --strict-lec makes it fatal.
+
 Usage:
   python3 scripts/check_verilog.py tmp/<label>.v
   python3 scripts/check_verilog.py tmp/<label>.v --top top --strict
   python3 scripts/check_verilog.py tmp/<label>.v --out tmp/check_<label>.log
+  python3 scripts/check_verilog.py out/<label>.v --top aw2 --lec prev.v
 """
 
 import argparse
@@ -56,6 +64,36 @@ def run_yosys(verilog_path: str, top: str) -> tuple[int, list[str]]:
     return result.returncode, lines
 
 
+def run_yosys_lec(new_v: str, baseline_v: str, top: str) -> tuple[bool, list[str]]:
+    """Sequential equivalence (equiv_induct) of new_v against baseline_v.
+
+    Returns (equivalent, output_lines).  equivalent is True iff every $equiv
+    cell is proven and none are unproven.  Declaration/comment-only emitter
+    changes must come back equivalent; a real logic change comes back diverged.
+    """
+    script = (
+        f"read_verilog -sv {baseline_v}; hierarchy -top {top}; "
+        f"proc; flatten; opt_clean; rename {top} gold; design -stash gold; "
+        f"read_verilog -sv {new_v}; hierarchy -top {top}; "
+        f"proc; flatten; opt_clean; rename {top} gate; design -stash gate; "
+        f"design -copy-from gold -as gold gold; "
+        f"design -copy-from gate -as gate gate; "
+        f"equiv_make gold gate equiv; hierarchy -top equiv; "
+        f"equiv_induct; equiv_status"
+    )
+    result = subprocess.run(["yosys", "-p", script], capture_output=True, text=True)
+    lines = (result.stdout + result.stderr).splitlines()
+    proven = unproven = None
+    for ln in lines:
+        m = re.search(r"(\d+)\s+are proven and\s+(\d+)\s+are unproven", ln)
+        if m:
+            proven, unproven = int(m.group(1)), int(m.group(2))
+    # yosys nonzero exit (e.g. a read/parse error) is never "equivalent".
+    equivalent = (result.returncode == 0 and unproven == 0
+                  and proven is not None and proven > 0)
+    return equivalent, lines
+
+
 def classify_warnings(lines: list[str]) -> dict:
     no_driver = []
     conflicts = []
@@ -82,6 +120,11 @@ def main():
     ap.add_argument("--strict", action="store_true",
                     help="Treat pad-loopback conflict warnings as failures")
     ap.add_argument("--out", help="Write full Yosys log to this path")
+    ap.add_argument("--lec", metavar="BASELINE",
+                    help="also prove sequential equivalence vs this prior .v "
+                         "(equiv_induct); reports divergence, non-fatal by default")
+    ap.add_argument("--strict-lec", action="store_true",
+                    help="with --lec, treat divergence from the baseline as a failure")
     args = ap.parse_args()
 
     vpath = Path(args.verilog).resolve()
@@ -124,13 +167,41 @@ def main():
     if args.strict:
         fatal = fatal or bool(w["conflicts"])
 
+    # Optional sequential-equivalence regression gate vs a prior emission.
+    lec_diverged = False
+    if args.lec:
+        if not Path(args.lec).exists():
+            print(f"\nLEC: baseline {args.lec} not found — skipping equivalence check")
+        else:
+            print(f"\nLEC: proving equivalence vs {args.lec} (equiv_induct) …")
+            equivalent, lec_lines = run_yosys_lec(str(vpath), args.lec, args.top)
+            if args.out:
+                Path(args.out).write_text(
+                    Path(args.out).read_text() + "\n=== LEC ===\n"
+                    + "\n".join(lec_lines) + "\n")
+            proof = next((l.strip() for l in lec_lines if "are proven and" in l), "")
+            if equivalent:
+                print(f"  EQUIVALENT — {proof}")
+            else:
+                lec_diverged = True
+                print(f"  DIVERGED from baseline — {proof or 'see log'}")
+                print("  (expected if the DB/netlist changed; a logic change since "
+                      "the last emission)")
+    if args.strict_lec:
+        fatal = fatal or lec_diverged
+
     if fatal:
         print("\nFAIL — unexpected issues found")
         sys.exit(1)
     else:
         status = "PASS"
+        extras = []
         if w["conflicts"]:
-            status += " (with pad-loopback warnings)"
+            extras.append("pad-loopback warnings")
+        if lec_diverged:
+            extras.append("LEC diverged (non-fatal)")
+        if extras:
+            status += " (" + ", ".join(extras) + ")"
         print(f"\n{status}")
         sys.exit(0)
 

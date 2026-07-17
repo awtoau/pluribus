@@ -32,9 +32,14 @@ pins_tsv = "pins.tsv"
 nets_tsv = "nets.tsv"
 
 # Known bitstreams for this board, keyed by the label they load under.
-#   config — the named-cell .config (scripts/trellis_unpack.py output)
-#   bin    — optional raw vendor bitstream; run_pipeline.py unpacks it to
-#            `config` when that file does not exist yet.
+#   bin    — raw vendor bitstream (the source of truth).
+#   config — the named-cell .config (scripts/trellis_unpack.py output).
+# run_pipeline.py's [unpack] stage runs ONLY when `bin` is set AND `config`
+# does not exist yet.  So `config` must point at a REGENERABLE path (pluribus
+# tmp/, below) — NOT at a pre-existing vendor .config.  A pre-existing config
+# silently skips native decode, and any .config produced before the native
+# decoder is TRUNCATED at bitstream cmd 0x72: it drops the EBR .bram_init and
+# EFB .efb_block sections (#54).  Always pair a `bin` with a tmp `config`.
 # Paths are relative to this board.toml.  As with pins.tsv/nets.tsv, they
 # point into the RE project that owns the artefacts — pluribus itself
 # stores no board data.  Run them all with:
@@ -44,7 +49,9 @@ bin    = "../../../awto-2000/fpga/v2/DS1302_impl1(8)_V02.bin"
 config = "../../tmp/v2/DS1302_V02.bin.config"
 
 [bitstreams.V4]
-config = "../../../awto-2000/fpga/v4/DS1302_2019071801.bin.config"
+bin    = "../../../awto-2000/fpga/v4/DS1302_2019071801.bin"
+config = "../../tmp/v4/DS1302_2019071801.bin.config"
 
 [bitstreams.V07]
-config = "../../../awto-2000/fpga/v7/FPGA_V07.bin.config"
+bin    = "../../../awto-2000/fpga/v7/FPGA_V07.bin"
+config = "../../tmp/v7/FPGA_V07.bin.config"
