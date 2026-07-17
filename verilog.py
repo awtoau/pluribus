@@ -454,8 +454,9 @@ def emit_wires(data: dict) -> list[str]:
         comment = "  // " + " — ".join(comment_parts) if comment_parts else ""
         return f"    wire {wire_name};{comment}"
 
-    # Sort named by human name; clock-derived by derived name; unnamed numerically
+    # Sort named by human name; constants + clock-derived by wire name; unnamed numerically
     named_nets.sort(key=lambda n: net_name_map[n])
+    const_nets.sort(key=lambda n: _wire_name(n))
     clkderiv_nets.sort(key=lambda n: _wire_name(n))
     def _net_sort_key(n):
         if n.startswith("n") and n[1:].isdigit():
@@ -939,6 +940,7 @@ def emit_ffs(data: dict) -> list[str]:
     dual_driven = data.get("dual_driven_q_wires", set())
 
     seen_q_assigns: set[str] = set()
+    q_assigns: list[tuple[str, str]] = []
     for cell, _clk, _ce, _d, q, _lsr in ffs:
         if q is None:
             continue
@@ -951,10 +953,12 @@ def emit_ffs(data: dict) -> list[str]:
             continue  # port: pad logic handles the connection
         if q_wire in dual_driven:
             continue  # LUT already drives this wire; second assign would conflict
-        r = reg_id(cell)
         seen_q_assigns.add(q_wire)
+        q_assigns.append((q_wire, reg_id(cell)))
+    # Sorted by the driven net name so the connect block reads alphabetically.
+    for q_wire, r in sorted(q_assigns):
         lines.append(f"    assign {q_wire} = {r};  // Q output")
-    if seen_q_assigns:
+    if q_assigns:
         lines.append("")
 
     lines.append("")
