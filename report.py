@@ -124,6 +124,17 @@ def section_config_summary(conn, bs_id, net_names):
     n_lut = conn.execute(select(func.count()).where(luts.c.bitstream == bs_id)).scalar()
     n_net = conn.execute(select(func.count()).where(nets.c.bitstream == bs_id)).scalar()
 
+    # Device EBR-block budget (MachXO2 datasheet) for a utilisation figure.
+    device = conn.execute(
+        select(schema.bitstreams.c.device).where(schema.bitstreams.c.id == bs_id)).scalar()
+    _MACHXO2_EBR = {"256": 0, "640": 2, "1200": 7, "2000": 8, "4000": 10, "7000": 26}
+    _MACHXO2_LUT = {"256": 256, "640": 640, "1200": 1280, "2000": 2112,
+                    "4000": 4320, "7000": 6864}
+    _m = re.search(r"(\d{3,4})", device or "")
+    dev_ebr = _MACHXO2_EBR.get(_m.group(1)) if _m else None
+    dev_lut = _MACHXO2_LUT.get(_m.group(1)) if _m else None
+    EBR_BITS = 9216  # one MachXO2 EBR block = 1024 × 9 bits = 9 Kbit
+
     # Clocking: domains grouped by recovered frequency.  The frequency lives on
     # the named spine net; most domains' direct clock net is unlabelled.
     clk_nets = [r[0] for r in conn.execute(
@@ -191,7 +202,9 @@ def section_config_summary(conn, bs_id, net_names):
     lines = [
         "",
         "── Device Configuration (top-down) ─────────────────────",
-        f"  Fabric:    {n_ff} FFs, {n_lut} LUTs, {n_net} nets",
+        f"  Fabric:    {n_lut}"
+        + (f"/{dev_lut} ({100 * n_lut // dev_lut}%)" if dev_lut else "")
+        + f" LUTs, {n_ff} FFs, {n_net} nets",
         f"  Clocking:  {n_dom} domains"
         + (f" — {', '.join(freq_bits)}" if freq_bits else "")
         + (f", {unknown} unlabelled" if unknown else ""),
@@ -202,9 +215,13 @@ def section_config_summary(conn, bs_id, net_names):
                      + ", ".join(f"{k} (sel 0x{s:02x})" for k, s in efb))
     else:
         lines.append("  EFB:       no config recovered (truncated .config? see #54)")
-    lines.append(f"  EBR:       {len(ebr_blocks)} blocks — "
-                 f"{n_preloaded} prefilled (self-test), "
-                 f"{len(ebr_blocks) - n_preloaded} blank/runtime")
+    ebr_kbit = len(ebr_blocks) * EBR_BITS / 1024
+    ebr_kb = len(ebr_blocks) * EBR_BITS / 8 / 1024
+    util = (f" of {dev_ebr} ({100 * len(ebr_blocks) // dev_ebr}%)"
+            if dev_ebr else "")
+    lines.append(f"  Block RAM: {len(ebr_blocks)} EBR blocks{util} = "
+                 f"{ebr_kbit:.0f} Kbit ({ebr_kb:.1f} KB) — "
+                 f"{n_preloaded} prefilled, {len(ebr_blocks) - n_preloaded} blank")
     lines.append(f"             {'block':<7} {'WID':<4} {'mode':<8} {'width':<6} content")
     for b in ebr_blocks:
         ib = initb.get(b)
