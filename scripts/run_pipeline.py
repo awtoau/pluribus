@@ -14,7 +14,7 @@ Stages — ALL run under python3.15t (free-threaded NoGIL):
     [reach2]  reach2.py
     [reach3]  reach3.py
     [reach4]  reach4.py
-    [report]  report.py                  human-readable status
+    [report]  report.py                  top-down config summary + detail -> out/<label>-report.txt
     [verilog] verilog.py                 recovered structural Verilog -> out/<label>.v
     [verify]  scripts/check_verilog.py   yosys lint (gate) + regression LEC vs
                                          the prior emission (equiv_induct)
@@ -115,12 +115,15 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
     # report/deliverables so those carry the full naming.
     for stage in ("reach2", "reach3", "reach4", "auto_name", "patterns"):
         run(stage, label, [PY, f"{stage}.py", "--bitstream", label])
-    run("report", label, [PY, "report.py", "--bitstream", label])
 
-    # Deliverables (NOT scratch): recovered Verilog + signal-chain report go
+    # Deliverables (NOT scratch): the report (led by the top-down Device
+    # Configuration summary), recovered Verilog, and signal-chain report all go
     # to out/ so they survive a tmp cleanup.
     out_dir = os.path.join(REPO, "out")
     os.makedirs(out_dir, exist_ok=True)
+    run("report", label,
+        [PY, "report.py", "--bitstream", label,
+         "--out", os.path.join(out_dir, f"{label}-report.txt")])
     run("chains", label,
         [PY, "chains.py", "--bitstream", label,
          "--out", os.path.join(out_dir, f"{label}-chains.txt")])
