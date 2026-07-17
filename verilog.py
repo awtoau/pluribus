@@ -1030,7 +1030,7 @@ def emit_ffs(data: dict) -> list[str]:
             _declared_regs.add(base)
             hi, lo = _vec_bases[base]
             _n_vec += 1
-            lines.append(f"    reg [{hi}:{lo}] {base};  // {hi - lo + 1}-bit reg  clk={clk_name}")
+            lines.append(f"    reg [{hi}:{lo}] {base} = 0;  // {hi - lo + 1}-bit reg  clk={clk_name}")
             continue
         if cell_ident in _declared_regs:
             continue
@@ -1042,7 +1042,7 @@ def emit_ffs(data: dict) -> list[str]:
         else:
             ce_part = f"  CE={ce_name}" if ce_name != "1'b1" else ""
             comment = f"  // clk={clk_name}{ce_part}"
-        lines.append(f"    reg {cell_ident};{comment}")
+        lines.append(f"    reg {cell_ident} = 1'b0;{comment}")
     if _n_vec:
         lines.append(f"    // ({_n_vec} multi-bit registers vectorised into buses)")
     lines.append("")
@@ -1557,6 +1557,106 @@ def emit_output_drives(data: dict) -> list[str]:
             + sorted(assigns) + [""])
 
 
+def emit_testbench(data: dict, top_name: str) -> list[str]:
+    """Generate a simulation testbench for the recovered module (#49).
+
+    Drives every clock input at its recovered frequency, rolls a ramp across the
+    ADC data pads, ties the rest of the inputs low, monitors the output pads,
+    and dumps a VCD.  It is a STARTING point: the off-fabric control (the
+    spi_efb_* ghost nets) is still internal-undriven, so the datapath won't do
+    anything meaningful until the EFB behavioral model drives them.  Port names
+    replicate emit_ports so the instantiation binds correctly.
+    """
+    net_name_map = data["net_name_map"]
+    const_net_map = data["const_net_map"]
+    pads = data["pads"]
+    clock_input_nets = data.get("clock_input_nets", set())
+    clock_domains = data.get("clock_domains", {})
+    net_freq_map = data.get("net_freq_map", {})
+
+    resolved = [(pin, label, d, ni, no) for pin, label, d, ni, no in pads
+                if d in ("in", "out", "bidir") and (ni is not None or no is not None)]
+    seen: set[str] = set()
+    in_ports: list[str] = []
+    adc_ports: list[str] = []
+    out_ports: list[str] = []
+    bidir_ports: list[str] = []
+    for pin, label, direction, ni, no in resolved:
+        base = _sanitise(label)
+        port = f"pin{pin}" if (base == "_" or base in seen) else base
+        seen.add(port)
+        if direction == "out":
+            out_ports.append(port)
+        elif direction == "bidir":
+            bidir_ports.append(port)   # inout: wire, left undriven in the TB
+        elif port.startswith("ADC_D"):
+            adc_ports.append(port)
+        else:
+            in_ports.append(port)
+
+    clocks: list[tuple[str, float]] = []
+    for clk_net in sorted(clock_input_nets):
+        name = _sanitise(resolve_net(clk_net, net_name_map, const_net_map))
+        if name in seen:
+            continue
+        seen.add(name)
+        clocks.append((name, net_freq_map.get(clk_net) or 125.0))
+
+    all_in = [n for n, _ in clocks] + adc_ports + in_ports
+    L = [
+        "`timescale 1ns/1ps",
+        "",
+        f"// Recovered-design testbench for {top_name} (pluribus #49, milestone 1).",
+        "// Drives clocks at recovered frequencies + a ramp on the ADC pads.",
+        "// The off-fabric control (spi_efb_* ghost nets) is undriven (X) until",
+        "// the EFB behavioral model lands, so DAC output is not yet meaningful.",
+        f"module {top_name}_tb;",
+    ]
+    for n, _ in clocks:
+        L.append(f"    reg {n} = 1'b0;")
+    for n in adc_ports + in_ports:
+        L.append(f"    reg {n} = 1'b0;")
+    for n in out_ports:
+        L.append(f"    wire {n};")
+    for n in bidir_ports:
+        L.append(f"    wire {n};   // inout — left undriven")
+    L.append("")
+    L.append(f"    {top_name} dut (")
+    conns = [f"        .{n}({n})" for n in all_in + out_ports + bidir_ports]
+    L.append(",\n".join(conns))
+    L += ["    );", ""]
+    for n, f in clocks:
+        half = 1000.0 / (2.0 * f)
+        L.append(f"    always #{half:.4f} {n} = ~{n};  // {f:g} MHz")
+    L.append("")
+    if adc_ports:
+        drv = clocks[0][0] if clocks else all_in[0]
+        L += [
+            "    // ADC data: a rolling ramp on the capture inputs.",
+            "    reg [7:0] adc_ramp = 8'd0;",
+            f"    always @(posedge {drv}) adc_ramp <= adc_ramp + 8'd1;",
+        ]
+        for i, n in enumerate(adc_ports):
+            L.append(f"    always @* {n} = adc_ramp[{i % 8}];")
+        L.append("")
+    L += [
+        "    initial begin",
+        f'        $dumpfile("{top_name}_tb.vcd");',
+        f"        $dumpvars(0, {top_name}_tb);",
+    ]
+    if out_ports:
+        watch = " ".join(f"%b" for _ in out_ports[:8])
+        args = ", ".join(out_ports[:8])
+        L.append(f'        $monitor("t=%0t  {watch}", $time, {args});')
+    L += [
+        "        #2000 $finish;   // 2 us",
+        "    end",
+        "endmodule",
+        "",
+    ]
+    return L
+
+
 def emit_efb_model(data: dict) -> list[str]:
     """Behavioral EFB SPI-slave stub — a TEMPLATE for simulating the EFB.
 
@@ -1645,6 +1745,8 @@ def main():
                     help="Verilog module name (default: top)")
     ap.add_argument("--header-note", default=None,
                     help="Board-specific note file; emitted as header comments")
+    ap.add_argument("--tb-out", default=None,
+                    help="Also write a simulation testbench to this path (#49)")
     args = ap.parse_args()
 
     with engine().connect() as conn:
@@ -1691,6 +1793,11 @@ def main():
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(output, encoding="utf-8")
+        if args.tb_out:
+            tb_path = Path(args.tb_out)
+            tb_path.parent.mkdir(parents=True, exist_ok=True)
+            tb_path.write_text("\n".join(emit_testbench(data, args.top)), encoding="utf-8")
+            print(f"Wrote testbench {tb_path}")
         n_named_nets  = len(data["net_name_map"])
         n_named_cells = len(data["cell_name_map"])
         n_total_nets  = len(data["all_nets"])
