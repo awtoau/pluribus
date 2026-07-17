@@ -13,6 +13,7 @@ name    = "Hantek 2D82AUTO"
 device  = "LCMXO2-1200"
 package = "TQFP100"
 lifter  = "machxo2"
+top     = "aw2"          # recovered-Verilog top module name
 
 # Where the RE project that owns this board keeps its prjtrellis build.
 # Optional: scripts/run_pipeline.py exports these as TRELLIS_BUILD /

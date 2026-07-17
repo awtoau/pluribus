@@ -20,8 +20,17 @@ juggling.
 | iomap | `scripts/fpga_iomap.py` | `.config` → `.iomap.tsv` (pin↔site) |
 | load | `load.py` | `.config` → DB netlist (nets/ffs/luts/pads/EBR/EFB) |
 | reach | `reach.py` | all-net BFS reachability (raw-driver NoGIL-parallel) |
-| reach2/3/4 | `reach2.py` … | reverse reach, cones, symbolic LUTs, auto-naming |
+| reach2/3/4 | `reach2.py` … | reverse reach, cones, symbolic LUTs, 9-pass auto-naming |
+| auto_name | `auto_name.py` | additional net names from LUT INIT truth tables + expression patterns |
+| patterns | `patterns.py` | structural-pattern table (stuck/orphan pads, const-FFs, …) the report consumes |
 | report | `report.py` | human-readable status |
+| chains | `chains.py` | signal-chain report → `out/<label>-chains.txt` |
+| verilog | `verilog.py` | **recovered structural Verilog → `out/<label>.v`** (primary deliverable) |
+
+Deliverables land in **`out/`** (not `tmp/`), so they survive a scratch
+cleanup: `out/<label>.v` and `out/<label>-chains.txt`. `--no-verilog` skips the
+Verilog stage; the top-module name comes from `--top` or the board's
+`[board] top`.
 
 `unpack`+`iomap` run only when a raw `.bin` is known **and** its `.config` is
 absent; both generators refuse to overwrite, so an existing `.config` is never
