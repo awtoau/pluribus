@@ -870,35 +870,52 @@ def emit_ffs(data: dict) -> list[str]:
             lines.append("    end")
             lines.append("")
 
-    # ── Active (real-D) FFs ──────────────────────────────────────────────────
+    # ── Active (real-D) FFs — grouped into one always-block per control set ──
+    # Every FF that shares (clk, CE, LSR) is written in ONE always block, in
+    # tile/slice order, instead of one block per FF.  This collapses ~1000
+    # single-bit always blocks into a few dozen and puts the bits of each
+    # register/pipeline stage together.  Pure regrouping — identical semantics
+    # (same clk/CE/LSR/D per FF), so it is logically equivalent to the flat
+    # form.  True `reg [N:0]` vectorisation (renaming the per-bit regs to a bus)
+    # is phase 2 in issue #45.
     if active_ffs:
-        lines.append(f"    // ── Real-D FFs ({len(active_ffs)}) — D inputs from fabric ────────────────────")
+        from collections import defaultdict as _dd2
+        lines.append(f"    // ── Real-D FFs ({len(active_ffs)}) — grouped by (clk, CE, LSR) control set ─")
 
+        act_groups: dict[tuple, list] = _dd2(list)
         for cell, clk, ce, d, q, lsr in active_ffs:
-            cell_ident = reg_id(cell)
-            clk_expr   = rn(clk)  if clk  else "/* no_clk */"
-            ce_expr    = rn(ce)   if ce   else "1'b1"
-            d_expr     = rn(d)    if d    else "NC"
-            lsr_expr   = rn(lsr)  if lsr  else None
-            human      = cell_name_map.get(cell, "")
-            comment    = f"  // {human}" if human else ""
+            clk_expr = rn(clk) if clk else "/* no_clk */"
+            ce_expr  = rn(ce)  if ce  else "1'b1"
+            d_expr   = rn(d)   if d   else "NC"
+            lsr_expr = rn(lsr) if lsr else None
+            lsr_key  = lsr_expr if (lsr_expr and lsr_expr not in ("1'b0", "NC")) else None
+            act_groups[(clk_expr, ce_expr, lsr_key)].append(
+                (reg_id(cell), d_expr, cell_name_map.get(cell, "")))
 
-            lines.append(f"    always @(posedge {clk_expr}) begin{comment}")
-            if lsr_expr and lsr_expr not in ("1'b0", "NC"):
-                lines.append(f"        if ({lsr_expr})")
-                lines.append(f"            {cell_ident} <= 1'b0;")
-                if ce_expr != "1'b1":
-                    lines.append(f"        else if ({ce_expr})")
-                    lines.append(f"            {cell_ident} <= {d_expr};")
+        for (clk_expr, ce_expr, lsr_key), members in sorted(
+                act_groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or "")):
+            members.sort()  # tile/slice order (reg id encodes r{R}c{C}_{slice})
+            ctl = "clk=" + clk_expr
+            if ce_expr != "1'b1":
+                ctl += f"  CE={ce_expr}"
+            if lsr_key:
+                ctl += f"  LSR={lsr_key}"
+            lines.append(f"    // {len(members)} FFs — {ctl}")
+            lines.append(f"    always @(posedge {clk_expr}) begin")
+            for reg_ident, d_expr, human in members:
+                hc = f"  // {human}" if human else ""
+                if lsr_key and ce_expr != "1'b1":
+                    lines.append(f"        if ({lsr_key})       {reg_ident} <= 1'b0;")
+                    lines.append(f"        else if ({ce_expr})  {reg_ident} <= {d_expr};{hc}")
+                elif lsr_key:
+                    lines.append(f"        if ({lsr_key}) {reg_ident} <= 1'b0;")
+                    lines.append(f"        else          {reg_ident} <= {d_expr};{hc}")
+                elif ce_expr != "1'b1":
+                    lines.append(f"        if ({ce_expr}) {reg_ident} <= {d_expr};{hc}")
                 else:
-                    lines.append(f"        else")
-                    lines.append(f"            {cell_ident} <= {d_expr};")
-            elif ce_expr != "1'b1":
-                lines.append(f"        if ({ce_expr})")
-                lines.append(f"            {cell_ident} <= {d_expr};")
-            else:
-                lines.append(f"        {cell_ident} <= {d_expr};")
+                    lines.append(f"        {reg_ident} <= {d_expr};{hc}")
             lines.append("    end")
+            lines.append("")
 
     # ── Q-output connect assigns ──────────────────────────────────────────────
     # reg_id() = cell-derived name; Q wire = what downstream LUTs reference.
