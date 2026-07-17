@@ -133,10 +133,11 @@ def load_data(conn, bs_id: int) -> dict:
     # EBR ports: (block, port, role, net)
     ebr_ctrl  = q("SELECT block, port, role, net FROM ebr_ports WHERE bitstream=:bs_id ORDER BY block, port")
 
-    # Net names: net → (name, description)
-    net_name_rows = q("SELECT net, name, description FROM net_names WHERE bitstream=:bs_id")
-    net_name_map = {net: name for net, name, _desc in net_name_rows}
-    net_desc_map = {net: desc for net, _name, desc in net_name_rows if desc}
+    # Net names: net → (name, description, freq_mhz)
+    net_name_rows = q("SELECT net, name, description, freq_mhz FROM net_names WHERE bitstream=:bs_id")
+    net_name_map = {net: name for net, name, _d, _f in net_name_rows}
+    net_desc_map = {net: desc for net, _n, desc, _f in net_name_rows if desc}
+    net_freq_map = {net: f for net, _n, _d, f in net_name_rows if f is not None}
     # Deduplicate: multiple nets can share a name (e.g. both K-slices of a 1-input LUT).
     # Append the net ID to disambiguate so wire declarations and references stay consistent.
     from collections import Counter as _NameCounter
@@ -248,6 +249,7 @@ def load_data(conn, bs_id: int) -> dict:
         "ebr_ctrl":         ebr_ctrl,
         "net_name_map":     net_name_map,
         "net_desc_map":     net_desc_map,
+        "net_freq_map":     net_freq_map,
         "cell_name_map":    cell_name_map,
         "cell_clkname_map": cell_clkname_map,
         "ff_q_cell_map":    ff_q_cell_map,
@@ -361,6 +363,7 @@ def emit_wires(data: dict) -> list[str]:
     """Wire declarations for all internal nets (not module ports)."""
     net_name_map      = data["net_name_map"]
     net_desc_map      = data["net_desc_map"]
+    net_freq_map      = data["net_freq_map"]
     const_net_map     = data["const_net_map"]
     net_stats_map     = data["net_stats_map"]
     cell_clkname_map  = data["cell_clkname_map"]
@@ -435,6 +438,9 @@ def emit_wires(data: dict) -> list[str]:
         if net in net_name_map:
             desc = net_desc_map.get(net)
             comment_parts.append(desc if desc else net_name_map[net])
+            freq = net_freq_map.get(net)
+            if freq is not None:
+                comment_parts.append(f"{freq:g} MHz")
         elif net in ff_q_cell_map:
             src = ff_q_cell_map[net]
             clk = cell_clkname_map.get(src, "?")
@@ -448,8 +454,9 @@ def emit_wires(data: dict) -> list[str]:
         comment = "  // " + " — ".join(comment_parts) if comment_parts else ""
         return f"    wire {wire_name};{comment}"
 
-    # Sort named by human name; clock-derived by derived name; unnamed numerically
+    # Sort named by human name; constants + clock-derived by wire name; unnamed numerically
     named_nets.sort(key=lambda n: net_name_map[n])
+    const_nets.sort(key=lambda n: _wire_name(n))
     clkderiv_nets.sort(key=lambda n: _wire_name(n))
     def _net_sort_key(n):
         if n.startswith("n") and n[1:].isdigit():
@@ -864,35 +871,52 @@ def emit_ffs(data: dict) -> list[str]:
             lines.append("    end")
             lines.append("")
 
-    # ── Active (real-D) FFs ──────────────────────────────────────────────────
+    # ── Active (real-D) FFs — grouped into one always-block per control set ──
+    # Every FF that shares (clk, CE, LSR) is written in ONE always block, in
+    # tile/slice order, instead of one block per FF.  This collapses ~1000
+    # single-bit always blocks into a few dozen and puts the bits of each
+    # register/pipeline stage together.  Pure regrouping — identical semantics
+    # (same clk/CE/LSR/D per FF), so it is logically equivalent to the flat
+    # form.  True `reg [N:0]` vectorisation (renaming the per-bit regs to a bus)
+    # is phase 2 in issue #45.
     if active_ffs:
-        lines.append(f"    // ── Real-D FFs ({len(active_ffs)}) — D inputs from fabric ────────────────────")
+        from collections import defaultdict as _dd2
+        lines.append(f"    // ── Real-D FFs ({len(active_ffs)}) — grouped by (clk, CE, LSR) control set ─")
 
+        act_groups: dict[tuple, list] = _dd2(list)
         for cell, clk, ce, d, q, lsr in active_ffs:
-            cell_ident = reg_id(cell)
-            clk_expr   = rn(clk)  if clk  else "/* no_clk */"
-            ce_expr    = rn(ce)   if ce   else "1'b1"
-            d_expr     = rn(d)    if d    else "NC"
-            lsr_expr   = rn(lsr)  if lsr  else None
-            human      = cell_name_map.get(cell, "")
-            comment    = f"  // {human}" if human else ""
+            clk_expr = rn(clk) if clk else "/* no_clk */"
+            ce_expr  = rn(ce)  if ce  else "1'b1"
+            d_expr   = rn(d)   if d   else "NC"
+            lsr_expr = rn(lsr) if lsr else None
+            lsr_key  = lsr_expr if (lsr_expr and lsr_expr not in ("1'b0", "NC")) else None
+            act_groups[(clk_expr, ce_expr, lsr_key)].append(
+                (reg_id(cell), d_expr, cell_name_map.get(cell, "")))
 
-            lines.append(f"    always @(posedge {clk_expr}) begin{comment}")
-            if lsr_expr and lsr_expr not in ("1'b0", "NC"):
-                lines.append(f"        if ({lsr_expr})")
-                lines.append(f"            {cell_ident} <= 1'b0;")
-                if ce_expr != "1'b1":
-                    lines.append(f"        else if ({ce_expr})")
-                    lines.append(f"            {cell_ident} <= {d_expr};")
+        for (clk_expr, ce_expr, lsr_key), members in sorted(
+                act_groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or "")):
+            members.sort()  # tile/slice order (reg id encodes r{R}c{C}_{slice})
+            ctl = "clk=" + clk_expr
+            if ce_expr != "1'b1":
+                ctl += f"  CE={ce_expr}"
+            if lsr_key:
+                ctl += f"  LSR={lsr_key}"
+            lines.append(f"    // {len(members)} FFs — {ctl}")
+            lines.append(f"    always @(posedge {clk_expr}) begin")
+            for reg_ident, d_expr, human in members:
+                hc = f"  // {human}" if human else ""
+                if lsr_key and ce_expr != "1'b1":
+                    lines.append(f"        if ({lsr_key})       {reg_ident} <= 1'b0;")
+                    lines.append(f"        else if ({ce_expr})  {reg_ident} <= {d_expr};{hc}")
+                elif lsr_key:
+                    lines.append(f"        if ({lsr_key}) {reg_ident} <= 1'b0;")
+                    lines.append(f"        else          {reg_ident} <= {d_expr};{hc}")
+                elif ce_expr != "1'b1":
+                    lines.append(f"        if ({ce_expr}) {reg_ident} <= {d_expr};{hc}")
                 else:
-                    lines.append(f"        else")
-                    lines.append(f"            {cell_ident} <= {d_expr};")
-            elif ce_expr != "1'b1":
-                lines.append(f"        if ({ce_expr})")
-                lines.append(f"            {cell_ident} <= {d_expr};")
-            else:
-                lines.append(f"        {cell_ident} <= {d_expr};")
+                    lines.append(f"        {reg_ident} <= {d_expr};{hc}")
             lines.append("    end")
+            lines.append("")
 
     # ── Q-output connect assigns ──────────────────────────────────────────────
     # reg_id() = cell-derived name; Q wire = what downstream LUTs reference.
@@ -916,6 +940,7 @@ def emit_ffs(data: dict) -> list[str]:
     dual_driven = data.get("dual_driven_q_wires", set())
 
     seen_q_assigns: set[str] = set()
+    q_assigns: list[tuple[str, str]] = []
     for cell, _clk, _ce, _d, q, _lsr in ffs:
         if q is None:
             continue
@@ -928,10 +953,12 @@ def emit_ffs(data: dict) -> list[str]:
             continue  # port: pad logic handles the connection
         if q_wire in dual_driven:
             continue  # LUT already drives this wire; second assign would conflict
-        r = reg_id(cell)
         seen_q_assigns.add(q_wire)
+        q_assigns.append((q_wire, reg_id(cell)))
+    # Sorted by the driven net name so the connect block reads alphabetically.
+    for q_wire, r in sorted(q_assigns):
         lines.append(f"    assign {q_wire} = {r};  // Q output")
-    if seen_q_assigns:
+    if q_assigns:
         lines.append("")
 
     lines.append("")
