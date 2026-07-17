@@ -119,9 +119,9 @@ This appears in the tile for the assigned pad (e.g. `PT12:PIC_T0` for pin 87/88)
 ## Extracting bitstream config (prjtrellis ecpunpack)
 
 ```bash
-LD_LIBRARY_PATH=debris/tmp/prjtrellis/libtrellis/build \
-  debris/tmp/prjtrellis/libtrellis/build/ecpunpack \
-  --db debris/tmp/prjtrellis/database \
+LD_LIBRARY_PATH=$TRELLIS_ROOT/libtrellis/build \
+  $TRELLIS_ROOT/libtrellis/build/ecpunpack \
+  --db $TRELLIS_ROOT/database \
   fpga/diamond/impl1/aw2_impl1.bit \
   fpga/diamond/impl1/aw2_impl1_iddr.config
 ```
