@@ -1485,6 +1485,72 @@ def emit_ebr(data: dict) -> list[str]:
     return lines
 
 
+def emit_efb_model(data: dict) -> list[str]:
+    """Behavioral EFB SPI-slave stub — a TEMPLATE for simulating the EFB.
+
+    The EFB is hard IP: its behaviour is fixed silicon, not recoverable from the
+    bitstream, which yields only its CONFIG (e.g. SPI mode, sel 0x54).  To
+    simulate the recovered design a testbench needs a behavioral EFB; this is a
+    generic MachXO2 EFB-in-SPI-mode skeleton.  The device-specific command /
+    register protocol is left as a TODO and referenced to the board's SPI docs
+    (not hardcoded here — the engine stays board-agnostic).
+
+    It is emitted as a SEPARATE module, deliberately NOT auto-instantiated: the
+    recovered EFB port→net mapping aliases several ports onto the same
+    FF-driven fabric nets, so wiring it in automatically would create driver
+    conflicts.  Instantiate it by hand once the port mapping is disambiguated.
+    """
+    efb_config = data.get("efb_config") or []
+    efb_ports  = data.get("efb_ports") or []
+    if not efb_config:
+        return []
+    kind = efb_config[0][1]
+    net_name_map = data["net_name_map"]
+    const_net_map = data["const_net_map"]
+
+    lines = [
+        "",
+        "// ═══════════════════════════════════════════════════════════════════",
+        f"// EFB behavioral model (TEMPLATE, not auto-wired) — recovered config: {kind}",
+        "// ═══════════════════════════════════════════════════════════════════",
+        "// Hard IP: behaviour is fixed silicon, only the CONFIG is recovered.",
+        "// Fill in the command/register decode from the board SPI protocol docs.",
+        "// Recovered fabric-side EFB ports (port <-> net):",
+    ]
+    for pn, net in efb_ports:
+        lines.append(f"//   {pn:<10} <-> {resolve_net(net, net_name_map, const_net_map)}")
+    if kind != "SPI":
+        lines.append(f"// NOTE: recovered kind is {kind}, not SPI — adapt this stub.")
+    lines += [
+        "module efb_spi_slave (",
+        "    input  wire        spi_sck,   // SPI clock from MCU (mode 0, MSB first)",
+        "    input  wire        spi_cs_n,  // chip select, active low (FPGA_nCS / CSSPIN)",
+        "    input  wire        spi_mosi,  // MCU -> FPGA",
+        "    output reg         spi_miso,  // FPGA -> MCU",
+        "    output reg  [7:0]  wb_dato,   // WISHBONE data to fabric (JWBDATO0-7)",
+        "    output reg         wb_ack     // JWBACKO",
+        ");",
+        "    reg [7:0] shreg;   // receive shift register",
+        "    reg [2:0] bitcnt;",
+        "    reg [7:0] cmd;     // first byte after CS assert = command",
+        "    always @(posedge spi_sck or posedge spi_cs_n) begin",
+        "        if (spi_cs_n) begin",
+        "            bitcnt <= 3'd0;",
+        "        end else begin",
+        "            shreg  <= {shreg[6:0], spi_mosi};",
+        "            bitcnt <= bitcnt + 3'd1;",
+        "            if (bitcnt == 3'd7)",
+        "                cmd <= {shreg[6:0], spi_mosi};",
+        "            // TODO: decode `cmd` per the board SPI protocol (command",
+        "            // banks + register map) and drive wb_dato / spi_miso.",
+        "        end",
+        "    end",
+        "endmodule",
+        "",
+    ]
+    return lines
+
+
 def emit_footer() -> list[str]:
     """End the module."""
     return ["endmodule", ""]
@@ -1536,6 +1602,7 @@ def main():
         emit_ebr(data),
         emit_unresolved_pads_comment(data),
         emit_footer(),
+        emit_efb_model(data),
     ]
 
     lines = []
