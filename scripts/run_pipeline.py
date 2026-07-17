@@ -15,6 +15,9 @@ Stages — ALL run under python3.15t (free-threaded NoGIL):
     [reach3]  reach3.py
     [reach4]  reach4.py
     [report]  report.py                  human-readable status
+    [verilog] verilog.py                 recovered structural Verilog -> out/<label>.v
+    [verify]  scripts/check_verilog.py   yosys lint (gate) + regression LEC vs
+                                         the prior emission (equiv_induct)
 
 The whole stack runs GIL-free under python3.15t: pytrellis is rebuilt for
 free-threading (pybind11 mod_gil_not_used) and sqlalchemy>=2.1.0b3 keeps the
@@ -47,6 +50,7 @@ Logs: tmp/pipeline_<label>_<stage>.log, one per stage.
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 
@@ -77,7 +81,8 @@ def run(stage, label, cmd, extra_env=None):
 
 
 def run_one(label, config, pins, package, raw_bin, skip_load, workers,
-            top="top", emit_verilog=True, nets=None, header_note=None):
+            top="top", emit_verilog=True, nets=None, header_note=None,
+            verify=True, strict_lec=False):
     if raw_bin and not os.path.exists(config):
         os.makedirs(os.path.dirname(config) or ".", exist_ok=True)
         run("unpack", label,
@@ -120,11 +125,35 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
         [PY, "chains.py", "--bitstream", label,
          "--out", os.path.join(out_dir, f"{label}-chains.txt")])
     if emit_verilog:
+        out_v = os.path.join(out_dir, f"{label}.v")
+        # Snapshot the prior emission before overwriting, so the verify stage
+        # can prove the new netlist is equivalent to it (regression LEC).
+        prev_v = os.path.join(REPO, "tmp", f"{label}.v.prev")
+        if os.path.exists(out_v):
+            shutil.copyfile(out_v, prev_v)
+        elif os.path.exists(prev_v):
+            os.remove(prev_v)
+
         vcmd = [PY, "verilog.py", "--bitstream", label,
-                "--out", os.path.join(out_dir, f"{label}.v"), "--top", top]
+                "--out", out_v, "--top", top]
         if header_note and os.path.exists(header_note):
             vcmd += ["--header-note", header_note]
         run("verilog", label, vcmd)
+
+        # Verify stage: yosys lint (hard gate) + sequential-equivalence vs the
+        # prior emission (regression LEC — report-only unless --strict-lec).
+        # The recovered bitstream has no source RTL, so the baseline is the
+        # last emission of this same label; a declaration/comment-only emitter
+        # change proves equivalent, a real logic change proves diverged.
+        if verify and shutil.which("yosys"):
+            vcheck = [PY, "scripts/check_verilog.py", out_v, "--top", top]
+            if os.path.exists(prev_v):
+                vcheck += ["--lec", prev_v]
+                if strict_lec:
+                    vcheck += ["--strict-lec"]
+            run("verify", label, vcheck)
+        elif verify:
+            print("[verify] SKIPPED — yosys not on PATH", flush=True)
 
     print(f"pipeline complete for {label} -> out/{label}.v", flush=True)
 
@@ -148,6 +177,11 @@ def main():
                     "(default: board [board] top, else 'top')")
     ap.add_argument("--no-verilog", action="store_true",
                     help="skip the recovered-Verilog emission stage")
+    ap.add_argument("--no-verify", action="store_true",
+                    help="skip the yosys verify stage (lint + regression LEC)")
+    ap.add_argument("--strict-lec", action="store_true",
+                    help="fail the pipeline if the new netlist diverges from the "
+                         "prior emission (default: report divergence, non-fatal)")
     args = ap.parse_args()
 
     os.makedirs(os.path.join(REPO, "tmp"), exist_ok=True)
@@ -191,7 +225,8 @@ def main():
         run_one(label, config, pins, package, raw_bin,
                 args.skip_load, args.workers,
                 top=top, emit_verilog=not args.no_verilog, nets=nets,
-                header_note=header_note)
+                header_note=header_note,
+                verify=not args.no_verify, strict_lec=args.strict_lec)
 
 
 if __name__ == "__main__":
