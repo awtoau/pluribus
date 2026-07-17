@@ -307,12 +307,29 @@ def load_data(conn, bs_id: int) -> dict:
         if q and q in lut_z_nets and cell in ff_q_wire_map
     }
 
+    # Clock nets that clock FFs but are not driven by a physical pad become
+    # top-level clock INPUT ports: in a fabric-only recovery the clock spine is
+    # driven off-fabric by PLL/OSC/DCC hard IP, so from the module's view the
+    # clocks are external stimulus.  Promoting them (vs leaving undriven
+    # internal wires) makes the recovered module drivable/simulatable.
+    pad_nets: set[str] = set()
+    for _pin, _label, _dir, net_in, net_out in pads:
+        if net_in:
+            pad_nets.add(net_in)
+        if net_out:
+            pad_nets.add(net_out)
+    clock_input_nets: set[str] = {
+        clk for clk in clock_domains
+        if clk and clk not in pad_nets and clk not in const_net_map
+    }
+
     return {
         "ffs":              ffs,
         "luts":             luts,
         "pads":             pads,
         "efb_ports":        efb_ports,
         "efb_config":       efb_config,
+        "clock_input_nets": clock_input_nets,
         "ebr_buses":        ebr_buses,
         "ebr_ctrl":         ebr_ctrl,
         "ebr_init_map":     ebr_init_map,
@@ -384,6 +401,8 @@ def emit_ports(data: dict, top_name: str) -> list[str]:
     net_name_map = data["net_name_map"]
     const_net_map = data["const_net_map"]
     pads = data["pads"]
+    clock_input_nets = data.get("clock_input_nets", set())
+    clock_domains = data.get("clock_domains", {})
 
     # Separate resolved pads (have at least one fabric net) from unresolved
     resolved   = []
@@ -397,31 +416,54 @@ def emit_ports(data: dict, top_name: str) -> list[str]:
             continue
         resolved.append((pin, label, direction, net_in, net_out))
 
-    lines = [f"module {top_name} ("]
-
-    # Resolved ports — track seen names to de-dup blank labels (e.g. multiple pins named "_")
-    if resolved:
-        lines.append(f"    // Physical pads — resolved ({len(resolved)})")
     seen_port_names: set[str] = set()
-    for i, (pin, label, direction, net_in, net_out) in enumerate(resolved):
+
+    # Build the ordered port entries (decl, comment): resolved pads, then clocks.
+    pad_entries: list[tuple[str, str]] = []
+    for pin, label, direction, net_in, net_out in resolved:
         fabric_net = net_in if direction == "in" else net_out
         if direction == "bidir":
-            # For bidir we show both; pick net_in if available, else net_out
             fabric_net = net_in or net_out
         direction_kw = {"in": "input  wire", "out": "output wire", "bidir": "inout  wire"}[direction]
         base_name = _sanitise(label)
-        # Unknown-label pins sanitise to bare "_" — always use pin<N> so they're unique
-        # and don't shadow internal wires.  Also handle any accidental name collision.
         if base_name == "_" or base_name in seen_port_names:
             port_name = f"pin{pin}"
         else:
             port_name = base_name
         seen_port_names.add(port_name)
-        is_last = (i == len(resolved) - 1) and not unresolved
-        comma = "" if is_last else ","
-        lines.append(f"    {direction_kw} {port_name}{comma}   // pin {pin}  net {fabric_net}")
+        pad_entries.append((f"{direction_kw} {port_name}", f"pin {pin}  net {fabric_net}"))
 
-    # Unresolved pads — comment block
+    # Clock inputs: off-fabric PLL/OSC/DCC clock spine → external stimulus.
+    clk_entries: list[tuple[str, str]] = []
+    for clk_net in sorted(clock_input_nets):
+        name = _sanitise(resolve_net(clk_net, net_name_map, const_net_map))
+        if name in seen_port_names:
+            continue
+        seen_port_names.add(name)
+        n_ff = len(clock_domains.get(clk_net, []))
+        clk_entries.append((f"input  wire {name}",
+                            f"clock — {n_ff} FFs (off-fabric PLL/OSC/DCC; drive from testbench)"))
+
+    n_ports = len(pad_entries) + len(clk_entries)
+    idx = 0
+
+    def _port_line(decl, comment):
+        nonlocal idx
+        idx += 1
+        comma = "," if idx < n_ports else ""
+        return f"    {decl}{comma}   // {comment}"
+
+    lines = [f"module {top_name} ("]
+    if pad_entries:
+        lines.append(f"    // Physical pads — resolved ({len(pad_entries)})")
+    for decl, comment in pad_entries:
+        lines.append(_port_line(decl, comment))
+    if clk_entries:
+        lines.append(f"    // Clock inputs — {len(clk_entries)} (clock spine, off-fabric hard IP)")
+    for decl, comment in clk_entries:
+        lines.append(_port_line(decl, comment))
+
+    # Unresolved pads — comment block (not ports)
     if unresolved:
         lines.append(f"    // Physical pads — unresolved ({len(unresolved)}, CIB bug #57)")
         for pin, label, direction, net_in, net_out in unresolved:
@@ -463,6 +505,12 @@ def emit_wires(data: dict) -> list[str]:
         if net_out:
             port_nets.add(net_out)
         port_names.add(_sanitise(_label))
+
+    # Clock nets promoted to input ports by emit_ports — exclude from the
+    # internal wire declarations so they are ports, not undriven wires.
+    for clk_net in data.get("clock_input_nets", set()):
+        port_nets.add(clk_net)
+        port_names.add(_sanitise(resolve_net(clk_net, net_name_map, const_net_map)))
 
     def _wire_name(net: str) -> str:
         """Resolve net to a Verilog wire identifier, with clock-derived fallback."""
