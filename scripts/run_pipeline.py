@@ -76,7 +76,8 @@ def run(stage, label, cmd, extra_env=None):
     print(f"[{stage}] ok", flush=True)
 
 
-def run_one(label, config, pins, package, raw_bin, skip_load, workers):
+def run_one(label, config, pins, package, raw_bin, skip_load, workers,
+            top="top", emit_verilog=True, nets=None, header_note=None):
     if raw_bin and not os.path.exists(config):
         os.makedirs(os.path.dirname(config) or ".", exist_ok=True)
         run("unpack", label,
@@ -86,17 +87,46 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers):
             [PY, "scripts/fpga_iomap.py", config], extra_env=iomap_env)
 
     if not skip_load:
-        run("load", label,
-            [PY, "load.py", "--label", label,
-             "--config", config, "--pins", pins])
+        load_cmd = [PY, "load.py", "--label", label,
+                    "--config", config, "--pins", pins]
+        # Board net annotations (clock names, frequencies, functions,
+        # descriptions) — without this the recovered clocks stay as
+        # auto-numbered clk_N placeholders instead of their semantic names.
+        if nets:
+            load_cmd += ["--nets", nets]
+        run("load", label, load_cmd)
 
     reach_cmd = [PY, "reach.py", "--bitstream", label]
     if workers:
         reach_cmd += ["--workers", str(workers)]
     run("reach", label, reach_cmd)
-    for stage in ("reach2", "reach3", "reach4", "report"):
+
+    # Analysis + naming.  reach2/3/4 build reachability and the 9-pass
+    # auto-naming; auto_name adds LUT INIT/expression-derived net names on top
+    # (additive, not redundant), and patterns fills the structural-pattern
+    # table the report consumes.  These were dropped when the pipeline moved
+    # off the old tools/build.py orchestrator — without them the recovered
+    # names and the report's pattern section are incomplete.  All run before
+    # report/deliverables so those carry the full naming.
+    for stage in ("reach2", "reach3", "reach4", "auto_name", "patterns"):
         run(stage, label, [PY, f"{stage}.py", "--bitstream", label])
-    print(f"pipeline complete for {label}", flush=True)
+    run("report", label, [PY, "report.py", "--bitstream", label])
+
+    # Deliverables (NOT scratch): recovered Verilog + signal-chain report go
+    # to out/ so they survive a tmp cleanup.
+    out_dir = os.path.join(REPO, "out")
+    os.makedirs(out_dir, exist_ok=True)
+    run("chains", label,
+        [PY, "chains.py", "--bitstream", label,
+         "--out", os.path.join(out_dir, f"{label}-chains.txt")])
+    if emit_verilog:
+        vcmd = [PY, "verilog.py", "--bitstream", label,
+                "--out", os.path.join(out_dir, f"{label}.v"), "--top", top]
+        if header_note and os.path.exists(header_note):
+            vcmd += ["--header-note", header_note]
+        run("verilog", label, vcmd)
+
+    print(f"pipeline complete for {label} -> out/{label}.v", flush=True)
 
 
 def main():
@@ -108,16 +138,23 @@ def main():
     ap.add_argument("--bin", help="raw bitstream; unpacked if config is absent")
     ap.add_argument("--config", help="named-cell .config path")
     ap.add_argument("--pins", help="pin annotation TSV")
+    ap.add_argument("--nets", help="net annotation TSV (clock names, freqs, "
+                    "functions); defaults to the board's nets_tsv")
     ap.add_argument("--package", help="TRELLIS_PACKAGE for the iomap stage")
     ap.add_argument("--skip-load", action="store_true",
                     help="label already loaded; start at reach")
     ap.add_argument("--workers", type=int, help="reach.py worker count")
+    ap.add_argument("--top", help="recovered-Verilog top module name "
+                    "(default: board [board] top, else 'top')")
+    ap.add_argument("--no-verilog", action="store_true",
+                    help="skip the recovered-Verilog emission stage")
     args = ap.parse_args()
 
     os.makedirs(os.path.join(REPO, "tmp"), exist_ok=True)
 
     board = load_board_config(args.board) if args.board else {}
     pins = args.pins or board.get("pins_tsv")
+    nets = args.nets or board.get("nets_tsv")
     package = args.package or board.get("package")
 
     # A board may declare where its RE project keeps prjtrellis.  An
@@ -146,9 +183,15 @@ def main():
                      f"[bitstreams.{label}] in board.toml")
         if not args.skip_load and not pins:
             sys.exit("load needs --pins (or --board with pins_tsv)")
+        top = args.top or board.get("top") or "top"
+        # Optional board-provided Verilog header note (board-specific context).
+        header_note = (os.path.join(args.board, "verilog_header.txt")
+                       if args.board else None)
         print(f"=== {label} ===", flush=True)
         run_one(label, config, pins, package, raw_bin,
-                args.skip_load, args.workers)
+                args.skip_load, args.workers,
+                top=top, emit_verilog=not args.no_verilog, nets=nets,
+                header_note=header_note)
 
 
 if __name__ == "__main__":

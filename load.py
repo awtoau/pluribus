@@ -95,6 +95,7 @@ def load_board_config(board_path):
         "device":   b.get("device") or die("board.toml missing [board] device"),
         "package":  b.get("package") or die("board.toml missing [board] package"),
         "lifter":   b.get("lifter", "machxo2"),
+        "top":      b.get("top"),   # recovered-Verilog module name (optional)
         "pins_tsv": str(board_dir / pins_rel) if pins_rel else None,
         "nets_tsv": str(board_dir / nets_rel) if nets_rel else None,
         "bitstreams": bitstreams,
