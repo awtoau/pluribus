@@ -197,6 +197,38 @@ def load_data(conn, bs_id: int) -> dict:
         for net, fanout, fanin, is_clk, is_const, is_bnd in net_stat_rows
     }
 
+    # For undriven nets, remember the physical wire they sit on (from the arcs)
+    # so the emitter can name their ROLE — clock branch / global / DCC output —
+    # instead of the misleading "floating?".  Prefer a clock/spine wire when a
+    # net touches several.  These nets are driven off-fabric by clock hard IP
+    # (PLL/OSC/DCC); see the hard-IP-sim-models issue.
+    net_wire_map: dict[str, str] = {}
+    for _sn, _sw in q("SELECT sink_net, sink_wire FROM arcs "
+                      "WHERE bitstream=:bs_id AND sink_net IS NOT NULL"):
+        if not _sw:
+            continue
+        _cur = net_wire_map.get(_sn)
+        _pref = _sw.startswith(("BRANCH", "G_", "CLK"))
+        if _cur is None or (_pref and not _cur.startswith(("BRANCH", "G_", "CLK"))):
+            net_wire_map[_sn] = _sw
+
+    def _net_role(net: str) -> str:
+        w = net_wire_map.get(net, "")
+        if w.startswith("BRANCH_HPBX"):
+            return "clock branch (HPBX spine) — driven by clock hard IP"
+        if "_DCC" in w:
+            return "DCC (dynamic clock control) output — clock hard IP"
+        if w.startswith(("CLK", "G_")) or "PCLK" in w:
+            return f"clock/global spine ({w}) — driven by PLL/OSC/DCC hard IP"
+        if w:
+            return f"on routing wire {w} — no fabric driver"
+        return "no fabric driver"
+
+    net_role_map = {}   # only for undriven nets (fanin==0)
+    for net, st in net_stats_map.items():
+        if st.get("fanin", 1) == 0:
+            net_role_map[net] = _net_role(net)
+
     # Clock domains: clk_net → [ff_cell, ...]
     clk_domain_rows = q("SELECT clk_net, ff_cell FROM clock_domains WHERE bitstream=:bs_id")
     clock_domains: dict[str, list[str]] = {}
@@ -282,6 +314,7 @@ def load_data(conn, bs_id: int) -> dict:
         "ff_q_all_wire_ids":    ff_q_all_wire_ids,
         "const_net_map":    const_net_map,
         "net_stats_map":    net_stats_map,
+        "net_role_map":     net_role_map,
         "clock_domains":    clock_domains,
         "all_nets":         all_nets,
         "bs_label":         meta[0],
@@ -390,6 +423,7 @@ def emit_wires(data: dict) -> list[str]:
     net_freq_map      = data["net_freq_map"]
     const_net_map     = data["const_net_map"]
     net_stats_map     = data["net_stats_map"]
+    net_role_map      = data["net_role_map"]
     cell_clkname_map  = data["cell_clkname_map"]
     ff_q_cell_map     = data["ff_q_cell_map"]
     cell_name_map     = data["cell_name_map"]
@@ -437,10 +471,20 @@ def emit_wires(data: dict) -> list[str]:
     clkderiv_nets = []
     unnamed_nets = []
     const_nets   = []
+    isolated_nets = []   # no driver AND no reader — connect to nothing
     for net in all_nets:
         if net in port_nets:
             continue
         if _wire_name(net) in port_names:
+            continue
+        # A recovered net with no driver AND no reader connects to nothing.
+        # Keep it (for traceability) but segregate it to an "isolated" block at
+        # the end rather than cluttering the main body.  Named/const nets are
+        # never segregated (they carry deliberate annotation).
+        st = net_stats_map.get(net, {})
+        if (st.get("fanin", 1) == 0 and st.get("fanout", 1) == 0
+                and net not in const_net_map and net not in net_name_map):
+            isolated_nets.append(net)
             continue
         if net in const_net_map:
             const_nets.append(net)
@@ -473,8 +517,12 @@ def emit_wires(data: dict) -> list[str]:
             comment_parts.append("(unnamed)")
         if stats.get("is_clock"):
             comment_parts.append("clock spine (hard IP source)")
-        elif stats.get("fanin", 1) == 0:
-            comment_parts.append("no driver — floating?")
+        elif (stats.get("fanin", 1) == 0
+              and net not in net_name_map and net not in ff_q_cell_map):
+            # UNNAMED, read but undriven-in-fabric: name the clock/spine role
+            # from its routing wire rather than the misleading "floating?".
+            # (Named nets already carry a description, so don't append here.)
+            comment_parts.append(net_role_map.get(net, "no fabric driver"))
         comment = "  // " + " — ".join(comment_parts) if comment_parts else ""
         return f"    wire {wire_name};{comment}"
 
@@ -487,11 +535,13 @@ def emit_wires(data: dict) -> list[str]:
             return (0, int(n[1:]))
         return (1, n)
     unnamed_nets.sort(key=_net_sort_key)
+    isolated_nets.sort(key=_net_sort_key)
 
     lines = [
         "    // ── Wire declarations ─────────────────────────────────────────────────",
         f"    // {len(named_nets)} named  {len(clkderiv_nets)} clock-derived"
-        f"  {len(unnamed_nets)} unnamed  {len(const_nets)} const",
+        f"  {len(unnamed_nets)} unnamed  {len(const_nets)} const"
+        f"  {len(isolated_nets)} isolated (end)",
     ]
 
     # NC (not-connected) sentinel — LUT inputs left unconnected are tied to GND.
@@ -519,6 +569,16 @@ def emit_wires(data: dict) -> list[str]:
         lines.append("    // Unnamed nets (no TSV entry, no clock derivation)")
         for net in unnamed_nets:
             lines.append(_wire_line(net))
+        lines.append("")
+
+    if isolated_nets:
+        lines.append(
+            f"    // ── Isolated nets ({len(isolated_nets)}) — no driver AND no reader ─")
+        lines.append(
+            "    // Recovered but connected to nothing in the netlist; kept for"
+            " traceability.  (yosys opt_clean -purge removes these.)")
+        for net in isolated_nets:
+            lines.append(f"    wire {_wire_name(net)};")
 
     lines.append("")
     return lines
