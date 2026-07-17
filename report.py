@@ -124,6 +124,13 @@ def section_config_summary(conn, bs_id, net_names):
     n_lut = conn.execute(select(func.count()).where(luts.c.bitstream == bs_id)).scalar()
     n_net = conn.execute(select(func.count()).where(nets.c.bitstream == bs_id)).scalar()
 
+    # Naming confidence — the vast majority of names are inferences, not facts.
+    conf = dict(conn.execute(
+        select(nn.c.confidence, func.count())
+        .where(nn.c.bitstream == bs_id).group_by(nn.c.confidence)).fetchall())
+    n_named = sum(conf.values())
+    n_confirmed = conf.get("confirmed", 0)
+
     # Device EBR-block budget (MachXO2 datasheet) for a utilisation figure.
     device = conn.execute(
         select(schema.bitstreams.c.device).where(schema.bitstreams.c.id == bs_id)).scalar()
@@ -205,6 +212,10 @@ def section_config_summary(conn, bs_id, net_names):
         f"  Fabric:    {n_lut}"
         + (f"/{dev_lut} ({100 * n_lut // dev_lut}%)" if dev_lut else "")
         + f" LUTs, {n_ff} FFs, {n_net} nets",
+        f"  Names:     {n_named}/{n_net} named, but only {n_confirmed} CONFIRMED"
+        f" ({conf.get('estimate', 0)} spatial-est, {conf.get('inferred', 0)} inferred,"
+        f" {conf.get('guess', 0) + conf.get('speculative', 0)} guess/spec) —"
+        f" clock names/freqs and most functional names are INFERENCES, not facts",
         f"  Clocking:  {n_dom} domains"
         + (f" — {', '.join(freq_bits)}" if freq_bits else "")
         + (f", {unknown} unlabelled" if unknown else ""),
@@ -352,17 +363,26 @@ def section_clocks(conn, bs_id, net_names):
 
     n_total = len(domains)
 
+    # Confidence per clock name — these functional names are inferences, so
+    # mark how strongly each is held rather than presenting them as fact.
+    nn = schema.net_names
+    conf_by_net = dict(conn.execute(
+        select(nn.c.net, nn.c.confidence).where(nn.c.bitstream == bs_id)).fetchall())
+    _CONF = {"confirmed": "confirmed", "inferred": "inferred",
+             "speculative": "SPEC", "estimate": "est", "guess": "guess"}
+
     lines = [
         "",
         "── Clock Architecture ──────────────────────────────────",
-        f"  {'Rank':<5}  {'Net':<8}  {'Name':<20}  {'FFs':>5}  {'Cross-in':>9}  {'Cross-out':>9}",
+        "  Names are INFERENCES (spatial/freq heuristics), not verified — see Conf.",
+        f"  {'Rank':<5}  {'Net':<8}  {'Name':<20}  {'FFs':>5}  {'Conf':<10}  {'Xing':>4}",
     ]
     for rank, (clk_net, n_ffs) in enumerate(domains):
         name = net_names.get(clk_net, "(unnamed)")
-        ci = crossings_in.get(clk_net, 0)
-        co = crossings_out.get(clk_net, 0)
+        conf = _CONF.get(conf_by_net.get(clk_net, ""), "auto")
+        xing = crossings_in.get(clk_net, 0) + crossings_out.get(clk_net, 0)
         lines.append(
-            f"  {rank:<5}  {clk_net:<8}  {name:<20}  {n_ffs:>5}  {ci:>9}  {co:>9}"
+            f"  {rank:<5}  {clk_net:<8}  {name:<20}  {n_ffs:>5}  {conf:<10}  {xing:>4}"
         )
     lines.append(f"  ({n_total} total clock domains)")
     return lines
