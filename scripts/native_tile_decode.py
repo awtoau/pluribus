@@ -137,6 +137,7 @@ def parse_bits_db(path):
 
 
 _db_cache = {}
+_frozen_cache_len = -1   # cache size at the last immortalization freeze
 _db_lock = threading.Lock()
 
 
@@ -249,7 +250,15 @@ def decode_chip(cram, tilegrid, db_root=DEFAULT_DB_ROOT, family=FAMILY,
     # per-bitstream, and decode_chip is called once per bitstream by the corpus
     # tools, so immortalizing them would leak one buffer per bitstream.
     # PLURIBUS_IMMORTAL=0 disables.
-    if workers > 1 and os.environ.get("PLURIBUS_IMMORTAL", "1") != "0":
+    # Freeze only when the cache gained entries since the last freeze:
+    # corpus tools call decode_chip thousands of times per process, and
+    # re-walking an unchanged (already immortal) cache is pure waste — and
+    # would falsely trip ft_immortal's repeat-call-site leak warning (the
+    # cache is bounded and process-lifetime; re-freezing it is idempotent,
+    # not a leak).
+    global _frozen_cache_len
+    if (workers > 1 and len(_db_cache) != _frozen_cache_len
+            and os.environ.get("PLURIBUS_IMMORTAL", "1") != "0"):
         try:
             _repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             if _repo not in sys.path:
@@ -257,6 +266,7 @@ def decode_chip(cram, tilegrid, db_root=DEFAULT_DB_ROOT, family=FAMILY,
             import ft_immortal
             if ft_immortal.available() and ft_immortal.gil_disabled():
                 ft_immortal.immortalize_tree(_db_cache)
+                _frozen_cache_len = len(_db_cache)
         except Exception:
             pass  # perf-only; never fail a decode over this
 
