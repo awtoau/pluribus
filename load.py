@@ -499,6 +499,12 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                 for actual_row in (r, r - 1, r + 1):
                     if actual_row < 0: continue
                     if (actual_row, c, pio) in iomap_by_site:
+                        # Resolve the pad's net at the JA/JQ wire's ACTUAL arc
+                        # location (r, c, wire).  pad_net() re-derives the row
+                        # via pad_fabric_node(), which mis-probes edge/interior
+                        # pads whose JA/JQ arc sits one row in — so it missed the
+                        # real driver and the pad fell back to a disconnected
+                        # synthetic net, leaving ALL outputs undriven (#58).
                         net = mx.pad_net(design, lift, actual_row, c, pio, direction)
                         key = (actual_row, c, pio, direction)
                         if key not in discovered:
@@ -1072,6 +1078,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         iologic_fanout  = []   # dicts for net_fanout
         boundary_nets   = []   # dicts for nets table
         boundary_map    = {}   # pad_pin -> boundary_net  ("pad_<pin>")
+        driver_by_pin   = {}   # pad_pin -> fabric net driving the OUTPUT pad (#58)
 
         for (cr, cc), ttype in pc.tile_type.items():
             is_bottom = "PIC_B" in ttype
@@ -1118,6 +1125,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     boundary_nets.append({"bitstream": bs_id, "name": bnet})
 
                 bnet = boundary_map[pin]
+                driver_by_pin[pin] = fabric_net   # the fabric net driving this output pad (#58)
                 iologic_fanout.append(
                     {"bitstream": bs_id, "net": fabric_net, "cell_type": "PAD",
                      "cell": f"pad_{pin}", "pin": ab + str(idx_s), "out_net": bnet}
@@ -1128,14 +1136,17 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             conn.execute(_insert_or_ignore(schema.nets), boundary_nets)
         if iologic_fanout:
             conn.execute(_insert_or_ignore(schema.net_fanout), iologic_fanout)
-        # Update pad_map.net_out for every output pad to its boundary net
-        # so queries like "JOIN pad_map ON net_out = reachability.dst" work generically.
+        # Update pad_map for every output pad: net_out = its boundary net (so
+        # "JOIN pad_map ON net_out = reachability.dst" works generically), and
+        # net_in = the FABRIC NET DRIVING the pad (#58) so the recovered Verilog
+        # can emit `assign <PORT> = <driver>` — previously the driver was known
+        # (iologic_fanout) but dropped, leaving every output undriven.
         for pin, bnet in boundary_map.items():
             conn.execute(
                 update(schema.pad_map)
                 .where(schema.pad_map.c.bitstream == bs_id)
                 .where(schema.pad_map.c.pin == pin)
-                .values(net_out=bnet)
+                .values(net_out=bnet, net_in=driver_by_pin.get(pin))
             )
         print(f"  IOLOGIC: {len(iologic_fanout)} fanout entries  "
               f"{len(boundary_nets)} pad boundary nets inserted")

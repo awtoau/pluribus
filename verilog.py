@@ -294,6 +294,15 @@ def load_data(conn, bs_id: int) -> dict:
         for _pin, label, direction, _ni, _no in pads
         if direction in ("in", "out", "bidir") and label
     }
+    # OUTPUT port names: a FF/LUT that drives an output port's net must keep its
+    # connect-assign (`assign <PORT> = <driver>`) — for input/bidir ports the
+    # assign is suppressed (the pad drives the fabric), but an output IS driven
+    # from fabric, so suppressing it leaves the output dangling (#58).
+    output_port_names: set[str] = {
+        _sanitise(label)
+        for _pin, label, direction, _ni, _no in pads
+        if direction == "out" and label
+    }
 
     # Q wire names that are ALSO driven by a LUT continuous assign.
     # Adding `assign q_wire = reg;` for these would create a multi-driver conflict,
@@ -348,6 +357,7 @@ def load_data(conn, bs_id: int) -> dict:
         "ff_q_cell_map":    ff_q_cell_map,
         "ff_q_wire_map":        ff_q_wire_map,
         "port_names":           port_names,
+        "output_port_names":    output_port_names,
         "dual_driven_q_wires":  dual_driven_q_wires,
         "lut_driven_net_ids":   lut_driven_net_ids,
         "ff_q_all_wire_ids":    ff_q_all_wire_ids,
@@ -506,10 +516,17 @@ def emit_wires(data: dict) -> list[str]:
             continue
         if net_in is None and net_out is None:
             continue
-        if net_in:
-            port_nets.add(net_in)
-        if net_out:
-            port_nets.add(net_out)
+        if direction == "out":
+            # Output pad: net_out is the (unused) boundary net; net_in is the
+            # INTERNAL fabric net driving the pad (#58) and must stay a declared
+            # wire so `assign <PORT> = <net_in>` (emit_output_drives) resolves.
+            if net_out:
+                port_nets.add(net_out)
+        else:
+            if net_in:
+                port_nets.add(net_in)
+            if net_out:
+                port_nets.add(net_out)
         port_names.add(_sanitise(_label))
 
     # Clock nets promoted to input ports by emit_ports — exclude from the
@@ -916,6 +933,7 @@ def emit_ffs(data: dict) -> list[str]:
     cell_clkname_map = data["cell_clkname_map"]
     ff_q_wire_map    = data["ff_q_wire_map"]
     port_names       = data["port_names"]
+    output_port_names = data.get("output_port_names", set())
 
     def rn(net):
         return resolve_net(net, net_name_map, const_net_map)
@@ -1162,8 +1180,9 @@ def emit_ffs(data: dict) -> list[str]:
             continue
         if q_wire in seen_q_assigns:
             continue
-        if q_wire in port_names:
-            continue  # port: pad logic handles the connection
+        if q_wire in port_names and q_wire not in output_port_names:
+            continue  # input/bidir port: the pad drives the fabric net
+        # (output ports fall through: `assign <PORT> = <reg>` drives the output)
         if q_wire in dual_driven:
             continue  # LUT already drives this wire; second assign would conflict
         seen_q_assigns.add(q_wire)
@@ -1485,6 +1504,44 @@ def emit_ebr(data: dict) -> list[str]:
     return lines
 
 
+def emit_output_drives(data: dict) -> list[str]:
+    """`assign <output_port> = <fabric driver>;` for output pads (#58).
+
+    pad_map.net_in now carries the fabric net driving each output pad.  Without
+    these assigns the output ports are declared but undriven, so the whole
+    design looks dead to a synth/sim tool.  Port names replicate emit_ports'
+    resolved-pad naming so the assign targets the actual port identifier.
+    """
+    net_name_map = data["net_name_map"]
+    const_net_map = data["const_net_map"]
+    net_stats_map = data.get("net_stats_map", {})
+    pads = data["pads"]
+
+    resolved = [(pin, label, d, ni, no) for pin, label, d, ni, no in pads
+                if d in ("in", "out", "bidir") and (ni is not None or no is not None)]
+    seen: set[str] = set()
+    assigns: list[str] = []
+    for pin, label, direction, net_in, net_out in resolved:
+        base = _sanitise(label)
+        port = f"pin{pin}" if (base == "_" or base in seen) else base
+        seen.add(port)
+        if direction != "out" or not net_in:
+            continue
+        # Skip when the driver is itself undriven (fanin=0): the output is
+        # genuinely driven off-fabric, and such a shared ghost net may also be a
+        # bidir-pad net excluded from declaration — an assign would dangle.
+        if net_stats_map.get(net_in, {}).get("fanin", 1) == 0:
+            continue
+        driver = resolve_net(net_in, net_name_map, const_net_map)
+        if driver in ("NC", "1'b0", "1'b1") or driver == port:
+            continue
+        assigns.append(f"    assign {port} = {driver};")
+    if not assigns:
+        return []
+    return (["", "    // ── Output pad drivers (#58) — pads driven by fabric logic ──"]
+            + sorted(assigns) + [""])
+
+
 def emit_efb_model(data: dict) -> list[str]:
     """Behavioral EFB SPI-slave stub — a TEMPLATE for simulating the EFB.
 
@@ -1600,6 +1657,7 @@ def main():
         emit_ffs(data),
         emit_trigger_comment(data),
         emit_ebr(data),
+        emit_output_drives(data),
         emit_unresolved_pads_comment(data),
         emit_footer(),
         emit_efb_model(data),
