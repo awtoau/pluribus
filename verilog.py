@@ -127,11 +127,24 @@ def load_data(conn, bs_id: int) -> dict:
 
     # EFB ports: (port_name, net)
     efb_ports = q("SELECT port_name, net FROM efb_ports WHERE bitstream=:bs_id ORDER BY port_name")
+    # EFB config: (sel, kind, length, payload) — the 0x72 .efb_block preloads
+    # the native decoder recovers (empty on a pre-native/truncated .config).
+    efb_config = q("SELECT sel, kind, length, payload FROM efb_config WHERE bitstream=:bs_id ORDER BY sel")
 
     # EBR buses: (block, bus_role, bit_index, port, net)
     ebr_buses = q("SELECT block, bus_role, bit_index, port, net FROM ebr_buses WHERE bitstream=:bs_id ORDER BY block, bus_role, bit_index")
     # EBR ports: (block, port, role, net)
     ebr_ctrl  = q("SELECT block, port, role, net FROM ebr_ports WHERE bitstream=:bs_id ORDER BY block, port")
+    # EBR recovered init (native #54): physical 1024×9 words per block.
+    # ebr_init_map[block] = {addr: word9};  a block absent (or all-zero) is a
+    # blank/runtime-loaded RAM (e.g. the AWG table, written via SPI cmd 0x50).
+    ebr_init_map: dict[str, dict[int, int]] = {}
+    for block, addr, word9 in q("SELECT block, addr, word9 FROM ebr_init WHERE bitstream=:bs_id ORDER BY block, addr"):
+        ebr_init_map.setdefault(block, {})[addr] = word9
+    # ebr_init_blocks: (block, wid, mode, data_width, n_words, n_nonzero)
+    ebr_init_blocks = {r.block: r for r in
+                       q("SELECT block, wid, mode, data_width, n_words, n_nonzero "
+                         "FROM ebr_init_blocks WHERE bitstream=:bs_id")}
 
     # Net names: net → (name, description, freq_mhz)
     net_name_rows = q("SELECT net, name, description, freq_mhz FROM net_names WHERE bitstream=:bs_id")
@@ -299,8 +312,11 @@ def load_data(conn, bs_id: int) -> dict:
         "luts":             luts,
         "pads":             pads,
         "efb_ports":        efb_ports,
+        "efb_config":       efb_config,
         "ebr_buses":        ebr_buses,
         "ebr_ctrl":         ebr_ctrl,
+        "ebr_init_map":     ebr_init_map,
+        "ebr_init_blocks":  ebr_init_blocks,
         "net_name_map":     net_name_map,
         "net_desc_map":     net_desc_map,
         "net_freq_map":     net_freq_map,
@@ -591,17 +607,26 @@ def emit_efb_comment(data: dict) -> list[str]:
     We document the port→net mapping as comments so a reader can trace signals.
     """
     efb_ports    = data["efb_ports"]
+    efb_config   = data.get("efb_config") or []
     net_name_map = data["net_name_map"]
     const_net_map = data["const_net_map"]
 
-    if not efb_ports:
+    if not efb_ports and not efb_config:
         return []
 
     lines = [
-        "    // ── EFB port connections ──────────────────────────────────────────────",
-        "    // EFB is hard IP — not instantiable in standard Verilog.",
-        "    // Port→net mapping is shown as comments; nets are declared as wires above.",
+        "    // ── EFB (embedded function block) ─────────────────────────────────────",
+        "    // EFB is hard IP — not instantiable in standard Verilog; a behavioral",
+        "    // model is needed to simulate it (see #49).  Recovered config + the",
+        "    // port→net mapping are shown below; nets are declared as wires above.",
     ]
+    # Recovered 0x72 config block(s): kind (e.g. SPI) is the enabled function.
+    for sel, kind, length, payload in efb_config:
+        lines.append(f"    //   config: {kind} (sel 0x{sel:02x}, {length} bytes"
+                     f" payload {payload})")
+    if not efb_config:
+        lines.append("    //   config: NONE recovered — .config truncated at cmd 0x72?"
+                     " (see #54)")
     for port_name, net in efb_ports:
         wire_name = resolve_net(net, net_name_map, const_net_map)
         lines.append(f"    // EFB.{port_name} → {wire_name}  (raw net: {net})")
@@ -1156,6 +1181,30 @@ def emit_unresolved_pads_comment(data: dict) -> list[str]:
     return lines
 
 
+def _emit_ebr_init(tag: str, init: dict, width: int, depth: int, blank: bool) -> list[str]:
+    """Inline `initial` block: zero-fill, then the recovered nonzero words.
+
+    `init` maps physical address → 9-bit word (native #54).  A blank block
+    (runtime-loaded, e.g. the AWG table via SPI 0x50) is left zero-filled.
+    """
+    lines = [
+        f"    integer _ebr_{tag}_i;",
+        "    initial begin",
+        f"        for (_ebr_{tag}_i = 0; _ebr_{tag}_i < {depth}; _ebr_{tag}_i = _ebr_{tag}_i + 1)",
+        f"            ebr_{tag}_mem[_ebr_{tag}_i] = {width}'h0;",
+    ]
+    if not blank:
+        hexw = (width + 3) // 4
+        items = [(a, v) for a, v in sorted(init.items()) if v]
+        per = 6
+        for i in range(0, len(items), per):
+            chunk = items[i:i + per]
+            lines.append("        " + " ".join(
+                f"ebr_{tag}_mem[{a}]={width}'h{v:0{hexw}X};" for a, v in chunk))
+    lines.append("    end")
+    return lines
+
+
 def emit_ebr(data: dict) -> list[str]:
     """Emit behavioral models for EBR blocks.
 
@@ -1202,13 +1251,6 @@ def emit_ebr(data: dict) -> list[str]:
     all_blocks = sorted(set(r.block for r in data["ebr_buses"]) |
                         set(r.block for r in data["ebr_ctrl"]))
 
-    adc_blocks = [b for b in all_blocks if _block_kind(b) == "adc"]
-    awg_blocks = [b for b in all_blocks if _block_kind(b) == "awg"]
-    unk_blocks = [b for b in all_blocks if _block_kind(b) == "unknown"]
-
-    adc_label = "/".join(adc_blocks) if adc_blocks else "none"
-    awg_label = "/".join(awg_blocks) if awg_blocks else "none"
-
     lines: list[str] = [
         "",
         "    // =========================================================",
@@ -1216,15 +1258,15 @@ def emit_ebr(data: dict) -> list[str]:
         "    // =========================================================",
         "    // WARNING: EBR is hard IP. These behavioral models represent",
         "    // structural connections recovered from the bitstream.",
-        "    // INITVAL is synthetic (ramp / 0xDEAD) — not real data.",
-        "    // Real data is written at runtime by the MCU via SPI.",
+        "    // INIT is the REAL recovered content (native decode, #54): each",
+        "    // block is the physical 1024×9 array with its .bram_init words.",
+        "    // A BLANK block carries no bitstream init — it is runtime-loaded",
+        "    // by the MCU over SPI (e.g. the AWG table via cmd 0x50).",
         "    //",
-        "    // Block classification is derived from net names in the DB.",
-        "    // Layout may differ from awto-2000 docs — treat both as",
-        "    // provisional until explicitly reconciled.",
-        "    //",
-        f"    // ADC ring ({adc_label}): write=ADC 75 MHz, read=SPI 0xa4 burst.",
-        f"    // AWG table ({awg_label}): write=SPI 0x50 cmd, read=DDS addr → DAC.",
+        "    // Init presence is authoritative for runtime-vs-preloaded; the",
+        "    // net-name kind is a functional hint only.  The fabric routes a",
+        "    // subset of the physical address/data bits (bit positions from the",
+        "    // DB); the full physical init is retained for reference/simulation.",
         "    // =========================================================",
         "",
     ]
@@ -1263,49 +1305,49 @@ def emit_ebr(data: dict) -> list[str]:
         rclk = _net(c.get("JCLK3"))
         lsr  = _net(c.get("JLSR0") or c.get("JLSR1"))
 
-        if kind == "awg":
-            dead = ((1 << wdw) - 1) & 0xDEAD
-            init_line = f"            ebr_{tag}_mem[_ebr_{tag}_i] = {wdw}'h{dead:X};  // 0xDEAD truncated to width"
-            kind_comment = "AWG waveform table — write: SPI 0x50 cmd  read: DDS addr → DAC"
-        elif kind == "adc":
-            init_line = f"            ebr_{tag}_mem[_ebr_{tag}_i] = _ebr_{tag}_i[{wdw-1}:0];  // ramp"
-            kind_comment = "ADC ring buffer — write: ADC data  read: SPI 0xa4 burst"
+        # Physical EBR: 1024 nine-bit words.  Init presence (not net names)
+        # decides runtime-loaded (blank) vs bitstream-preloaded.
+        PW, PD = 9, 1024
+        PA = (PD - 1).bit_length()          # 10 physical address bits
+        init    = data["ebr_init_map"].get(block, {})
+        ib      = data["ebr_init_blocks"].get(block)
+        nonzero = ib.n_nonzero if ib else 0
+        mode    = ib.mode if ib else "?"
+        blank   = nonzero == 0
+
+        if blank:
+            role = ("AWG waveform table — BLANK: runtime-loaded via SPI 0x50 (DDS → DAC)"
+                    if kind == "awg"
+                    else "BLANK: runtime-loaded RAM (no bitstream init)")
         else:
-            init_line = f"            ebr_{tag}_mem[_ebr_{tag}_i] = {wdw}'h0;  // unknown block"
-            kind_comment = "Unknown EBR block — classification pending"
+            hint = {"awg": "AWG-region ", "adc": "ADC-region "}.get(kind, "")
+            role = f"{hint}block — PRELOADED: {nonzero} nonzero words from bitstream"
 
         out = [
-            f"    // --- EBR {block}: {kind_comment} ---",
-            f"    // Write clock: {wclk}  Read clock: {rclk}",
-            f"    // {dep}-entry × {wdw}-bit  (DB-visible address bits: {raw})",
-            f"    reg [{wdw-1}:0] ebr_{tag}_mem [0:{dep-1}];",
-            f"    integer _ebr_{tag}_i;",
-            f"    initial begin",
-            f"        for (_ebr_{tag}_i = 0; _ebr_{tag}_i < {dep}; _ebr_{tag}_i = _ebr_{tag}_i + 1)",
-            f"            {init_line}",
-            f"    end",
+            f"    // --- EBR {block}: {role} ---",
+            f"    // Write clock: {wclk}  Read clock: {rclk}   mode {mode}",
+            f"    // Physical {PD}×{PW}; fabric routes {raw} read-addr / {wdw} write-data bits.",
+            f"    reg [{PW-1}:0] ebr_{tag}_mem [0:{PD-1}];",
         ]
+        out += _emit_ebr_init(tag, init, PW, PD, blank)
 
-        # Write port
-        waddr_e = _vec(waddr_pairs, raw)
-        wdata_e = _vec(wdata_pairs, wdw)
+        # Write port: only routed data bits are written, so unrouted bits
+        # (including preloaded init) are preserved.  Full physical address.
+        waddr_e = _vec(waddr_pairs, PA)
+        wr_body = [f"            ebr_{tag}_mem[{waddr_e}][{bi}] <= {_net(net)};"
+                   for bi, net in wdata_pairs if _net(net) != "NC"]
+        if not wr_body:
+            wr_body = [f"            // no routed write-data bits"]
         if lsr and lsr not in ("NC", "1'b0", "1'b1"):
-            out += [
-                f"    always @(posedge {wclk}) begin",
-                f"        if (!{lsr})",
-                f"            ebr_{tag}_mem[{waddr_e}] <= {wdata_e};",
-                f"    end",
-            ]
+            out += [f"    always @(posedge {wclk}) begin",
+                    f"        if (!{lsr}) begin"] + wr_body + ["        end", "    end"]
         else:
-            out += [
-                f"    always @(posedge {wclk})",
-                f"        ebr_{tag}_mem[{waddr_e}] <= {wdata_e};",
-            ]
+            out += [f"    always @(posedge {wclk}) begin"] + wr_body + ["    end"]
 
         # Read port
-        raddr_e = _vec(raddr_pairs, raw)
+        raddr_e = _vec(raddr_pairs, PA)
         out += [
-            f"    reg [{rdw-1}:0] ebr_{tag}_dout;",
+            f"    reg [{PW-1}:0] ebr_{tag}_dout;",
             f"    always @(posedge {rclk})",
             f"        ebr_{tag}_dout <= ebr_{tag}_mem[{raddr_e}];",
         ]
@@ -1328,24 +1370,22 @@ def emit_ebr(data: dict) -> list[str]:
         out.append("")
         return out
 
-    # Emit AWG first, then ADC, then unknown
-    if awg_blocks:
-        lines += [f"    // AWG waveform table block(s): {awg_label}", ""]
-    for block in awg_blocks:
-        lines += _emit_block(block, "awg")
+    # Emit blank (runtime-loaded) blocks first, then preloaded — init status
+    # is authoritative; _block_kind() is only the functional hint.
+    def _nonzero(block):
+        ib = data["ebr_init_blocks"].get(block)
+        return ib.n_nonzero if ib else 0
 
-    if adc_blocks:
-        lines += [
-            f"    // ADC ring buffer block(s): {adc_label}",
-            "    // Shared write-address bus: ebr_waddr_* nets.",
-            "    // Shared read-address bus:  ebr_raddr_* nets.",
-            "",
-        ]
-    for block in adc_blocks:
-        lines += _emit_block(block, "adc")
-
-    for block in unk_blocks:
-        lines += _emit_block(block, "unknown")
+    blank_blocks = [b for b in all_blocks if _nonzero(b) == 0]
+    loaded_blocks = [b for b in all_blocks if _nonzero(b) > 0]
+    if blank_blocks:
+        lines += [f"    // Runtime-loaded (blank) block(s): {'/'.join(blank_blocks)}", ""]
+    for block in blank_blocks:
+        lines += _emit_block(block, _block_kind(block))
+    if loaded_blocks:
+        lines += [f"    // Bitstream-preloaded block(s): {'/'.join(loaded_blocks)}", ""]
+    for block in loaded_blocks:
+        lines += _emit_block(block, _block_kind(block))
 
     return lines
 
