@@ -116,7 +116,7 @@ def section_config_summary(conn, bs_id, net_names):
     device configured' view, synthesised from the recovered netlist + hard-IP
     config.  The detailed sections below expand each line.
     """
-    import collections
+    import collections, re
     ffs, luts, nets = schema.ffs, schema.luts, schema.nets
     cds, nn = schema.clock_domain_summary, schema.net_names
 
@@ -140,13 +140,39 @@ def section_config_summary(conn, bs_id, net_names):
     efb = conn.execute(
         select(schema.efb_config.c.kind, schema.efb_config.c.sel)
         .where(schema.efb_config.c.bitstream == bs_id)).fetchall()
+    def _blk_key(b):
+        m = re.match(r"R(\d+)C(\d+)", b)
+        return (int(m.group(1)), int(m.group(2))) if m else (99, 99)
     ebr_blocks = sorted({r[0] for r in conn.execute(
         select(schema.ebr_ports.c.block).where(
-            schema.ebr_ports.c.bitstream == bs_id)).fetchall()})
-    initb = {r[0]: r[1] for r in conn.execute(
-        select(schema.ebr_init_blocks.c.block, schema.ebr_init_blocks.c.n_nonzero)
+            schema.ebr_ports.c.bitstream == bs_id)).fetchall()}, key=_blk_key)
+    initb = {r.block: r for r in conn.execute(
+        select(schema.ebr_init_blocks.c.block, schema.ebr_init_blocks.c.wid,
+               schema.ebr_init_blocks.c.mode, schema.ebr_init_blocks.c.data_width,
+               schema.ebr_init_blocks.c.n_nonzero)
         .where(schema.ebr_init_blocks.c.bitstream == bs_id)).fetchall()}
-    n_preloaded = sum(1 for b in ebr_blocks if initb.get(b, 0) > 0)
+    n_preloaded = sum(1 for b in ebr_blocks if b in initb and initb[b].n_nonzero > 0)
+
+    # Generic content characterisation from the recovered words: a small set of
+    # evenly-spaced levels is a staircase RAMP (a datapath self-test pattern,
+    # overwritten at runtime), not operational data.
+    dvals = collections.defaultdict(set)
+    for blk, w in conn.execute(
+        select(schema.ebr_init.c.block, schema.ebr_init.c.word9).distinct()
+        .where(schema.ebr_init.c.bitstream == bs_id)).fetchall():
+        dvals[blk].add(w)
+
+    def _ebr_content(b):
+        # Raw physical words only; the doc's per-read-width "levels" needs
+        # LSB-first unpacking we don't do here, so report the pattern, not a
+        # (misleading) level count.  A handful of distinct values across 1K
+        # words is a patterned prefill, read out first = a self-test pattern.
+        vals = [v for v in dvals.get(b, set()) if v is not None]
+        if not any(vals):
+            return "runtime buffer (blank)"
+        if len(vals) <= 16:
+            return "1st-read self-test pattern (staircase)"
+        return "prefilled data"
 
     # I/O peripherals grouped by pad-label prefix (board annotations).
     pads = conn.execute(
@@ -177,16 +203,24 @@ def section_config_summary(conn, bs_id, net_names):
     else:
         lines.append("  EFB:       no config recovered (truncated .config? see #54)")
     lines.append(f"  EBR:       {len(ebr_blocks)} blocks — "
-                 f"{n_preloaded} bitstream-preloaded, "
-                 f"{len(ebr_blocks) - n_preloaded} blank/runtime-loaded")
+                 f"{n_preloaded} prefilled (self-test), "
+                 f"{len(ebr_blocks) - n_preloaded} blank/runtime")
+    lines.append(f"             {'block':<7} {'WID':<4} {'mode':<8} {'width':<6} content")
     for b in ebr_blocks:
-        nz = initb.get(b, 0)
-        lines.append(f"               {b}: "
-                     + (f"{nz} words preloaded" if nz else "BLANK (runtime-loaded)"))
+        ib = initb.get(b)
+        wid = str(ib.wid) if ib else "—"
+        mode = ib.mode if ib else "—"
+        width = f"x{ib.data_width}" if ib else "—"
+        lines.append(f"             {b:<7} {wid:<4} {mode:<8} {width:<6} {_ebr_content(b)}")
+    if n_preloaded:
+        kb = n_preloaded * 1152 / 1024
+        lines.append(f"             prefill costs ~{kb:.1f} KB of bitstream "
+                     f"(init is per-block optional — blank blocks are omitted)")
     if groups:
         lines.append("  I/O (from pad annotations):")
+        lines.append(f"             {'group':<8} {'pins':>5}  dir")
         for pre, (cnt, dirs) in sorted(groups.items(), key=lambda x: -x[1][0]):
-            lines.append(f"               {pre:<8} {cnt:>2} pins  ({'/'.join(sorted(dirs))})")
+            lines.append(f"             {pre:<8} {cnt:>5}  {'/'.join(sorted(dirs))}")
     return lines
 
 
@@ -482,76 +516,43 @@ def section_boundary(conn, bs_id, net_names):
 # ---------------------------------------------------------------------------
 
 def section_active_ffs(conn, bs_id, net_names):
-    """Detail the non-reset FFs — the only FFs doing actual work."""
+    """Categorise the non-reset FFs by functional group.
+
+    A per-FF dump of ~1000 registers is noise at report level.  Group the
+    active FFs by the functional prefix of their Q-net name (adc/awg/spi/ebr/
+    dac/reg…) so the register makeup is one glance.  Per-FF detail lives in the
+    DB (ffs / ff_d_functions) for anyone who needs to drill in.
+    """
+    import collections, re
     ffs = schema.ffs
-    fd = schema.ff_d_functions
-    ns = schema.net_stats
-    nn = schema.net_names
-    pfi = schema.pad_ff_influence
-    cc = schema.clock_crossings
 
     active = conn.execute(
-        select(ffs.c.cell, ffs.c.clk, ffs.c.ce, ffs.c.d, ffs.c.q)
+        select(ffs.c.cell, ffs.c.q)
         .where(and_(ffs.c.bitstream == bs_id, ffs.c.d != "1'b0"))
-        .order_by(ffs.c.cell)
     ).fetchall()
+
+    def _grp(cell, q):
+        name = net_names.get(q) if q else None
+        if not name:
+            return "(unnamed)"
+        tok = name.split("_")[0]
+        # a bare tile/coord token isn't a functional group
+        return "(unnamed)" if re.fullmatch(r"r\d+c\d+|ff|n\d+", tok) else tok
+
+    groups = collections.Counter(_grp(cell, q) for cell, q in active)
 
     lines = [
         "",
         f"── Active Flip-Flops ({len(active)}) ───────────────────────────",
-        "  These FFs have real D inputs — the active logic in this design.",
+        "  Registers with real D inputs, by functional group (Q-net name):",
     ]
-
-    for ff_cell, clk, ce, d_net, q_net in active:
-
-        fn_row = conn.execute(
-            select(fd.c.fn_expr).where(fd.c.ff_cell == ff_cell)
-        ).fetchone()
-        fn_expr = fn_row[0] if fn_row else d_net
-
-        ns_row = conn.execute(
-            select(ns.c.fanin)
-            .where(and_(ns.c.bitstream == bs_id, ns.c.net == d_net))
-        ).fetchone()
-        fanin = ns_row[0] if ns_row else None
-
-        if fanin == 0:
-            nn_row = conn.execute(
-                select(nn.c.name, nn.c.source)
-                .where(and_(nn.c.bitstream == bs_id, nn.c.net == d_net))
-            ).fetchone()
-            if nn_row and nn_row[1] != 'auto_ghost':
-                d_annotation = f"{d_net}  (ghost net — fanin=0, hard IP source; resolved: {nn_row[0]})"
-            else:
-                d_annotation = f"{d_net}  (ghost net — fanin=0, hard IP source)"
-        else:
-            d_annotation = fn_expr or d_net
-
-        # Pad influence — collect pad_labels as a list
-        pad_rows = conn.execute(
-            select(pfi.c.pad_label)
-            .where(and_(pfi.c.bitstream == bs_id, pfi.c.ff_cell == ff_cell))
-            .order_by(pfi.c.pad_label)
-        ).fetchall()
-        pad_labels = [row[0] for row in pad_rows]
-        pad_str = ", ".join(pad_labels) if pad_labels else "none"
-
-        n_cross = conn.execute(
-            select(func.count(distinct(cc.c.dst_clk)))
-            .where(and_(cc.c.bitstream == bs_id, cc.c.src_ff == ff_cell))
-        ).scalar()
-
-        lines.append("")
-        lines.append(
-            f"  {ff_cell}    clk={net_with_name(clk, net_names) if clk else 'none'}   D={d_net}  CE={ce}   Q={q_net}"
-        )
-        lines.append(f"    D-function: {d_annotation}")
-        lines.append(f"    Pad influence: {pad_str}")
-        lines.append(f"    Clock crossings from Q: {n_cross} other domain(s)")
-
     if not active:
         lines.append("  (none — all FFs stuck at reset)")
-
+        return lines
+    for grp, cnt in groups.most_common():
+        bar = "█" * min(40, cnt // 5)
+        lines.append(f"    {grp:<14} {cnt:>4}  {bar}")
+    lines.append("  (per-domain counts: see Clock Architecture; per-FF detail: query ffs.)")
     return lines
 
 
