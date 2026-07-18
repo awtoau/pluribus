@@ -87,7 +87,7 @@ def run(stage, label, cmd, extra_env=None):
 
 def run_one(label, config, pins, package, raw_bin, skip_load, workers,
             top="top", emit_verilog=True, nets=None, header_note=None,
-            verify=True, strict_lec=False):
+            verify=True, strict_lec=False, board=None):
     if raw_bin and not os.path.exists(config):
         os.makedirs(os.path.dirname(config) or ".", exist_ok=True)
         run("unpack", label,
@@ -105,6 +105,14 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
         if nets:
             load_cmd += ["--nets", nets]
         run("load", label, load_cmd)
+
+    # Board annotation layers (#12): SPI register map / cell names / open
+    # questions. Optional — runs only for the layers the board actually ships.
+    if board and any(os.path.exists(os.path.join(board, f))
+                     for f in ("spi_registers.tsv", "cell_names.tsv",
+                               "open_questions.tsv")):
+        run("annotate", label,
+            [PY, "annotate.py", "--bitstream", label, "--board", board])
 
     reach_cmd = [PY, "reach.py", "--bitstream", label]
     if workers:
@@ -238,7 +246,8 @@ def main():
                 args.skip_load, args.workers,
                 top=top, emit_verilog=not args.no_verilog, nets=nets,
                 header_note=header_note,
-                verify=not args.no_verify, strict_lec=args.strict_lec)
+                verify=not args.no_verify, strict_lec=args.strict_lec,
+                board=args.board)
 
     # Regression gate (#60): diff the freshly-rebuilt DB against a reference,
     # per label, to catch silent data loss from a schema/lifter change.  The
