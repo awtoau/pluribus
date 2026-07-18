@@ -32,6 +32,11 @@ from concurrent.futures import ThreadPoolExecutor
 DEFAULT_DB_ROOT = os.environ.get("TRELLIS_DBROOT", "tmp/prjtrellis/database")
 FAMILY = "MachXO2"
 
+# Pluribus-owned corrections applied on top of the base tiledata (issue #29) —
+# see db_overrides.py. Kept local to pluribus so they survive a DB re-clone.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from db_overrides import apply_overrides as _apply_db_overrides  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # bits.db parsing
@@ -151,6 +156,7 @@ def get_tile_type(tiletype, db_root=DEFAULT_DB_ROOT, family=FAMILY):
                 path = os.path.join(db_root, family, "tiledata", tiletype,
                                     "bits.db")
                 tt = parse_bits_db(path)
+                _apply_db_overrides(tt, family, tiletype, _bitgroup)
                 _db_cache[key] = tt
     return tt
 
