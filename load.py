@@ -433,7 +433,8 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
 
         if not fuzz:
             assert_ge("fanout rows", len(fanout_rows), 100)
-        conn.execute(insert(schema.net_fanout), fanout_rows)
+        if fanout_rows:  # execute(insert, []) -> valueless DEFAULT VALUES row
+            conn.execute(insert(schema.net_fanout), fanout_rows)
         fanout_count = conn.execute(
             select(func.count()).select_from(schema.net_fanout)
             .where(schema.net_fanout.c.bitstream == bs_id)
@@ -578,7 +579,8 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     "source": "pins_tsv",
                 })
 
-        conn.execute(insert(schema.pad_map), pad_map_insert_rows)
+        if pad_map_insert_rows:
+            conn.execute(insert(schema.pad_map), pad_map_insert_rows)
         if net_names_insert_rows:
             conn.execute(_insert_or_ignore(schema.net_names), net_names_insert_rows)
 
