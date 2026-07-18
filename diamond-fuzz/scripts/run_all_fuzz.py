@@ -371,7 +371,17 @@ def main() -> None:
 
     # Shared state
     # Change-detection manifest: target -> sha of the .config last loaded.
-    hash_manifest = RESULTS_DIR / "loaded_hashes.json"
+    # Keyed by the TARGET DB so a fresh DB (different path / PG name) gets its
+    # own empty manifest and is not wrongly skipped as "already loaded" — the
+    # manifest used to be DB-agnostic, which made a from-scratch rebuild into a
+    # fresh DB load 0 targets.
+    if os.environ.get("PLURIBUS_DB_BACKEND", "sqlite") == "sqlite":
+        _db_id = "sqlite:" + os.path.abspath(
+            os.environ.get("PLURIBUS_SQLITE_PATH", "pluribus.db"))
+    else:
+        _db_id = "pg:" + os.environ.get("PGDATABASE", "fpga_re")
+    _db_key = hashlib.sha1(_db_id.encode()).hexdigest()[:12]
+    hash_manifest = RESULTS_DIR / f"loaded_hashes.{_db_key}.json"
     try:
         loaded_hashes = json.loads(hash_manifest.read_text())
     except Exception:
