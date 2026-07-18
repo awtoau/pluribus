@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """Simulate a replacement RTL design with pluribus tooling.
 
-The replacement candidates (clean reimplementations of a recovered design)
-live in their device RE project; pluribus provides the sim/verify harness.
-This compiles a replacement RTL + its testbench with iverilog and runs it,
-capturing the self-check verdict.
+A replacement candidate (a clean reimplementation of a recovered design) is
+device-specific and lives in its own project; pluribus provides the generic
+sim/verify harness.  This compiles a replacement RTL + its testbench with
+iverilog and runs it, capturing the self-check verdict.
 
     python3 scripts/sim_replacement.py \
-        --rtl /mnt/2tb/git/awto-2000/fpga/replacement/aw2_scope.v \
-        --tb  /mnt/2tb/git/awto-2000/fpga/replacement/aw2_scope_tb.v \
-        --top aw2_scope_tb
+        --rtl path/to/design.v --tb path/to/design_tb.v --top design_tb
 
-Defaults point at CAND-A (the aw2 scope faithful mirror).  Output +
-verdict go to tmp/sim_replacement.log (and a VCD next to the vvp).
+--rtl/--tb are required; a project may set PLURIBUS_REPL_DIR to a directory
+holding design.v / design_tb.v to shorten invocation.  Output + verdict go to
+tmp/sim_replacement.log (and a VCD next to the vvp).
 """
 import argparse
 import os
@@ -22,18 +21,20 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = os.path.join(REPO, "tmp")
 
-# CAND-A default (device RE project owns the RTL; pluribus owns the sim)
-DEF_DIR = "/mnt/2tb/git/awto-2000/fpga/replacement"
+# Optional project-supplied directory of design.v / design_tb.v (never hardcoded).
+DEF_DIR = os.environ.get("PLURIBUS_REPL_DIR")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--rtl", default=os.path.join(DEF_DIR, "aw2_scope.v"),
-                    help="replacement RTL source (default: CAND-A aw2_scope.v)")
-    ap.add_argument("--tb", default=os.path.join(DEF_DIR, "aw2_scope_tb.v"),
-                    help="testbench (default: aw2_scope_tb.v)")
-    ap.add_argument("--top", default="aw2_scope_tb", help="testbench top module")
+    _rtl = os.path.join(DEF_DIR, "design.v") if DEF_DIR else None
+    _tb = os.path.join(DEF_DIR, "design_tb.v") if DEF_DIR else None
+    ap.add_argument("--rtl", default=_rtl, required=_rtl is None,
+                    help="replacement RTL source (or set PLURIBUS_REPL_DIR)")
+    ap.add_argument("--tb", default=_tb, required=_tb is None,
+                    help="testbench (or PLURIBUS_REPL_DIR/design_tb.v)")
+    ap.add_argument("--top", default="design_tb", help="testbench top module")
     ap.add_argument("--timeout", type=int, default=120,
                     help="vvp wall-clock guard (s); the design has its own "
                          "$finish — this only catches a hung compile/run")
