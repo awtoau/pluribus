@@ -375,10 +375,9 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
 
         # ── nets ───────────────────────────────────────────────────────────────
         net_list = sorted(design.all_nets)
-        conn.execute(
-            insert(schema.nets),
-            [{"bitstream": bs_id, "name": n} for n in net_list],
-        )
+        net_rows = [{"bitstream": bs_id, "name": n} for n in net_list]
+        if net_rows:  # execute(insert, []) would emit a valueless DEFAULT VALUES row
+            conn.execute(insert(schema.nets), net_rows)
         net_count = conn.execute(
             select(func.count()).select_from(schema.nets)
             .where(schema.nets.c.bitstream == bs_id)
@@ -390,12 +389,11 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         bad_ffs = [ff for ff in design.ffs if not ff.get("name") or not ff.get("q")]
         if bad_ffs:
             die(f"{len(bad_ffs)} FFs have missing name or Q: {[f['name'] for f in bad_ffs[:5]]}")
-        conn.execute(
-            insert(schema.ffs),
-            [{"bitstream": bs_id, "cell": ff["name"], "clk": ff["clk"],
-              "ce": ff["ce"], "d": ff["d"], "q": ff["q"], "lsr": ff["lsr"]}
-             for ff in design.ffs],
-        )
+        ff_rows = [{"bitstream": bs_id, "cell": ff["name"], "clk": ff["clk"],
+                    "ce": ff["ce"], "d": ff["d"], "q": ff["q"], "lsr": ff["lsr"]}
+                   for ff in design.ffs]
+        if ff_rows:
+            conn.execute(insert(schema.ffs), ff_rows)
         ff_count = conn.execute(
             select(func.count()).select_from(schema.ffs)
             .where(schema.ffs.c.bitstream == bs_id)
@@ -403,15 +401,14 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         assert_eq("FF count in DB", ff_count, n_ffs)
 
         # ── LUTs ──────────────────────────────────────────────────────────────
-        conn.execute(
-            insert(schema.luts),
-            [{"bitstream": bs_id, "cell": lt["name"], "init": lt["init"],
-              "a": lt.get("a"), "b": lt.get("b"), "c": lt.get("c"), "d": lt.get("d"),
-              "z": lt.get("z"),
-              "deps": sorted(mx.lut_dependence(lt["init"])),
-              "fn": classify_lut(lt["init"])}
-             for lt in design.luts],
-        )
+        lut_rows = [{"bitstream": bs_id, "cell": lt["name"], "init": lt["init"],
+                     "a": lt.get("a"), "b": lt.get("b"), "c": lt.get("c"), "d": lt.get("d"),
+                     "z": lt.get("z"),
+                     "deps": sorted(mx.lut_dependence(lt["init"])),
+                     "fn": classify_lut(lt["init"])}
+                    for lt in design.luts]
+        if lut_rows:
+            conn.execute(insert(schema.luts), lut_rows)
         lut_count = conn.execute(
             select(func.count()).select_from(schema.luts)
             .where(schema.luts.c.bitstream == bs_id)

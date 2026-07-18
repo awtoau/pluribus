@@ -50,11 +50,12 @@ DIAMONDC     = DIAMOND_ROOT / "bin" / "lin64" / "diamondc"
 LICENSE      = Path(os.environ.get("LM_LICENSE_FILE",
                     str(DIAMOND_ROOT / "license" / "license.dat")))
 
-# prjtrellis lives in the RE project; overridable via TRELLIS_ROOT.
+# Tile database — resolved from the standard TRELLIS_DBROOT the rest of the
+# pipeline uses (falls back to the legacy TRELLIS_ROOT/database layout).
 _TRELLIS     = Path(os.environ.get("TRELLIS_ROOT", "debris/tmp/prjtrellis"))
-ECPUNPACK    = _TRELLIS / "libtrellis/build/ecpunpack"
-TRELLIS_DB   = _TRELLIS / "database"
-ECPUNPACK_LD = _TRELLIS / "libtrellis/build"
+TRELLIS_DB   = Path(os.environ.get("TRELLIS_DBROOT", str(_TRELLIS / "database")))
+# Unpacking is native pure-Python (no C++ ecpunpack / pytrellis .so).
+NATIVE_UNPACK = ROOT / "scripts" / "trellis_unpack.py"
 
 PLURIBUS     = ROOT                                   # load.py at repo root post-migration
 FUZZ_PINS    = ROOT / "boards" / "aw2-2d82auto" / "pins.tsv"
@@ -172,7 +173,8 @@ def build_target(target_dir: Path, dry_run: bool = False) -> tuple[bool, str]:
 # ── ecpunpack ─────────────────────────────────────────────────────────────────
 
 def unpack_bitstream(target_dir: Path) -> tuple[Path | None, str]:
-    """Run ecpunpack on the target's .bit → results/<name>/<name>.config.
+    """Decode the target's .bit → results/<name>/<name>.config with the native
+    pure-Python unpacker (scripts/trellis_unpack.py) — no C++ ecpunpack / .so.
     Returns (config_path, detail)."""
     name    = target_dir.name
     bit     = target_dir / "impl1" / "fuzz_impl1.bit"
@@ -183,21 +185,22 @@ def unpack_bitstream(target_dir: Path) -> tuple[Path | None, str]:
     if not bit.exists():
         return None, ".bit missing"
 
-    if not ECPUNPACK.exists():
-        return None, f"ecpunpack not found at {ECPUNPACK}"
-
     env = dict(os.environ)
-    env["LD_LIBRARY_PATH"] = str(ECPUNPACK_LD)
+    env["TRELLIS_DBROOT"] = str(TRELLIS_DB)
+
+    # Always-rebuild: drop any stale .config so the native unpacker (which
+    # refuses to overwrite) regenerates it from the current .bit + database.
+    config.unlink(missing_ok=True)
 
     result = subprocess.run(
-        [str(ECPUNPACK), "--db", str(TRELLIS_DB), str(bit), str(config)],
-        capture_output=True, text=True, env=env,
+        [sys.executable, str(NATIVE_UNPACK), str(bit), str(config)],
+        capture_output=True, text=True, env=env, cwd=str(ROOT),
     )
     if result.returncode != 0:
-        return None, f"ecpunpack failed: {result.stderr[:200]}"
+        return None, f"unpack failed: {result.stderr[-200:]}"
 
     if not config.exists():
-        return None, "ecpunpack produced no output"
+        return None, "unpack produced no output"
 
     return config, "ok"
 
@@ -228,7 +231,6 @@ def load_fuzz_config(target_name: str, config_path: Path,
 
     env = dict(os.environ)
     env["TRELLIS_DBROOT"] = str(TRELLIS_DB)
-    env["PYTHONPATH"]     = str(ECPUNPACK_LD)
 
     result = subprocess.run(
         [sys.executable, str(PLURIBUS / "load.py"),
