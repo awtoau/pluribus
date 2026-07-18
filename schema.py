@@ -210,10 +210,14 @@ shift_reg_bits = Table("shift_reg_bits", metadata,
 ff_d_functions = Table("ff_d_functions", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    Column("ff_cell",   Text,    nullable=False, unique=True),
+    # ff_cell is unique PER bitstream, not globally — a bare unique=True here
+    # collided cell names across bitstreams in a shared DB, so INSERT-OR-IGNORE
+    # silently dropped every later bitstream's rows (data loss, caught by #60).
+    Column("ff_cell",   Text,    nullable=False),
     Column("fn_expr",   Text),
     Column("depth",     Integer),
     Column("pad_inputs", JSON),  # TEXT[] → JSON list
+    UniqueConstraint("bitstream", "ff_cell"),
 )
 
 # ── 3. Knowledge layer ────────────────────────────────────────────────────────
