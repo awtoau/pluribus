@@ -36,6 +36,11 @@ Explicit:
     python3 scripts/run_pipeline.py --label <LABEL> \
         --config path/to.bin.config --pins path/to/pins.tsv
 
+Regression gate (#60) — rebuild into a fresh DB and diff vs the working DB
+to catch silent data loss from a schema/lifter change:
+    PLURIBUS_SQLITE_PATH=tmp/fresh.db python3 scripts/run_pipeline.py \
+        --board boards/<name> --all --regression-ref ./pluribus.db
+
 Trellis paths come from TRELLIS_BUILD / TRELLIS_DBROOT.  A board may
 declare them in its board.toml [trellis] table (they point into the RE
 project that owns the board, as pins.tsv already does); an explicit
@@ -185,6 +190,10 @@ def main():
     ap.add_argument("--strict-lec", action="store_true",
                     help="fail the pipeline if the new netlist diverges from the "
                          "prior emission (default: report divergence, non-fatal)")
+    ap.add_argument("--regression-ref", metavar="REF_DB",
+                    help="after the run, diff the freshly-rebuilt DB "
+                         "(PLURIBUS_SQLITE_PATH) against REF_DB per label via "
+                         "scripts/rebuild_regression.py; exit non-zero on data loss")
     args = ap.parse_args()
 
     os.makedirs(os.path.join(REPO, "tmp"), exist_ok=True)
@@ -230,6 +239,27 @@ def main():
                 top=top, emit_verilog=not args.no_verilog, nets=nets,
                 header_note=header_note,
                 verify=not args.no_verify, strict_lec=args.strict_lec)
+
+    # Regression gate (#60): diff the freshly-rebuilt DB against a reference,
+    # per label, to catch silent data loss from a schema/lifter change.  The
+    # fresh DB is whatever PLURIBUS_SQLITE_PATH points at for this run.
+    if args.regression_ref:
+        fresh_db = os.environ.get("PLURIBUS_SQLITE_PATH",
+                                  os.path.join(REPO, "pluribus.db"))
+        print("=== regression diff (fresh rebuild vs reference) ===", flush=True)
+        losses = 0
+        for label in labels:
+            rc = subprocess.run(
+                [PY, os.path.join("scripts", "rebuild_regression.py"),
+                 "--fresh", fresh_db, "--ref", args.regression_ref,
+                 "--label", label],
+                cwd=REPO).returncode
+            if rc != 0:
+                losses += 1
+        if losses:
+            sys.exit(f"regression: {losses}/{len(labels)} label(s) lost rows "
+                     f"vs {args.regression_ref}")
+        print("regression: no data loss vs reference for any label", flush=True)
 
 
 if __name__ == "__main__":
