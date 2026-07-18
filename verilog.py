@@ -723,7 +723,9 @@ def _simplify_lut(init: str, a: str, b: str, c: str, d: str) -> str | None:
     Returns a Verilog expression string for the output, or None when the
     function needs 3+ live inputs (too complex to name in a single expression).
 
-    init: 16-char LSB-first truth table (index i = a + 2b + 4c + 8d).
+    init: 16-char LSB-first truth table (init[idx] = f(idx), idx = a+2b+4c+8d).
+    NOTE: the stored .config INIT is MSB-first (string[k] = f(15-k)); callers
+    must reverse it before calling this helper — see _lut_init_to_case. (#63)
     """
     ZERO = {"NC", "1'b0"}
     ONE  = {"1'b1"}
@@ -780,16 +782,18 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str, ce
     direct operator expression (x ^ y, x & y, etc.) instead of a localparam.
     Falls back to a localparam bit-select for more complex truth tables.
 
-    init: 16-char LSB-first truth table (index 0 = a=0,b=0,c=0,d=0).
+    init: 16-char MSB-first truth-table string (string[k] = f(15-k)).  (#63)
     cell_name: human cell name to use for the localparam identifier; empty
                string tells us to use z_name instead (avoids _lut_lut_lut_…).
     """
-    expr = _simplify_lut(init, a, b, c, d)
+    # _simplify_lut expects LSB-first; the stored INIT is MSB-first, so reverse.
+    expr = _simplify_lut(init[::-1], a, b, c, d)
     if expr is not None:
         return [f"    assign {z_name} = {expr};"]
 
-    # Localparam bit-select fallback
-    init_msb_first = init[::-1]
+    # Localparam bit-select fallback. init is MSB-first and a Verilog [15:0]
+    # localparam literal is written MSB-first, so LP[idx] = f(idx) directly (#63).
+    init_msb_first = init
     lp_base = cell_name if cell_name else z_name
     sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', lp_base)
     # Strip any leading lut_ repetitions to prevent _lut_lut_lut_… prefixes

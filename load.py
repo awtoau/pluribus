@@ -219,7 +219,11 @@ def parse_fpga_nets_tsv(path):
 # ── LUT classify ─────────────────────────────────────────────────────────────
 
 def classify_lut(init_str):
-    v = int(init_str[::-1], 2)
+    # INIT is MSB-first (string[k] = f(15-k), the prjtrellis .config convention),
+    # so the truth-table integer is int(init_str, 2) directly — bit p = f(p).
+    # The old int(init_str[::-1], 2) evaluated f(~x) (every input complemented),
+    # silently swapping INV<->BUF, AND<->NOR, OR<->NAND (XOR/XNOR invariant). See #63.
+    v = int(init_str, 2)
     if v == 0:      return "CONST0"
     if v == 0xFFFF: return "CONST1"
     deps = sorted(mx.lut_dependence(init_str))

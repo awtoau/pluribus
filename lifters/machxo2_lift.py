@@ -1286,7 +1286,7 @@ def lut_dependence(init_str):
     """Which of A,B,C,D a LUT4 truth table FUNCTIONALLY depends on. A routed
     input the INIT ignores is vacuous (the cell would compute the same logic
     without it). init bits are MSB-first; value bit p = f(p), p = A+2B+4C+8D."""
-    v = int(init_str[::-1], 2)
+    v = int(init_str, 2)   # MSB-first string -> bit p = f(p); no reversal (#63)
     dep = set()
     for name, w in _LUT_WEIGHTS.items():
         for p in range(16):
