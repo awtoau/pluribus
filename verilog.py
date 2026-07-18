@@ -525,10 +525,12 @@ def emit_wires(data: dict) -> list[str]:
             continue
         if net_in is None and net_out is None:
             continue
-        if direction == "out":
-            # Output pad: net_out is the (unused) boundary net; net_in is the
-            # INTERNAL fabric net driving the pad (#58) and must stay a declared
-            # wire so `assign <PORT> = <net_in>` (emit_output_drives) resolves.
+        if direction in ("out", "bidir"):
+            # Output/bidir pad: net_out is the (unused) boundary net; net_in is
+            # the INTERNAL fabric net driving/connecting the pad (#58) and can
+            # also feed fabric logic (LUT inputs) — it must stay a declared wire
+            # so those references resolve (a bidir net_in that fed a LUT was
+            # emitted undeclared → an implicit-net lint error).
             if net_out:
                 port_nets.add(net_out)
         else:
