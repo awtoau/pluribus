@@ -10,47 +10,47 @@
 #   PLURIBUS_SQLITE_PATH=tmp/fnirsi.db \
 #     python3.15t scripts/run_pipeline.py --board boards/fnirsi-gw1n2 --all
 #
-# PACKAGE: QFN48X — the physical package is now KNOWN (issue #73).
+# PACKAGE: deliberately UNSET — no apicula table is correct for this part (#73).
 #
 # GROUND TRUTH: the device is a Gowin GW1N-UV2 in the standard **QN48** package
-# (48-pin QFN, 6 x 6 mm; ordering code of the form GW1N-UV2QN48C6/I5; NOT QN48H).
-# Physically confirmed from the chip marking on 2026-06-13 and documented in the
+# (48-pin QFN, 6 x 6 mm; ordering code GW1N-UV2QN48C6/I5; NOT QN48H).  Physically
+# confirmed from the chip marking on 2026-06-13 and documented in the
 # OpenScope-2C53T programming guide.  IDCODE 0x0120681B corroborates GW1N-2.
 #
-# apicula ships NO "QN48" table for GW1N-2 — only LQFP100/LQFP100X (81 pads) and
-# QFN48X/QFN48XF (40 pads).  QFN48X is therefore the nearest proxy: it is the
-# 48-pin QFN family, and it places IOR1B at pin 35, matching the confirmed
-# upstream pinout exactly.
+# The vendor's own tables (GOWINHOME/IDE/data/device/) resolve our exact part via
+# device_package.csv:
 #
-# This RETIRES the earlier LQFP100 choice (issue #69), which was a coverage
-# heuristic made before the package was known:
+#     gw1n2-020, GW1N-UV2QN48C6/I5, GW1N, GW1N-2, QFN48, GW1N-2/QFN48.json
 #
-#     LQFP100   20 / 23 real pads bonded   -- but IOR1B NOT bonded at all
-#     QFN48X    14 / 23 real pads bonded   -- IOR1B = pin 35 (confirmed)
+# i.e. package QFN48, **41 I/O**, die GW1N-2.
 #
-# LQFP100's higher coverage is an artefact of it being an 81-pad table, not
-# evidence of correctness: it is a physically different package, so its pin
-# NUMBERS do not correspond to this board at all.  Fewer-but-correct pin numbers
-# beat more-but-wrong ones — wrong numbers actively mislead anyone probing the
-# hardware.  Notably the correct package RECOVERS the master run/re-arm pin
-# (IOR1B = 35) that LQFP100 could never resolve.
+# apicula ships NO QN48/QFN48 table for GW1N-2 — only LQFP100/LQFP100X (81 pads)
+# and QFN48X/QFN48XF (40 pads).  And QFN48X is NOT a near-proxy: per the vendor
+# catalogue it belongs to a DIFFERENT part on a DIFFERENT die
+# (GW1N-LV1P5QN48XC6/I5, die GW1N-1P5B, 40 I/O).  Measured against the vendor
+# QFN48 table for our part:
 #
-# RESIDUAL GAP (still open, #73): apicula's QFN48X table bonds only 14 of the 23
-# real pads and omits some the design drives, and IOT3A is a routed pad that is
-# unbonded in EVERY GW1N-2 table.  Since the real part is a 48-pin QN48, those
-# omissions are most likely INCOMPLETENESS in apicula's tables rather than
-# genuinely unbonded die pads — an upstream data gap, not a physical fact.
+#     35 pins overlap  ->  0 AGREE, 35 DISAGREE
+#     IOR1B (master run/re-arm pad):  vendor QFN48 = pin 46,  apicula QFN48X = 35
 #
-# Pads that remain unbonded under this table still get no pin number, but they
-# are NOT lost: load.py net-names every routed-but-unbonded pad after its
+# So BOTH previously-tried settings were wrong: LQFP100 (issue #69) and QFN48X
+# (its short-lived replacement) are different physical packages whose pin NUMBERS
+# do not apply to this board at all.  Widely-quoted "QFN48 proxy" pin numbers
+# (e.g. run/re-arm = pin 35) inherit the same error; the vendor table says 46.
+#
+# Therefore no package is set: a wrong pin number is worse than none, because it
+# looks authoritative to anyone probing the hardware.  With package unset, pads
+# carry no pin but are NOT lost — load.py net-names every routed pad after its
 # location (source='gowin_iob_unbonded'), so each stays recoverable by name.
-# Treat any pin number derived from this table as PROXY-CONFIRMED (it matches
-# the documented QN48 pinout where both cover a pad) rather than exhaustive.
+#
+# PROPER FIX (#74): ingest the vendor's own GW1N-2/QFN48.json as a
+# pluribus-owned pinout override, which gives authoritative pin numbers for the
+# real part — and is a clean upstream contribution back to apicula.
 
 [board]
 name    = "FNIRSI 2C53T (GW1N-2)"
 device  = "GW1N-2"       # apycula chip database name (GW1N-2.msgpack.xz)
-package = "QFN48X"       # nearest apicula proxy for the physical QN48 (see above)
+# package intentionally omitted — see the PACKAGE note above (#73/#74).
 lifter  = "gowin"
 top     = "fnirsi"
 
