@@ -14,18 +14,9 @@ juggling.
 
 ## What it runs
 
-| stage | script | does |
-|---|---|---|
-| unpack | `scripts/trellis_unpack.py` | bitstream `.bin` → `.config` (**native decoder** — lossless, recovers EBR/EFB config) |
-| iomap | `scripts/fpga_iomap.py` | `.config` → `.iomap.tsv` (pin↔site) |
-| load | `load.py` | `.config` → DB netlist (nets/ffs/luts/pads/EBR/EFB) |
-| reach | `reach.py` | all-net BFS reachability (raw-driver NoGIL-parallel) |
-| reach2/3/4 | `reach2.py` … | reverse reach, cones, symbolic LUTs, 9-pass auto-naming |
-| auto_name | `auto_name.py` | additional net names from LUT INIT truth tables + expression patterns |
-| patterns | `patterns.py` | structural-pattern table (stuck/orphan pads, const-FFs, …) the report consumes |
-| report | `report.py` | human-readable status |
-| chains | `chains.py` | signal-chain report → `out/<label>-chains.txt` |
-| verilog | `verilog.py` | **recovered structural Verilog → `out/<label>.v`** (primary deliverable) |
+The stages and what each produces are the pipeline table in the
+[README](../README.md#what-it-does--the-full-pipeline); this page covers the
+*operational* details of running them.
 
 Deliverables land in **`out/`** (not `tmp/`), so they survive a scratch
 cleanup: `out/<label>.v` and `out/<label>-chains.txt`. `--no-verilog` skips the
@@ -36,13 +27,14 @@ Verilog stage; the top-module name comes from `--top` or the board's
 absent; both generators refuse to overwrite, so an existing `.config` is never
 clobbered.
 
-## Everything runs under python3.15t (free-threaded NoGIL) — no pytrellis .so
+## Interpreter + native decode (operational)
 
-The whole stack is GIL-free **and pure Python**: the bitstream decode
-(`native_bitstream`) and the routing graph (`native_trellis`) are both native
-Python, so no pytrellis `.so` is needed at runtime. `sqlalchemy>=2.1.0b3` keeps
-the GIL disabled, so one interpreter serves every stage. Override the
-interpreter with `PLURIBUS_PYTHON=<interp>` if needed.
+The rationale for free-threading is in the
+[README](../README.md#2-free-threaded-nogil-python--because-the-analysis-is-massively-parallel);
+operationally: everything runs under **`python3.15t`** (override with
+`PLURIBUS_PYTHON=<interp>`), the stack is pure Python (no pytrellis `.so`), and
+`sqlalchemy>=2.1.0b3` keeps the GIL disabled so one interpreter serves every
+stage.
 
 The native routing graph is a faithful port of prjtrellis (chip geometry,
 `globalise_net` wire canonicalization, per-tile wires + SLICE bels). It is
@@ -74,9 +66,9 @@ Per-stage logs land in `tmp/pipeline_<label>_<stage>.log`.
 
 ## Design contract
 
-Every run **drops and rebuilds** all rows for the label — no incremental state,
-no stale data. Never treat the DB as a source of truth across runs; always
-rebuild. (See `CLAUDE.md` design rules.)
+Every run **drops and rebuilds** all rows for the label — see the README's
+[Design rules](../README.md#design-rules-do-not-change). Never treat the DB as a
+source of truth across runs; always rebuild.
 
 `tools/build.py` is an older orchestrator; its `build` (full-pipeline) path is
 superseded by this script. Its `init` (generate a template pins TSV from a
