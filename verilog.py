@@ -317,7 +317,6 @@ def load_data(conn, bs_id: int) -> dict:
     # the FF's Q output.  This is the Q net's human name when available, otherwise derived
     # from the cell's human name + "_q".  emit_ffs uses this as the reg identifier so that
     # the reg name and the wire name (used by LUT input resolution) always match.
-    _is_gowin = str(meta[1] or "").upper().startswith("GW")
     ff_q_wire_map: dict[str, str] = {}
     for cell, _clk, _ce, _d, q, _lsr in ffs:
         if q is None:
@@ -327,13 +326,16 @@ def load_data(conn, bs_id: int) -> dict:
             ff_q_wire_map[cell] = _sanitise(q_human)
         elif cell in cell_name_map:
             ff_q_wire_map[cell] = _sanitise(f"{cell_name_map[cell]}_q")
-        elif _is_gowin:
-            # GOWIN runs without the MachXO2 auto-naming passes, so most Q nets
-            # have no human name.  Connect the FF/latch Q to the fabric anyway,
-            # using the RAW net identifier — the same one every reader (LUT
-            # inputs, FF D/control) resolves it to, and the one emit_wires
-            # declares it under for gowin (its clock-derived Q-wire aliasing is
-            # disabled for gowin to keep declarations and references in step).
+        else:
+            # No human Q-net name and no cell name.  This happens for FFs whose
+            # only identity is their (originally over-split) clock domain — e.g.
+            # a MachXO2 spec_clk_N spine FF, or any GOWIN Q net (that family runs
+            # without the auto-naming passes).  Connect the FF/latch Q to the
+            # fabric using the RAW net identifier — the same one every reader
+            # (LUT inputs, FF D/control) resolves it to via resolve_net, and the
+            # one emit_wires declares it under.  Without this the reg drives a
+            # dangling clock-derived alias wire while its real fanout net (read
+            # by the SPI-readback / miso path) is left undriven (issue #65).
             rq = resolve_net(q, net_name_map, const_net_map)
             if not rq.startswith("1'b"):
                 ff_q_wire_map[cell] = _sanitise(rq)
@@ -620,17 +622,13 @@ def emit_wires(data: dict) -> list[str]:
             cell_human = cell_name_map.get(src_cell)
             if cell_human:
                 return _sanitise(f"{cell_human}_q")
-            # The clock-derived Q-wire alias is a MachXO2 nicety: readers there
-            # resolve the Q net to its auto-named identifier, which matches.  For
-            # gowin the Q nets stay unnamed, so a clock-derived wire name would
-            # not match how LUT/FF readers resolve the net (raw n<k>) → keep the
-            # raw name for gowin so declarations and references agree.
-            if not is_gowin:
-                clk_name = cell_clkname_map.get(src_cell)
-                if clk_name:
-                    short = re.sub(r"^clk_h\d+_", "", clk_name)
-                    suffix = re.sub(r"^ff_", "", src_cell)
-                    return _sanitise(f"{short}__{suffix}_q")
+            # No cell name: the FF's only identity is its clock domain.  A
+            # clock-derived Q-wire alias (spec_clk_N__rRcC_q) was emitted here,
+            # but LUT/FF readers resolve this net via resolve_net → its RAW n<k>
+            # name, which the alias never matched.  The declaration and the
+            # references disagreed, orphaning the FF's fanout net (issue #65).
+            # Declare it under the same raw name every reader uses, so the
+            # emit_ffs Q connect-assign (assign n<k> = reg) actually drives it.
         return resolve_net(net, net_name_map, const_net_map)
 
     # Split into groups

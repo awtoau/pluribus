@@ -585,6 +585,15 @@ class MachXO2Lift:
             dsu, efb_conns, cfg_row=cfg0_loc[0], cfg_col=cfg0_loc[1]
         )
 
+        # Union PLC slice-output fast connections (F0..F7 -> adjacent-tile
+        # HFxW/HFxE wires).  These always-on direct routes are absent from the
+        # .config; without them a slice output that leaves the tile on a
+        # fast-connect wire lands on an undriven fabric net, orphaning every cone
+        # that reads it (the SPI-readback / miso path, issue #65).
+        plc_conns = self.load_plc_fixed_conns()
+        plc_tiles = [rc for rc, t in pc.tile_type.items() if t == "PLC"]
+        d.plc_fc_applied = self.apply_plc_fixed_conns(dsu, plc_conns, plc_tiles)
+
         d.used_roots = {dsu.find(k) for k in src_keys}
 
         net_name = d.net_name
@@ -870,6 +879,66 @@ class MachXO2Lift:
                 dsu.union(k, efb_port)
                 resolved.add(efb_port)
         return resolved
+
+    def load_plc_fixed_conns(self, dbroot=None):
+        """Parse PLC/bits.db and return the list of (fabric_wire, slice_out)
+        `.fixed_conn` pairs that carry a slice output (F0..F7) onto an adjacent
+        tile's fast-connect wire (HF0W/HF1W/HF2W and E1_HF4E..E1_HF7E, etc.).
+
+        These direct connections are ALWAYS present (no config bit) and are how a
+        slice LUT/FF output reaches a neighbouring tile without a routed pip.
+        The .config never lists them, so a signal that leaves a slice on one of
+        these fast wires lands on a fabric net with NO recovered driver (fanin=0)
+        — orphaning the whole cone that reads it (e.g. the SPI-readback / miso
+        path in the MachXO2 round-trip, issue #65).  Unioning them in
+        apply_plc_fixed_conns() gives those nets their real slice-output driver.
+
+        Only slice-output sources (F0..F7) are returned; the fixed_conn's other
+        endpoint is the fast-connect fabric wire.
+        """
+        db_root = dbroot or DEF_DBROOT
+        bits_path = os.path.join(db_root, "MachXO2", "tiledata", "PLC", "bits.db")
+        _F_RE = re.compile(r"^F[0-7]$")
+        conns = []
+        try:
+            with open(bits_path) as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line.startswith(".fixed_conn "):
+                        continue
+                    parts = line.split()
+                    if len(parts) != 3:
+                        continue
+                    fabric_wire, endpoint = parts[1], parts[2]
+                    if _F_RE.match(endpoint):
+                        conns.append((fabric_wire, endpoint))
+        except OSError:
+            pass
+        return conns
+
+    def apply_plc_fixed_conns(self, dsu, plc_conns, plc_tiles):
+        """Union the PLC slice-output fast connections into the DSU.
+
+        For every PLC tile (row, col) and every (fabric_wire, slice_out) pair
+        from load_plc_fixed_conns, resolve BOTH endpoints to canonical keys via
+        gkey() at that tile and union them.  gkey() globalises the directional
+        wire name (e.g. E1_HF6E0001 -> the HF6E0001 node in the east neighbour)
+        and the slice-output wire (F6), so the union fuses the neighbour's
+        fast-connect net onto the slice output's net.  Both endpoints must
+        globalise to a valid location; edge tiles whose neighbour falls off-chip
+        simply resolve to None and are skipped.
+
+        Returns the number of unions actually applied.
+        """
+        applied = 0
+        for (r, c) in plc_tiles:
+            for fabric_wire, slice_out in plc_conns:
+                kw = self.gkey(r, c, fabric_wire)
+                kf = self.gkey(r, c, slice_out)
+                if kw is not None and kf is not None:
+                    dsu.union(kw, kf)
+                    applied += 1
+        return applied
 
     def pad_fabric_node(self, row, col, pio, direction):
         """Fabric joint node for a PIO pad: input -> JQ{idx}, output -> JA{idx},

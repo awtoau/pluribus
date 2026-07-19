@@ -32,8 +32,12 @@ LEC (two verdicts)
      BIT-EXACT to the source miso for N cycles under ALL input sequences.  This
      isolates the fabric datapath (reset, SPI-v2 FSM, status/wp_trig/meas_offset
      register readback, trigger config, interleave-cal) from the memory.  The
-     proof holds to a depth D, then the first divergence at D+1 is the SPI FSM
-     first serialising a capture-memory readback -- i.e. exactly the DPRAM stub.
+     proof holds to a depth D, then diverges at D+1 on the first serialised data
+     bit.  NB (#65): that first-bit divergence is NOT the DPRAM value — it holds
+     with the DPRAM read data forced to 0 — it is a readback-datapath gap.  Two
+     layers of it (orphaned SPI-address-register FFs; orphaned PLC fast-connect
+     slice outputs) are fixed this pass; a deeper register-read/serialiser logic
+     gap still caps the proof at D.
 
 Nothing here is committed and nothing in awto-2000 is modified: the source is
 imported read-only and all build artefacts land under pluribus/tmp/repl_scope/.
@@ -387,13 +391,27 @@ def main():
     log("  Structurally the recovery is complete (LUT INITs, FFs, carries, DPRAM")
     log("  sites, IO, routing all recovered; native decode CRC-verified).  But it")
     log("  is NOT functionally equivalent to the known source:")
-    log("    - the single physical clk is recovered as 9 clock-domain ports")
-    log("      (unified externally here just to make the LEC well-formed);")
-    log("    - the 256x8 capture ring buffer (distributed RAM / 32x DPR16X4) has")
-    log("      a stub write->read dataflow (documented lifter limitation);")
-    log("    - the SPI-v2 readback datapath diverges on the first data bit under")
-    log("      SPI-active inputs, and the divergence is NOT fixed by neutralising")
-    log("      the DPRAM value -- a genuine functional recovery gap.")
+    log("    - the single physical clk is recovered as one unified spine (#65 gap 1);")
+    log("    - the 256x8 capture ring buffer (distributed RAM / 32x DPR16X4) still")
+    log("      has a stub write->read dataflow (documented lifter limitation);")
+    log("    - the first-data-bit divergence at cycle %s is a GENUINE readback"
+        % diverge)
+    log("      LOGIC gap: it persists with the DPRAM read data forced to 0 AND with")
+    log("      every readback net now driven (see #65 root-cause below), so it is")
+    log("      neither a memory-value nor an undriven-net artefact.")
+    log("")
+    log("  #65 root-cause (this pass): the cycle-%s divergence was two orphaned-net"
+        % diverge)
+    log("  emission/recovery bugs in the SPI-readback datapath, now FIXED —")
+    log("    (a) verilog.py: clock-derived-named FFs (spec_clk_N spine FFs) emitted")
+    log("        their Q on a dangling alias wire, orphaning the SPI address register")
+    log("        that feeds the read-address decode;")
+    log("    (b) machxo2_lift.py: PLC F0..F7 slice outputs that leave a tile on an")
+    log("        always-on fast-connect wire (HFxW/HFxE) were never unioned, orphaning")
+    log("        the OFX/wide-mux fabric feeding the miso serialiser.")
+    log("  With both fixed the miso combinational cone is fully driven, yet a deeper")
+    log("  readback LOGIC divergence (register-read / serialiser) remains — the next")
+    log("  gap to close for a full past-cycle-%s proof." % diverge)
 
 
 if __name__ == "__main__":
