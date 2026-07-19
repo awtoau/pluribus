@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import clocks
 from db import engine, die
 from sqlalchemy import text
 
@@ -136,31 +137,12 @@ def load_data(conn, bs_id: int) -> dict:
     # one clock net, so merging within a track is always sound.  hpbx_track is
     # populated only for MachXO2 (GOWIN and other families leave it NULL), so
     # this is inert for every non-MachXO2 recovery.
-    clk_unify: dict[str, str] = {}
-    _cds = q("SELECT clk_net, ff_count, hpbx_track FROM clock_domain_summary "
-             "WHERE bitstream=:bs_id")
-    # Prefer a semantically-named domain as the survivor so the collapsed clock
-    # keeps its human name (clk_main / clk_<pad>) instead of a raw net id.
-    _clk_names = {net: name for net, name in
-                  q("SELECT net, name FROM net_names WHERE bitstream=:bs_id")}
-
-    def _canon_rank(member):
-        net, ffc = member
-        name = _clk_names.get(net, "")
-        name_rank = 2 if name == "clk_main" else (1 if name else 0)
-        return (name_rank, ffc)
-
-    _track_members: dict[str, list] = {}
-    for _cnet, _ffc, _trk in _cds:
-        if _trk:
-            _track_members.setdefault(_trk, []).append((_cnet, _ffc or 0))
-    for _trk, _members in _track_members.items():
-        if len(_members) < 2:
-            continue
-        _canon = max(_members, key=_canon_rank)[0]
-        for _cnet, _ in _members:
-            if _cnet != _canon:
-                clk_unify[_cnet] = _canon
+    # Collapse per-track taps to one canonical clock (shared with report.py so
+    # the emitted module and the RE report tell the same 3-clock story).
+    clk_unify = clocks.unify_clock_spines(
+        q("SELECT clk_net, ff_count, hpbx_track FROM clock_domain_summary "
+          "WHERE bitstream=:bs_id"),
+        q("SELECT net, name FROM net_names WHERE bitstream=:bs_id"))
     # Original (pre-unification) clock per cell — used for cell/Q-net NAMING so
     # unification never renames a FF's Q wire (which would desync it from the
     # raw-id references emit_ebr/others still use).  Only the always-block clock

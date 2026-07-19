@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import clocks
 import schema
 from db import engine, die, BACKEND
 
@@ -27,6 +28,22 @@ from sqlalchemy import select, func, and_, or_, text, distinct
 # ---------------------------------------------------------------------------
 
 AEST = timezone(timedelta(hours=10))
+
+
+def clk_unify_map(conn, bs_id):
+    """Clock-spine unification map for this bitstream (issue #65).
+
+    Shares its collapse logic with verilog.py via clocks.unify_clock_spines so
+    the report and the emitted module present the SAME clocks.  Empty (identity)
+    for GOWIN/other families where hpbx_track is NULL.
+    """
+    cds, nn = schema.clock_domain_summary, schema.net_names
+    cds_rows = conn.execute(
+        select(cds.c.clk_net, cds.c.ff_count, cds.c.hpbx_track)
+        .where(cds.c.bitstream == bs_id)).fetchall()
+    name_rows = conn.execute(
+        select(nn.c.net, nn.c.name).where(nn.c.bitstream == bs_id)).fetchall()
+    return clocks.unify_clock_spines(cds_rows, name_rows)
 
 
 def net_label(net, net_names):
@@ -147,13 +164,23 @@ def section_config_summary(conn, bs_id, net_names):
 
     # Clocking: domains grouped by recovered frequency.  The frequency lives on
     # the named spine net; most domains' direct clock net is unlabelled.
-    clk_nets = [r[0] for r in conn.execute(
+    clk_unify = clk_unify_map(conn, bs_id)
+    raw_clk_nets = [r[0] for r in conn.execute(
         select(cds.c.clk_net).where(cds.c.bitstream == bs_id)).fetchall()]
     freq_by_net = dict(conn.execute(
         select(nn.c.net, nn.c.freq_mhz).where(
             and_(nn.c.bitstream == bs_id, nn.c.freq_mhz.isnot(None)))).fetchall())
-    freq_counts = collections.Counter(freq_by_net.get(n) for n in clk_nets)
-    n_dom = len(clk_nets)
+    # Collapse per-track taps to their canonical clock (issue #65), carrying a
+    # frequency up from whichever member has one, so the count matches the
+    # emitted module's clock ports rather than the raw spine-tap count.
+    freq_by_clk = {}
+    for n in raw_clk_nets:
+        c = clocks.apply(n, clk_unify)
+        if freq_by_clk.get(c) is None:
+            freq_by_clk[c] = freq_by_net.get(n)
+    freq_counts = collections.Counter(freq_by_clk.values())
+    n_dom = len(freq_by_clk)
+    n_raw_dom = len(raw_clk_nets)
     unknown = freq_counts.pop(None, 0)
     freq_bits = [f"{f:g} MHz×{c}" for f, c in sorted(freq_counts.items())]
 
@@ -219,9 +246,10 @@ def section_config_summary(conn, bs_id, net_names):
         f" ({conf.get('estimate', 0)} spatial-est, {conf.get('inferred', 0)} inferred,"
         f" {conf.get('guess', 0) + conf.get('speculative', 0)} guess/spec) —"
         f" clock names/freqs and most functional names are INFERENCES, not facts",
-        f"  Clocking:  {n_dom} domains"
+        f"  Clocking:  {n_dom} primary clock{'s' if n_dom != 1 else ''}"
         + (f" — {', '.join(freq_bits)}" if freq_bits else "")
-        + (f", {unknown} unlabelled" if unknown else ""),
+        + (f", {unknown} unlabelled" if unknown else "")
+        + (f"  ({n_raw_dom} spine taps unified, issue #65)" if n_raw_dom > n_dom else ""),
         "             driven off-fabric by PLL/OSC/DCC hard IP via the HPBX spine",
     ]
     if efb:
@@ -305,10 +333,11 @@ def section_netlist(conn, bs_id):
     n_cells = n_ffs + n_luts
     pct_cells = 100.0 * n_named_cells / n_cells if n_cells else 0.0
 
-    n_clk_domains = conn.execute(
-        select(func.count(distinct(cd.c.clk_net)))
-        .where(cd.c.bitstream == bs_id)
-    ).scalar()
+    _clk_unify = clk_unify_map(conn, bs_id)
+    _raw_domains = [r[0] for r in conn.execute(
+        select(distinct(cd.c.clk_net)).where(cd.c.bitstream == bs_id)).fetchall()]
+    n_raw_domains = len(_raw_domains)
+    n_clk_domains = len({clocks.apply(n, _clk_unify) for n in _raw_domains})
 
     n_active_ffs = conn.execute(
         select(func.count()).where(
@@ -330,7 +359,8 @@ def section_netlist(conn, bs_id):
         f"  Fanout edges:   {n_fanout:>5}   (avg {avg_fo:.1f} per net, max {max_fo})",
         f"  Named nets:     {n_named_nets:>5} / {n_nets}  ({pct_nets:.1f}%)",
         f"  Named cells:    {n_named_cells:>5} / {n_cells}  ({pct_cells:.1f}%)",
-        f"  Clock domains:  {n_clk_domains:>5}   ({n_clk_domains} ghost clock nets — hard IP spine)",
+        f"  Clock domains:  {n_clk_domains:>5}   ({n_raw_domains} HPBX spine taps unified to"
+        f" {n_clk_domains} primary clocks — issue #65)",
         f"  Const nets:     {n_const_nets:>5}   (propagated from CONST0/CONST1 LUTs + stuck FFs)",
     ]
     return lines
@@ -341,28 +371,43 @@ def section_netlist(conn, bs_id):
 # ---------------------------------------------------------------------------
 
 def section_clocks(conn, bs_id, net_names):
-    """List clock domains ranked by FF count with crossing counts."""
+    """List clock domains ranked by FF count with crossing counts.
+
+    Per-region spine taps are collapsed onto their canonical primary clock
+    (issue #65), so this lists the real physical clocks — and a crossing between
+    two taps of the SAME physical clock (a unification artifact) is dropped.
+    """
     cd = schema.clock_domains
     cc = schema.clock_crossings
+    clk_unify = clk_unify_map(conn, bs_id)
 
-    domains = conn.execute(
+    raw_domains = conn.execute(
         select(cd.c.clk_net, func.count().label("n_ffs"))
         .where(cd.c.bitstream == bs_id)
         .group_by(cd.c.clk_net)
-        .order_by(func.count().desc())
     ).fetchall()
+    n_raw = len(raw_domains)
+    ff_by_clk: dict[str, int] = {}
+    for clk_net, n_ffs in raw_domains:
+        c = clocks.apply(clk_net, clk_unify)
+        ff_by_clk[c] = ff_by_clk.get(c, 0) + n_ffs
+    domains = sorted(ff_by_clk.items(), key=lambda kv: -kv[1])
 
-    crossings_in = dict(conn.execute(
-        select(cc.c.dst_clk, func.count())
+    # Crossings are keyed by raw spine tap; remap both ends to their canonical
+    # clock and drop now-intra-clock pairs so the Xing column counts only true
+    # inter-clock crossings.
+    crossings_in: dict[str, int] = {}
+    crossings_out: dict[str, int] = {}
+    for src, dst, cnt in conn.execute(
+        select(cc.c.src_clk, cc.c.dst_clk, func.count())
         .where(cc.c.bitstream == bs_id)
-        .group_by(cc.c.dst_clk)
-    ).fetchall())
-
-    crossings_out = dict(conn.execute(
-        select(cc.c.src_clk, func.count())
-        .where(cc.c.bitstream == bs_id)
-        .group_by(cc.c.src_clk)
-    ).fetchall())
+        .group_by(cc.c.src_clk, cc.c.dst_clk)
+    ).fetchall():
+        cs, cdst = clocks.apply(src, clk_unify), clocks.apply(dst, clk_unify)
+        if cs == cdst:
+            continue
+        crossings_out[cs] = crossings_out.get(cs, 0) + cnt
+        crossings_in[cdst] = crossings_in.get(cdst, 0) + cnt
 
     n_total = len(domains)
 
@@ -387,7 +432,9 @@ def section_clocks(conn, bs_id, net_names):
         lines.append(
             f"  {rank:<5}  {clk_net:<8}  {name:<20}  {n_ffs:>5}  {conf:<10}  {xing:>4}"
         )
-    lines.append(f"  ({n_total} total clock domains)")
+    suffix = (f"  ({n_raw} spine taps → {n_total} primary clocks, issue #65)"
+              if n_raw > n_total else f"  ({n_total} clock domains)")
+    lines.append(suffix)
     return lines
 
 
