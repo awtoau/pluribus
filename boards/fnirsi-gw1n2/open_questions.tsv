@@ -1,0 +1,8 @@
+# Tracked unknowns for this board — imported by annotate.py into open_questions
+# and rendered by report.py, so they stay visible in every RE report rather than
+# living only in the issue tracker.
+#
+# Columns: issue_num  title  description  status  related_nets(JSON)  related_cells(JSON)  blocker
+issue_num	title	description	status	related_nets	related_cells	blocker
+73	GW1N-2 physical package/bonding is NOT established	LQFP100 is only the best-fit apicula table (bonds 20 of 23 real pads); QFN48X is excluded because it misses pads the design actively drives. But LQFP100 leaves 3 real pads unbonded, including IOR1B — the master run/re-arm pin — which therefore has no physical pin number. Decisively, IOT3A is a routed pad unbonded in EVERY GW1N-2 table apicula ships, proving those tables are incomplete proxies rather than physical truth. Treat all package-derived pin numbers for this device as PROXY, NOT FACT. Routed-but-unbonded pads are net-named after their location (source=gowin_iob_unbonded) so IOR1B stays recoverable by name.	open			hardware: package marking, board trace of the run/re-arm pin, or a corrected upstream apicula package table
+70	FPGA-side SPI command set not yet reversed	The SPI command decode (opcode -> enable net -> gated effect), the register map, and the readback path onto SO have not yet been recovered from the netlist. Recovering them should also settle the documented SPI-mode dispute (Mode 0 vs Mode 3), since the clock edge the fabric actually samples on is present in the recovered logic rather than a matter of opinion.	open			depends on #70
