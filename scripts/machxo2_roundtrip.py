@@ -53,6 +53,10 @@ import argparse
 import os
 import subprocess
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -95,13 +99,58 @@ PIN_MAP = [
 ]
 
 _logfh = None
+_log_lock = threading.Lock()
+
+
+def _default_jobs():
+    """Max concurrent SAT probes.
+
+    NOT simply the CPU count: a deep bounded-miter probe on this design peaks
+    around 3-4.5 GB RSS, so on a 32-core/62 GB box MEMORY is the binding
+    constraint (32 concurrent deep probes would want ~115 GB and swap-thrash).
+    Budget 4.5 GB per slot against MemAvailable and cap at the CPU count."""
+    cpus = os.cpu_count() or 4
+    try:
+        with open("/proc/meminfo") as fh:
+            avail_kb = next(int(ln.split()[1]) for ln in fh
+                            if ln.startswith("MemAvailable:"))
+        by_mem = int(avail_kb / (4.5 * 1024 * 1024))
+    except Exception:
+        by_mem = cpus
+    return max(1, min(cpus, by_mem))
+
+
+# max concurrent SAT probes (--jobs overrides); see _default_jobs()
+_JOBS = _default_jobs()
+# one global gate for EVERY bounded-SAT probe, so the concurrently-running
+# bounded sweep and diagnostics share a single memory budget.
+_sat_slots = threading.Semaphore(_JOBS)
+
+MAX_DEPTH = 64          # deepest bound the sweep will attempt (unchanged)
+
+# ---- phase profiling -----------------------------------------------------
+PROFILE = []          # [(name, seconds), ...] in completion order
+_prof_lock = threading.Lock()
+
+
+@contextmanager
+def phase(name):
+    """Time a pipeline phase and record it for the end-of-run profile."""
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        dt = time.perf_counter() - t0
+        with _prof_lock:
+            PROFILE.append((name, dt))
 
 
 def log(msg=""):
-    print(msg, flush=True)
-    if _logfh:
-        _logfh.write(str(msg) + "\n")
-        _logfh.flush()
+    with _log_lock:
+        print(msg, flush=True)
+        if _logfh:
+            _logfh.write(str(msg) + "\n")
+            _logfh.flush()
 
 
 def sh(cmd, extra_env=None, cwd=None, stage=""):
@@ -115,9 +164,13 @@ def sh(cmd, extra_env=None, cwd=None, stage=""):
         env.update(extra_env)
     slog = WORK / f"stage_{stage}.log" if stage else None
     log(f"  $ {' '.join(str(c) for c in cmd)}")
+    t0 = time.perf_counter()
     r = subprocess.run(cmd, env=env, cwd=cwd or str(REPO),
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        text=True)
+    if stage:
+        with _prof_lock:
+            PROFILE.append((stage, time.perf_counter() - t0))
     if slog:
         slog.write_text(r.stdout)
     if r.returncode != 0:
@@ -279,51 +332,175 @@ def _miter_prelude():
             "hierarchy -top miter\nflatten\n")
 
 
-def _sat_prove(n):
-    """Bounded SAT proof at depth n; returns True if PROVEN (no divergence)."""
-    script = _miter_prelude()
-    (WORK / "miter.ys").write_text(script)
-    out = sh([f"{OSS}/yosys", "-s", f"{WORK}/miter.ys", "-p",
-              f"sat -seq {n} -prove-asserts -set-init-zero "
-              f"-set-at 1 in_rst 1 -set-at 2 in_rst 1 -set-at 3 in_rst 1"],
-             stage=f"miter{n}")
+# --------------------------------------------------------------------------
+# Parallel bounded-miter depth search  (#72)
+#
+# The bounded-miter predicate is MONOTONE in the depth n:
+#   * if the miter DIVERGES at depth n it diverges at every depth > n
+#     (the counterexample trace is a valid prefix of any longer unrolling);
+#   * if it is PROVEN at depth n it is proven at every depth < n
+#     (a proof over n cycles subsumes every shorter prefix).
+# Locating the first divergence is therefore finding the boundary of a
+# monotone step function.  Probing several depths CONCURRENTLY cannot change
+# where that boundary is — it only changes how fast we bracket it.  The
+# sequential ladder-then-bisect and the parallel probe must agree exactly.
+#
+# Scheduling: each round probes a whole candidate set at once, deepest first so
+# the long pole claims a slot earliest, and KILLs every probe a completed result
+# has rendered redundant.  SAT cost grows steeply with depth, so the
+# cancellations that pay are the deep ones above a freshly-found divergence.
+#
+# Concurrency is capped by _sat_slots, sized from FREE MEMORY rather than the
+# core count (see _default_jobs): a deep probe peaks near 3-4.5 GB, so the box
+# runs out of RAM long before it runs out of cores.
+# --------------------------------------------------------------------------
+# Keyed by the full stage name ("miter53", "diag80", ...), NOT by bare depth:
+# the diagnostics probes reuse depths the sweep already visited, and a shared
+# depth keyspace would let a cancelled sweep probe silently cancel them.
+_probe_procs = {}                 # stage -> live Popen
+_probe_cancelled = set()          # stages whose answer is already implied
+_probe_lock = threading.Lock()
+
+
+def _sat_cmd(n, miter_ys, extra_set=""):
+    extra = f"{extra_set.strip()} " if extra_set.strip() else ""
+    return [f"{OSS}/yosys", "-s", str(miter_ys), "-p",
+            f"sat -seq {n} -prove-asserts -set-init-zero {extra}"
+            f"-set-at 1 in_rst 1 -set-at 2 in_rst 1 -set-at 3 in_rst 1"]
+
+
+def _sat_probe(n, miter_ys, stage_prefix="miter", extra_set=""):
+    """One killable bounded-SAT probe.
+
+    Returns True (PROVEN), False (DIVERGES), or None if the probe was
+    cancelled because an earlier result already implied its answer."""
+    env = dict(os.environ)
+    env["PATH"] = OSS + os.pathsep + env.get("PATH", "")
+    env["TRELLIS_DBROOT"] = DBROOT
+    env["TRELLIS_DEVICE"] = DEVICE
+    env["TRELLIS_PACKAGE"] = PACKAGE
+    stage = f"{stage_prefix}{n}"
+
+    # Every probe is submitted immediately but only RUNS once it holds a slot,
+    # so a probe still queued when its answer becomes implied is cancelled for
+    # free — it never costs a process at all.
+    with _sat_slots:
+        with _probe_lock:
+            if stage in _probe_cancelled:
+                return None
+            p = subprocess.Popen(_sat_cmd(n, miter_ys, extra_set), env=env,
+                                 cwd=str(REPO), stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True)
+            _probe_procs[stage] = p
+
+        t0 = time.perf_counter()
+        out, _ = p.communicate()
+        dt = time.perf_counter() - t0
+
+    with _probe_lock:
+        _probe_procs.pop(stage, None)
+        killed = stage in _probe_cancelled
+
+    (WORK / f"stage_{stage}.log").write_text(out or "")
+    with _prof_lock:
+        PROFILE.append((stage, dt))
+
+    if killed:
+        return None
+    if p.returncode != 0:
+        log(out[-3000:] if out else "")
+        sys.exit(f"stage {stage!r} FAILED (exit {p.returncode})")
     return "SUCCESS!" in out and "found a model" not in out
+
+
+def _cancel_redundant(candidates, lo, hi, prefix="miter"):
+    """Kill/skip every candidate whose verdict the (lo, hi) bracket implies.
+
+    lo = deepest PROVEN so far, hi = shallowest DIVERGING so far (or None).
+    Depths <= lo are proven by monotonicity; depths >= hi diverge by
+    monotonicity.  Neither needs to be computed."""
+    killed = []
+    with _probe_lock:
+        for n in candidates:
+            stage = f"{prefix}{n}"
+            if stage in _probe_cancelled:
+                continue
+            if n <= lo or (hi is not None and n >= hi):
+                _probe_cancelled.add(stage)
+                p = _probe_procs.get(stage)
+                if p is not None:
+                    p.kill()
+                    killed.append(n)
+    return killed
+
+
+def _spread(first, last, k):
+    """<=k evenly-spaced integers covering [first, last] inclusive."""
+    span = list(range(first, last + 1))
+    if not span:
+        return []
+    k = min(max(1, k), len(span))
+    if k == 1:
+        return [span[len(span) // 2]]
+    return sorted({span[round(i * (len(span) - 1) / (k - 1))]
+                   for i in range(k)})
+
+
+def _probe_round(candidates, lo, hi):
+    """Probe `candidates` concurrently; return the tightened (lo, hi)."""
+    candidates = [n for n in sorted(set(candidates)) if n > lo and
+                  (hi is None or n < hi)]
+    if not candidates:
+        return lo, hi
+    # deepest first: the expensive probes claim a slot before the cheap ones.
+    # One thread per candidate — _sat_slots, not the pool, caps real work, so
+    # queued probes stay reachable by _cancel_redundant.
+    order = sorted(candidates, reverse=True)
+    with ThreadPoolExecutor(max_workers=len(order)) as ex:
+        futs = {ex.submit(_sat_probe, n, WORK / "miter.ys"): n for n in order}
+        for fut in as_completed(futs):
+            n = futs[fut]
+            ok = fut.result()
+            if ok is None:
+                continue
+            log(f"    depth {n:3d}: "
+                f"{'PROVEN equivalent' if ok else 'DIVERGES'}")
+            if ok:
+                lo = max(lo, n)
+            else:
+                hi = n if hi is None else min(hi, n)
+            cut = _cancel_redundant(candidates, lo, hi)
+            if cut:
+                log(f"              (bracket {lo}..{hi} -> cancelled redundant "
+                    f"probes {', '.join(str(c) for c in sorted(cut))})")
+    return lo, hi
 
 
 def lec_bounded():
     log("[12] LEC #2 bounded-from-reset SAT miter (isolates fabric vs memory)")
-    # coarse ladder to bracket the divergence depth, then binary-search
-    proven, diverge = 0, None
-    for n in (8, 16, 32, 48, 64):
-        ok = _sat_prove(n)
-        log(f"    depth {n:3d}: {'PROVEN equivalent' if ok else 'DIVERGES'}")
-        if ok:
-            proven = n
-        else:
-            diverge = n
-            break
-    if diverge is not None:
-        lo, hi = proven, diverge
-        while hi - lo > 1:
-            mid = (lo + hi) // 2
-            ok = _sat_prove(mid)
-            log(f"    depth {mid:3d}: {'PROVEN equivalent' if ok else 'DIVERGES'}")
-            (lo, hi) = (mid, hi) if ok else (lo, mid)
-        proven, diverge = lo, hi
+    log(f"    parallel monotone boundary search, up to {_JOBS} concurrent probes")
+    (WORK / "miter.ys").write_text(_miter_prelude())
+
+    # Round 1 replaces the old 8/16/32/48/64 ladder with a _JOBS-wide even
+    # sweep of the whole 1..MAX_DEPTH range.  The ladder's deepest rung was
+    # pure overhead: it paid a full depth-64 solve just to learn "the boundary
+    # is somewhere below 64" while every other worker sat idle.  A dense sweep
+    # brackets far tighter for the same wall time, because the probe that
+    # settles the bracket is a SHALLOWER (hence cheaper) one and it cancels the
+    # deeper probes the moment it lands.
+    lo, hi = _probe_round(_spread(1, MAX_DEPTH, _JOBS), 0, None)
+
+    # round 2+: k-way probe across the open bracket, narrowing by k+1 per
+    # round instead of the 2 a bisection manages.
+    while hi is not None and hi - lo > 1:
+        lo, hi = _probe_round(_spread(lo + 1, hi - 1, _JOBS), lo, hi)
+
+    proven, diverge = lo, hi
     log(f"    => recovered miso == source miso for cycles 1..{proven}; "
         f"first divergence at cycle {diverge}")
     log(f"       (miso is idle=0 through the SPI command phase; cycle {diverge} "
         "is the first data-output bit)")
     return proven, diverge
-
-
-def _sat_prove_variant(n, miter_ys, extra_set=""):
-    """Bounded SAT proof on an alternate miter script; True if PROVEN."""
-    out = sh([f"{OSS}/yosys", "-s", miter_ys, "-p",
-              f"sat -seq {n} -prove-asserts -set-init-zero {extra_set} "
-              f"-set-at 1 in_rst 1 -set-at 2 in_rst 1 -set-at 3 in_rst 1"],
-             stage=f"diag{n}")
-    return "SUCCESS!" in out and "found a model" not in out
 
 
 def lec_diagnostics():
@@ -332,11 +509,10 @@ def lec_diagnostics():
     log("[13] LEC diagnostics — localise the divergence")
 
     # (a) hold SPI deselected (cs_n high): reset + idle behaviour only.
-    (WORK / "miter.ys").write_text(_miter_prelude())
-    idle_ok = _sat_prove_variant(80, str(WORK / "miter.ys"),
-                                 extra_set="-set in_cs_n 1")
-    log(f"    cs_n held HIGH (reset+idle), depth 80 : "
-        f"{'PROVEN equivalent' if idle_ok else 'DIVERGES'}")
+    # Its OWN script file: the bounded sweep may still be running against
+    # miter.ys concurrently.
+    idle_ys = WORK / "miter_idle.ys"
+    idle_ys.write_text(_miter_prelude())
 
     # (b) neutralise the DPRAM read data (force read nets to 0, matching the
     # source's empty/unwritten capture buffer) and re-check the divergence.
@@ -348,17 +524,83 @@ def lec_diagnostics():
     mem0_ys = WORK / "miter_mem0.ys"
     mem0_ys.write_text(
         _miter_prelude().replace("recovered.v", "recovered_mem0.v"))
-    mem0_ok = _sat_prove_variant(56, str(mem0_ys))
+
+    # (a) and (b) are independent SAT problems — run them concurrently.
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_idle = ex.submit(_sat_probe, 80, idle_ys, "diag",
+                           "-set in_cs_n 1")
+        f_mem0 = ex.submit(_sat_probe, 56, mem0_ys, "diagmem0")
+        idle_ok = f_idle.result()
+        mem0_ok = f_mem0.result()
+
+    log(f"    cs_n held HIGH (reset+idle), depth 80 : "
+        f"{'PROVEN equivalent' if idle_ok else 'DIVERGES'}")
     log(f"    DPRAM reads forced to 0, depth 56     : "
         f"{'PROVEN equivalent (divergence was the memory value)' if mem0_ok else 'STILL DIVERGES (readback datapath gap, not just memory)'}")
     return idle_ok, mem0_ok
+
+
+_GROUPS = [
+    ("regen source", ("regen",)),
+    ("synth", ("synth",)),
+    ("place & route", ("pnr",)),
+    ("pack", ("pack",)),
+    ("recover (unpack/iomap/load)", ("unpack", "iomap", "load")),
+    ("reachability", ("reach", "reach2", "reach3", "reach4")),
+    ("emit verilog", ("verilog",)),
+    ("LEC equiv_induct", ("lec_induct",)),
+]
+
+
+def report_profile(wall):
+    """Per-phase wall-clock breakdown (CPU-seconds; parallel phases overlap)."""
+    with _prof_lock:
+        entries = list(PROFILE)
+    tot = {}
+    for name, dt in entries:
+        tot[name] = tot.get(name, 0.0) + dt
+    used = set()
+    rows = []
+    for label, keys in _GROUPS:
+        s = sum(tot.get(k, 0.0) for k in keys)
+        used.update(keys)
+        if s:
+            rows.append((label, s))
+    miter = sum(v for k, v in tot.items() if k.startswith("miter"))
+    diag = sum(v for k, v in tot.items() if k.startswith("diag"))
+    if miter:
+        rows.append(("LEC bounded miter sweep", miter))
+    if diag:
+        rows.append(("LEC diagnostics", diag))
+    other = sum(v for k, v in tot.items()
+                if k not in used and not k.startswith(("miter", "diag")))
+    if other:
+        rows.append(("other", other))
+    cpu = sum(v for _, v in rows)
+
+    log("\n" + "=" * 68)
+    log("PHASE PROFILE")
+    log("=" * 68)
+    log(f"  {'phase':<32} {'CPU s':>9} {'% CPU':>7}")
+    for label, s in sorted(rows, key=lambda r: -r[1]):
+        log(f"  {label:<32} {s:9.1f} {100*s/cpu if cpu else 0:6.1f}%")
+    log(f"  {'-'*32} {'-'*9} {'-'*7}")
+    log(f"  {'total subprocess CPU time':<32} {cpu:9.1f}")
+    log(f"  {'wall clock':<32} {wall:9.1f}")
+    log(f"  {'concurrency (CPU/wall)':<32} {cpu/wall if wall else 0:9.2f}x")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--skip-build", action="store_true",
                     help="reuse existing bitstream/recovery, run LEC only")
+    ap.add_argument("--jobs", type=int, default=0,
+                    help="max concurrent SAT probes (default: CPU count)")
     args = ap.parse_args()
+    global _JOBS
+    if args.jobs > 0:
+        _JOBS = args.jobs
+    t_start = time.perf_counter()
 
     global _logfh
     WORK.mkdir(parents=True, exist_ok=True)
@@ -373,9 +615,17 @@ def main():
         recover()
 
     _write_lec_helpers()
-    v_induct = lec_induct()
-    proven, diverge = lec_bounded()
-    idle_ok, mem0_ok = lec_diagnostics()
+    # The three LEC phases are mutually independent (each builds its own
+    # miter/equiv from the same read-only gold+gate sources and answers a
+    # separate question), so run them concurrently.  _sat_slots keeps their
+    # combined SAT memory footprint inside one budget.
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_induct = ex.submit(lec_induct)
+        f_bounded = ex.submit(lec_bounded)
+        f_diag = ex.submit(lec_diagnostics)
+        v_induct = f_induct.result()
+        proven, diverge = f_bounded.result()
+        idle_ok, mem0_ok = f_diag.result()
 
     log("\n" + "=" * 68)
     log("VERDICT  —  the recovery does NOT pass functional LEC")
@@ -412,6 +662,8 @@ def main():
     log("  With both fixed the miso combinational cone is fully driven, yet a deeper")
     log("  readback LOGIC divergence (register-read / serialiser) remains — the next")
     log("  gap to close for a full past-cycle-%s proof." % diverge)
+
+    report_profile(time.perf_counter() - t_start)
 
 
 if __name__ == "__main__":
