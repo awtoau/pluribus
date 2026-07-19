@@ -446,154 +446,155 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         assert_eq("fanout count in DB", fanout_count, len(fanout_rows))
         print(f"  {len(fanout_rows)} fanout entries")
 
-        # ── pad_map ────────────────────────────────────────────────────────────
-        # Step 1: scan bitstream JQ/JA arcs to discover ALL configured pads.
-        # This is authoritative — no TSV coordinates needed.
-        _JQ = re.compile(r'^JQ(\d)$')
-        _JA = re.compile(r'^JA(\d)$')
+        if lifter == "machxo2":
+            # ── pad_map ────────────────────────────────────────────────────────────
+            # Step 1: scan bitstream JQ/JA arcs to discover ALL configured pads.
+            # This is authoritative — no TSV coordinates needed.
+            _JQ = re.compile(r'^JQ(\d)$')
+            _JA = re.compile(r'^JA(\d)$')
 
-        # Parse iomap to map (row,col,pio) -> (pin#, dir, iostd, drive, pull, si_function).
-        # iomap sits next to the .config file and is generated from the bitstream.
-        iomap_path = str(config_path) + ".iomap.tsv"
-        iomap_by_site = {}   # (row,col,pio) -> pin#
-        iomap_io      = {}   # pin# -> (dir, iostd, drive, pull, si_function)
-        if os.path.exists(iomap_path):
-            with open(iomap_path) as _fh:
-                _hdr = _fh.readline().rstrip("\n").split("\t")
-                _col = {n: i for i, n in enumerate(_hdr)}
-                for _line in _fh:
-                    _parts = _line.rstrip("\n").split("\t")
-                    if len(_parts) < 5: continue
-                    _site = _parts[_col["site"]]
-                    _m = re.match(r"R(\d+)C(\d+):PIO(\w)", _site)
-                    if not _m: continue
-                    _k   = (int(_m.group(1)), int(_m.group(2)), _m.group(3))
-                    _pin = int(_parts[_col["pin"]])
-                    iomap_by_site[_k] = _pin
-                    iomap_io[_pin] = (
-                        _parts[_col["dir"]]   if "dir"   in _col else "",
-                        _parts[_col["iostd"]] if "iostd" in _col and len(_parts) > _col["iostd"] else "",
-                        _parts[_col["drive"]] if "drive" in _col and len(_parts) > _col["drive"] else "",
-                        _parts[_col["pull"]]  if "pull"  in _col and len(_parts) > _col["pull"]  else "",
-                        _parts[_col["function"]] if "function" in _col and len(_parts) > _col["function"] else "",
-                    )
-            print(f"  iomap: {len(iomap_by_site)} configured pins from {os.path.basename(iomap_path)}")
-        else:
-            print(f"  WARNING: no iomap found at {iomap_path} — pad discovery will be TSV-only")
+            # Parse iomap to map (row,col,pio) -> (pin#, dir, iostd, drive, pull, si_function).
+            # iomap sits next to the .config file and is generated from the bitstream.
+            iomap_path = str(config_path) + ".iomap.tsv"
+            iomap_by_site = {}   # (row,col,pio) -> pin#
+            iomap_io      = {}   # pin# -> (dir, iostd, drive, pull, si_function)
+            if os.path.exists(iomap_path):
+                with open(iomap_path) as _fh:
+                    _hdr = _fh.readline().rstrip("\n").split("\t")
+                    _col = {n: i for i, n in enumerate(_hdr)}
+                    for _line in _fh:
+                        _parts = _line.rstrip("\n").split("\t")
+                        if len(_parts) < 5: continue
+                        _site = _parts[_col["site"]]
+                        _m = re.match(r"R(\d+)C(\d+):PIO(\w)", _site)
+                        if not _m: continue
+                        _k   = (int(_m.group(1)), int(_m.group(2)), _m.group(3))
+                        _pin = int(_parts[_col["pin"]])
+                        iomap_by_site[_k] = _pin
+                        iomap_io[_pin] = (
+                            _parts[_col["dir"]]   if "dir"   in _col else "",
+                            _parts[_col["iostd"]] if "iostd" in _col and len(_parts) > _col["iostd"] else "",
+                            _parts[_col["drive"]] if "drive" in _col and len(_parts) > _col["drive"] else "",
+                            _parts[_col["pull"]]  if "pull"  in _col and len(_parts) > _col["pull"]  else "",
+                            _parts[_col["function"]] if "function" in _col and len(_parts) > _col["function"] else "",
+                        )
+                print(f"  iomap: {len(iomap_by_site)} configured pins from {os.path.basename(iomap_path)}")
+            else:
+                print(f"  WARNING: no iomap found at {iomap_path} — pad discovery will be TSV-only")
 
-        # Build TSV annotation lookup keyed by pin number
-        tsv_by_pin = {}  # pin# -> (label, fn, conf, direction_tsv, chip_ref, chip_pin, chip_signal)
-        for pin, row, col, pio, direction, label_p, fn, conf, cref, cpin, csig in fabric_pins:
-            tsv_by_pin[pin] = (label_p, fn, conf, direction, cref, cpin, csig)
+            # Build TSV annotation lookup keyed by pin number
+            tsv_by_pin = {}  # pin# -> (label, fn, conf, direction_tsv, chip_ref, chip_pin, chip_signal)
+            for pin, row, col, pio, direction, label_p, fn, conf, cref, cpin, csig in fabric_pins:
+                tsv_by_pin[pin] = (label_p, fn, conf, direction, cref, cpin, csig)
 
-        # Classify connectivity: use machxo2_lift arc endpoint sets
-        sources, sinks = lift.arc_endpoint_sets(pc)
+            # Classify connectivity: use machxo2_lift arc endpoint sets
+            sources, sinks = lift.arc_endpoint_sets(pc)
 
-        # Discover all pads from JQ/JA arcs in the bitstream
-        discovered = {}  # (row,col,pio,direction) -> net_name
-        for (r, c, sink, src) in pc.arcs:
-            for wire in (sink, src):
-                mq = _JQ.match(wire); ma = _JA.match(wire)
-                if not mq and not ma: continue
-                idx = int((mq or ma).group(1))
-                pio = chr(ord("A") + idx)
-                direction = "in" if mq else "out"
-                for actual_row in (r, r - 1, r + 1):
-                    if actual_row < 0: continue
-                    if (actual_row, c, pio) in iomap_by_site:
-                        # Resolve the pad's net at the JA/JQ wire's ACTUAL arc
-                        # location (r, c, wire).  pad_net() re-derives the row
-                        # via pad_fabric_node(), which mis-probes edge/interior
-                        # pads whose JA/JQ arc sits one row in — so it missed the
-                        # real driver and the pad fell back to a disconnected
-                        # synthetic net, leaving ALL outputs undriven (#58).
-                        net = mx.pad_net(design, lift, actual_row, c, pio, direction)
-                        key = (actual_row, c, pio, direction)
-                        if key not in discovered:
-                            discovered[key] = net
-                        break
+            # Discover all pads from JQ/JA arcs in the bitstream
+            discovered = {}  # (row,col,pio,direction) -> net_name
+            for (r, c, sink, src) in pc.arcs:
+                for wire in (sink, src):
+                    mq = _JQ.match(wire); ma = _JA.match(wire)
+                    if not mq and not ma: continue
+                    idx = int((mq or ma).group(1))
+                    pio = chr(ord("A") + idx)
+                    direction = "in" if mq else "out"
+                    for actual_row in (r, r - 1, r + 1):
+                        if actual_row < 0: continue
+                        if (actual_row, c, pio) in iomap_by_site:
+                            # Resolve the pad's net at the JA/JQ wire's ACTUAL arc
+                            # location (r, c, wire).  pad_net() re-derives the row
+                            # via pad_fabric_node(), which mis-probes edge/interior
+                            # pads whose JA/JQ arc sits one row in — so it missed the
+                            # real driver and the pad fell back to a disconnected
+                            # synthetic net, leaving ALL outputs undriven (#58).
+                            net = mx.pad_net(design, lift, actual_row, c, pio, direction)
+                            key = (actual_row, c, pio, direction)
+                            if key not in discovered:
+                                discovered[key] = net
+                            break
 
-        from collections import defaultdict
-        by_site = defaultdict(dict)  # (row,col,pio) -> {direction: net}
-        for (row, col, pio, direction), net in discovered.items():
-            by_site[(row, col, pio)][direction] = net
+            from collections import defaultdict
+            by_site = defaultdict(dict)  # (row,col,pio) -> {direction: net}
+            for (row, col, pio, direction), net in discovered.items():
+                by_site[(row, col, pio)][direction] = net
 
-        tsv_sites = {}  # pin# -> (row,col,pio)
-        for pin, row, col, pio, direction, label_p, fn, conf, cref, cpin, csig in fabric_pins:
-            tsv_sites[pin] = (row, col, pio)
+            tsv_sites = {}  # pin# -> (row,col,pio)
+            for pin, row, col, pio, direction, label_p, fn, conf, cref, cpin, csig in fabric_pins:
+                tsv_sites[pin] = (row, col, pio)
 
-        iomap_pins = set(iomap_by_site.values())
-        pad_rows_out = []  # (pin,row,col,pio,dir,label,fn,conf,ni,no,iostd,drive,pull,si_fn,conn,cref,cpin,csig)
+            iomap_pins = set(iomap_by_site.values())
+            pad_rows_out = []  # (pin,row,col,pio,dir,label,fn,conf,ni,no,iostd,drive,pull,si_fn,conn,cref,cpin,csig)
 
-        for (row, col, pio), dir_nets in sorted(by_site.items()):
-            pin = iomap_by_site.get((row, col, pio))
-            if pin is None: continue
-            ni = dir_nets.get("in")
-            no = dir_nets.get("out")
-            if ni and no:     direction = "bidir"
-            elif ni:          direction = "in"
-            else:             direction = "out"
-            ann = tsv_by_pin.get(pin)
-            label_p = ann[0] if ann else f"pin{pin}"
-            fn      = ann[1] if ann else ""
-            conf    = ann[2] if ann else 1
-            cref    = ann[4] if ann else ""
-            cpin_s  = ann[5] if ann else ""
-            csig    = ann[6] if ann else ""
-            io      = iomap_io.get(pin, ("","","","",""))
-            in_conn  = lift.pad_fabric_node(row, col, pio, "in")  in sources
-            out_conn = lift.pad_fabric_node(row, col, pio, "out") in sinks
-            si_fn    = io[4]
-            conn_cls = mx.classify_pin(si_fn, in_conn, out_conn)
-            pad_rows_out.append((pin, row, col, pio, direction, label_p, fn, conf,
-                                 ni, no, io[1], io[2], io[3], si_fn, conn_cls,
-                                 cref, cpin_s, csig))
+            for (row, col, pio), dir_nets in sorted(by_site.items()):
+                pin = iomap_by_site.get((row, col, pio))
+                if pin is None: continue
+                ni = dir_nets.get("in")
+                no = dir_nets.get("out")
+                if ni and no:     direction = "bidir"
+                elif ni:          direction = "in"
+                else:             direction = "out"
+                ann = tsv_by_pin.get(pin)
+                label_p = ann[0] if ann else f"pin{pin}"
+                fn      = ann[1] if ann else ""
+                conf    = ann[2] if ann else 1
+                cref    = ann[4] if ann else ""
+                cpin_s  = ann[5] if ann else ""
+                csig    = ann[6] if ann else ""
+                io      = iomap_io.get(pin, ("","","","",""))
+                in_conn  = lift.pad_fabric_node(row, col, pio, "in")  in sources
+                out_conn = lift.pad_fabric_node(row, col, pio, "out") in sinks
+                si_fn    = io[4]
+                conn_cls = mx.classify_pin(si_fn, in_conn, out_conn)
+                pad_rows_out.append((pin, row, col, pio, direction, label_p, fn, conf,
+                                     ni, no, io[1], io[2], io[3], si_fn, conn_cls,
+                                     cref, cpin_s, csig))
 
-        for pin, (row, col, pio) in sorted(tsv_sites.items()):
-            if pin in iomap_pins: continue
-            ann = tsv_by_pin.get(pin, (f"pin{pin}", "", 1, "in", "", "", ""))
-            pad_rows_out.append((pin, row, col, pio, ann[3], ann[0], ann[1], ann[2],
-                                 None, None, "", "", "", "", "unused",
-                                 ann[4], ann[5], ann[6]))
+            for pin, (row, col, pio) in sorted(tsv_sites.items()):
+                if pin in iomap_pins: continue
+                ann = tsv_by_pin.get(pin, (f"pin{pin}", "", 1, "in", "", "", ""))
+                pad_rows_out.append((pin, row, col, pio, ann[3], ann[0], ann[1], ann[2],
+                                     None, None, "", "", "", "", "unused",
+                                     ann[4], ann[5], ann[6]))
 
-        pad_resolved   = sum(1 for r in pad_rows_out if r[8] or r[9])
-        pad_unresolved = [r for r in pad_rows_out if not r[8] and not r[9]]
+            pad_resolved   = sum(1 for r in pad_rows_out if r[8] or r[9])
+            pad_unresolved = [r for r in pad_rows_out if not r[8] and not r[9]]
 
-        pad_map_insert_rows = []
-        net_names_insert_rows = []
-        for (pin, row, col, pio, direction, label_p, fn, conf,
-             ni, no, iostd, drive, pull, si_fn, conn_cls,
-             cref, cpin_s, csig) in pad_rows_out:
-            pad_map_insert_rows.append({
-                "bitstream": bs_id, "pin": pin, "label": label_p,
-                "row": row, "col": col, "pio": pio, "direction": direction,
-                "net_in": ni, "net_out": no,
-                "iostd": iostd or None, "drive": drive or None, "pull": pull or None,
-                "si_function": si_fn or None, "conn_class": conn_cls or None,
-                "chip_ref": cref or None, "chip_pin": cpin_s or None,
-                "chip_signal": csig or None,
-            })
-            net = ni or no
-            if net:
-                net_names_insert_rows.append({
-                    "bitstream": bs_id, "net": net, "name": label_p,
-                    "description": fn,
-                    "confidence": ("confirmed" if conf >= 8 else
-                                   "estimate" if conf >= 5 else "guess"),
-                    "source": "pins_tsv",
+            pad_map_insert_rows = []
+            net_names_insert_rows = []
+            for (pin, row, col, pio, direction, label_p, fn, conf,
+                 ni, no, iostd, drive, pull, si_fn, conn_cls,
+                 cref, cpin_s, csig) in pad_rows_out:
+                pad_map_insert_rows.append({
+                    "bitstream": bs_id, "pin": pin, "label": label_p,
+                    "row": row, "col": col, "pio": pio, "direction": direction,
+                    "net_in": ni, "net_out": no,
+                    "iostd": iostd or None, "drive": drive or None, "pull": pull or None,
+                    "si_function": si_fn or None, "conn_class": conn_cls or None,
+                    "chip_ref": cref or None, "chip_pin": cpin_s or None,
+                    "chip_signal": csig or None,
                 })
+                net = ni or no
+                if net:
+                    net_names_insert_rows.append({
+                        "bitstream": bs_id, "net": net, "name": label_p,
+                        "description": fn,
+                        "confidence": ("confirmed" if conf >= 8 else
+                                       "estimate" if conf >= 5 else "guess"),
+                        "source": "pins_tsv",
+                    })
 
-        if pad_map_insert_rows:
-            conn.execute(insert(schema.pad_map), pad_map_insert_rows)
-        if net_names_insert_rows:
-            conn.execute(_insert_or_ignore(schema.net_names), net_names_insert_rows)
+            if pad_map_insert_rows:
+                conn.execute(insert(schema.pad_map), pad_map_insert_rows)
+            if net_names_insert_rows:
+                conn.execute(_insert_or_ignore(schema.net_names), net_names_insert_rows)
 
-        print(f"  {pad_resolved}/{len(pad_rows_out)} pads resolved  "
-              f"({len(pad_unresolved)} not routed in this bitstream)")
-        if pad_unresolved:
-            print(f"  Not routed: {', '.join(r[5] for r in pad_unresolved[:10])}")
-        if pad_resolved == 0 and not fuzz:
-            die("Zero fabric pads resolved — wrong device/config or machxo2_lift bug")
+            print(f"  {pad_resolved}/{len(pad_rows_out)} pads resolved  "
+                  f"({len(pad_unresolved)} not routed in this bitstream)")
+            if pad_unresolved:
+                print(f"  Not routed: {', '.join(r[5] for r in pad_unresolved[:10])}")
+            if pad_resolved == 0 and not fuzz:
+                die("Zero fabric pads resolved — wrong device/config or machxo2_lift bug")
 
         # ── aw2-nets.tsv — user net annotations (names + confidence) ─────────
         if nets_tsv:
@@ -614,576 +615,577 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     skipped += 1
             print(f"  {inserted} net names inserted  ({skipped} skipped — already named by pins TSV)")
 
-        # ── efb_ports ─────────────────────────────────────────────────────────
-        found_efb = {}
-        for (er,ec),t in pc.tile_type.items():
-            if t != "CIB_CFG2": continue
-            for (r,c,sink,src) in pc.arcs:
-                if r != er or c != ec: continue
-                m = JF_RE.match(src)
-                if m:
-                    port = EFB_JF.get(int(m.group(1)), f"JF{m.group(1)}")
-                    net  = resolve_net(design, lift, er, ec, sink)
-                    if net and port not in found_efb:
-                        found_efb[port] = net
+        if lifter == "machxo2":
+            # ── efb_ports ─────────────────────────────────────────────────────────
+            found_efb = {}
+            for (er,ec),t in pc.tile_type.items():
+                if t != "CIB_CFG2": continue
+                for (r,c,sink,src) in pc.arcs:
+                    if r != er or c != ec: continue
+                    m = JF_RE.match(src)
+                    if m:
+                        port = EFB_JF.get(int(m.group(1)), f"JF{m.group(1)}")
+                        net  = resolve_net(design, lift, er, ec, sink)
+                        if net and port not in found_efb:
+                            found_efb[port] = net
+                            conn.execute(
+                                _insert_or_ignore(schema.efb_ports).values(
+                                    bitstream=bs_id, port_name=port, net=net,
+                                )
+                            )
+
+            # EFB output fixed connections: JWBDATO[0-7], JWBACKO, JSPIIRQO, etc.
+            # machxo2_lift.apply_efb_fixed_conns() unioned synthetic string nodes
+            # (e.g. "JWBDATO0") into the DSU so that FFs whose D-input wires trace
+            # back to EFB outputs now get real net names.  We look them up here and
+            # insert them as efb_ports so the knowledge layer can reference them.
+            for efb_port in sorted(getattr(design, "efb_resolved", ())):
+                root = design.dsu.find(efb_port)
+                net = design.net_name.get(root)
+                if net and efb_port not in found_efb:
+                    found_efb[efb_port] = net
+                    conn.execute(
+                        _insert_or_ignore(schema.efb_ports).values(
+                            bitstream=bs_id, port_name=efb_port, net=net,
+                        )
+                    )
+
+            has_cfg2 = any(t == "CIB_CFG2" for t in pc.tile_type.values())
+            missing_efb = REQUIRED_EFB_PORTS - set(found_efb)
+            if missing_efb and has_cfg2 and not fuzz:
+                die(f"Missing required EFB ports: {sorted(missing_efb)}")
+            # EFB output prefix patterns: ports that drive fabric (not JTAG inputs).
+            _EFB_OUT_PREFIXES = ("JWB", "JSPI", "JTC", "JPLL", "JI2C", "CFGWAKE", "CFGSTDBY")
+            efb_output_count = sum(1 for p in found_efb if p.startswith(_EFB_OUT_PREFIXES))
+            print(f"  EFB ports: {len(found_efb)} total ({efb_output_count} EFB outputs resolved from fixed conns)")
+
+            # Stitch EFB output nets into net_fanout so reach.py can traverse them.
+            # Each EFB output is modelled as: "EFB" source net → EFB cell → out_net.
+            # This makes EFB-driven nets visible in reverse reachability queries.
+            efb_fanout_rows = []
+            for port, net in found_efb.items():
+                if port.startswith(_EFB_OUT_PREFIXES):
+                    efb_fanout_rows.append({
+                        "bitstream": bs_id, "net": "EFB", "cell_type": "EFB",
+                        "cell": "EFB", "pin": port, "out_net": net,
+                    })
+            if efb_fanout_rows:
+                conn.execute(_insert_or_ignore(schema.net_fanout), efb_fanout_rows)
+                # "EFB" must exist as a net so BFS can seed from it.
+                conn.execute(_insert_or_ignore(schema.nets).values(
+                    bitstream=bs_id, name="EFB",
+                ))
+                print(f"  {len(efb_fanout_rows)} EFB→fabric net_fanout entries")
+
+            # Stitch EFB INPUT nets into net_fanout so BFS can traverse into the EFB.
+            # The CIB_EBR0_END0 tile is the EFB's internal EBR access tile; its
+            # J[ABCDM]*/JCE*/JCLK*/JLSR*/JWE* sinks are EFB data/address/control
+            # inputs (WISHBONE register file, SPI data ports, etc.).  These arcs
+            # appear in the .config but are not EBR1 tiles, so the EBR port scan
+            # below skips them entirely.  Without this pass, nets like n2536
+            # (FPGA_nCS) have 0 net_fanout entries and are dead ends for BFS.
+            # Model each as: fabric_net → EFB cell → "EFB" synthetic node so that
+            # reach.py BFS can continue from the EFB's output nets.
+            _EFB_IN_SINK_RE = re.compile(
+                r'^J([ABCDM]\d+|CE\d+|CLK\d+|LSR\d+|WE\d*)$'
+            )
+            efb_in_rows = []
+            efb_in_tile = next(
+                ((er, ec) for (er, ec), t in pc.tile_type.items()
+                 if t == "CIB_EBR0_END0"),
+                None,
+            )
+            if efb_in_tile:
+                eir, eic = efb_in_tile
+                for (r, c, sink, src) in pc.arcs:
+                    if r != eir or c != eic:
+                        continue
+                    if not _EFB_IN_SINK_RE.match(sink):
+                        continue
+                    net = resolve_net(design, lift, eir, eic, src)
+                    if net:
+                        efb_in_rows.append({
+                            "bitstream": bs_id, "net": net, "cell_type": "EFB",
+                            "cell": "EFB", "pin": sink, "out_net": "EFB",
+                        })
+            if efb_in_rows:
+                conn.execute(_insert_or_ignore(schema.net_fanout), efb_in_rows)
+            print(f"  {len(efb_in_rows)} fabric→EFB net_fanout entries")
+
+            # ── ebr_ports ─────────────────────────────────────────────────────────
+            JA = re.compile(r'^J[AB]\d+$'); JC = re.compile(r'^J[CD]\d+$')
+            JX = re.compile(r'^(JCLK|JLSR|JCE|JWE)\d*$')
+            ebr_count = 0
+            for (er,ec),ttype in pc.tile_type.items():
+                if ttype != "EBR1": continue
+                block = f"R{er}C{ec}"
+                for (r,c,sink,src) in pc.arcs:
+                    if r != er or c != ec: continue
+                    net  = resolve_net(design, lift, er, ec, src)
+                    role = ("write" if JA.match(sink) else
+                            "read"  if JC.match(sink) else
+                            "ctrl"  if JX.match(sink) else None)
+                    if role:
                         conn.execute(
-                            _insert_or_ignore(schema.efb_ports).values(
-                                bitstream=bs_id, port_name=port, net=net,
+                            _insert_or_ignore(schema.ebr_ports).values(
+                                bitstream=bs_id, block=block, port=sink, role=role, net=net,
                             )
                         )
+                        ebr_count += 1
+            print(f"  {ebr_count} EBR port arcs")
 
-        # EFB output fixed connections: JWBDATO[0-7], JWBACKO, JSPIIRQO, etc.
-        # machxo2_lift.apply_efb_fixed_conns() unioned synthetic string nodes
-        # (e.g. "JWBDATO0") into the DSU so that FFs whose D-input wires trace
-        # back to EFB outputs now get real net names.  We look them up here and
-        # insert them as efb_ports so the knowledge layer can reference them.
-        for efb_port in sorted(getattr(design, "efb_resolved", ())):
-            root = design.dsu.find(efb_port)
-            net = design.net_name.get(root)
-            if net and efb_port not in found_efb:
-                found_efb[efb_port] = net
-                conn.execute(
-                    _insert_or_ignore(schema.efb_ports).values(
-                        bitstream=bs_id, port_name=efb_port, net=net,
-                    )
-                )
+            # ── ebr_init + ebr_init_blocks (EBR block-RAM contents) ───────────────
+            # The native decoder recovers `.bram_init <index>` sections — the EBR
+            # block-RAM contents the old pytrellis path silently dropped.  `<index>`
+            # is the sequential EBR *write index* from the bitstream's
+            # LSC_EBR_ADDRESS command, NOT a tile.  We map it to a physical EBR9K
+            # block via the EBR.WID config word already decoded into each EBR1
+            # tile: EBR.WID == that write index.  (Basis: Diamond assigns each
+            # instantiated EBR a Write-ID; LSC_EBR_ADDRESS targets it as
+            # current_ebr=(data>>11), and EBR.WID stores the same value.  Validated
+            # by set inclusion: every .bram_init index has a matching EBR.WID tile;
+            # any EBR.WID with no .bram_init is an all-zero-init block Diamond omits
+            # from the stream.)  Raw physical words are 9-bit; the logical word
+            # width (EBR.MODE / *DATA_WIDTH* / REGMODE) is recorded per block so a
+            # consumer can regroup them.
+            wid_to_block = {}   # write-index (int) -> "R{er}C{ec}"
+            block_geom   = {}   # block -> geometry dict
+            for (er, ec), ttype in pc.tile_type.items():
+                if ttype != "EBR1":
+                    continue
+                en = pc.enums.get((er, ec), {})
+                wd = pc.words.get((er, ec), {})
+                wid_bits = wd.get("EBR.WID")
+                wid = int(wid_bits, 2) if wid_bits else 0   # WID omitted ⇒ default 0
+                block = f"R{er}C{ec}"
+                if wid in wid_to_block and wid_to_block[wid] != block:
+                    die(f"EBR.WID collision: index {wid} claimed by both "
+                        f"{wid_to_block[wid]} and {block}")
+                wid_to_block[wid] = block
+                widths = [int(v) for k, v in en.items()
+                          if "DATA_WIDTH" in k and v.isdigit()]
+                block_geom[block] = {
+                    "mode":       en.get("EBR.MODE") or "DP8KC",
+                    "data_width": max(widths) if widths else None,
+                    "regmode_a":  en.get("EBR.REGMODE_A", "NOREG"),
+                    "regmode_b":  en.get("EBR.REGMODE_B", "NOREG"),
+                }
 
-        has_cfg2 = any(t == "CIB_CFG2" for t in pc.tile_type.values())
-        missing_efb = REQUIRED_EFB_PORTS - set(found_efb)
-        if missing_efb and has_cfg2 and not fuzz:
-            die(f"Missing required EFB ports: {sorted(missing_efb)}")
-        # EFB output prefix patterns: ports that drive fabric (not JTAG inputs).
-        _EFB_OUT_PREFIXES = ("JWB", "JSPI", "JTC", "JPLL", "JI2C", "CFGWAKE", "CFGSTDBY")
-        efb_output_count = sum(1 for p in found_efb if p.startswith(_EFB_OUT_PREFIXES))
-        print(f"  EFB ports: {len(found_efb)} total ({efb_output_count} EFB outputs resolved from fixed conns)")
-
-        # Stitch EFB output nets into net_fanout so reach.py can traverse them.
-        # Each EFB output is modelled as: "EFB" source net → EFB cell → out_net.
-        # This makes EFB-driven nets visible in reverse reachability queries.
-        efb_fanout_rows = []
-        for port, net in found_efb.items():
-            if port.startswith(_EFB_OUT_PREFIXES):
-                efb_fanout_rows.append({
-                    "bitstream": bs_id, "net": "EFB", "cell_type": "EFB",
-                    "cell": "EFB", "pin": port, "out_net": net,
+            ebr_init_rows   = []
+            ebr_block_rows  = []
+            for idx, words in sorted(pc.bram_init.items()):
+                block = wid_to_block.get(idx)
+                if block is None:
+                    die(f".bram_init {idx} has no EBR1 tile with EBR.WID={idx} "
+                        f"(known WIDs: {sorted(wid_to_block)})")
+                if len(words) != 1024:
+                    die(f".bram_init {idx} ({block}) has {len(words)} words, "
+                        f"expected 1024 (one 9Kb EBR block)")
+                geom = block_geom[block]
+                ebr_block_rows.append({
+                    "bitstream": bs_id, "block": block, "wid": idx,
+                    "mode": geom["mode"], "data_width": geom["data_width"],
+                    "regmode_a": geom["regmode_a"], "regmode_b": geom["regmode_b"],
+                    "n_words": len(words),
+                    "n_nonzero": sum(1 for w in words if w),
                 })
-        if efb_fanout_rows:
-            conn.execute(_insert_or_ignore(schema.net_fanout), efb_fanout_rows)
-            # "EFB" must exist as a net so BFS can seed from it.
-            conn.execute(_insert_or_ignore(schema.nets).values(
-                bitstream=bs_id, name="EFB",
-            ))
-            print(f"  {len(efb_fanout_rows)} EFB→fabric net_fanout entries")
+                for addr, w in enumerate(words):
+                    ebr_init_rows.append({"bitstream": bs_id, "block": block,
+                                          "wid": idx, "addr": addr, "word9": w})
 
-        # Stitch EFB INPUT nets into net_fanout so BFS can traverse into the EFB.
-        # The CIB_EBR0_END0 tile is the EFB's internal EBR access tile; its
-        # J[ABCDM]*/JCE*/JCLK*/JLSR*/JWE* sinks are EFB data/address/control
-        # inputs (WISHBONE register file, SPI data ports, etc.).  These arcs
-        # appear in the .config but are not EBR1 tiles, so the EBR port scan
-        # below skips them entirely.  Without this pass, nets like n2536
-        # (FPGA_nCS) have 0 net_fanout entries and are dead ends for BFS.
-        # Model each as: fabric_net → EFB cell → "EFB" synthetic node so that
-        # reach.py BFS can continue from the EFB's output nets.
-        _EFB_IN_SINK_RE = re.compile(
-            r'^J([ABCDM]\d+|CE\d+|CLK\d+|LSR\d+|WE\d*)$'
-        )
-        efb_in_rows = []
-        efb_in_tile = next(
-            ((er, ec) for (er, ec), t in pc.tile_type.items()
-             if t == "CIB_EBR0_END0"),
-            None,
-        )
-        if efb_in_tile:
-            eir, eic = efb_in_tile
-            for (r, c, sink, src) in pc.arcs:
-                if r != eir or c != eic:
-                    continue
-                if not _EFB_IN_SINK_RE.match(sink):
-                    continue
-                net = resolve_net(design, lift, eir, eic, src)
-                if net:
-                    efb_in_rows.append({
-                        "bitstream": bs_id, "net": net, "cell_type": "EFB",
-                        "cell": "EFB", "pin": sink, "out_net": "EFB",
-                    })
-        if efb_in_rows:
-            conn.execute(_insert_or_ignore(schema.net_fanout), efb_in_rows)
-        print(f"  {len(efb_in_rows)} fabric→EFB net_fanout entries")
+            if ebr_block_rows:
+                conn.execute(insert(schema.ebr_init_blocks), ebr_block_rows)
+            _CHUNK = 5000
+            for i in range(0, len(ebr_init_rows), _CHUNK):
+                conn.execute(insert(schema.ebr_init), ebr_init_rows[i:i+_CHUNK])
+            ebr_init_count = conn.execute(
+                select(func.count()).select_from(schema.ebr_init)
+                .where(schema.ebr_init.c.bitstream == bs_id)
+            ).scalar()
+            assert_eq("ebr_init word count in DB", ebr_init_count, len(ebr_init_rows))
+            print(f"  {len(ebr_block_rows)} EBR init blocks  {len(ebr_init_rows)} "
+                  f"init words  (write indices {sorted(pc.bram_init)})")
 
-        # ── ebr_ports ─────────────────────────────────────────────────────────
-        JA = re.compile(r'^J[AB]\d+$'); JC = re.compile(r'^J[CD]\d+$')
-        JX = re.compile(r'^(JCLK|JLSR|JCE|JWE)\d*$')
-        ebr_count = 0
-        for (er,ec),ttype in pc.tile_type.items():
-            if ttype != "EBR1": continue
-            block = f"R{er}C{ec}"
-            for (r,c,sink,src) in pc.arcs:
-                if r != er or c != ec: continue
-                net  = resolve_net(design, lift, er, ec, src)
-                role = ("write" if JA.match(sink) else
-                        "read"  if JC.match(sink) else
-                        "ctrl"  if JX.match(sink) else None)
-                if role:
-                    conn.execute(
-                        _insert_or_ignore(schema.ebr_ports).values(
-                            bitstream=bs_id, block=block, port=sink, role=role, net=net,
+            # ── efb_config (0x72 EFB peripheral config-register preloads) ─────────
+            # docs/cmd-0x72.md: sel 0x54 = SPI EFB config, 0x5e = TC (timer/counter).
+            _EFB_SEL_KIND = {0x54: "SPI", 0x5e: "TC"}
+            efb_cfg_rows = [
+                {"bitstream": bs_id, "sel": sel,
+                 "kind": _EFB_SEL_KIND.get(sel, "unknown"),
+                 "length": len(payload), "payload": list(payload)}
+                for sel, payload in sorted(pc.efb_blocks.items())
+            ]
+            if efb_cfg_rows:
+                conn.execute(insert(schema.efb_config), efb_cfg_rows)
+            print(f"  {len(efb_cfg_rows)} EFB config blocks" +
+                  ("".join(f"  [{r['kind']} sel=0x{r['sel']:02x} len={r['length']}]"
+                           for r in efb_cfg_rows)))
+
+            # ── ebr read-side fanout → net_fanout ─────────────────────────────────
+            # EBR read nets (JC/JD ports) appear as inputs to LUTs/FFs but are not
+            # captured in net_fanout during the normal LUT/FF pass (which only looks
+            # at cells, not at what drives their inputs from outside the fabric).
+            # Build an index of all EBR read nets, then scan LUTs and FFs for any
+            # cell that has one as an input, and insert the missing net_fanout rows.
+            ebr_read_nets = {}   # net_name → (block, port)
+            for (er, ec), ttype in pc.tile_type.items():
+                if ttype != "EBR1": continue
+                block = f"R{er}C{ec}"
+                for (r, c, sink, src) in pc.arcs:
+                    if r != er or c != ec: continue
+                    if not JC.match(sink): continue
+                    net = resolve_net(design, lift, er, ec, src)
+                    if net:
+                        ebr_read_nets[net] = (block, sink)
+
+            ebr_fanout_rows = []
+            for ff in design.ffs:
+                for pin, val in (("D", ff["d"]), ("CE", ff["ce"]),
+                                  ("CLK", ff["clk"]), ("LSR", ff["lsr"])):
+                    if val in ebr_read_nets:
+                        ebr_fanout_rows.append(
+                            {"bitstream": bs_id, "net": val, "cell_type": "FF",
+                             "cell": ff["name"], "pin": pin, "out_net": ff["q"]}
                         )
-                    )
-                    ebr_count += 1
-        print(f"  {ebr_count} EBR port arcs")
+            for lt in design.luts:
+                for pin, val in (("A", lt["a"]), ("B", lt["b"]),
+                                  ("C", lt["c"]), ("D", lt["d"])):
+                    if val in ebr_read_nets:
+                        ebr_fanout_rows.append(
+                            {"bitstream": bs_id, "net": val, "cell_type": "LUT",
+                             "cell": lt["name"], "pin": pin, "out_net": lt["z"]}
+                        )
+            if ebr_fanout_rows:
+                conn.execute(insert(schema.net_fanout), ebr_fanout_rows)
+            print(f"  {len(ebr_read_nets)} EBR read nets  "
+                  f"{len(ebr_fanout_rows)} fanout entries stitched")
 
-        # ── ebr_init + ebr_init_blocks (EBR block-RAM contents) ───────────────
-        # The native decoder recovers `.bram_init <index>` sections — the EBR
-        # block-RAM contents the old pytrellis path silently dropped.  `<index>`
-        # is the sequential EBR *write index* from the bitstream's
-        # LSC_EBR_ADDRESS command, NOT a tile.  We map it to a physical EBR9K
-        # block via the EBR.WID config word already decoded into each EBR1
-        # tile: EBR.WID == that write index.  (Basis: Diamond assigns each
-        # instantiated EBR a Write-ID; LSC_EBR_ADDRESS targets it as
-        # current_ebr=(data>>11), and EBR.WID stores the same value.  Validated
-        # by set inclusion: every .bram_init index has a matching EBR.WID tile;
-        # any EBR.WID with no .bram_init is an all-zero-init block Diamond omits
-        # from the stream.)  Raw physical words are 9-bit; the logical word
-        # width (EBR.MODE / *DATA_WIDTH* / REGMODE) is recorded per block so a
-        # consumer can regroup them.
-        wid_to_block = {}   # write-index (int) -> "R{er}C{ec}"
-        block_geom   = {}   # block -> geometry dict
-        for (er, ec), ttype in pc.tile_type.items():
-            if ttype != "EBR1":
-                continue
-            en = pc.enums.get((er, ec), {})
-            wd = pc.words.get((er, ec), {})
-            wid_bits = wd.get("EBR.WID")
-            wid = int(wid_bits, 2) if wid_bits else 0   # WID omitted ⇒ default 0
-            block = f"R{er}C{ec}"
-            if wid in wid_to_block and wid_to_block[wid] != block:
-                die(f"EBR.WID collision: index {wid} claimed by both "
-                    f"{wid_to_block[wid]} and {block}")
-            wid_to_block[wid] = block
-            widths = [int(v) for k, v in en.items()
-                      if "DATA_WIDTH" in k and v.isdigit()]
-            block_geom[block] = {
-                "mode":       en.get("EBR.MODE") or "DP8KC",
-                "data_width": max(widths) if widths else None,
-                "regmode_a":  en.get("EBR.REGMODE_A", "NOREG"),
-                "regmode_b":  en.get("EBR.REGMODE_B", "NOREG"),
-            }
+            # ── EBR write-side fanout → net_fanout ────────────────────────────────
+            # Each EBR write-data net (JA/JB ports) needs net_fanout rows so BFS can
+            # traverse through the EBR block to its read-data nets (JC/JD ports).
+            # Without this, ADC pad nets that feed EBR write ports appear as dead ends
+            # in the reachability graph and chains.py sections 3/4 return empty.
+            # Each write net gets one row per read net in the same block (out_net=read
+            # net), modelling EBR as a transparent memory for reachability purposes.
+            _JA_write = re.compile(r'^J[AB]\d+$')
+            _JC_read  = re.compile(r'^J[CD]\d+$')
 
-        ebr_init_rows   = []
-        ebr_block_rows  = []
-        for idx, words in sorted(pc.bram_init.items()):
-            block = wid_to_block.get(idx)
-            if block is None:
-                die(f".bram_init {idx} has no EBR1 tile with EBR.WID={idx} "
-                    f"(known WIDs: {sorted(wid_to_block)})")
-            if len(words) != 1024:
-                die(f".bram_init {idx} ({block}) has {len(words)} words, "
-                    f"expected 1024 (one 9Kb EBR block)")
-            geom = block_geom[block]
-            ebr_block_rows.append({
-                "bitstream": bs_id, "block": block, "wid": idx,
-                "mode": geom["mode"], "data_width": geom["data_width"],
-                "regmode_a": geom["regmode_a"], "regmode_b": geom["regmode_b"],
-                "n_words": len(words),
-                "n_nonzero": sum(1 for w in words if w),
-            })
-            for addr, w in enumerate(words):
-                ebr_init_rows.append({"bitstream": bs_id, "block": block,
-                                      "wid": idx, "addr": addr, "word9": w})
+            # Build per-block write/read net lists from already-populated ebr_ports
+            ebr_ports_rows = conn.execute(
+                select(
+                    schema.ebr_ports.c.block,
+                    schema.ebr_ports.c.port,
+                    schema.ebr_ports.c.role,
+                    schema.ebr_ports.c.net,
+                ).where(schema.ebr_ports.c.bitstream == bs_id)
+            ).fetchall()
 
-        if ebr_block_rows:
-            conn.execute(insert(schema.ebr_init_blocks), ebr_block_rows)
-        _CHUNK = 5000
-        for i in range(0, len(ebr_init_rows), _CHUNK):
-            conn.execute(insert(schema.ebr_init), ebr_init_rows[i:i+_CHUNK])
-        ebr_init_count = conn.execute(
-            select(func.count()).select_from(schema.ebr_init)
-            .where(schema.ebr_init.c.bitstream == bs_id)
-        ).scalar()
-        assert_eq("ebr_init word count in DB", ebr_init_count, len(ebr_init_rows))
-        print(f"  {len(ebr_block_rows)} EBR init blocks  {len(ebr_init_rows)} "
-              f"init words  (write indices {sorted(pc.bram_init)})")
-
-        # ── efb_config (0x72 EFB peripheral config-register preloads) ─────────
-        # docs/cmd-0x72.md: sel 0x54 = SPI EFB config, 0x5e = TC (timer/counter).
-        _EFB_SEL_KIND = {0x54: "SPI", 0x5e: "TC"}
-        efb_cfg_rows = [
-            {"bitstream": bs_id, "sel": sel,
-             "kind": _EFB_SEL_KIND.get(sel, "unknown"),
-             "length": len(payload), "payload": list(payload)}
-            for sel, payload in sorted(pc.efb_blocks.items())
-        ]
-        if efb_cfg_rows:
-            conn.execute(insert(schema.efb_config), efb_cfg_rows)
-        print(f"  {len(efb_cfg_rows)} EFB config blocks" +
-              ("".join(f"  [{r['kind']} sel=0x{r['sel']:02x} len={r['length']}]"
-                       for r in efb_cfg_rows)))
-
-        # ── ebr read-side fanout → net_fanout ─────────────────────────────────
-        # EBR read nets (JC/JD ports) appear as inputs to LUTs/FFs but are not
-        # captured in net_fanout during the normal LUT/FF pass (which only looks
-        # at cells, not at what drives their inputs from outside the fabric).
-        # Build an index of all EBR read nets, then scan LUTs and FFs for any
-        # cell that has one as an input, and insert the missing net_fanout rows.
-        ebr_read_nets = {}   # net_name → (block, port)
-        for (er, ec), ttype in pc.tile_type.items():
-            if ttype != "EBR1": continue
-            block = f"R{er}C{ec}"
-            for (r, c, sink, src) in pc.arcs:
-                if r != er or c != ec: continue
-                if not JC.match(sink): continue
-                net = resolve_net(design, lift, er, ec, src)
-                if net:
-                    ebr_read_nets[net] = (block, sink)
-
-        ebr_fanout_rows = []
-        for ff in design.ffs:
-            for pin, val in (("D", ff["d"]), ("CE", ff["ce"]),
-                              ("CLK", ff["clk"]), ("LSR", ff["lsr"])):
-                if val in ebr_read_nets:
-                    ebr_fanout_rows.append(
-                        {"bitstream": bs_id, "net": val, "cell_type": "FF",
-                         "cell": ff["name"], "pin": pin, "out_net": ff["q"]}
-                    )
-        for lt in design.luts:
-            for pin, val in (("A", lt["a"]), ("B", lt["b"]),
-                              ("C", lt["c"]), ("D", lt["d"])):
-                if val in ebr_read_nets:
-                    ebr_fanout_rows.append(
-                        {"bitstream": bs_id, "net": val, "cell_type": "LUT",
-                         "cell": lt["name"], "pin": pin, "out_net": lt["z"]}
-                    )
-        if ebr_fanout_rows:
-            conn.execute(insert(schema.net_fanout), ebr_fanout_rows)
-        print(f"  {len(ebr_read_nets)} EBR read nets  "
-              f"{len(ebr_fanout_rows)} fanout entries stitched")
-
-        # ── EBR write-side fanout → net_fanout ────────────────────────────────
-        # Each EBR write-data net (JA/JB ports) needs net_fanout rows so BFS can
-        # traverse through the EBR block to its read-data nets (JC/JD ports).
-        # Without this, ADC pad nets that feed EBR write ports appear as dead ends
-        # in the reachability graph and chains.py sections 3/4 return empty.
-        # Each write net gets one row per read net in the same block (out_net=read
-        # net), modelling EBR as a transparent memory for reachability purposes.
-        _JA_write = re.compile(r'^J[AB]\d+$')
-        _JC_read  = re.compile(r'^J[CD]\d+$')
-
-        # Build per-block write/read net lists from already-populated ebr_ports
-        ebr_ports_rows = conn.execute(
-            select(
-                schema.ebr_ports.c.block,
-                schema.ebr_ports.c.port,
-                schema.ebr_ports.c.role,
-                schema.ebr_ports.c.net,
-            ).where(schema.ebr_ports.c.bitstream == bs_id)
-        ).fetchall()
-
-        _ebr_by_block: dict = {}
-        for block, port, role, net in ebr_ports_rows:
-            if not net:
-                continue
-            entry = _ebr_by_block.setdefault(block, {"write": [], "read": []})
-            if role == "write" and _JA_write.match(port):
-                entry["write"].append((port, net))
-            elif role == "read" and _JC_read.match(port):
-                entry["read"].append((port, net))
-
-        ebr_write_fanout = []
-        for block, ports in _ebr_by_block.items():
-            for w_port, w_net in ports["write"]:
-                for _r_port, r_net in ports["read"]:
-                    ebr_write_fanout.append(
-                        {"bitstream": bs_id, "net": w_net, "cell_type": "EBR",
-                         "cell": block, "pin": w_port, "out_net": r_net}
-                    )
-        if ebr_write_fanout:
-            conn.execute(_insert_or_ignore(schema.net_fanout), ebr_write_fanout)
-        print(f"  {len(ebr_write_fanout)} EBR write-side fanout entries stitched")
-
-        # ── EBR JQ (read data) → output-FF stitching ─────────────────────────
-        # In MachXO2 PDPW8KC/DP8KC, the EBR read data exits via JQ output wires
-        # in the adjacent CIB tile (JQ0..JQ7 appearing as arc sources).  These JQ
-        # nets are captured in pc.arcs and get DSU net names, but they have no
-        # net_fanout entries because they don't appear as LUT/FF inputs — they feed
-        # fabric output-register FFs whose DI wire is hardwired from the EBR and is
-        # invisible in the arc model (the prjtrellis model leaves those FF D inputs
-        # as '1'b0').
-        #
-        # We identify EBR output FFs as: d='1'b0' AND clk matches any JCLK net of
-        # the same EBR block AND located within ±6 rows and ±3 cols of the EBR.
-        # Then we insert two sets of fanout rows:
-        #   (a) each EBR write net → each JQ read net  (write-to-read transparency)
-        #   (b) each JQ net → each output-FF Q net      (JQ output register path)
-        #
-        # Bit mapping is unknown (hardwired silicon), so this is conservative:
-        # every write net reaches every JQ, and every JQ reaches every output FF.
-        _JQ_re = re.compile(r'^JQ\d+$')
-        _JCLK_re = re.compile(r'^JCLK\d*$')
-
-        # Collect per-EBR block: JCLK nets, JQ nets, write nets
-        _ebr_full: dict = {}  # block → {jclk_nets, jq_nets, write_nets}
-        for (er, ec), ttype in pc.tile_type.items():
-            if ttype != "EBR1":
-                continue
-            block = f"R{er}C{ec}"
-            info = _ebr_full.setdefault(block, {
-                "er": er, "ec": ec,
-                "jclk_nets": set(), "jq_nets": [], "write_nets": []
-            })
-            # Collect JCLK nets and write data nets from EBR tile arcs
-            for (r, c, sink, src) in pc.arcs:
-                if r != er or c != ec:
+            _ebr_by_block: dict = {}
+            for block, port, role, net in ebr_ports_rows:
+                if not net:
                     continue
-                net = resolve_net(design, lift, er, ec, src)
-                if net:
-                    if _JCLK_re.match(sink):
-                        info["jclk_nets"].add(net)
-                    if _JA_write.match(sink):
-                        info["write_nets"].append(net)
-            # Collect JQ nets from the CIB tile immediately adjacent to the EBR.
-            # EBR at (er, ec) has its JQ read-data outputs at (er, ec-1) — the
-            # CIB tile to the left.  We restrict to same row (r==er) to avoid
-            # picking up JQ wires from right-edge IOLOGIC pads (col=ec+1) which
-            # use JQ wires for ADC input pad data, not EBR DOB outputs.
-            for (r, c, sink, src) in pc.arcs:
-                if r != er or c != ec - 1:
+                entry = _ebr_by_block.setdefault(block, {"write": [], "read": []})
+                if role == "write" and _JA_write.match(port):
+                    entry["write"].append((port, net))
+                elif role == "read" and _JC_read.match(port):
+                    entry["read"].append((port, net))
+
+            ebr_write_fanout = []
+            for block, ports in _ebr_by_block.items():
+                for w_port, w_net in ports["write"]:
+                    for _r_port, r_net in ports["read"]:
+                        ebr_write_fanout.append(
+                            {"bitstream": bs_id, "net": w_net, "cell_type": "EBR",
+                             "cell": block, "pin": w_port, "out_net": r_net}
+                        )
+            if ebr_write_fanout:
+                conn.execute(_insert_or_ignore(schema.net_fanout), ebr_write_fanout)
+            print(f"  {len(ebr_write_fanout)} EBR write-side fanout entries stitched")
+
+            # ── EBR JQ (read data) → output-FF stitching ─────────────────────────
+            # In MachXO2 PDPW8KC/DP8KC, the EBR read data exits via JQ output wires
+            # in the adjacent CIB tile (JQ0..JQ7 appearing as arc sources).  These JQ
+            # nets are captured in pc.arcs and get DSU net names, but they have no
+            # net_fanout entries because they don't appear as LUT/FF inputs — they feed
+            # fabric output-register FFs whose DI wire is hardwired from the EBR and is
+            # invisible in the arc model (the prjtrellis model leaves those FF D inputs
+            # as '1'b0').
+            #
+            # We identify EBR output FFs as: d='1'b0' AND clk matches any JCLK net of
+            # the same EBR block AND located within ±6 rows and ±3 cols of the EBR.
+            # Then we insert two sets of fanout rows:
+            #   (a) each EBR write net → each JQ read net  (write-to-read transparency)
+            #   (b) each JQ net → each output-FF Q net      (JQ output register path)
+            #
+            # Bit mapping is unknown (hardwired silicon), so this is conservative:
+            # every write net reaches every JQ, and every JQ reaches every output FF.
+            _JQ_re = re.compile(r'^JQ\d+$')
+            _JCLK_re = re.compile(r'^JCLK\d*$')
+
+            # Collect per-EBR block: JCLK nets, JQ nets, write nets
+            _ebr_full: dict = {}  # block → {jclk_nets, jq_nets, write_nets}
+            for (er, ec), ttype in pc.tile_type.items():
+                if ttype != "EBR1":
                     continue
-                if not _JQ_re.match(src):
+                block = f"R{er}C{ec}"
+                info = _ebr_full.setdefault(block, {
+                    "er": er, "ec": ec,
+                    "jclk_nets": set(), "jq_nets": [], "write_nets": []
+                })
+                # Collect JCLK nets and write data nets from EBR tile arcs
+                for (r, c, sink, src) in pc.arcs:
+                    if r != er or c != ec:
+                        continue
+                    net = resolve_net(design, lift, er, ec, src)
+                    if net:
+                        if _JCLK_re.match(sink):
+                            info["jclk_nets"].add(net)
+                        if _JA_write.match(sink):
+                            info["write_nets"].append(net)
+                # Collect JQ nets from the CIB tile immediately adjacent to the EBR.
+                # EBR at (er, ec) has its JQ read-data outputs at (er, ec-1) — the
+                # CIB tile to the left.  We restrict to same row (r==er) to avoid
+                # picking up JQ wires from right-edge IOLOGIC pads (col=ec+1) which
+                # use JQ wires for ADC input pad data, not EBR DOB outputs.
+                for (r, c, sink, src) in pc.arcs:
+                    if r != er or c != ec - 1:
+                        continue
+                    if not _JQ_re.match(src):
+                        continue
+                    k = lift.gkey(r, c, src)
+                    if k is None:
+                        continue
+                    root = design.dsu.find(k)
+                    net = design.net_name.get(root)
+                    if net and net not in info["jq_nets"]:
+                        info["jq_nets"].append(net)
+
+            # Find output FFs for each EBR (d='1'b0' or ghost-D, spatially near EBR).
+            # In MachXO2 PDPW8KC/DP8KC with OUTREG, the EBR output register FFs are
+            # physically placed adjacent to the EBR block.  Their DI input is hardwired
+            # from EBR DOB (invisible in prjtrellis arcs), so they appear with d='1'b0'.
+            # We cannot match by JCLK because the fabric pipeline registers downstream
+            # of the EBR use their own clock (not the EBR read clock).  Instead we use
+            # spatial proximity: any FF with d='1'b0' within ±4 rows and ±4 cols of
+            # the EBR is treated as a potential output register or downstream pipeline FF.
+            #
+            # Ghost-D FFs: prjtrellis also emits OFX{n}→DI{n} config arcs for EBR
+            # OUTREG bypass paths.  These give the FF a real D-net name (not '1'b0'),
+            # but the net has no driver anywhere — OFX is hardwired from EBR DOB via
+            # a non-configurable arc invisible to the config arc model.  A net is
+            # ghost only if NOTHING drives it: not a LUT Z, not an FF Q, not any
+            # net_fanout driver already stitched (EBR reads, EFB, IOLOGIC), and
+            # not an input pad net.  (Since the REG.SD fix most FF D-nets are
+            # ordinary fabric-routed nets with real drivers — testing only
+            # LUT-Z/FF-Q membership would misclassify all of those as ghosts.)
+            _lut_z_nets = {lt["z"] for lt in design.luts if lt["z"]}
+            _ff_q_nets  = {ff["q"] for ff in design.ffs}
+            _driven_nets = {row[0] for row in conn.execute(
+                select(schema.net_fanout.c.out_net.distinct())
+                .where(schema.net_fanout.c.bitstream == bs_id))}
+            _pad_in_nets = {row[0] for row in conn.execute(
+                select(schema.pad_map.c.net_in.distinct())
+                .where(schema.pad_map.c.bitstream == bs_id)
+                .where(schema.pad_map.c.net_in.isnot(None)))}
+            _ghost_d_nets: set = set()
+            for _ff in design.ffs:
+                _d = _ff["d"]
+                if (_d.startswith("1'b") or _d in _lut_z_nets or _d in _ff_q_nets
+                        or _d in _driven_nets or _d in _pad_in_nets):
                     continue
-                k = lift.gkey(r, c, src)
-                if k is None:
+                _ghost_d_nets.add(_d)
+            if _ghost_d_nets:
+                print(f"  {len(_ghost_d_nets)} ghost-D nets detected (EBR OUTREG bypass)")
+
+            _block_to_output_ffs: dict = {}  # block → [ff.q, ...]
+            for ff in design.ffs:
+                is_const_d = ff["d"] == "1'b0"
+                is_ghost_d = ff["d"] in _ghost_d_nets
+                if not (is_const_d or is_ghost_d):
                     continue
-                root = design.dsu.find(k)
-                net = design.net_name.get(root)
-                if net and net not in info["jq_nets"]:
-                    info["jq_nets"].append(net)
-
-        # Find output FFs for each EBR (d='1'b0' or ghost-D, spatially near EBR).
-        # In MachXO2 PDPW8KC/DP8KC with OUTREG, the EBR output register FFs are
-        # physically placed adjacent to the EBR block.  Their DI input is hardwired
-        # from EBR DOB (invisible in prjtrellis arcs), so they appear with d='1'b0'.
-        # We cannot match by JCLK because the fabric pipeline registers downstream
-        # of the EBR use their own clock (not the EBR read clock).  Instead we use
-        # spatial proximity: any FF with d='1'b0' within ±4 rows and ±4 cols of
-        # the EBR is treated as a potential output register or downstream pipeline FF.
-        #
-        # Ghost-D FFs: prjtrellis also emits OFX{n}→DI{n} config arcs for EBR
-        # OUTREG bypass paths.  These give the FF a real D-net name (not '1'b0'),
-        # but the net has no driver anywhere — OFX is hardwired from EBR DOB via
-        # a non-configurable arc invisible to the config arc model.  A net is
-        # ghost only if NOTHING drives it: not a LUT Z, not an FF Q, not any
-        # net_fanout driver already stitched (EBR reads, EFB, IOLOGIC), and
-        # not an input pad net.  (Since the REG.SD fix most FF D-nets are
-        # ordinary fabric-routed nets with real drivers — testing only
-        # LUT-Z/FF-Q membership would misclassify all of those as ghosts.)
-        _lut_z_nets = {lt["z"] for lt in design.luts if lt["z"]}
-        _ff_q_nets  = {ff["q"] for ff in design.ffs}
-        _driven_nets = {row[0] for row in conn.execute(
-            select(schema.net_fanout.c.out_net.distinct())
-            .where(schema.net_fanout.c.bitstream == bs_id))}
-        _pad_in_nets = {row[0] for row in conn.execute(
-            select(schema.pad_map.c.net_in.distinct())
-            .where(schema.pad_map.c.bitstream == bs_id)
-            .where(schema.pad_map.c.net_in.isnot(None)))}
-        _ghost_d_nets: set = set()
-        for _ff in design.ffs:
-            _d = _ff["d"]
-            if (_d.startswith("1'b") or _d in _lut_z_nets or _d in _ff_q_nets
-                    or _d in _driven_nets or _d in _pad_in_nets):
-                continue
-            _ghost_d_nets.add(_d)
-        if _ghost_d_nets:
-            print(f"  {len(_ghost_d_nets)} ghost-D nets detected (EBR OUTREG bypass)")
-
-        _block_to_output_ffs: dict = {}  # block → [ff.q, ...]
-        for ff in design.ffs:
-            is_const_d = ff["d"] == "1'b0"
-            is_ghost_d = ff["d"] in _ghost_d_nets
-            if not (is_const_d or is_ghost_d):
-                continue
-            # Parse FF row/col from name ff_rNcM_XY  (e.g. ff_r8c20_C1)
-            m = re.match(r'^ff_r(\d+)c(\d+)_', ff["name"])
-            if not m:
-                continue
-            ff_r, ff_c = int(m.group(1)), int(m.group(2))
-            for block, info in _ebr_full.items():
-                er, ec = info["er"], info["ec"]
-                if abs(ff_r - er) <= 4 and abs(ff_c - ec) <= 4:
-                    _block_to_output_ffs.setdefault(block, []).append(ff["q"])
-
-        # Insert fanout rows
-        ebr_jq_fanout = []
-        for block, info in _ebr_full.items():
-            jq_nets    = info["jq_nets"]
-            write_nets = info["write_nets"]
-            out_ffs    = _block_to_output_ffs.get(block, [])
-
-            # (a) write net → JQ net (EBR memory transparency)
-            for w_net in write_nets:
-                for jq_net in jq_nets:
-                    ebr_jq_fanout.append(
-                        {"bitstream": bs_id, "net": w_net, "cell_type": "EBR",
-                         "cell": block, "pin": "JQ_src", "out_net": jq_net}
-                    )
-            # (b) JQ net → output FF Q (output register path)
-            for jq_net in jq_nets:
-                for ff_q in out_ffs:
-                    ebr_jq_fanout.append(
-                        {"bitstream": bs_id, "net": jq_net, "cell_type": "EBR",
-                         "cell": block, "pin": "JQ_ff", "out_net": ff_q}
-                    )
-
-        if ebr_jq_fanout:
-            conn.execute(_insert_or_ignore(schema.net_fanout), ebr_jq_fanout)
-        n_jq_blocks = sum(1 for b in _ebr_full if _ebr_full[b]["jq_nets"])
-        print(f"  {n_jq_blocks} EBR blocks with JQ outputs  "
-              f"{len(ebr_jq_fanout)} EBR JQ fanout entries stitched")
-
-        # ── IOLOGIC stitching: fabric net → CIB_PIC JA/JB port → pad ─────────
-        # PIC_B* (bottom edge) and PIC_R* / PIC_L* tiles have CIB tiles that
-        # contain JA0-JA3 / JB0-JB3 IOLOGIC input ports.  A fabric net drives
-        # JA{n} in the CIB tile; the IOLOGIC passes it to the pad in the
-        # adjacent PIC tile.  recover_netlist() sees the fabric net but does not
-        # follow it through IOLOGIC to the pad net.
-        #
-        # Mapping: JA_idx / JB_idx → PIO letter: 0→A, 1→B, 2→C, 3→D
-        # CIB_PIC_B* tiles: pad is in the row below (row+1), same col
-        # PIC_R0 / CIB_PIC_R* tiles: pad is in the same tile (row, col)
-        # PIC_L0 / CIB_PIC_L* tiles: pad is in the same tile (row, col)
-        #
-        # For each JA/JB arc found, look up the pad_map entry for that site+PIO
-        # and insert a net_fanout row: fabric_net → pad cell, out_net=pad.net_out.
-        # Also patch pad_map.net_out for orphan output pads (fanin=0) that are
-        # driven through IOLOGIC.
-
-        _JA_iologic = re.compile(r'^J([AB])(\d)$')
-        _pio_letter  = {0: "A", 1: "B", 2: "C", 3: "D"}
-
-        # Load current pad_map indexed by (row, col, pio)
-        pad_map_rows_db = conn.execute(
-            select(
-                schema.pad_map.c.pin,
-                schema.pad_map.c.row,
-                schema.pad_map.c.col,
-                schema.pad_map.c.pio,
-                schema.pad_map.c.direction,
-                schema.pad_map.c.net_in,
-                schema.pad_map.c.net_out,
-            ).where(schema.pad_map.c.bitstream == bs_id)
-        ).fetchall()
-
-        pad_by_site = {}
-        for pin, p_row, p_col, p_pio, p_dir, p_ni, p_no in pad_map_rows_db:
-            pad_by_site[(p_row, p_col, p_pio)] = {
-                "pin": pin, "dir": p_dir, "net_in": p_ni, "net_out": p_no
-            }
-
-        iologic_fanout  = []   # dicts for net_fanout
-        boundary_nets   = []   # dicts for nets table
-        boundary_map    = {}   # pad_pin -> boundary_net  ("pad_<pin>")
-        driver_by_pin   = {}   # pad_pin -> fabric net driving the OUTPUT pad (#58)
-
-        for (cr, cc), ttype in pc.tile_type.items():
-            is_bottom = "PIC_B" in ttype
-            is_top    = "PIC_T" in ttype
-            is_right  = "PIC_R" in ttype
-            is_left   = "PIC_L" in ttype
-            if not (is_bottom or is_top or is_right or is_left):
-                continue
-
-            for (r, c, sink, src) in pc.arcs:
-                if r != cr or c != cc:
-                    continue
-                m = _JA_iologic.match(sink)
+                # Parse FF row/col from name ff_rNcM_XY  (e.g. ff_r8c20_C1)
+                m = re.match(r'^ff_r(\d+)c(\d+)_', ff["name"])
                 if not m:
                     continue
-                ab, idx_s = m.group(1), int(m.group(2))
-                pio = _pio_letter.get(idx_s)
-                if pio is None:
+                ff_r, ff_c = int(m.group(1)), int(m.group(2))
+                for block, info in _ebr_full.items():
+                    er, ec = info["er"], info["ec"]
+                    if abs(ff_r - er) <= 4 and abs(ff_c - ec) <= 4:
+                        _block_to_output_ffs.setdefault(block, []).append(ff["q"])
+
+            # Insert fanout rows
+            ebr_jq_fanout = []
+            for block, info in _ebr_full.items():
+                jq_nets    = info["jq_nets"]
+                write_nets = info["write_nets"]
+                out_ffs    = _block_to_output_ffs.get(block, [])
+
+                # (a) write net → JQ net (EBR memory transparency)
+                for w_net in write_nets:
+                    for jq_net in jq_nets:
+                        ebr_jq_fanout.append(
+                            {"bitstream": bs_id, "net": w_net, "cell_type": "EBR",
+                             "cell": block, "pin": "JQ_src", "out_net": jq_net}
+                        )
+                # (b) JQ net → output FF Q (output register path)
+                for jq_net in jq_nets:
+                    for ff_q in out_ffs:
+                        ebr_jq_fanout.append(
+                            {"bitstream": bs_id, "net": jq_net, "cell_type": "EBR",
+                             "cell": block, "pin": "JQ_ff", "out_net": ff_q}
+                        )
+
+            if ebr_jq_fanout:
+                conn.execute(_insert_or_ignore(schema.net_fanout), ebr_jq_fanout)
+            n_jq_blocks = sum(1 for b in _ebr_full if _ebr_full[b]["jq_nets"])
+            print(f"  {n_jq_blocks} EBR blocks with JQ outputs  "
+                  f"{len(ebr_jq_fanout)} EBR JQ fanout entries stitched")
+
+            # ── IOLOGIC stitching: fabric net → CIB_PIC JA/JB port → pad ─────────
+            # PIC_B* (bottom edge) and PIC_R* / PIC_L* tiles have CIB tiles that
+            # contain JA0-JA3 / JB0-JB3 IOLOGIC input ports.  A fabric net drives
+            # JA{n} in the CIB tile; the IOLOGIC passes it to the pad in the
+            # adjacent PIC tile.  recover_netlist() sees the fabric net but does not
+            # follow it through IOLOGIC to the pad net.
+            #
+            # Mapping: JA_idx / JB_idx → PIO letter: 0→A, 1→B, 2→C, 3→D
+            # CIB_PIC_B* tiles: pad is in the row below (row+1), same col
+            # PIC_R0 / CIB_PIC_R* tiles: pad is in the same tile (row, col)
+            # PIC_L0 / CIB_PIC_L* tiles: pad is in the same tile (row, col)
+            #
+            # For each JA/JB arc found, look up the pad_map entry for that site+PIO
+            # and insert a net_fanout row: fabric_net → pad cell, out_net=pad.net_out.
+            # Also patch pad_map.net_out for orphan output pads (fanin=0) that are
+            # driven through IOLOGIC.
+
+            _JA_iologic = re.compile(r'^J([AB])(\d)$')
+            _pio_letter  = {0: "A", 1: "B", 2: "C", 3: "D"}
+
+            # Load current pad_map indexed by (row, col, pio)
+            pad_map_rows_db = conn.execute(
+                select(
+                    schema.pad_map.c.pin,
+                    schema.pad_map.c.row,
+                    schema.pad_map.c.col,
+                    schema.pad_map.c.pio,
+                    schema.pad_map.c.direction,
+                    schema.pad_map.c.net_in,
+                    schema.pad_map.c.net_out,
+                ).where(schema.pad_map.c.bitstream == bs_id)
+            ).fetchall()
+
+            pad_by_site = {}
+            for pin, p_row, p_col, p_pio, p_dir, p_ni, p_no in pad_map_rows_db:
+                pad_by_site[(p_row, p_col, p_pio)] = {
+                    "pin": pin, "dir": p_dir, "net_in": p_ni, "net_out": p_no
+                }
+
+            iologic_fanout  = []   # dicts for net_fanout
+            boundary_nets   = []   # dicts for nets table
+            boundary_map    = {}   # pad_pin -> boundary_net  ("pad_<pin>")
+            driver_by_pin   = {}   # pad_pin -> fabric net driving the OUTPUT pad (#58)
+
+            for (cr, cc), ttype in pc.tile_type.items():
+                is_bottom = "PIC_B" in ttype
+                is_top    = "PIC_T" in ttype
+                is_right  = "PIC_R" in ttype
+                is_left   = "PIC_L" in ttype
+                if not (is_bottom or is_top or is_right or is_left):
                     continue
 
-                fabric_net = resolve_net(design, lift, r, c, src)
-                if not fabric_net:
-                    continue
+                for (r, c, sink, src) in pc.arcs:
+                    if r != cr or c != cc:
+                        continue
+                    m = _JA_iologic.match(sink)
+                    if not m:
+                        continue
+                    ab, idx_s = m.group(1), int(m.group(2))
+                    pio = _pio_letter.get(idx_s)
+                    if pio is None:
+                        continue
 
-                if is_bottom:
-                    pad_row, pad_col = r + 1, c
-                elif is_top:
-                    # Top-edge CIB_PIC_T0: the PIO pad is in the row above (row-1).
-                    # Row 0 CIB_PIC_T tiles contain JA/JB arcs; the physical PIO
-                    # is in the adjacent PIC_T0 tile one row higher (row=-1 DNE,
-                    # but pad_map was built from iomap which uses row 0 for top-edge).
-                    pad_row, pad_col = r - 1, c
-                else:
-                    pad_row, pad_col = r, c
+                    fabric_net = resolve_net(design, lift, r, c, src)
+                    if not fabric_net:
+                        continue
 
-                pad = pad_by_site.get((pad_row, pad_col, pio))
-                if pad is None:
-                    continue
+                    if is_bottom:
+                        pad_row, pad_col = r + 1, c
+                    elif is_top:
+                        # Top-edge CIB_PIC_T0: the PIO pad is in the row above (row-1).
+                        # Row 0 CIB_PIC_T tiles contain JA/JB arcs; the physical PIO
+                        # is in the adjacent PIC_T0 tile one row higher (row=-1 DNE,
+                        # but pad_map was built from iomap which uses row 0 for top-edge).
+                        pad_row, pad_col = r - 1, c
+                    else:
+                        pad_row, pad_col = r, c
 
-                pin = pad["pin"]
-                if pin not in boundary_map:
-                    bnet = f"pad_{pin}"
-                    boundary_map[pin] = bnet
-                    boundary_nets.append({"bitstream": bs_id, "name": bnet})
+                    pad = pad_by_site.get((pad_row, pad_col, pio))
+                    if pad is None:
+                        continue
 
-                bnet = boundary_map[pin]
-                driver_by_pin[pin] = fabric_net   # the fabric net driving this output pad (#58)
-                iologic_fanout.append(
-                    {"bitstream": bs_id, "net": fabric_net, "cell_type": "PAD",
-                     "cell": f"pad_{pin}", "pin": ab + str(idx_s), "out_net": bnet}
+                    pin = pad["pin"]
+                    if pin not in boundary_map:
+                        bnet = f"pad_{pin}"
+                        boundary_map[pin] = bnet
+                        boundary_nets.append({"bitstream": bs_id, "name": bnet})
+
+                    bnet = boundary_map[pin]
+                    driver_by_pin[pin] = fabric_net   # the fabric net driving this output pad (#58)
+                    iologic_fanout.append(
+                        {"bitstream": bs_id, "net": fabric_net, "cell_type": "PAD",
+                         "cell": f"pad_{pin}", "pin": ab + str(idx_s), "out_net": bnet}
+                    )
+
+            # Insert synthetic pad boundary nets into the nets table so reach.py sees them
+            if boundary_nets:
+                conn.execute(_insert_or_ignore(schema.nets), boundary_nets)
+            if iologic_fanout:
+                conn.execute(_insert_or_ignore(schema.net_fanout), iologic_fanout)
+            # Update pad_map for every output pad: net_out = its boundary net (so
+            # "JOIN pad_map ON net_out = reachability.dst" works generically), and
+            # net_in = the FABRIC NET DRIVING the pad (#58) so the recovered Verilog
+            # can emit `assign <PORT> = <driver>` — previously the driver was known
+            # (iologic_fanout) but dropped, leaving every output undriven.
+            for pin, bnet in boundary_map.items():
+                conn.execute(
+                    update(schema.pad_map)
+                    .where(schema.pad_map.c.bitstream == bs_id)
+                    .where(schema.pad_map.c.pin == pin)
+                    .values(net_out=bnet, net_in=driver_by_pin.get(pin))
                 )
+            print(f"  IOLOGIC: {len(iologic_fanout)} fanout entries  "
+                  f"{len(boundary_nets)} pad boundary nets inserted")
 
-        # Insert synthetic pad boundary nets into the nets table so reach.py sees them
-        if boundary_nets:
-            conn.execute(_insert_or_ignore(schema.nets), boundary_nets)
-        if iologic_fanout:
-            conn.execute(_insert_or_ignore(schema.net_fanout), iologic_fanout)
-        # Update pad_map for every output pad: net_out = its boundary net (so
-        # "JOIN pad_map ON net_out = reachability.dst" works generically), and
-        # net_in = the FABRIC NET DRIVING the pad (#58) so the recovered Verilog
-        # can emit `assign <PORT> = <driver>` — previously the driver was known
-        # (iologic_fanout) but dropped, leaving every output undriven.
-        for pin, bnet in boundary_map.items():
-            conn.execute(
-                update(schema.pad_map)
-                .where(schema.pad_map.c.bitstream == bs_id)
-                .where(schema.pad_map.c.pin == pin)
-                .values(net_out=bnet, net_in=driver_by_pin.get(pin))
-            )
-        print(f"  IOLOGIC: {len(iologic_fanout)} fanout entries  "
-              f"{len(boundary_nets)} pad boundary nets inserted")
-
-        # ── input-pad fanout gap ──────────────────────────────────────────────
-        # Input pads with net_in set but zero net_fanout entries.  The count
-        # below tracks this residual so it is visible in the load summary.
-        #
-        # This counter is a lifter-defect metric, not a design fact.  A pad
-        # here was blamed on "unused peripheral channels" until several
-        # bitstreams for one board were cross-loaded (scripts/compare_pads.py):
-        # a pin stranded in one bitstream but stitched in another, on the
-        # same board, can only be a modelling gap.  Two causes have been
-        # found and fixed so far — H06E canonical anchoring at right-edge
-        # tiles (gkey()), and the REG.SD polarity inversion that dropped
-        # every fabric-routed FF D input (ff_d_source()).  What remains is
-        # documented in docs/pad-fanout-gap.md.
-        nf = schema.net_fanout
-        pm = schema.pad_map
-        unstitched_count = conn.execute(
-            select(func.count())
-            .select_from(pm)
-            .where(pm.c.bitstream == bs_id)
-            .where(pm.c.direction.in_(["in", "bidir"]))
-            .where(pm.c.net_in.isnot(None))
-            .where(
-                ~select(nf.c.id)
-                .where(nf.c.bitstream == pm.c.bitstream)
-                .where(nf.c.net == pm.c.net_in)
-                .correlate(pm)
-                .exists()
-            )
-        ).scalar()
-        print(f"  Input-pad fanout gap: {unstitched_count} pads with no net_fanout")
+            # ── input-pad fanout gap ──────────────────────────────────────────────
+            # Input pads with net_in set but zero net_fanout entries.  The count
+            # below tracks this residual so it is visible in the load summary.
+            #
+            # This counter is a lifter-defect metric, not a design fact.  A pad
+            # here was blamed on "unused peripheral channels" until several
+            # bitstreams for one board were cross-loaded (scripts/compare_pads.py):
+            # a pin stranded in one bitstream but stitched in another, on the
+            # same board, can only be a modelling gap.  Two causes have been
+            # found and fixed so far — H06E canonical anchoring at right-edge
+            # tiles (gkey()), and the REG.SD polarity inversion that dropped
+            # every fabric-routed FF D input (ff_d_source()).  What remains is
+            # documented in docs/pad-fanout-gap.md.
+            nf = schema.net_fanout
+            pm = schema.pad_map
+            unstitched_count = conn.execute(
+                select(func.count())
+                .select_from(pm)
+                .where(pm.c.bitstream == bs_id)
+                .where(pm.c.direction.in_(["in", "bidir"]))
+                .where(pm.c.net_in.isnot(None))
+                .where(
+                    ~select(nf.c.id)
+                    .where(nf.c.bitstream == pm.c.bitstream)
+                    .where(nf.c.net == pm.c.net_in)
+                    .correlate(pm)
+                    .exists()
+                )
+            ).scalar()
+            print(f"  Input-pad fanout gap: {unstitched_count} pads with no net_fanout")
 
         # ── clock_domains ─────────────────────────────────────────────────────
         clk_ffs = [{"bitstream": bs_id, "clk_net": ff["clk"], "ff_cell": ff["name"]}
@@ -1217,10 +1219,16 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     return None, None, None, None
                 root = design.dsu.find(key)
                 net  = design.net_name.get(root)
-                gx, gy, gid = key
-                # Store the wire NAME, not the backend's opaque interned id
-                # (portable + reproducible; identical across trellis backends).
-                return net, gx, gy, lift.rg.to_str(gid)
+                # MachXO2 keys are (gx, gy, gid) tuples; store the wire NAME, not
+                # the backend's opaque interned id (portable + reproducible,
+                # identical across trellis backends).  GOWIN keys are already
+                # canonical global node-name strings (stitched in
+                # scripts/gowin_unpack.py), so there are no separate global
+                # coordinates — the node name is the id.
+                if isinstance(key, tuple):
+                    gx, gy, gid = key
+                    return net, gx, gy, lift.rg.to_str(gid)
+                return net, None, None, str(key)
 
             sink_net,   sx, sy, sid = _resolve(ks)
             source_net, dx, dy, did = _resolve(kd)

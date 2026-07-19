@@ -17,3 +17,6 @@ CLAUDE.md
 
 # recovered-netlist deliverables (regenerable from the DB)
 out/
+
+# Vendor tool installers / downloaded sources (large, not part of the repo)
+sources/

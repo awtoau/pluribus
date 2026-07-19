@@ -1,0 +1,41 @@
+# Pluribus board config — Sipeed Tang Nano (GOWIN GW1N-LV1QN48C6, GW1N-1)
+#
+# First GOWIN family bring-up for the pluribus engine.  The decode runs under
+# the oss-cad-suite interpreter (Project Apicula / apycula) as a subprocess —
+# see scripts/gowin_unpack.py — and emits a family-neutral .gwconfig that the
+# pure-Python 3.15t lifter (lifters/gowin_lift.py) reads back.
+#
+# Usage:
+#   python3 scripts/run_pipeline.py --board boards/tangnano-gw1n1 --all
+#   python3 scripts/run_pipeline.py --board boards/tangnano-gw1n1 --label GW_BLINKY
+#
+# The oss-cad-suite python used for decode defaults to
+#   /home/dan/opt/oss-cad-suite/py3bin/python3
+# override with the PLURIBUS_GOWIN_PYTHON environment variable.
+
+[board]
+name    = "Sipeed Tang Nano (GW1N-1)"
+device  = "GW1N-1"       # apycula chip database name (chipdb GW1N-1.msgpack.xz)
+package = "QN48"         # physical part is GW1N-LV1QN48C6 (QFN48)
+lifter  = "gowin"
+top     = "top"
+
+# pins_tsv is required by load.py, but GOWIN pad/IO mapping is not modelled
+# yet (the MachXO2-only pad_map/EFB/EBR blocks in load.py are gated by family),
+# so this file carries only the device/package metadata for now — the pin rows
+# are documentation and are not consumed on the gowin path.
+[files]
+pins_tsv = "pins.tsv"
+
+# Known bitstreams, keyed by the label they load under.
+#   bin    — raw GOWIN bitstream (.fs) — the source of truth.
+#   config — the .gwconfig (scripts/gowin_unpack.py output) — REGENERABLE, so it
+#            points at pluribus tmp/.  run_pipeline's [unpack] stage runs only
+#            when `bin` is set AND `config` does not exist yet.
+[bitstreams.GW_BLINKY]
+bin    = "../../tmp/gowin/blinky-tangnano.fs"
+config = "../../tmp/gowin/GW_BLINKY.gwconfig"
+
+[bitstreams.GW_SHIFT]
+bin    = "../../tmp/gowin/shift-tangnano.fs"
+config = "../../tmp/gowin/GW_SHIFT.gwconfig"

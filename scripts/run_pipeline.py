@@ -87,14 +87,34 @@ def run(stage, label, cmd, extra_env=None):
 
 def run_one(label, config, pins, package, raw_bin, skip_load, workers,
             top="top", emit_verilog=True, nets=None, header_note=None,
-            verify=True, strict_lec=False, board=None):
+            verify=True, strict_lec=False, board=None,
+            lifter="machxo2", device=None):
+    # GOWIN first slice: pad/EFB/EBR recovery and the recovered-Verilog emitter
+    # are not modelled yet, so stop after the generic netlist + reachability +
+    # report.  chains.py/verilog.py assume the MachXO2 pad/hard-IP layers.
+    is_gowin = (lifter == "gowin")
+    if is_gowin:
+        emit_verilog = False
+        verify = False
+
     if raw_bin and not os.path.exists(config):
         os.makedirs(os.path.dirname(config) or ".", exist_ok=True)
-        run("unpack", label,
-            [PY, "scripts/trellis_unpack.py", raw_bin, config])
-        iomap_env = {"TRELLIS_PACKAGE": package} if package else None
-        run("iomap", label,
-            [PY, "scripts/fpga_iomap.py", config], extra_env=iomap_env)
+        if is_gowin:
+            # GOWIN decode runs under the oss-cad-suite interpreter (apycula),
+            # emitting a .gwconfig the free-threaded 3.15t lifter reads back.
+            # No iomap stage — gowin pad mapping is deferred.
+            gowin_py = os.environ.get(
+                "PLURIBUS_GOWIN_PYTHON",
+                "/home/dan/opt/oss-cad-suite/py3bin/python3")
+            run("unpack", label,
+                [gowin_py, "scripts/gowin_unpack.py", raw_bin, config,
+                 "--device", device or "GW1N-1"])
+        else:
+            run("unpack", label,
+                [PY, "scripts/trellis_unpack.py", raw_bin, config])
+            iomap_env = {"TRELLIS_PACKAGE": package} if package else None
+            run("iomap", label,
+                [PY, "scripts/fpga_iomap.py", config], extra_env=iomap_env)
 
     if not skip_load:
         load_cmd = [PY, "load.py", "--label", label,
@@ -104,6 +124,15 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
         # auto-numbered clk_N placeholders instead of their semantic names.
         if nets:
             load_cmd += ["--nets", nets]
+        if is_gowin:
+            # GW1N designs are small (few LUTs) and pad/EFB/EBR checks don't
+            # apply — --fuzz skips the MachXO2-scale count sanity asserts.
+            # Forward device+package too: load.py otherwise defaults to the
+            # MachXO2 LCMXO2-1200/TQFP100 and rejects the gowin pins metadata.
+            load_cmd += ["--lifter", lifter, "--device", device or "GW1N-1",
+                         "--fuzz"]
+            if package:
+                load_cmd += ["--package", package]
         run("load", label, load_cmd)
 
     # Board annotation layers (#12): SPI register map / cell names / open
@@ -126,7 +155,13 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
     # off the old tools/build.py orchestrator — without them the recovered
     # names and the report's pattern section are incomplete.  All run before
     # report/deliverables so those carry the full naming.
-    for stage in ("reach2", "reach3", "reach4", "auto_name", "patterns"):
+    # reach2/3/4 build reachability; auto_name/patterns add MachXO2 net-name
+    # and structural-pattern layers the report consumes.  For gowin the naming
+    # heuristics and the chains report lean on the pad/hard-IP layers that are
+    # not modelled yet, so run only the generic reachability passes.
+    analysis = (("reach2", "reach3", "reach4") if is_gowin
+                else ("reach2", "reach3", "reach4", "auto_name", "patterns"))
+    for stage in analysis:
         run(stage, label, [PY, f"{stage}.py", "--bitstream", label])
 
     # Deliverables (NOT scratch): the report (led by the top-down Device
@@ -137,9 +172,10 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
     run("report", label,
         [PY, "report.py", "--bitstream", label,
          "--out", os.path.join(out_dir, f"{label}-report.txt")])
-    run("chains", label,
-        [PY, "chains.py", "--bitstream", label,
-         "--out", os.path.join(out_dir, f"{label}-chains.txt")])
+    if not is_gowin:
+        run("chains", label,
+            [PY, "chains.py", "--bitstream", label,
+             "--out", os.path.join(out_dir, f"{label}-chains.txt")])
     if emit_verilog:
         out_v = os.path.join(out_dir, f"{label}.v")
         # Snapshot the prior emission before overwriting, so the verify stage
@@ -247,7 +283,9 @@ def main():
                 top=top, emit_verilog=not args.no_verilog, nets=nets,
                 header_note=header_note,
                 verify=not args.no_verify, strict_lec=args.strict_lec,
-                board=args.board)
+                board=args.board,
+                lifter=board.get("lifter", "machxo2"),
+                device=board.get("device"))
 
     # Regression gate (#60): diff the freshly-rebuilt DB against a reference,
     # per label, to catch silent data loss from a schema/lifter change.  The

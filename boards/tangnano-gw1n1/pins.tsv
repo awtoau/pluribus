@@ -1,0 +1,21 @@
+# Pluribus pin annotation file — Sipeed Tang Nano (GW1N-1)
+#
+# DEVICE METADATA — parsed by load.py
+# device:   GW1N-1
+# package:  QN48
+#
+# GOWIN pad/IO recovery is NOT modelled yet: load.py's MachXO2-only
+# pad_map/EFB/EBR blocks are gated by family, and the gowin lifter's pad hooks
+# return empty.  So these rows are documentation only — they are not consumed
+# on the gowin path (fabric_pins is computed but unused).  When gowin pad
+# mapping lands, fill this out from the board schematic + apycula pinout.
+#
+# COLUMN FORMAT
+# pin  row  col  pio  dir  label  function  confidence
+# confidence: 1..10  (3=guess 5=estimate 8=inferred 10=confirmed)
+#
+# (Tang Nano reference pins — indicative only, not used by the gowin lifter.)
+35	0	0	A	in	XTAL_IN	24 MHz oscillator input	5
+16	0	0	A	out	LED_R	on-board RGB LED red	5
+17	0	0	A	out	LED_G	on-board RGB LED green	5
+18	0	0	A	out	LED_B	on-board RGB LED blue	5
