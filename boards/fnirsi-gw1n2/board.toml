@@ -10,35 +10,47 @@
 #   PLURIBUS_SQLITE_PATH=tmp/fnirsi.db \
 #     python3.15t scripts/run_pipeline.py --board boards/fnirsi-gw1n2 --all
 #
-# PACKAGE: LQFP100 — basis (re-derived for issue #69).
+# PACKAGE: QFN48X — the physical package is now KNOWN (issue #73).
 #
-# The original basis ("59 IOB sites > 48 pins") was WRONG and is retired: a
-# GW1N IOB decodes as IBUF from its default fuse state, so 'configured IOB'
-# count says nothing about the package.  Filtering the 59 decoded IOBs to those
-# whose fabric side actually reaches a logic port (LUT / DFF / ALU / BSRAM)
-# leaves only 23 genuinely-used pads — the entire top edge is default-state
-# IBUFs.  Coverage of those 23 real pads, per apicula pinout table:
+# GROUND TRUTH: the device is a Gowin GW1N-UV2 in the standard **QN48** package
+# (48-pin QFN, 6 x 6 mm; ordering code of the form GW1N-UV2QN48C6/I5; NOT QN48H).
+# Physically confirmed from the chip marking on 2026-06-13 and documented in the
+# OpenScope-2C53T programming guide.  IDCODE 0x0120681B corroborates GW1N-2.
 #
-#     LQFP100   20 / 23 bonded   (misses IOR13B, IOR1B, IOT3A)
-#     QFN48X    14 / 23 bonded   (misses 9, incl. the IOL5B output driver)
-#     QFN48XF   14 / 23 bonded   (same)
+# apicula ships NO "QN48" table for GW1N-2 — only LQFP100/LQFP100X (81 pads) and
+# QFN48X/QFN48XF (40 pads).  QFN48X is therefore the nearest proxy: it is the
+# 48-pin QFN family, and it places IOR1B at pin 35, matching the confirmed
+# upstream pinout exactly.
 #
-# LQFP100 explains the design's real I/O far better, and the QFN48X gaps
-# include pads the design actively DRIVES, which a correct package cannot do.
-# apicula ships no plain "QN48"; QFN48X/QFN48XF are proxies.
+# This RETIRES the earlier LQFP100 choice (issue #69), which was a coverage
+# heuristic made before the package was known:
 #
-# CAVEAT: apicula's pinout tables are incomplete proxies, not ground truth —
-# IOT3A is a routed pad that is unbonded in EVERY GW1N-2 table.  So the 3
-# LQFP100 gaps are most likely table gaps rather than genuinely unbonded die
-# pads.  One of them (IOR1B, the top-right CORNER pad) carries the 2C53T master
-# run/re-arm input.  Corner pads are bonded under QFN48X only, so they get no
-# pin number here; load.py still net-names every routed-but-unbonded pad after
-# its location (source='gowin_iob_unbonded') so the signal is not lost.
+#     LQFP100   20 / 23 real pads bonded   -- but IOR1B NOT bonded at all
+#     QFN48X    14 / 23 real pads bonded   -- IOR1B = pin 35 (confirmed)
+#
+# LQFP100's higher coverage is an artefact of it being an 81-pad table, not
+# evidence of correctness: it is a physically different package, so its pin
+# NUMBERS do not correspond to this board at all.  Fewer-but-correct pin numbers
+# beat more-but-wrong ones — wrong numbers actively mislead anyone probing the
+# hardware.  Notably the correct package RECOVERS the master run/re-arm pin
+# (IOR1B = 35) that LQFP100 could never resolve.
+#
+# RESIDUAL GAP (still open, #73): apicula's QFN48X table bonds only 14 of the 23
+# real pads and omits some the design drives, and IOT3A is a routed pad that is
+# unbonded in EVERY GW1N-2 table.  Since the real part is a 48-pin QN48, those
+# omissions are most likely INCOMPLETENESS in apicula's tables rather than
+# genuinely unbonded die pads — an upstream data gap, not a physical fact.
+#
+# Pads that remain unbonded under this table still get no pin number, but they
+# are NOT lost: load.py net-names every routed-but-unbonded pad after its
+# location (source='gowin_iob_unbonded'), so each stays recoverable by name.
+# Treat any pin number derived from this table as PROXY-CONFIRMED (it matches
+# the documented QN48 pinout where both cover a pad) rather than exhaustive.
 
 [board]
 name    = "FNIRSI 2C53T (GW1N-2)"
 device  = "GW1N-2"       # apycula chip database name (GW1N-2.msgpack.xz)
-package = "LQFP100"      # resolves IOB locations to physical pins via db.pinout
+package = "QFN48X"       # nearest apicula proxy for the physical QN48 (see above)
 lifter  = "gowin"
 top     = "fnirsi"
 
