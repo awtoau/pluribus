@@ -842,6 +842,9 @@ def emit_luts(data: dict) -> list[str]:
         (re.compile(r"^NAND\(([abcd]),([abcd])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
         (re.compile(r"^NOR\(([abcd]),([abcd])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
         (re.compile(r"^XNOR\(([abcd]),([abcd])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
+        # MUX(sel,i0,i1): 3-input LUT mux, sel=0 -> i0, sel=1 -> i1 (see classify_lut).
+        (re.compile(r"^MUX\(([abcd]),([abcd]),([abcd])\)$"),
+                                                      lambda m: f"({m.group(1)} ? {m.group(3)} : {m.group(2)})"),
     ]
     def _fn_to_vlog(fn: str) -> str:
         for pat, xform in _FN_RULES:
