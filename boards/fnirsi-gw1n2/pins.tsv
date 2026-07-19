@@ -2,13 +2,16 @@
 #
 # DEVICE METADATA — parsed by load.py
 # device:   GW1N-2
-# package:  LQFP100
+# (no 'package:' line — deliberately unset, see board.toml and issue #73)
 #
 # COLUMN FORMAT
 # pin  row  col  pio  dir  label  function  confidence
 # confidence: 1..10  (3=guess 5=estimate 8=inferred 10=confirmed)
 #
-# Board-specific pin annotations are not yet reverse-engineered.  The GOWIN
-# pad_map builder maps IOB bels to physical pins from apicula's vendor pinout
-# (db.pinout[GW1N-2][LQFP100]) and names each pad by its IOB location, so this
-# file carries only the device/package metadata for now.
+# Board-specific pin annotations are not yet reverse-engineered, and no package
+# is declared: apicula ships no table matching the physical QN48, and every
+# table it does ship yields pin numbers that do not apply to this board (#73).
+# The GOWIN pad_map builder therefore names each pad after its IOB location
+# only (source='gowin_iob_unbonded'), which is package-independent and lossless.
+# Physical pin numbers, when needed, come from the vendor GW1N-2/QFN48 table —
+# tracked for ingestion as issue #74.

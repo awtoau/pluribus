@@ -1,0 +1,27 @@
+# FNIRSI 2C53T (GW1N-2) FPGA-side SPI command map — source for annotate.py.
+#
+# RECOVERED FROM THE NETLIST, not from firmware.  Every row here was traced in
+# the lifted bitstream by scripts/gowin_spi_trace.py; see
+# docs/re/openscope_2c53t_spi_commands.md for the full derivation, the evidence
+# for the bit ordering, and the confidence rationale.
+#
+# Opcode numbering convention: the fabric latches shift-chain stages 1..5 as
+# opcode bits 0..4, where stage 1 holds the LAST bit clocked in.  Under MSB-first
+# SPI framing that makes stage 1 the LSB — corroborated by the 0x08 data
+# register, whose stage order maps monotonically onto ALU bit index.
+#
+# IMPORTANT — the decode is only 5 bits wide.  No decode tests command bits 5..7,
+# so every opcode below ALIASES modulo 32 (0x01 is indistinguishable from 0x21,
+# 0x41, ...).  Addresses are given in their lowest-numbered form.
+#
+# bank	address	name	description	bit_fields (JSON list)
+bank	address	name	description	bit_fields
+OPCODE	0x01	WR_REG_A	Decoded enable n2105 (full 5-bit match). Latches shift stages 1-5 into an 8-flop register bank across tiles r12c7/r13c7/r14c8; that bank feeds the local compare LUTs at lut_r12c7_* / lut_r12c8_*. CONFIRMED decode + target; the downstream analog meaning is not established.	[]
+OPCODE	0x02	WR_REG_B	Decoded enable n2018 (full 5-bit match). Latches shift stages 1-2 into ff_r13c7_DFF2/DFF3, which drive lut_r13c5_LUT0/LUT1. Shortest path of any opcode to the BSRAM write clock-enables (8 hops). CONFIRMED decode + target.	[]
+OPCODE	0x04	CTRL_C	Decoded enables n2119 and n2147 (full 5-bit match). Gate no flop clock-enable; consumed only as LUT inputs in the r15c11-r15c14 control block. CONFIRMED decode; effect INFERRED as a combinational mode/qualifier term.	[]
+OPCODE	0x05	CTRL_D	Decoded enables n2121 and n2123 (full 5-bit match). n2123 drives the D input of ff_r15c11_DFF3; neither gates a clock-enable. CONFIRMED decode; effect INFERRED.	[]
+OPCODE	0x06	WR_MODE	Decoded enable n2014 (full 5-bit match). Latches shift stage 1 into ff_r14c8_DFF2/DFF3. ff_r14c8_DFF2 (net n908) is broadcast to 8 LUTs spread across the capture front end (r3c11, r4c11, r5c11 x3, r6c6, r6c10, r7c9) — a global mode/qualifier bit. CONFIRMED decode + fanout.	[]
+OPCODE	0x07	WR_ARM	Decoded enable n2009 (full 5-bit match). Latches shift stage 1 into ff_r14c8_DFF0/DFF1. Shortest path of any opcode to the shared BSRAM CEA (R10C5/R10C14) and to the data-ready output pad IOR13A (7 hops each). CONFIRMED decode + target; arming role INFERRED from proximity, not proven end-to-end.	[]
+OPCODE	0x08	WR_THRESHOLD	Decoded enable n2114 (full 5-bit match). The only opcode that latches ALL 8 shift stages: an 8-bit parallel load into ff_r13c8_DFF0-5 + ff_r14c7_DFF0/1, whose Q nets drive the i1 inputs of two mode-9 ALU chains (alu_r2c7_*/alu_r2c8_* and alu_r6c8_*/alu_r6c9_*). A comparison/threshold value. CONFIRMED decode, target and ALU connection.	[]
+OPCODE	0x09	CTRL_E	Decoded enable n2112, a PARTIAL decode (mask 0x1b — opcode bit 2 is a don't-care), so it also matches 0x0d. Drives the D of ff_r15c10_DFF5 and lut_r15c14_LUT5. CONFIRMED decode; effect INFERRED.	[]
+READ	0x00	SO_BYTE	Serial readback byte presented on the SO pad (IOB5B). Eight latched bits (DLC, shared load enable n2203) selected by a 3-bit counter (ff_r16c10_DFF0/1/2) through the GW1N wide-mux chain MUX2_LUT52/53/61 to wire R17C12_OF5. 40 BSRAM DO nets reach all 8 mux data inputs, so captured sample data is what this serialises. CONFIRMED path; per-bit field assignment NOT established.	[{"bits":"2:0","name":"BIT_SELECT","desc":"counter ff_r16c10_DFF0/1/2 selects which of the 8 latched bits drives SO"}]
