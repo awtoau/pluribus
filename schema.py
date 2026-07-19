@@ -46,6 +46,10 @@ ffs = Table("ffs", metadata,
     Column("d",    Text),
     Column("q",    Text),
     Column("lsr",  Text),
+    # Family-specific storage-element kind (NULL for MachXO2).  GOWIN records the
+    # apycula dff/latch kind (DFF/DFFR/DL/DLC/…) so the Verilog emitter can tell a
+    # level-sensitive latch (DL*) from an edge-triggered flop.
+    Column("dtype", Text),
     UniqueConstraint("bitstream", "cell"),
 )
 
@@ -58,6 +62,22 @@ luts = Table("luts", metadata,
     Column("z",     Text),
     Column("deps",  JSON),   # TEXT[] → JSON list
     Column("fn",    Text),
+    UniqueConstraint("bitstream", "cell"),
+)
+
+# GOWIN ALU (carry/arithmetic) cells.  Empty for MachXO2 (CCU2 carry is folded
+# into the LUT/FF recovery there).  Each row is one ALU bit with the apycula
+# vendor-model ports (ALU_MODE + I0/I1/I3/CIN and the SUM/COUT output nets) so the
+# Verilog emitter can instantiate the exact vendor ALU behaviour and drive F.
+alu_cells = Table("alu_cells", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("cell",   Text, nullable=False),
+    Column("mode",   Text),      # numeric ALU_MODE (0=ADD 3=NE 9=MULT …)
+    Column("sum_net", Text),     # F output net when the cell exposes SUM (else NULL)
+    Column("cout_net", Text),    # carry-out net (chains to the next cell's cin)
+    Column("cin",    Text),
+    Column("i0",     Text), Column("i1", Text), Column("i3", Text),
     UniqueConstraint("bitstream", "cell"),
 )
 

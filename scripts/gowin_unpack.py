@@ -111,7 +111,44 @@ _KINDS_WITH_LSR = {
 _LATCH_KINDS = {"DL", "DLN", "DLC", "DLNC", "DLP", "DLNP"}
 
 
-def unpack(bitstream, device):
+def build_pin_lookup(db, package):
+    """{IOB-loc-name -> physical pin number} for PACKAGE from db.pinout.
+
+    db.pinout is {partnumber: {package: {pin_num: (loc_name, [funcs])}}}.  The
+    loc_name (e.g. "IOT7A") matches loc2pin_name(db,row,col)+idx, so inverting it
+    gives an IOB-location → physical-pin map.  PACKAGE is matched leniently
+    (exact, else the first key that starts with / contains the request) because
+    apicula suffixes packages (QFN48 → QFN48X).  Returns ({}, matched_pkg_name).
+    """
+    if not package or not getattr(db, "pinout", None):
+        return {}, None
+    # collapse all partnumbers' package tables (they share pin maps per package)
+    pkg_tables = {}
+    for partno, pkgs in db.pinout.items():
+        for pkg, table in pkgs.items():
+            pkg_tables.setdefault(pkg, table)
+    want = package.upper()
+    match = None
+    for pkg in pkg_tables:
+        if pkg.upper() == want:
+            match = pkg; break
+    if match is None:
+        cands = [p for p in pkg_tables if p.upper().startswith(want)
+                 or want in p.upper()]
+        match = sorted(cands, key=len)[0] if cands else None
+    if match is None:
+        return {}, None
+    inv = {}
+    for num, entry in pkg_tables[match].items():
+        loc = entry[0] if isinstance(entry, (list, tuple)) else entry
+        try:
+            inv[loc] = int(num)
+        except (TypeError, ValueError):
+            continue
+    return inv, match
+
+
+def unpack(bitstream, device, package=None):
     """Decode BITSTREAM for DEVICE, return (lines, counts)."""
     import importlib.resources as ir
     from apycula.chipdb import load_chipdb, tile_bitmap, wire2global
@@ -121,6 +158,11 @@ def unpack(bitstream, device):
     gu._device = device
     dbpath = str(ir.files("apycula").joinpath(f"{device}.msgpack.xz"))
     db = load_chipdb(dbpath)
+
+    pin_lookup, matched_pkg = build_pin_lookup(db, package)
+    if package:
+        print(f"[gowin_unpack] package {package} -> pinout '{matched_pkg}' "
+              f"({len(pin_lookup)} bonded pins)", file=sys.stderr)
 
     aliases = build_alias_map(db, wire2global)
     canon = make_canon(db, wire2global, aliases)
@@ -212,15 +254,43 @@ def unpack(bitstream, device):
                 counts["dff"][kind] = counts["dff"].get(kind, 0) + 1
 
             elif name.startswith("ALU"):
-                idx = name[3:]
-                mode = next(iter(flags)) if flags else "?"
-                # COUT/SUM both land on F{idx}; that is the node a paired DFF
-                # reads as its D input.  Emit inputs + the F output node.
+                idx = int(name[3:])
+                kind = (next(iter(flags)) if flags else "?")
+                # Mirror apycula gowin_unpack's ALU codegen: normalise the kind to
+                # a numeric ALU_MODE and remap the slice inputs (A/B/C/D) to the
+                # ALU cell's logical I0/I1/I3 per mode.  The vendor ALU sim model
+                # is  SUM = S ^ CIN ; COUT = S ? CIN : C  with (S,C) selected by
+                # ALU_MODE — so recovering these ports lets the emitter drive F.
+                #   F{idx}    — output node a paired DFF reads (SUM, or COUT for C2L)
+                #   CIN{idx}  — carry in ; COUT chains to CIN{idx+1} (next col at 5)
+                mode = "0" if kind == "hadder" else kind
+                fnode = C(row, col, f"F{idx}")
+                cin   = C(row, col, f"CIN{idx}")
+                cout  = (C(row, col, f"CIN{idx+1}") if idx < 5
+                         else C(row, col + 1, "CIN0"))
+                i0 = i1 = i3 = "-"
+                if kind in "2346789":
+                    i0 = C(row, col, f"A{idx}"); i1 = C(row, col, f"B{idx}")
+                    if kind in "28":
+                        i3 = C(row, col, f"D{idx}")
+                    out_kind = "SUM"
+                elif kind == "hadder":            # kind '0'
+                    i0 = C(row, col, f"B{idx}"); i1 = C(row, col, f"D{idx}")
+                    i3 = C(row, col, f"A{idx}")
+                    out_kind = "SUM"
+                elif kind == "C2L":
+                    i0 = C(row, col, f"B{idx}"); i1 = C(row, col, f"D{idx}")
+                    mode = "9"                    # apycula: C2L → MULT, COUT→F
+                    cout = fnode
+                    out_kind = "COUT"
+                else:                             # kind '1' etc.
+                    i0 = C(row, col, f"A{idx}"); i1 = C(row, col, f"D{idx}")
+                    out_kind = "SUM"
                 lines.append(
-                    f"hardip {row} {col} ALU idx={idx} mode={mode} "
-                    f"F={C(row, col, f'F{idx}')} CIN={C(row, col, f'CIN{idx}')} "
-                    f"A={C(row, col, f'A{idx}')} B={C(row, col, f'B{idx}')} "
-                    f"C={C(row, col, f'C{idx}')} D={C(row, col, f'D{idx}')}")
+                    f"hardip {row} {col} ALU idx={idx} amode={mode} "
+                    f"outkind={out_kind} F={fnode} SUM={fnode if out_kind == 'SUM' else '-'} "
+                    f"COUT={cout} CIN={cin} I0={i0} I1={i1} I3={i3} "
+                    f"I2={C(row, col, f'C{idx}')}")
                 counts["alu"] += 1
 
             elif name.startswith("IOB"):
@@ -246,9 +316,13 @@ def unpack(bitstream, device):
                     pin = f"{_cdb.loc2pin_name(db, row, col)}{idx}"
                 except Exception:
                     pin = f"R{row + 1}C{col + 1}{idx}"
+                # Physical package pin number from db.pinout ('-' if unbonded in
+                # this package — e.g. dedicated config IO or a die pad the package
+                # does not bring out).
+                phys = pin_lookup.get(pin, "-")
                 lines.append(
                     f"iob {row} {col} {name} {mode} "
-                    f"I={i_net} O={o_net} OE={oe_net} pin={pin}")
+                    f"I={i_net} O={o_net} OE={oe_net} pin={pin} phys={phys}")
                 counts["iob"][mode] = counts["iob"].get(mode, 0) + 1
 
             else:
@@ -300,6 +374,9 @@ def main():
     ap.add_argument("out", nargs="?", help="output .gwconfig (default BITSTREAM.gwconfig)")
     ap.add_argument("-d", "--device", default="GW1N-1",
                     help="apycula device name (default GW1N-1)")
+    ap.add_argument("-p", "--package",
+                    help="physical package (e.g. QFN48, LQFP100) — resolves IOB "
+                         "locations to physical pin numbers via db.pinout")
     args = ap.parse_args()
 
     import os
@@ -310,8 +387,9 @@ def main():
               file=sys.stderr)
         return 1
 
-    print(f"[gowin_unpack] decode: {args.bitstream}  device={args.device}")
-    lines, counts = unpack(args.bitstream, args.device)
+    print(f"[gowin_unpack] decode: {args.bitstream}  device={args.device}"
+          f"  package={args.package or '(none)'}")
+    lines, counts = unpack(args.bitstream, args.device, args.package)
     with open(out_path, "w") as fh:
         fh.write("# pluribus GOWIN gwconfig — decoded by scripts/gowin_unpack.py\n")
         fh.write(f"# device {args.device}\n")

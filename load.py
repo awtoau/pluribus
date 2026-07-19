@@ -363,6 +363,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             schema.pad_map,
             schema.ffs,
             schema.luts,
+            schema.alu_cells,
             schema.const_nets,
             schema.net_fanout,
             schema.arcs,
@@ -394,7 +395,8 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         if bad_ffs:
             die(f"{len(bad_ffs)} FFs have missing name or Q: {[f['name'] for f in bad_ffs[:5]]}")
         ff_rows = [{"bitstream": bs_id, "cell": ff["name"], "clk": ff["clk"],
-                    "ce": ff["ce"], "d": ff["d"], "q": ff["q"], "lsr": ff["lsr"]}
+                    "ce": ff["ce"], "d": ff["d"], "q": ff["q"], "lsr": ff["lsr"],
+                    "dtype": ff.get("dtype")}
                    for ff in design.ffs]
         if ff_rows:
             conn.execute(insert(schema.ffs), ff_rows)
@@ -418,6 +420,21 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             .where(schema.luts.c.bitstream == bs_id)
         ).scalar()
         assert_eq("LUT count in DB", lut_count, n_luts)
+
+        # ── ALU cells (GOWIN carry/adder) — empty for MachXO2 ─────────────────
+        alu_list = getattr(design, "alus", [])
+        alu_rows = [{"bitstream": bs_id, "cell": a["name"], "mode": a["mode"],
+                     "sum_net": a["sum"], "cout_net": a["cout"], "cin": a["cin"],
+                     "i0": a["i0"], "i1": a["i1"], "i3": a["i3"]}
+                    for a in alu_list]
+        if alu_rows:
+            conn.execute(insert(schema.alu_cells), alu_rows)
+            alu_count = conn.execute(
+                select(func.count()).select_from(schema.alu_cells)
+                .where(schema.alu_cells.c.bitstream == bs_id)
+            ).scalar()
+            assert_eq("ALU count in DB", alu_count, len(alu_rows))
+            print(f"  {len(alu_rows)} ALU cells")
 
         # ── net_fanout ─────────────────────────────────────────────────────────
         fanout_rows = []
@@ -595,6 +612,49 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                 print(f"  Not routed: {', '.join(r[5] for r in pad_unresolved[:10])}")
             if pad_resolved == 0 and not fuzz:
                 die("Zero fabric pads resolved — wrong device/config or machxo2_lift bug")
+
+        elif lifter == "gowin":
+            # ── pad_map (GOWIN) ─────────────────────────────────────────────────
+            # The gowin lifter maps each IOB bel to a physical pin (via apicula's
+            # db.pinout, resolved in gowin_unpack) and to the fabric net it drives
+            # / is driven by.  Fill pad_map so api.net_for_pad() works and the
+            # recovered Verilog gets named ports.  Only bonded IOBs (a physical
+            # pin in this package) are user pads; unbonded die pads are skipped.
+            seen_pins = set()
+            gpad_rows = []
+            gnet_name_rows = []
+            n_unbonded = 0
+            for p in getattr(design, "pads", []):
+                if p["pin"] is None:
+                    n_unbonded += 1
+                    continue
+                if p["pin"] in seen_pins:
+                    continue  # UNIQUE(bitstream, pin); keep the first IOB per pin
+                seen_pins.add(p["pin"])
+                gpad_rows.append({
+                    "bitstream": bs_id, "pin": p["pin"], "label": p["label"],
+                    "row": p["row"], "col": p["col"], "pio": p["pio"],
+                    "direction": p["direction"],
+                    "net_in": p["net_in"], "net_out": p["net_out"],
+                })
+                # Name the fabric net after the pad label so the recovered Verilog
+                # references the port identifier (not the raw n<k>) — the same
+                # binding the MachXO2 pad_map does.
+                fnet = p["net_in"] or p["net_out"]
+                if fnet:
+                    gnet_name_rows.append({
+                        "bitstream": bs_id, "net": fnet, "name": p["label"],
+                        "description": f"IOB pad {p['label']} (pin {p['pin']})",
+                        "confidence": "confirmed", "source": "gowin_pinout",
+                    })
+            if gpad_rows:
+                conn.execute(insert(schema.pad_map), gpad_rows)
+            if gnet_name_rows:
+                conn.execute(_insert_or_ignore(schema.net_names), gnet_name_rows)
+            g_resolved = sum(1 for r in gpad_rows
+                             if r["net_in"] or r["net_out"])
+            print(f"  {len(gpad_rows)} pad_map rows  ({g_resolved} with a fabric "
+                  f"net, {n_unbonded} IOBs unbonded in this package)")
 
         # ── aw2-nets.tsv — user net annotations (names + confidence) ─────────
         if nets_tsv:
