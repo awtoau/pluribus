@@ -1,0 +1,14 @@
+# Pluribus pin annotation file — FNIRSI 2C53T (GW1N-2)
+#
+# DEVICE METADATA — parsed by load.py
+# device:   GW1N-2
+# package:  LQFP100
+#
+# COLUMN FORMAT
+# pin  row  col  pio  dir  label  function  confidence
+# confidence: 1..10  (3=guess 5=estimate 8=inferred 10=confirmed)
+#
+# Board-specific pin annotations are not yet reverse-engineered.  The GOWIN
+# pad_map builder maps IOB bels to physical pins from apicula's vendor pinout
+# (db.pinout[GW1N-2][LQFP100]) and names each pad by its IOB location, so this
+# file carries only the device/package metadata for now.

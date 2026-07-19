@@ -60,6 +60,8 @@ class Design:
     def __init__(self):
         self.luts = []
         self.ffs = []
+        self.alus = []           # GOWIN ALU (carry/adder) cells
+        self.pads = []           # IOB pad_map records (pin/label/dir/nets)
         self.net_name = {}       # dsu-root -> "n<k>"
         self.all_nets = []
         self.dsu = None
@@ -167,7 +169,7 @@ class GowinLift:
                         "row": int(p[1]), "col": int(p[2]), "bel": p[3],
                         "mode": p[4],
                         "i": kv.get("I"), "o": kv.get("O"), "oe": kv.get("OE"),
-                        "pin": kv.get("pin"),
+                        "pin": kv.get("pin"), "phys": kv.get("phys"),
                     })
                 elif tag == "hardip":
                     kv = _kv(p[4:])
@@ -252,21 +254,36 @@ class GowinLift:
                 return const_by_root[root]
             return net_of(key)
 
-        # 3) ALU outputs: force-name the F node so a paired DFF's D resolves to
-        #    the ALU-result net.  The ALU's own logic (carry chain) is NOT
-        #    modelled yet — these nets are correct endpoints but currently
-        #    have no fanin.  Counted and reported, excluded from LUT parity.
+        # 3) ALU cells: recover the apycula vendor-model ports so the emitter can
+        #    drive F with the real carry/adder logic (SUM = S^CIN, COUT = S?CIN:C
+        #    with (S,C) chosen by ALU_MODE).  Force-name the output nets (F/SUM,
+        #    COUT) so a paired DFF's D and the next cell's CIN resolve to real
+        #    nets, and the carry chain stitches through the shared CIN nodes.
         n_alu = 0
         alu_out_nodes = set()
         hardip_counts = defaultdict(int)
         for hp in pc.hardips:
             hardip_counts[hp["type"]] += 1
-            if hp["type"] == "ALU":
-                n_alu += 1
-                f = hp.get("F")
-                if f:
-                    alu_out_nodes.add(f)
-                    net_of(f)
+            if hp["type"] != "ALU":
+                continue
+            n_alu += 1
+            f = hp.get("F")
+            if f:
+                alu_out_nodes.add(f)
+                net_of(f)
+            cout = hp.get("COUT")
+            if cout:
+                net_of(cout)          # chains to the next cell's CIN (shared node)
+            d.alus.append({
+                "name": f"alu_r{hp['row']}c{hp['col']}_{hp.get('idx', '?')}",
+                "mode": hp.get("amode") or "0",
+                "sum":  net_of(hp["SUM"]) if hp.get("SUM") else None,
+                "cout": net_of(cout) if cout else None,
+                "cin":  net_of(hp["CIN"]) if hp.get("CIN") else "1'b0",
+                "i0":   resolve(hp.get("I0"), "1'b0"),
+                "i1":   resolve(hp.get("I1"), "1'b0"),
+                "i3":   resolve(hp.get("I3"), "1'b0"),
+            })
         d.n_alu = n_alu
         d.hardip_counts = dict(hardip_counts)
 
@@ -318,6 +335,44 @@ class GowinLift:
                 if dsu.find(node) in const_by_root:
                     continue
                 net_of(node)
+
+        # 7) IOB pads → pad_map records.  Direction and fabric net follow the
+        #    apycula buffer convention (verified against the vendor reference
+        #    netlist): an input buffer's O is the fabric net it drives (net_in),
+        #    an output buffer's I is the fabric net that drives the pad (net_out).
+        #    The physical pin number comes from db.pinout (resolved in
+        #    scripts/gowin_unpack.py and carried in the iob record as phys=).
+        _DIR = {"IBUF": "in", "OBUF": "out", "IOBUF": "bidir", "TBUF": "out"}
+        for iob in pc.iobs:
+            mode = iob.get("mode") or ""
+            # LVDS/MIPI/I3C variants: classify by the buffer role in the name.
+            if mode in _DIR:
+                direction = _DIR[mode]
+            elif "IBUF" in mode:
+                direction = "in"
+            elif "OBUF" in mode:
+                direction = "out"
+            else:
+                direction = "bidir"
+            fab_in  = resolve(iob.get("o"), None)   # pad → fabric (input pad)
+            fab_out = resolve(iob.get("i"), None)   # fabric → pad (output pad)
+            net_in  = fab_in  if direction in ("in", "bidir")  else None
+            net_out = fab_out if direction in ("out", "bidir") else None
+            # ignore const-resolved nets (a pad net is never a literal)
+            if net_in and net_in.startswith("1'b"):
+                net_in = None
+            if net_out and net_out.startswith("1'b"):
+                net_out = None
+            phys = iob.get("phys")
+            try:
+                pin = int(phys) if phys not in (None, "-", "") else None
+            except ValueError:
+                pin = None
+            d.pads.append({
+                "pin": pin, "label": iob.get("pin") or f"R{iob['row']+1}C{iob['col']+1}",
+                "row": iob["row"], "col": iob["col"], "pio": iob["bel"][-1],
+                "direction": direction, "net_in": net_in, "net_out": net_out,
+            })
 
         d.all_nets = sorted(set(net_name.values()), key=lambda s: int(s[1:]))
         return d

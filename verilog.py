@@ -118,9 +118,19 @@ def load_data(conn, bs_id: int) -> dict:
 
     # FFs: (cell, clk, ce, d, q, lsr)
     ffs = q("SELECT cell, clk, ce, d, q, lsr FROM ffs WHERE bitstream=:bs_id ORDER BY cell")
+    # FF dtype map (cell -> dtype string).  MachXO2 FFs store NULL here, so the
+    # map is empty and every FF stays on the edge-triggered path (byte-identical).
+    # GOWIN latch kinds (DL/DLC/…) are routed to a level-sensitive-latch emitter.
+    ff_dtype_map = {cell: dtype for cell, dtype in
+                    q("SELECT cell, dtype FROM ffs WHERE bitstream=:bs_id")
+                    if dtype}
 
     # LUTs: (cell, init, a, b, c, d, z, fn)
     luts = q("SELECT cell, init, a, b, c, d, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
+
+    # ALU cells (GOWIN carry/adder) — empty for MachXO2.
+    alus = q("SELECT cell, mode, sum_net, cout_net, cin, i0, i1, i3 "
+             "FROM alu_cells WHERE bitstream=:bs_id ORDER BY cell")
 
     # Pad map: (pin, label, direction, net_in, net_out)
     pads = q("SELECT pin, label, direction, net_in, net_out FROM pad_map WHERE bitstream=:bs_id ORDER BY pin")
@@ -277,6 +287,7 @@ def load_data(conn, bs_id: int) -> dict:
     # the FF's Q output.  This is the Q net's human name when available, otherwise derived
     # from the cell's human name + "_q".  emit_ffs uses this as the reg identifier so that
     # the reg name and the wire name (used by LUT input resolution) always match.
+    _is_gowin = str(meta[1] or "").upper().startswith("GW")
     ff_q_wire_map: dict[str, str] = {}
     for cell, _clk, _ce, _d, q, _lsr in ffs:
         if q is None:
@@ -286,6 +297,16 @@ def load_data(conn, bs_id: int) -> dict:
             ff_q_wire_map[cell] = _sanitise(q_human)
         elif cell in cell_name_map:
             ff_q_wire_map[cell] = _sanitise(f"{cell_name_map[cell]}_q")
+        elif _is_gowin:
+            # GOWIN runs without the MachXO2 auto-naming passes, so most Q nets
+            # have no human name.  Connect the FF/latch Q to the fabric anyway,
+            # using the RAW net identifier — the same one every reader (LUT
+            # inputs, FF D/control) resolves it to, and the one emit_wires
+            # declares it under for gowin (its clock-derived Q-wire aliasing is
+            # disabled for gowin to keep declarations and references in step).
+            rq = resolve_net(q, net_name_map, const_net_map)
+            if not rq.startswith("1'b"):
+                ff_q_wire_map[cell] = _sanitise(rq)
 
     # Module port names (sanitised pad labels) — reg declarations must avoid these names
     # because ports are declared as wires in the module header.
@@ -349,6 +370,7 @@ def load_data(conn, bs_id: int) -> dict:
     return {
         "ffs":              ffs,
         "luts":             luts,
+        "alus":             alus,
         "pads":             pads,
         "efb_ports":        efb_ports,
         "efb_config":       efb_config,
@@ -378,6 +400,10 @@ def load_data(conn, bs_id: int) -> dict:
         "bs_label":         meta[0],
         "device":           meta[1],
         "package":          meta[2],
+        # Family flag — GOWIN devices are GW1N-*/GW2A-*/…  Emitter changes that
+        # would perturb the byte-identical MachXO2 output are gated on this.
+        "is_gowin":         str(meta[1] or "").upper().startswith("GW"),
+        "ff_dtype_map":     ff_dtype_map,
     }
 
 
@@ -512,6 +538,7 @@ def emit_wires(data: dict) -> list[str]:
     cell_name_map     = data["cell_name_map"]
     pads              = data["pads"]
     all_nets          = data["all_nets"]
+    is_gowin          = data.get("is_gowin", False)
 
     # Build set of port nets AND port name strings.
     # Both must be excluded from wire declarations:
@@ -557,11 +584,17 @@ def emit_wires(data: dict) -> list[str]:
             cell_human = cell_name_map.get(src_cell)
             if cell_human:
                 return _sanitise(f"{cell_human}_q")
-            clk_name = cell_clkname_map.get(src_cell)
-            if clk_name:
-                short = re.sub(r"^clk_h\d+_", "", clk_name)
-                suffix = re.sub(r"^ff_", "", src_cell)
-                return _sanitise(f"{short}__{suffix}_q")
+            # The clock-derived Q-wire alias is a MachXO2 nicety: readers there
+            # resolve the Q net to its auto-named identifier, which matches.  For
+            # gowin the Q nets stay unnamed, so a clock-derived wire name would
+            # not match how LUT/FF readers resolve the net (raw n<k>) → keep the
+            # raw name for gowin so declarations and references agree.
+            if not is_gowin:
+                clk_name = cell_clkname_map.get(src_cell)
+                if clk_name:
+                    short = re.sub(r"^clk_h\d+_", "", clk_name)
+                    suffix = re.sub(r"^ff_", "", src_cell)
+                    return _sanitise(f"{short}__{suffix}_q")
         return resolve_net(net, net_name_map, const_net_map)
 
     # Split into groups
@@ -775,7 +808,24 @@ def _simplify_lut(init: str, a: str, b: str, c: str, d: str) -> str | None:
     return TABLE.get(tt)
 
 
-def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str, cell_name: str = "") -> list[str]:
+def _lut_active_positions(init: str) -> set[int]:
+    """Index positions (0=a,1=b,2=c,3=d) the truth table actually depends on.
+
+    A position is active iff flipping that input bit changes the output for some
+    input combination.  A routed-but-inactive input (e.g. a COMBO3(a,b,c) whose
+    D pin is still physically wired) is functionally ignored by the INIT.
+    """
+    v = int(init, 2)  # MSB-first string → f(p) = (v>>p)&1 (#63)
+    active = set()
+    for pos in range(4):
+        m = 1 << pos
+        if any(((v >> p) & 1) != ((v >> (p ^ m)) & 1) for p in range(16)):
+            active.add(pos)
+    return active
+
+
+def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
+                      cell_name: str = "", tie_unused: bool = False) -> list[str]:
     """Emit an assign for a LUT with no structured fn tag.
 
     First tries _simplify_lut() — for LUTs with ≤2 live inputs this emits a
@@ -785,6 +835,12 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str, ce
     init: 16-char MSB-first truth-table string (string[k] = f(15-k)).  (#63)
     cell_name: human cell name to use for the localparam identifier; empty
                string tells us to use z_name instead (avoids _lut_lut_lut_…).
+    tie_unused: when True, index positions the INIT does not actually depend on
+               are wired to 1'b0 instead of the (still physically routed) net.
+               The function is identical (the table is independent of that bit),
+               but it removes the false STRUCTURAL dependency that otherwise makes
+               yosys report a combinational loop through a routed-but-unused LUT
+               input.  Gated to GOWIN so MachXO2 emission stays byte-identical.
     """
     # _simplify_lut expects LSB-first; the stored INIT is MSB-first, so reverse.
     expr = _simplify_lut(init[::-1], a, b, c, d)
@@ -799,7 +855,12 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str, ce
     # Strip any leading lut_ repetitions to prevent _lut_lut_lut_… prefixes
     sanitized = re.sub(r'^(lut_)+', '', sanitized) or sanitized
     lp_name = f"_lut_{sanitized}"
-    sel_expr = "{" + ", ".join([d, c, b, a]) + "}"
+    sel = [d, c, b, a]  # index bits {d,c,b,a}, positions 3,2,1,0
+    if tie_unused:
+        active = _lut_active_positions(init)
+        sel = [s if pos in active else "1'b0"
+               for s, pos in zip(sel, (3, 2, 1, 0))]
+    sel_expr = "{" + ", ".join(sel) + "}"
 
     return [
         f"    localparam [15:0] {lp_name} = 16'b{init_msb_first};",
@@ -817,6 +878,7 @@ def emit_luts(data: dict) -> list[str]:
     net_name_map = data["net_name_map"]
     const_net_map = data["const_net_map"]
     cell_name_map = data["cell_name_map"]
+    tie_unused   = data.get("is_gowin", False)
 
     # Input pads are declared as `input wire PORT_NAME` in the module header.
     # Pad loopback arcs can make a LUT output net share the same DSU root as an
@@ -842,6 +904,9 @@ def emit_luts(data: dict) -> list[str]:
         (re.compile(r"^NAND\(([abcd]),([abcd])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
         (re.compile(r"^NOR\(([abcd]),([abcd])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
         (re.compile(r"^XNOR\(([abcd]),([abcd])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
+        # MUX(sel,i0,i1): 3-input LUT mux, sel=0 -> i0, sel=1 -> i1 (see classify_lut).
+        (re.compile(r"^MUX\(([abcd]),([abcd]),([abcd])\)$"),
+                                                      lambda m: f"({m.group(1)} ? {m.group(3)} : {m.group(2)})"),
     ]
     def _fn_to_vlog(fn: str) -> str:
         for pat, xform in _FN_RULES:
@@ -893,7 +958,8 @@ def emit_luts(data: dict) -> list[str]:
         if fn is None or fn.startswith("COMBO"):
             # Pass human name for localparam naming; empty → use z_name (avoids lut_lut_lut…)
             lp_key = _sanitise(cell_human) if cell_human else ""
-            blk = _lut_init_to_case(init, z_name, a_expr, b_expr, c_expr, d_expr, lp_key)
+            blk = _lut_init_to_case(init, z_name, a_expr, b_expr, c_expr, d_expr,
+                                    lp_key, tie_unused=tie_unused)
             blk[-1] += f"  // {cell_name}  init={init}"
 
         elif fn == "CONST0":
@@ -949,6 +1015,17 @@ def emit_ffs(data: dict) -> list[str]:
     ff_q_wire_map    = data["ff_q_wire_map"]
     port_names       = data["port_names"]
     output_port_names = data.get("output_port_names", set())
+    ff_dtype_map     = data.get("ff_dtype_map", {})
+
+    # GOWIN level-sensitive latch kinds (apycula).  A cell tagged with one of
+    # these is a transparent latch, NOT an edge-triggered flop, and is emitted
+    # as `always @* if (gate) q = d;` (a state element that legally holds — not a
+    # combinational loop).  MachXO2 stores no dtype, so this set is never hit and
+    # every FF stays on the byte-identical edge-triggered path.
+    _LATCH_KINDS = {"DL", "DLN", "DLC", "DLNC", "DLP", "DLNP"}
+
+    def is_latch(cell: str) -> bool:
+        return ff_dtype_map.get(cell) in _LATCH_KINDS
 
     def rn(net):
         return resolve_net(net, net_name_map, const_net_map)
@@ -963,8 +1040,12 @@ def emit_ffs(data: dict) -> list[str]:
         names, port declarations, or LUT continuous assigns.  A separate connect
         assign `assign q_wire = reg_id;` is emitted after all always blocks for
         Q nets that are not also LUT-driven.
+
+        Latches get a distinct `_lat` suffix so they are never vectorised into the
+        same reg bus as an edge-triggered flop that shares the tile (which would
+        drive one reg from both an edge and a level-sensitive always block).
         """
-        return rc(cell)
+        return rc(cell) + "_lat" if is_latch(cell) else rc(cell)
 
     # ── Register vectorisation (#45 phase 2) ────────────────────────────────
     # Collapse per-bit reg ids that share a base and a contiguous numeric
@@ -1002,9 +1083,13 @@ def emit_ffs(data: dict) -> list[str]:
     stuck_ffs:    list[tuple] = []   # (cell, clk, ce, d, q, lsr)
     ce_clear_ffs: list[tuple] = []
     active_ffs:   list[tuple] = []
+    latch_ffs:    list[tuple] = []   # GOWIN DL/DLC/… transparent latches
 
     for row in ffs:
         cell, clk, ce, d, q, lsr = row
+        if is_latch(cell):
+            latch_ffs.append(row)
+            continue
         ce_resolved = rn(ce) if ce is not None else "1'b1"
         d_resolved  = rn(d)  if d  is not None else "NC"
         if d_resolved == "1'b0" and ce_resolved == "1'b1":
@@ -1017,7 +1102,8 @@ def emit_ffs(data: dict) -> list[str]:
     lines = [
         "    // ── Flip-flops ─────────────────────────────────────────────────────────",
         f"    // {len(ffs)} total FFs: {len(stuck_ffs)} stuck-at-VCC, "
-        f"{len(ce_clear_ffs)} CE-gated-clear, {len(active_ffs)} real-D",
+        f"{len(ce_clear_ffs)} CE-gated-clear, {len(active_ffs)} real-D"
+        + (f", {len(latch_ffs)} latch (DL/DLC)" if latch_ffs else ""),
     ]
 
     # ── Reg declarations ────────────────────────────────────────────────────
@@ -1164,6 +1250,39 @@ def emit_ffs(data: dict) -> list[str]:
             lines.append("    end")
             lines.append("")
 
+    # ── Transparent latches (GOWIN DL/DLC/…) ────────────────────────────────
+    # A level-sensitive latch emitted as `always @* if (gate) q = d;`.  yosys
+    # models it as a $dlatch (a state element), so a routed-but-held feedback
+    # path is a legal latch — NOT the combinational loop a self-feeding assign
+    # would create.  Polarity follows the apycula cells_sim.v definitions:
+    #   DL:  if (CLK)  DLN: if (!CLK)   +CE: (gate && CE)
+    #   *C:  if (CLEAR) q=0; else …     *P: if (PRESET) q=1; else …
+    # CLK is the gate G, CE the enable, and the SR wire is the CLEAR/PRESET.
+    if latch_ffs:
+        lines.append(f"    // ── Transparent latches ({len(latch_ffs)}) — DL/DLC/… level-sensitive ─")
+        for cell, clk, ce, d, q, lsr in sorted(latch_ffs, key=lambda r: reg_id(r[0])):
+            kind    = ff_dtype_map.get(cell, "DL")
+            reg_ident = reg_ref(cell)
+            gate    = rn(clk) if clk else "1'b1"
+            ce_expr = rn(ce)  if ce  else "1'b1"
+            d_expr  = rn(d)   if d   else "1'b0"
+            ctrl    = rn(lsr) if lsr else None
+            gate_e  = f"!{gate}" if kind.startswith("DLN") else gate
+            gate_cond = f"{gate_e} && {ce_expr}" if ce_expr != "1'b1" else gate_e
+            human   = cell_name_map.get(cell, "")
+            hc      = f"  // {human} {kind}" if human else f"  // {kind}"
+            lines.append(f"    always @* begin{hc}")
+            if kind.endswith("C") and ctrl and ctrl not in ("1'b0", "NC"):
+                lines.append(f"        if ({ctrl})      {reg_ident} = 1'b0;")
+                lines.append(f"        else if ({gate_cond}) {reg_ident} = {d_expr};")
+            elif kind.endswith("P") and ctrl and ctrl not in ("1'b0", "NC"):
+                lines.append(f"        if ({ctrl})      {reg_ident} = 1'b1;")
+                lines.append(f"        else if ({gate_cond}) {reg_ident} = {d_expr};")
+            else:
+                lines.append(f"        if ({gate_cond}) {reg_ident} = {d_expr};")
+            lines.append("    end")
+        lines.append("")
+
     # ── Q-output connect assigns ──────────────────────────────────────────────
     # reg_id() = cell-derived name; Q wire = what downstream LUTs reference.
     # They differ for every FF, so we emit `assign q_wire = reg;` to connect them.
@@ -1210,6 +1329,62 @@ def emit_ffs(data: dict) -> list[str]:
 
     lines.append("")
     return lines
+
+
+# apycula ALU vendor model (share/yosys/gowin/cells_sim.v):
+#   SUM = S ^ CIN ;  COUT = S ? CIN : C  with (S,C) selected by ALU_MODE.
+# Emitted inline so the recovered F output (SUM, or COUT for the C2L carry-to-
+# logic mode) is DRIVEN by the real arithmetic, and the carry chains through the
+# shared CIN nodes.  Values are already resolved net names / constants.
+def _alu_sum_carry(mode: str, i0: str, i1: str, i3: str) -> tuple[str, str]:
+    m = str(mode)
+    return {
+        "0": (f"({i0} ^ {i1})", i0),                                   # ADD
+        "1": (f"({i0} ^ ~{i1})", i0),                                  # SUB
+        "2": (f"({i3} ? ({i0} ^ {i1}) : ({i0} ^ ~{i1}))", i0),        # ADDSUB
+        "3": (f"({i0} ^ ~{i1})", "1'b1"),                             # NE
+        "4": (f"({i0} ^ ~{i1})", i0),                                  # GE
+        "5": (f"(~{i0} ^ {i1})", i1),                                  # LE
+        "6": (f"({i0})", "1'b0"),                                      # CUP
+        "7": (f"(~{i0})", "1'b1"),                                     # CDN
+        "8": (f"({i3} ? {i0} : ~{i0})", i0),                          # CUPCDN
+        "9": (f"(({i0} & {i1}) ^ {i3})", f"({i0} & {i1})"),           # MULT
+    }.get(m, (f"({i0} ^ {i1})", i0))
+
+
+def emit_alus(data: dict) -> list[str]:
+    """Document the recovered GOWIN ALU (carry/adder) cells.
+
+    Empty for MachXO2 (no alu_cells rows), so this is a no-op there.
+
+    The apycula vendor model is  SUM = S ^ CIN ; COUT = S ? CIN : C  with (S,C)
+    selected by ALU_MODE — `_alu_sum_carry` builds those expressions and the
+    alu_cells table carries every cell's mode + operand nets.  The outputs are
+    NOT driven here on purpose: in ALU mode the slice's A/B/C/D/F wires are fused
+    into shared nets by the routing-graph node union (e.g. one bit's SUM output
+    and another bit's B input resolve to the same net), so emitting the arithmetic
+    on top of those collapsed nets manufactures false combinational loops.
+    Separating the ALU-internal wires from the fabric net graph is the remaining
+    work; until then the outputs stay undriven (no feedback), and the recovered
+    structure lives in the alu_cells table for downstream analysis.
+    """
+    alus = data.get("alus", [])
+    if not alus:
+        return []
+    from collections import Counter
+    modes = Counter(str(mode) for _c, mode, *_ in alus)
+    mode_names = {"0": "ADD", "1": "SUB", "2": "ADDSUB", "3": "NE", "4": "GE",
+                  "5": "LE", "6": "CUP", "7": "CDN", "8": "CUPCDN", "9": "MULT/C2L"}
+    hist = ", ".join(f"{mode_names.get(m, m)}={n}" for m, n in sorted(modes.items()))
+    return [
+        "    // ── ALU carry/adder cells (recovered, not driven) ───────────────────",
+        f"    // {len(alus)} ALU bits recovered into the alu_cells table — modes: {hist}.",
+        "    // Vendor model: SUM = S ^ CIN ; COUT = S ? CIN : C  (S,C per ALU_MODE).",
+        "    // Outputs left undriven: the slice A/B/C/D/F wires collapse into shared",
+        "    // fabric nets under the routing-graph node union, so driving the",
+        "    // arithmetic here would fabricate false combinational loops.",
+        "",
+    ]
 
 
 def emit_trigger_comment(data: dict) -> list[str]:
@@ -1832,6 +2007,7 @@ def main():
         emit_clock_comment(data),
         emit_luts(data),
         emit_ffs(data),
+        emit_alus(data),
         emit_trigger_comment(data),
         emit_ebr(data),
         emit_output_drives(data),

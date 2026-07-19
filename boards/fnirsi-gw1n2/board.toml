@@ -1,0 +1,33 @@
+# Pluribus board config — FNIRSI 2C53T handheld oscilloscope (GOWIN GW1N-2)
+#
+# Second GOWIN device in the pluribus engine and the GW1N-2 fidelity target.
+# The bitstream is DavidClawson's open-source GW1N-2 apicula capture of the
+# FNIRSI scope firmware.  Decode runs under the oss-cad-suite interpreter
+# (apycula) as a subprocess (scripts/gowin_unpack.py) and emits a .gwconfig the
+# pure-Python 3.15t lifter (lifters/gowin_lift.py) reads back.
+#
+# Usage:
+#   PLURIBUS_SQLITE_PATH=tmp/fnirsi.db \
+#     python3.15t scripts/run_pipeline.py --board boards/fnirsi-gw1n2 --all
+#
+# The device uses 59 IOBs, which cannot fit a 48-pin part, so the physical
+# package is LQFP100 (42 of the 59 IOBs bond to package pins; the rest are
+# dedicated-config / unbonded die pads).
+
+[board]
+name    = "FNIRSI 2C53T (GW1N-2)"
+device  = "GW1N-2"       # apycula chip database name (GW1N-2.msgpack.xz)
+package = "LQFP100"      # resolves IOB locations to physical pins via db.pinout
+lifter  = "gowin"
+top     = "fnirsi"
+
+[files]
+pins_tsv = "pins.tsv"
+
+# The raw .fs is DavidClawson's open-source GW1N-2 apicula capture (external,
+# read-only).  The .gwconfig is REGENERABLE (gowin_unpack output) so it lives in
+# pluribus tmp/; run_pipeline's [unpack] stage runs only when `bin` is set AND
+# `config` does not yet exist.
+[bitstreams.FNIRSI]
+bin    = "/mnt/2tb/git_mirror/DavidClawson/gw1n2-apicula/tools/m5/scope.fs"
+config = "../../tmp/gowin/FNIRSI.gwconfig"

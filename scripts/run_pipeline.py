@@ -89,26 +89,27 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
             top="top", emit_verilog=True, nets=None, header_note=None,
             verify=True, strict_lec=False, board=None,
             lifter="machxo2", device=None):
-    # GOWIN first slice: pad/EFB/EBR recovery and the recovered-Verilog emitter
-    # are not modelled yet, so stop after the generic netlist + reachability +
-    # report.  chains.py/verilog.py assume the MachXO2 pad/hard-IP layers.
+    # GOWIN path: the recovered netlist, pad_map (apicula db.pinout), latches and
+    # loop-free LUT emission are modelled, so gowin now runs the recovered-Verilog
+    # emit + yosys lint like MachXO2.  chains.py and the regression LEC-vs-prior
+    # stay MachXO2-only (they lean on the MachXO2 pad/hard-IP layers).
     is_gowin = (lifter == "gowin")
-    if is_gowin:
-        emit_verilog = False
-        verify = False
 
     if raw_bin and not os.path.exists(config):
         os.makedirs(os.path.dirname(config) or ".", exist_ok=True)
         if is_gowin:
             # GOWIN decode runs under the oss-cad-suite interpreter (apycula),
             # emitting a .gwconfig the free-threaded 3.15t lifter reads back.
-            # No iomap stage — gowin pad mapping is deferred.
+            # --package resolves IOB locations to physical pins (pad_map); no
+            # separate iomap stage.
             gowin_py = os.environ.get(
                 "PLURIBUS_GOWIN_PYTHON",
                 "/home/dan/opt/oss-cad-suite/py3bin/python3")
-            run("unpack", label,
-                [gowin_py, "scripts/gowin_unpack.py", raw_bin, config,
-                 "--device", device or "GW1N-1"])
+            unpack_cmd = [gowin_py, "scripts/gowin_unpack.py", raw_bin, config,
+                          "--device", device or "GW1N-1"]
+            if package:
+                unpack_cmd += ["--package", package]
+            run("unpack", label, unpack_cmd)
         else:
             run("unpack", label,
                 [PY, "scripts/trellis_unpack.py", raw_bin, config])
@@ -199,7 +200,8 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
         # change proves equivalent, a real logic change proves diverged.
         if verify and shutil.which("yosys"):
             vcheck = [PY, "scripts/check_verilog.py", out_v, "--top", top]
-            if os.path.exists(prev_v):
+            # Regression LEC-vs-prior stays MachXO2-only for now.
+            if os.path.exists(prev_v) and not is_gowin:
                 vcheck += ["--lec", prev_v]
                 if strict_lec:
                     vcheck += ["--strict-lec"]

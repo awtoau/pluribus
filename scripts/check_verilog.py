@@ -94,22 +94,53 @@ def run_yosys_lec(new_v: str, baseline_v: str, top: str) -> tuple[bool, list[str
     return equivalent, lines
 
 
+# A "found logic loop" that passes through a state element (latch/register) is
+# not a true asynchronous combinational oscillator — it is a legitimate latch or
+# registered feedback (e.g. a recovered GOWIN DL/DLC transparent latch whose D is
+# computed from its own Q).  yosys's structural `check` reports it because a
+# transparent latch has a D→Q path, but the state element breaks the loop
+# functionally.  Only a loop with NO state element in it is a fatal comb loop.
+_LOOP_HDR_PAT = re.compile(r"found logic loop in module")
+_STATE_CELL_PAT = re.compile(
+    r"\$(dff|dffe|adff|adffe|sdff|sdffe|dffsr|dlatch|adlatch|dlatchsr|sr)\b")
+
+
 def classify_warnings(lines: list[str]) -> dict:
     no_driver = []
     conflicts = []
+    comb_loops = []    # logic loops with no state element — fatal
+    latch_loops = []   # logic loops broken by a latch/register — expected
     other = []
 
-    for ln in lines:
-        if "Warning:" not in ln:
+    n = len(lines)
+    i = 0
+    while i < n:
+        ln = lines[i]
+        if _LOOP_HDR_PAT.search(ln):
+            # Gather the indented loop body (cells + wires) that follows.
+            body = []
+            j = i + 1
+            while j < n and (lines[j].startswith((" ", "\t")) and lines[j].strip()):
+                body.append(lines[j])
+                j += 1
+            if any(_STATE_CELL_PAT.search(b) for b in body):
+                latch_loops.append(ln)
+            else:
+                comb_loops.append(ln)
+            i = j
             continue
-        if any(p.search(ln) for p in _EXPECTED_PATTERNS):
-            no_driver.append(ln)
-        elif _CONFLICT_PAT.search(ln):
-            conflicts.append(ln)
-        else:
-            other.append(ln)
+        if "Warning:" in ln:
+            if any(p.search(ln) for p in _EXPECTED_PATTERNS):
+                no_driver.append(ln)
+            elif _CONFLICT_PAT.search(ln):
+                conflicts.append(ln)
+            else:
+                other.append(ln)
+        i += 1
 
-    return {"no_driver": no_driver, "conflicts": conflicts, "other": other}
+    return {"no_driver": no_driver, "conflicts": conflicts,
+            "comb_loops": comb_loops, "latch_loops": latch_loops,
+            "other": other}
 
 
 def main():
@@ -140,10 +171,15 @@ def main():
         print(f"  Full log → {args.out}")
 
     w = classify_warnings(lines)
-    errors = [l for l in lines if l.strip().startswith("ERROR:")]
+    # Match "ERROR:" anywhere in the line — yosys prefixes parse errors with the
+    # source location (`file.v:NN: ERROR: …`), so a startswith check misses them
+    # and silently passes a netlist yosys could not even elaborate.
+    errors = [l for l in lines if "ERROR:" in l]
 
     print(f"  no-driver (expected) : {len(w['no_driver'])}")
     print(f"  conflicting-driver   : {len(w['conflicts'])}")
+    print(f"  latch/reg loops (exp): {len(w['latch_loops'])}")
+    print(f"  combinational loops  : {len(w['comb_loops'])}")
     print(f"  other warnings       : {len(w['other'])}")
     print(f"  errors               : {len(errors)}")
 
@@ -152,6 +188,11 @@ def main():
         for ln in w["conflicts"]:
             net = _CONFLICT_PAT.search(ln)
             print(f"  {net.group(1) if net else ln.strip()}")
+
+    if w["comb_loops"]:
+        print("\nCombinational loops (no state element — structural issue):")
+        for ln in w["comb_loops"]:
+            print(f"  {ln.strip()}")
 
     if w["other"]:
         print("\nUnexpected warnings:")
@@ -163,7 +204,10 @@ def main():
         for ln in errors:
             print(f"  {ln.strip()}")
 
-    fatal = bool(errors) or bool(w["other"])
+    # A nonzero yosys exit (parse/elaboration failure) is always fatal, as is a
+    # true combinational loop or any unexpected warning.  Loops broken by a latch
+    # or register are expected for a recovered netlist (see classify_warnings).
+    fatal = bool(errors) or bool(w["other"]) or bool(w["comb_loops"]) or rc != 0
     if args.strict:
         fatal = fatal or bool(w["conflicts"])
 
@@ -198,6 +242,8 @@ def main():
         extras = []
         if w["conflicts"]:
             extras.append("pad-loopback warnings")
+        if w["latch_loops"]:
+            extras.append(f"{len(w['latch_loops'])} latch/reg feedback loops")
         if lec_diverged:
             extras.append("LEC diverged (non-fatal)")
         if extras:
