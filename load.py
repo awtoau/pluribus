@@ -715,9 +715,29 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             gpad_rows = []
             gnet_name_rows = []
             n_unbonded = 0
+            n_unbonded_named = 0
             for p in getattr(design, "pads", []):
                 if p["pin"] is None:
+                    # No package pin: pad_map.pin is NOT NULL so this pad cannot
+                    # become a pad_map row.  It must still not vanish — apicula's
+                    # pinout tables are incomplete proxies (on GW1N-2 at least one
+                    # routed pad, IOT3A, is unbonded in EVERY package table), and
+                    # a used-but-unbonded pad is exactly what hid the 2C53T
+                    # run/re-arm input on the IOR1B corner (issue #69).  Name its
+                    # fabric net after the pad location so the signal stays
+                    # identifiable in the recovered netlist.
                     n_unbonded += 1
+                    fnet = p["net_in"] or p["net_out"]
+                    if fnet:
+                        gnet_name_rows.append({
+                            "bitstream": bs_id, "net": fnet,
+                            "name": p["label"],
+                            "description": f"IOB pad {p['label']} "
+                                           f"(no pin in this package's pinout)",
+                            "confidence": "likely",
+                            "source": "gowin_iob_unbonded",
+                        })
+                        n_unbonded_named += 1
                     continue
                 if p["pin"] in seen_pins:
                     continue  # UNIQUE(bitstream, pin); keep the first IOB per pin
@@ -745,7 +765,26 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             g_resolved = sum(1 for r in gpad_rows
                              if r["net_in"] or r["net_out"])
             print(f"  {len(gpad_rows)} pad_map rows  ({g_resolved} with a fabric "
-                  f"net, {n_unbonded} IOBs unbonded in this package)")
+                  f"net, {n_unbonded} IOBs unbonded in this package — "
+                  f"{n_unbonded_named} of those still net-named)")
+
+            # ── ebr_ports (GOWIN BSRAM) ─────────────────────────────────────────
+            # gowin_lift recovers every BSRAM site port from the static tile db
+            # (issue #69 — the placed-name lookup used to fail silently and this
+            # family reported 0 EBR blocks).  Rows mirror the MachXO2 schema:
+            # one (block, port, role, net) per port, net NULL when unrouted.
+            gebr_rows = []
+            for blk in getattr(design, "ebrs", []):
+                for p in blk["ports"]:
+                    gebr_rows.append({
+                        "bitstream": bs_id, "block": p["block"],
+                        "port": p["port"], "role": p["role"], "net": p["net"],
+                    })
+            if gebr_rows:
+                conn.execute(_insert_or_ignore(schema.ebr_ports), gebr_rows)
+            n_routed = sum(1 for r in gebr_rows if r["net"])
+            print(f"  {len(getattr(design, 'ebrs', []))} BSRAM block(s), "
+                  f"{len(gebr_rows)} ebr_ports rows ({n_routed} with a routed net)")
 
         # ── aw2-nets.tsv — user net annotations (names + confidence) ─────────
         if nets_tsv:

@@ -10,9 +10,30 @@
 #   PLURIBUS_SQLITE_PATH=tmp/fnirsi.db \
 #     python3.15t scripts/run_pipeline.py --board boards/fnirsi-gw1n2 --all
 #
-# The device uses 59 IOBs, which cannot fit a 48-pin part, so the physical
-# package is LQFP100 (42 of the 59 IOBs bond to package pins; the rest are
-# dedicated-config / unbonded die pads).
+# PACKAGE: LQFP100 — basis (re-derived for issue #69).
+#
+# The original basis ("59 IOB sites > 48 pins") was WRONG and is retired: a
+# GW1N IOB decodes as IBUF from its default fuse state, so 'configured IOB'
+# count says nothing about the package.  Filtering the 59 decoded IOBs to those
+# whose fabric side actually reaches a logic port (LUT / DFF / ALU / BSRAM)
+# leaves only 23 genuinely-used pads — the entire top edge is default-state
+# IBUFs.  Coverage of those 23 real pads, per apicula pinout table:
+#
+#     LQFP100   20 / 23 bonded   (misses IOR13B, IOR1B, IOT3A)
+#     QFN48X    14 / 23 bonded   (misses 9, incl. the IOL5B output driver)
+#     QFN48XF   14 / 23 bonded   (same)
+#
+# LQFP100 explains the design's real I/O far better, and the QFN48X gaps
+# include pads the design actively DRIVES, which a correct package cannot do.
+# apicula ships no plain "QN48"; QFN48X/QFN48XF are proxies.
+#
+# CAVEAT: apicula's pinout tables are incomplete proxies, not ground truth —
+# IOT3A is a routed pad that is unbonded in EVERY GW1N-2 table.  So the 3
+# LQFP100 gaps are most likely table gaps rather than genuinely unbonded die
+# pads.  One of them (IOR1B, the top-right CORNER pad) carries the 2C53T master
+# run/re-arm input.  Corner pads are bonded under QFN48X only, so they get no
+# pin number here; load.py still net-names every routed-but-unbonded pad after
+# its location (source='gowin_iob_unbonded') so the signal is not lost.
 
 [board]
 name    = "FNIRSI 2C53T (GW1N-2)"

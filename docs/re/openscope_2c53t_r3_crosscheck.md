@@ -86,6 +86,20 @@ Independently confirming that caution: `IOR1B` — the run/re-arm pad — is **u
 apicula's LQFP100 entry**, so the larger proxy package silently loses the single most
 important control pin.
 
+> **Revised under issue #69.** The board package was re-derived empirically rather than
+> from IOB *site* count (which proves nothing — a GW1N IOB decodes as `IBUF` from its
+> default fuse state). Filtering the 59 decoded IOBs to those whose fabric side actually
+> reaches a logic port leaves **23 genuinely-used pads**; the whole top edge is
+> default-state IBUFs. Coverage of those 23: **LQFP100 20/23**, QFN48X 14/23, QFN48XF
+> 14/23 — and the QFN48X misses include pads the design actively *drives* (e.g. the
+> `IOL5B` output). `boards/fnirsi-gw1n2/board.toml` therefore stays on **LQFP100**.
+> The caution above still stands for `IOR1B` specifically: it is one of 3 real pads
+> LQFP100 does not bond. But apicula's tables are demonstrably incomplete proxies — 
+> `IOT3A` is a routed pad unbonded in *every* GW1N-2 table — so these are most likely
+> table gaps, not genuinely unbonded die pads. `load.py` now net-names every
+> routed-but-unbonded pad after its location (`source='gowin_iob_unbonded'`), so
+> `IOR1B` is no longer lost even without a pin number.
+
 ---
 
 ## 2. The capture datapath, as recovered
@@ -284,6 +298,9 @@ ports are not netlist pins, so nothing downstream of the memory is traceable. Se
 
 These are engine limitations exposed by this exercise, not upstream errors.
 
+> **Status: gaps 1 and 2 are FIXED (issue #69).** The text below is kept as the
+> diagnosis of record; see the "Resolution" notes under each. Gaps 3–5 remain open.
+
 **Gap 1 — BSRAM ports are silently dropped (the significant one).**
 `gowin_unpack.py` fills hard-IP ports from the static tile database:
 `db[row, col].bels[name].portmap`. For BSRAM the name is wrong. apicula's `parse_tile_()`
@@ -302,6 +319,18 @@ intrinsically hard to model; only the name lookup is wrong. Worked around **exte
 `scripts/gowin_bsram_ports.py`, which reads the correct site bel and resolves every port to
 the same canonical node names, without touching the core lifter.
 
+> **Resolution (#69).** `gowin_unpack.static_bel()` now normalises a placed site name to
+> its static-db key by stripping a trailing index (`BSRAM0` → `BSRAM`, `BSRAM_AUX1` →
+> `BSRAM_AUX`), trying the exact name first so indexed sites that genuinely exist
+> (`LUT0`, `DFF3`, `ALU5`, `BANK2`) cannot be mis-bound. A real miss now calls `die()` —
+> the silent degradation to an empty record is what hid this for so long. Vector and
+> nested-vector portmap entries (`RAM16.RAD`) are flattened instead of skipped.
+> `gowin_lift` turns the recovered ports into `ebr_ports`, `reach3` classifies them into
+> `ebr_buses` (with an `addr` role: a GW1N BSRAM port has one shared address bus, not
+> MachXO2's split read/write), and `report.py` prints the blocks with their nets.
+> Result on this design: **4 BSRAM blocks, 840 ports, 816 with a routed net** — verified
+> wire-for-wire against the bridge oracle by `scripts/gowin_bsram_verify.py`.
+
 **Gap 2 — corner IOB physical pins do not resolve, dropping the pad from `pad_map`.**
 apicula names the corner cell (0,19) `IOT20` via `loc2pin_name()` but keys it `IOR1A`/`IOR1B`
 in `db.pinout`. `gowin_unpack.py` looks up the former in a table keyed by the latter, misses,
@@ -309,6 +338,15 @@ and emits `phys=-`; `load.py` then skips pads with no pin. The consequence here 
 **the master run/re-arm pad is absent from `pad_map` entirely.** Its net is present and fully
 analysable (`n591`), so this cross-check was unaffected once the node was identified by hand —
 but `net_for_pad()` cannot find it, and any pad-driven analysis silently misses it.
+
+> **Resolution (#69).** `gowin_unpack.iob_loc_name()` now generates both edge names for a
+> corner tile and prefers whichever the package actually bonds, falling back to the L/R
+> name — the convention every bonded corner in the GW1N-2 tables uses (LQFP100 names
+> corner (18,19) `IOR19`; QFN48X names corner (0,19) `IOR1`). So the corner pad is
+> labelled `IOR1B` regardless of package, and lands in `pad_map` with its pin number
+> under any package that bonds it. Under LQFP100 — the package the evidence supports —
+> apicula still has no pin for it, so it is net-named rather than dropped (see the
+> package note in §1).
 
 **Gap 3 — BSRAM is not a netlist cell.** Even with gap 1 bridged, the memory is not a cell
 with pins in the graph, so no path *through* a BRAM is traceable. This is what makes the

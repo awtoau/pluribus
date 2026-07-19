@@ -932,10 +932,15 @@ def section_ebr(conn, bs_id, net_names=None):
         for role, bit_idx, port, net in bus_rows:
             by_role.setdefault(role, []).append((bit_idx, port, net))
 
-        role_order = ["write_data", "read_data", "write_addr", "read_addr", "ctrl"]
-        for role in role_order:
-            if role not in by_role:
-                continue
+        # "addr" is the GOWIN BSRAM single shared address bus per port (GW1N has
+        # no MachXO2-style split write/read address) — see reach3._classify_*.
+        role_order = ["write_data", "read_data", "write_addr", "read_addr",
+                      "addr", "ctrl"]
+        # known roles first, in a stable reading order, then anything a family
+        # introduced that this list does not know about (never silently dropped)
+        ordered = [r for r in role_order if r in by_role]
+        ordered += sorted(set(by_role) - set(role_order))
+        for role in ordered:
             entries = by_role[role]
             port_strs = [
                 f"{port}={net or 'NC'}"

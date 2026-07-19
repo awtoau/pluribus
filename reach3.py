@@ -671,17 +671,55 @@ _EBR_LETTER_TO_ROLE = {
 }
 
 
+# --- GOWIN GW1N BSRAM port names (issue #69) --------------------------------
+# The BSRAM site exposes THREE views of the same physical wires: an unsuffixed
+# set (single-port / SDP modes) and A-/B-suffixed sets (true dual-port).  Which
+# view is live depends on the configured mode, and all three are recorded in
+# ebr_ports — so bit_index carries a per-view offset to satisfy
+# UNIQUE(bitstream, block, bus_role, bit_index):
+#
+#     A-side  +0     B-side  +64     unsuffixed (single-port)  +128
+#
+# NOTE on addressing: a GW1N BSRAM port has ONE address bus (ADA/ADB) shared by
+# reads and writes, unlike the MachXO2 split JC/JD.  Calling it 'write_addr' or
+# 'read_addr' would assert something untrue, so it gets its own 'addr' role.
+_GOWIN_VIEW_OFFSET = {"A": 0, "B": 64, "": 128}
+_GOWIN_CTRL_ORDINAL = {"CLK": 0, "CE": 1, "OCE": 2, "WRE": 3, "RESET": 4}
+_GOWIN_BSRAM_RE = re.compile(
+    r"^(DI|DO|AD|BLKSEL|CLK|CE|OCE|WRE|RESET)([AB]?)(\d*)$")
+_GOWIN_BUS_ROLE = {"DI": "write_data", "DO": "read_data", "AD": "addr"}
+
+
+def _classify_gowin_bsram_port(port_name):
+    """(bus_role, bit_index) for a GW1N BSRAM port, or None."""
+    m = _GOWIN_BSRAM_RE.match(port_name)
+    if not m:
+        return None
+    stem, view, bit = m.group(1), m.group(2), m.group(3)
+    offset = _GOWIN_VIEW_OFFSET[view]
+    role = _GOWIN_BUS_ROLE.get(stem)
+    if role is not None:
+        # vector bus: bit index must be present
+        if bit == "":
+            return None
+        return role, offset + int(bit)
+    if stem == "BLKSEL":
+        # block-select is a 3-bit ctrl vector; park it above the scalar ctrls
+        return "ctrl", offset + 8 + int(bit or 0)
+    return "ctrl", offset + _GOWIN_CTRL_ORDINAL[stem]
+
+
 def _classify_ebr_port(port_name):
     """
-    Return (bus_role, bit_index) for a port like "JA3" or "JE1", or None
-    if the name doesn't match the expected pattern.
+    Return (bus_role, bit_index) for a port like "JA3" / "JE1" (MachXO2) or
+    "DIA0" / "CLKB" (GOWIN BSRAM), or None if neither pattern matches.
 
-    ctrl ports (E/F/G/H) get a compound bit_index = (letter_offset * 32) + bit
-    so they don't collide with each other in the same table.
+    MachXO2 ctrl ports (E/F/G/H) get a compound bit_index =
+    (letter_offset * 32) + bit so they don't collide with each other.
     """
     match = _EBR_PORT_PATTERN.match(port_name)
     if not match:
-        return None
+        return _classify_gowin_bsram_port(port_name)
     letter    = match.group(1).upper()
     bit_index = int(match.group(2))
     role      = _EBR_LETTER_TO_ROLE.get(letter)

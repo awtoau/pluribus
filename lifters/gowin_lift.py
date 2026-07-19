@@ -54,6 +54,27 @@ class DSU:
             self.p[ra] = rb
 
 
+def _bsram_role(port):
+    """ebr_ports.role for a GW1N BSRAM port name.
+
+    Ports come in an unsuffixed (single-port) and an A-/B-suffixed (dual-port)
+    view of the same wires, so classification is by the leading token:
+
+        DO*   -> read    (RAM -> fabric data)
+        DI*   -> write   (fabric -> RAM data)
+        WRE*  -> write   (write enable — selects the write direction)
+        AD* BLKSEL* CLK* CE* OCE* RESET*  -> ctrl
+
+    Same three-way split as the MachXO2 JA/JC/JX classification in load.py, so
+    downstream ebr_buses grouping works unchanged across families.
+    """
+    if port.startswith("DO"):
+        return "read"
+    if port.startswith("DI") or port.startswith("WRE"):
+        return "write"
+    return "ctrl"
+
+
 class Design:
     """Recovered structural netlist (nets + LUT4s + flip-flops)."""
 
@@ -62,6 +83,7 @@ class Design:
         self.ffs = []
         self.alus = []           # GOWIN ALU (carry/adder) cells
         self.pads = []           # IOB pad_map records (pin/label/dir/nets)
+        self.ebrs = []           # BSRAM blocks: {block,row,col,ports:[...]}
         self.net_name = {}       # dsu-root -> "n<k>"
         self.all_nets = []
         self.dsu = None
@@ -286,6 +308,33 @@ class GowinLift:
             })
         d.n_alu = n_alu
         d.hardip_counts = dict(hardip_counts)
+
+        # 3b) BSRAM (block RAM) ports → ebr_ports records.
+        #     scripts/gowin_unpack.py emits every port of the BSRAM site as
+        #     PORT=<node> on the hardip record (issue #69: these used to be
+        #     dropped wholesale because the placed name "BSRAM0" missed the
+        #     static tile-db key "BSRAM", so the family reported 0 EBR blocks).
+        #
+        #     The site exposes three *views* of the same physical wires — an
+        #     unsuffixed set (single-port / SDP modes) and A-/B-suffixed sets
+        #     (true dual-port).  Which view is live depends on the configured
+        #     mode, so all three are recorded; a port with no routed net keeps
+        #     net=None and is simply an unused pin of the block.
+        for hp in pc.hardips:
+            if hp["type"] != "BSRAM":
+                continue
+            block = f"R{hp['row'] + 1}C{hp['col'] + 1}"
+            ports = []
+            for port, node in hp.items():
+                if port in ("row", "col", "type", "bel"):
+                    continue
+                ports.append({
+                    "block": block, "port": port,
+                    "role": _bsram_role(port),
+                    "net": resolve(node, None),
+                })
+            d.ebrs.append({"block": block, "row": hp["row"], "col": hp["col"],
+                           "ports": sorted(ports, key=lambda p: p["port"])})
 
         # 4) LUT4s (skip constants — handled above)
         for lt in pc.luts:

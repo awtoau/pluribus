@@ -55,6 +55,67 @@ import re
 import sys
 
 
+def die(msg):
+    """Hard exit on an unexpected decode condition (pluribus design rule).
+
+    gowin_unpack runs under the oss-cad-suite interpreter and cannot import
+    the pluribus `db` module (sqlalchemy / pg8000 are not installed there), so
+    this mirrors `db.die()` locally.  Never soften this into a warning: the
+    dropped-BSRAM-port bug (issue #69) was invisible precisely because a failed
+    lookup degraded silently to an empty record.
+    """
+    print(f"[gowin_unpack] FATAL: {msg}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def static_bel(db, row, col, name):
+    """Static tile-db bel for the PLACED bel NAME that parse_tile_() returned.
+
+    apycula's `parse_tile_()` yields the *placed instance* name.  For hard-IP
+    sites that are instanced per device (BSRAM / BSRAM_AUX) that name carries a
+    site-index suffix which the STATIC tile db does not use:
+
+        parse_tile_ -> "BSRAM0"  "BSRAM_AUX1"
+        db[r,c].bels ->  "BSRAM"   "BSRAM_AUX"
+
+    Sites whose index is part of the static key (LUT0..LUT7, DFF0..DFF5,
+    ALU0..ALU5, BANK0..BANK5) match on the exact name, so the suffix strip is
+    only ever reached as a fallback and cannot mis-bind them.
+
+    Raises (die) on a genuine miss — see die() above.
+    """
+    bels = db[row, col].bels
+    if name in bels:
+        return bels[name]
+    base = re.sub(r"\d+$", "", name)
+    if base != name and base in bels:
+        return bels[base]
+    die(f"tile ({row},{col}): parse_tile_ returned bel {name!r} with no static "
+        f"tile-db entry (tried {name!r} and base {base!r}); "
+        f"known bels = {sorted(bels)}")
+
+
+def static_portmap(db, row, col, name):
+    """dict(portmap) for a placed bel name — see static_bel()."""
+    return dict(getattr(static_bel(db, row, col, name), "portmap", {}) or {})
+
+
+def flatten_port(port, wire):
+    """Yield (flat_port_name, wire) for a portmap entry.
+
+    A portmap value is either a scalar wire, a vector of wires, or (RAM16.RAD)
+    a vector of vectors.  Vectors are flattened to PORT0, PORT1, ... and nested
+    ones to PORT0_0, PORT0_1, ... so every wire reaches the .gwconfig with a
+    unique name.  These used to be dropped outright.
+    """
+    if not isinstance(wire, (list, tuple)):
+        yield port, wire
+        return
+    for i, sub in enumerate(wire):
+        yield from flatten_port(f"{port}{i}" if not isinstance(sub, (list, tuple))
+                                else f"{port}{i}_", sub)
+
+
 def build_alias_map(db, wire2global):
     """Reproduce apycula main()'s mod.wire_aliases: every Himbaechel node's
     member wires alias to the node's shortest-named wire, plus the SN/EW
@@ -146,6 +207,62 @@ def build_pin_lookup(db, package):
         except (TypeError, ValueError):
             continue
     return inv, match
+
+
+def corner_alt_loc(db, row, col):
+    """Alternate edge name for a CORNER IOB tile, or None if not a corner.
+
+    A corner tile sits on two edges and therefore has two valid Gowin location
+    names.  apycula's `loc2pin_name()` (via `rc2tbrl_0` + `db.corner_tiles_io`)
+    always resolves a corner to its TOP/BOTTOM name — but the packaged pinout
+    tables name the same pads on the LEFT/RIGHT edge.  On GW1N-2:
+
+        (0, 19)  loc2pin_name -> "IOT20"   pinout has "IOR1"    (QFN48X)
+        (18,19)  loc2pin_name -> "IOB20"   pinout has "IOR19"   (LQFP100)
+
+    The R-edge index run is only complete when the corners are counted as
+    IOR1/IOR19 — the non-corner right column covers IOR2..IOR18 exactly — which
+    confirms the L/R reading is the pinout's.  Unresolved corners silently
+    dropped real pads from pad_map (issue #69; the 2C53T run/re-arm input sits
+    on IOR1B).
+
+    Returns the L/R-edge name so the caller can prefer whichever candidate the
+    package actually bonds.
+    """
+    top, bot = row == 0, row == db.rows - 1
+    left, right = col == 0, col == db.cols - 1
+    if not ((top or bot) and (left or right)):
+        return None
+    return f"IO{'L' if left else 'R'}{row + 1}"
+
+
+def iob_loc_name(db, row, col, idx, pin_lookup):
+    """Package-resolved IOB location name, e.g. "IOR1B".
+
+    Uses apycula's `loc2pin_name()`, but for a corner tile also considers the
+    alternate edge name and prefers whichever candidate this package bonds.
+    Falls back to the apycula name when neither is bonded (an unbonded die pad
+    still deserves a stable, meaningful name).
+    """
+    try:
+        from apycula import chipdb as _cdb
+        primary = f"{_cdb.loc2pin_name(db, row, col)}{idx}"
+    except Exception:                                    # pragma: no cover
+        primary = f"R{row + 1}C{col + 1}{idx}"
+    if primary in pin_lookup:
+        return primary
+    alt = corner_alt_loc(db, row, col)
+    if alt is None:
+        return primary
+    alt = f"{alt}{idx}"
+    if alt in pin_lookup:
+        return alt
+    # Neither candidate is bonded in THIS package.  Still prefer the L/R name:
+    # that is the convention every bonded corner in the GW1N-2 tables uses
+    # (LQFP100 names corner (18,19) "IOR19", QFN48X names corner (0,19)
+    # "IOR1"), so it keeps a corner pad's identity stable across packages
+    # instead of leaking apycula's T/B-biased loc2pin_name into pad_map.
+    return alt
 
 
 def unpack(bitstream, device, package=None):
@@ -304,18 +421,11 @@ def unpack(bitstream, device, package=None):
                     counts["skipped_bels"] += 1
                     continue
                 mode = sorted(kinds)[0]
-                try:
-                    portmap = dict(db[row, col].bels[name].portmap)
-                except Exception:
-                    portmap = {}
+                portmap = static_portmap(db, row, col, name)
                 i_net = C(row, col, portmap["I"]) if "I" in portmap else "-"
                 o_net = C(row, col, portmap["O"]) if "O" in portmap else "-"
                 oe_net = C(row, col, portmap["OE"]) if "OE" in portmap else "-"
-                try:
-                    from apycula import chipdb as _cdb
-                    pin = f"{_cdb.loc2pin_name(db, row, col)}{idx}"
-                except Exception:
-                    pin = f"R{row + 1}C{col + 1}{idx}"
+                pin = iob_loc_name(db, row, col, idx, pin_lookup)
                 # Physical package pin number from db.pinout ('-' if unbonded in
                 # this package — e.g. dedicated config IO or a die pad the package
                 # does not bring out).
@@ -331,14 +441,10 @@ def unpack(bitstream, device, package=None):
                 # nets so downstream work can model them; not logic-modelled yet.
                 htype = re.match(r"[A-Za-z_]+", name).group(0)
                 ports = []
-                try:
-                    portmap = dict(db[row, col].bels[name].portmap)
-                except Exception:
-                    portmap = {}
-                for port, wire in portmap.items():
-                    if isinstance(wire, (list, tuple)):
-                        continue
-                    ports.append(f"{port}={C(row, col, wire)}")
+                portmap = static_portmap(db, row, col, name)
+                for port, wire in sorted(portmap.items()):
+                    for name_i, w in flatten_port(port, wire):
+                        ports.append(f"{name_i}={C(row, col, w)}")
                 lines.append(
                     f"hardip {row} {col} {htype} bel={name} "
                     + " ".join(ports))
