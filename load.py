@@ -53,6 +53,22 @@ from lifters import machxo2_lift as mx
 REQUIRED_EFB_PORTS = {"JTCK", "JTDI", "JUPDATE", "JRSTN", "JSHIFTDR", "JTDO"}
 
 
+def _no_package(board_dir):
+    """No [board] package declared — resolve NO pins rather than wrong ones.
+
+    Deliberately not fatal: for some parts no correct vendor pinout table is
+    available (see #73/#74), and emitting pin numbers from a *different*
+    package is worse than emitting none — they look authoritative to whoever
+    is probing the hardware.  Pads are still named from their location, so no
+    signal is lost; only the physical pin column is absent.
+    """
+    print(f"WARNING: {board_dir}/board.toml declares no [board] package — "
+          f"pad_map will carry NO pin numbers (pads keep location-derived "
+          f"names). Set one if a correct table exists for this part.",
+          file=sys.stderr)
+    return None
+
+
 def load_board_config(board_path):
     """Read boards/<name>/board.toml and return a dict with keys:
     device, package, lifter, pins_tsv, nets_tsv (may be None),
@@ -93,7 +109,11 @@ def load_board_config(board_path):
     return {
         "name":     b.get("name"),
         "device":   b.get("device") or die("board.toml missing [board] device"),
-        "package":  b.get("package") or die("board.toml missing [board] package"),
+        # package is OPTIONAL.  When no correct vendor table exists for the part
+        # (see #73/#74) it is better to resolve NO pins than wrong ones — a wrong
+        # pin number looks authoritative to whoever is probing the hardware.
+        # Pads still get location-derived names, so no signal is lost.
+        "package":  b.get("package") or _no_package(board_dir),
         "lifter":   b.get("lifter", "machxo2"),
         "top":      b.get("top"),   # recovered-Verilog module name (optional)
         "pins_tsv": str(board_dir / pins_rel) if pins_rel else None,
