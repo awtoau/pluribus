@@ -125,6 +125,51 @@ def load_data(conn, bs_id: int) -> dict:
                     q("SELECT cell, dtype FROM ffs WHERE bitstream=:bs_id")
                     if dtype}
 
+    # ── MachXO2 clock-spine unification (issue #65) ─────────────────────────
+    # A single physical clock routed on one BRANCH_HPBX global track is tapped
+    # by many per-region local nets that reachability never unions (the global
+    # spine G_VPTXnnnn is a ghost source with no decoded fabric driver), so one
+    # physical clock surfaces as N distinct clock-domain nets / ports.  Collapse
+    # every clock-domain net that shares the same non-null hpbx_track onto one
+    # canonical net (the domain with the most FFs) so the recovered module
+    # exposes ONE clock per physical spine.  A BRANCH_HPBX track carries exactly
+    # one clock net, so merging within a track is always sound.  hpbx_track is
+    # populated only for MachXO2 (GOWIN and other families leave it NULL), so
+    # this is inert for every non-MachXO2 recovery.
+    clk_unify: dict[str, str] = {}
+    _cds = q("SELECT clk_net, ff_count, hpbx_track FROM clock_domain_summary "
+             "WHERE bitstream=:bs_id")
+    # Prefer a semantically-named domain as the survivor so the collapsed clock
+    # keeps its human name (clk_main / clk_<pad>) instead of a raw net id.
+    _clk_names = {net: name for net, name in
+                  q("SELECT net, name FROM net_names WHERE bitstream=:bs_id")}
+
+    def _canon_rank(member):
+        net, ffc = member
+        name = _clk_names.get(net, "")
+        name_rank = 2 if name == "clk_main" else (1 if name else 0)
+        return (name_rank, ffc)
+
+    _track_members: dict[str, list] = {}
+    for _cnet, _ffc, _trk in _cds:
+        if _trk:
+            _track_members.setdefault(_trk, []).append((_cnet, _ffc or 0))
+    for _trk, _members in _track_members.items():
+        if len(_members) < 2:
+            continue
+        _canon = max(_members, key=_canon_rank)[0]
+        for _cnet, _ in _members:
+            if _cnet != _canon:
+                clk_unify[_cnet] = _canon
+    # Original (pre-unification) clock per cell — used for cell/Q-net NAMING so
+    # unification never renames a FF's Q wire (which would desync it from the
+    # raw-id references emit_ebr/others still use).  Only the always-block clock
+    # expression and the clock-port list follow the unified canonical.
+    ff_clk_orig: dict[str, str] = {cell: clk for (cell, clk, *_r) in ffs}
+    if clk_unify:
+        ffs = [(cell, clk_unify.get(clk, clk), ce, d, qn, lsr)
+               for (cell, clk, ce, d, qn, lsr) in ffs]
+
     # LUTs: (cell, init, a, b, c, d, z, fn)
     luts = q("SELECT cell, init, a, b, c, d, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
 
@@ -259,10 +304,12 @@ def load_data(conn, bs_id: int) -> dict:
             net_role_map[net] = _net_role(net)
 
     # Clock domains: clk_net → [ff_cell, ...]
+    # Apply the MachXO2 clock-spine unification (issue #65) so all FFs on one
+    # physical spine collapse into a single domain (→ one clock port below).
     clk_domain_rows = q("SELECT clk_net, ff_cell FROM clock_domains WHERE bitstream=:bs_id")
     clock_domains: dict[str, list[str]] = {}
     for clk_net, ff_cell in clk_domain_rows:
-        clock_domains.setdefault(clk_net, []).append(ff_cell)
+        clock_domains.setdefault(clk_unify.get(clk_net, clk_net), []).append(ff_cell)
 
     # All nets
     all_nets = [row[0] for row in q("SELECT name FROM nets WHERE bitstream=:bs_id ORDER BY name")]
@@ -274,7 +321,8 @@ def load_data(conn, bs_id: int) -> dict:
     # Populated for ALL FFs (not just unnamed) when the clock has a human name.
     # Used by resolve_cell to prefer clock-domain names over synthetic reg_rNcN names.
     cell_clkname_map: dict[str, str] = {}
-    for cell, clk, _ce, _d, _q, _lsr in ffs:
+    for cell, _clk, _ce, _d, _q, _lsr in ffs:
+        clk = ff_clk_orig.get(cell)   # ORIGINAL clock — keeps cell/Q naming stable
         if clk:
             clk_human = net_name_map.get(clk)
             if clk_human:
@@ -375,6 +423,7 @@ def load_data(conn, bs_id: int) -> dict:
         "efb_ports":        efb_ports,
         "efb_config":       efb_config,
         "clock_input_nets": clock_input_nets,
+        "clk_unify":        clk_unify,
         "ebr_buses":        ebr_buses,
         "ebr_ctrl":         ebr_ctrl,
         "ebr_init_map":     ebr_init_map,
@@ -573,6 +622,11 @@ def emit_wires(data: dict) -> list[str]:
         port_nets.add(clk_net)
         port_names.add(_sanitise(resolve_net(clk_net, net_name_map, const_net_map)))
 
+    # MachXO2 clock-spine unification (issue #65): clock-domain nets merged onto
+    # a canonical spine net are driven from that single clock port via an alias
+    # (below), so keep them out of the normal wire-declaration categories.
+    clk_unify: dict[str, str] = data.get("clk_unify", {})
+
     def _wire_name(net: str) -> str:
         """Resolve net to a Verilog wire identifier, with clock-derived fallback."""
         if net in net_name_map:
@@ -605,6 +659,8 @@ def emit_wires(data: dict) -> list[str]:
     isolated_nets = []   # no driver AND no reader — connect to nothing
     for net in all_nets:
         if net in port_nets:
+            continue
+        if net in clk_unify:
             continue
         if _wire_name(net) in port_names:
             continue
@@ -677,6 +733,20 @@ def emit_wires(data: dict) -> list[str]:
 
     # NC (not-connected) sentinel — LUT inputs left unconnected are tied to GND.
     lines.append("    wire NC = 1'b0;  // unconnected LUT inputs — tied to GND in MachXO2")
+
+    # Clock-spine unification aliases (issue #65): each clock-domain net that was
+    # merged onto a canonical spine net is driven from that canonical clock, so
+    # any remaining reference (e.g. an EBR behavioural block clocked on the raw
+    # spine net) still sees the single unified clock.  FF always-blocks already
+    # use the canonical directly (ffs were remapped in load_data).
+    if clk_unify:
+        lines.append(
+            f"    // Clock-spine unification — {len(clk_unify)} taps aliased to their"
+            " canonical clock (issue #65)")
+        for net in sorted(clk_unify, key=_net_sort_key):
+            canon_name = _sanitise(resolve_net(clk_unify[net], net_name_map, const_net_map))
+            lines.append(f"    wire {_wire_name(net)} = {canon_name};")
+        lines.append("")
 
     if const_nets:
         lines.append("    // Constants")
