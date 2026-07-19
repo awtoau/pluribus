@@ -45,13 +45,13 @@ nets_tsv = "nets.tsv"
 # stores no board data.  Run them all with:
 #   python3 scripts/run_pipeline.py --board boards/aw2-2d82auto --all
 [bitstreams.V02]
-bin    = "../../../awto-2000/fpga/v2/DS1302_impl1(8)_V02.bin"
+bin    = "../../../awto-2000/fpga/hantek/v2/DS1302_impl1(8)_V02.bin"
 config = "../../tmp/v2/DS1302_V02.bin.config"
 
 [bitstreams.V4]
-bin    = "../../../awto-2000/fpga/v4/DS1302_2019071801.bin"
+bin    = "../../../awto-2000/fpga/hantek/v4/DS1302_2019071801.bin"
 config = "../../tmp/v4/DS1302_2019071801.bin.config"
 
 [bitstreams.V07]
-bin    = "../../../awto-2000/fpga/v7/FPGA_V07.bin"
+bin    = "../../../awto-2000/fpga/hantek/v7/FPGA_V07.bin"
 config = "../../tmp/v7/FPGA_V07.bin.config"

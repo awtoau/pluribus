@@ -1,1 +1,1 @@
-/mnt/2tb/git/awto-2000/fpga/aw2/verilog_header.txt
+../../../awto-2000/fpga/hantek/aw2/verilog_header.txt
