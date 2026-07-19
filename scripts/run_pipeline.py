@@ -32,6 +32,12 @@ Board-driven (preferred) — paths and device come from board.toml:
     python3 scripts/run_pipeline.py --board boards/<name> --label <LABEL>
     python3 scripts/run_pipeline.py --board boards/<name> --all
 
+Fleet concurrency (#68) — each label's pipeline is fully independent, so
+--all can run several at once.  --jobs defaults to 1 (sequential); with
+--jobs N the per-label reach worker count defaults to ncpu//N so the fleet
+never oversubscribes the CPU (an explicit --workers is never divided):
+    python3 scripts/run_pipeline.py --board boards/<name> --all --jobs 3
+
 Explicit:
     python3 scripts/run_pipeline.py --label <LABEL> \
         --config path/to.bin.config --pins path/to/pins.tsv
@@ -58,6 +64,7 @@ import os
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
@@ -68,21 +75,34 @@ from load import load_board_config  # noqa: E402
 PY = os.environ.get("PLURIBUS_PYTHON", "python3.15t")
 
 
+class StageError(Exception):
+    """A pipeline stage exited non-zero.
+
+    Raised rather than sys.exit() so a stage failure inside a --jobs worker
+    thread propagates to the orchestrator instead of quietly killing only
+    that thread (SystemExit in a thread does not stop the process).
+    """
+
+    def __init__(self, label, stage, rc):
+        super().__init__(f"[{label}] stage {stage} failed (exit {rc})")
+        self.rc = rc
+
+
 def run(stage, label, cmd, extra_env=None):
     log = os.path.join(REPO, "tmp", f"pipeline_{label}_{stage}.log")
     env = dict(os.environ)
     if extra_env:
         env.update(extra_env)
-    print(f"[{stage}] {' '.join(cmd)}  -> {log}", flush=True)
+    print(f"[{label}/{stage}] {' '.join(cmd)}  -> {log}", flush=True)
     with open(log, "w") as fh:
         rc = subprocess.run(cmd, cwd=REPO, env=env,
                             stdout=fh, stderr=subprocess.STDOUT).returncode
     if rc != 0:
-        print(f"[{stage}] FAILED (exit {rc}) — see {log}", flush=True)
+        print(f"[{label}/{stage}] FAILED (exit {rc}) — see {log}", flush=True)
         with open(log) as fh:
             print(fh.read()[-2000:], flush=True)
-        sys.exit(rc)
-    print(f"[{stage}] ok", flush=True)
+        raise StageError(label, stage, rc)
+    print(f"[{label}/{stage}] ok", flush=True)
 
 
 def run_one(label, config, pins, package, raw_bin, skip_load, workers,
@@ -255,7 +275,14 @@ def main():
     ap.add_argument("--package", help="TRELLIS_PACKAGE for the iomap stage")
     ap.add_argument("--skip-load", action="store_true",
                     help="label already loaded; start at reach")
-    ap.add_argument("--workers", type=int, help="reach.py worker count")
+    ap.add_argument("--workers", type=int, help="reach.py worker count "
+                    "(per label; with --jobs the default is divided so the "
+                    "fleet does not oversubscribe the CPU)")
+    ap.add_argument("--jobs", "-j", type=int, default=1, metavar="N",
+                    help="run N bitstream pipelines concurrently (default 1 = "
+                         "sequential, the historical behaviour).  Each label's "
+                         "pipeline is independent; per-label reach workers are "
+                         "capped at ncpu//jobs so jobs x workers <= ncpu")
     ap.add_argument("--top", help="recovered-Verilog top module name "
                     "(default: board [board] top, else 'top')")
     ap.add_argument("--no-verilog", action="store_true",
@@ -295,7 +322,23 @@ def main():
             sys.exit("--label is required (or --all with --board)")
         labels = [args.label]
 
-    for label in labels:
+    # Fleet concurrency (#68).  Every label's pipeline is independent: all
+    # scratch and deliverable paths are label-keyed (pipeline_<label>_<stage>.log,
+    # <label>.v.prev, out/<label>*), each bitstream's .config lives in its own
+    # directory, and load.py's always-rebuild deletes only the rows for its own
+    # label.  The one shared resource is the DB; SQLite runs WAL with a 30s
+    # busy_timeout so concurrent writers serialise rather than error.
+    jobs = max(1, args.jobs)
+    if jobs > len(labels):
+        jobs = len(labels)
+
+    # Bounded total worker budget: jobs x per-label reach workers <= ncpu.
+    # An explicit --workers is the user's call and is never divided.
+    workers = args.workers
+    if workers is None and jobs > 1:
+        workers = max(1, (os.cpu_count() or 1) // jobs)
+
+    def launch(label):
         spec = (board.get("bitstreams") or {}).get(label, {})
         config = args.config or spec.get("config")
         raw_bin = args.bin or spec.get("bin")
@@ -312,13 +355,35 @@ def main():
                        if args.board else None)
         print(f"=== {label} ===", flush=True)
         run_one(label, config, pins, package, raw_bin,
-                args.skip_load, args.workers,
+                args.skip_load, workers,
                 top=top, emit_verilog=not args.no_verilog, nets=nets,
                 header_note=header_note,
                 verify=not args.no_verify, strict_lec=args.strict_lec,
                 board=args.board,
                 lifter=board.get("lifter", "machxo2"),
                 device=board.get("device"))
+
+    if jobs == 1:
+        try:
+            for label in labels:
+                launch(label)
+        except StageError as exc:
+            print(exc, flush=True)
+            sys.exit(exc.rc)
+    else:
+        print(f"=== fleet: {len(labels)} labels, {jobs} concurrent, "
+              f"{workers} reach workers each ===", flush=True)
+        failures = []
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            futures = {pool.submit(launch, l): l for l in labels}
+            for fut in as_completed(futures):
+                try:
+                    fut.result()
+                except StageError as exc:
+                    failures.append(exc)
+                    print(exc, flush=True)
+        if failures:
+            sys.exit(f"fleet: {len(failures)}/{len(labels)} label(s) failed")
 
     # Regression gate (#60): diff the freshly-rebuilt DB against a reference,
     # per label, to catch silent data loss from a schema/lifter change.  The

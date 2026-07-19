@@ -23,8 +23,10 @@ Usage
 """
 
 import argparse
+import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -443,7 +445,79 @@ def pass_ghost_d_inputs(bs_id, conn):
 # Pass 5: Clock semantic naming — replace clk_N with functional names
 # ---------------------------------------------------------------------------
 
-def pass_clock_semantics(bs_id, conn):
+def _gather_clock_pad_reach(bs_id, clock_nets, clk_pads, dac_pads, n_workers):
+    """Parallel read-only gather for pass 5 rules 3 and 4 (#68).
+
+    For every candidate clock net, find the FFs it clocks whose Q has nonzero
+    fanout, then walk reachability (<=3 hops) from each Q net.  Returns
+
+        {clk_net: (frozenset_of_CLK_pad_labels, dac_pad_reach_count)}
+
+    Both rules need exactly this data — the serial code computed it twice
+    (rule 4 re-ran rule 3's queries), so folding them into one gather is a
+    win even before threading.
+
+    DETERMINISM: this phase is pure read-only and its result is keyed by
+    clock net, so thread interleaving cannot affect it.  The order-dependent
+    part (first-match-wins `assign`) stays serial in the caller, iterating
+    `clock_rows` in the original order.  Output is identical to the serial
+    implementation by construction.
+    """
+    ffs = schema.ffs
+    ns  = schema.net_stats
+    rch = schema.reachability
+
+    out  = {}
+    lock = threading.Lock()
+    errs = []
+
+    def worker(chunk):
+        try:
+            local = {}
+            with engine().connect() as wc:
+                for net in chunk:
+                    q_nets = [r[0] for r in wc.execute(
+                        select(ffs.c.q)
+                        .join(ns, and_(ns.c.bitstream == ffs.c.bitstream,
+                                       ns.c.net == ffs.c.q))
+                        .where(and_(ffs.c.bitstream == bs_id,
+                                    ffs.c.clk == net,
+                                    ns.c.fanout > 0))
+                    ).fetchall()]
+                    labels, dac_hits = set(), 0
+                    for q_net in q_nets:
+                        for (dst,) in wc.execute(
+                            select(rch.c.dst).where(and_(
+                                rch.c.bitstream == bs_id,
+                                rch.c.src == q_net,
+                                rch.c.min_hops <= 3,
+                            ))
+                        ).fetchall():
+                            if dst in clk_pads:
+                                labels.add(clk_pads[dst])
+                            if dst in dac_pads:
+                                dac_hits += 1
+                    # An empty q_nets list must stay distinguishable from a
+                    # net whose Q nets simply reach nothing: rule 3 skips the
+                    # former (`continue`) but could fire on the latter.
+                    local[net] = (q_nets, frozenset(labels), dac_hits)
+            with lock:
+                out.update(local)
+        except Exception as exc:
+            with lock:
+                errs.append(str(exc))
+
+    n = max(1, min(n_workers, len(clock_nets)))
+    chunks = [clock_nets[i::n] for i in range(n)]
+    threads = [threading.Thread(target=worker, args=(c,)) for c in chunks if c]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    if errs:
+        die(f"clock-semantics gather worker(s) failed: {errs[0]}")
+    return out
+
+
+def pass_clock_semantics(bs_id, conn, n_workers=1):
     """
     Replace synthetic clk_N names with semantic names where structure reveals function.
 
@@ -549,46 +623,9 @@ def pass_clock_semantics(bs_id, conn):
     ).fetchall()
     clk_pads = {row[0]: row[1] for row in clk_pad_rows}  # net_in → label
 
-    for net, _name, _ff, _xout, _xin in clock_rows:
-        if net in assigned:
-            continue
-
-        # FFs clocked by this net whose Q has nonzero fanout
-        q_nets = [row[0] for row in conn.execute(
-            select(ffs.c.q)
-            .join(ns, and_(ns.c.bitstream == ffs.c.bitstream, ns.c.net == ffs.c.q))
-            .where(and_(ffs.c.bitstream == bs_id, ffs.c.clk == net, ns.c.fanout > 0))
-        ).fetchall()]
-        if not q_nets:
-            continue
-
-        # For each Q net, check reachability to a CLK pad within 3 hops
-        reached_pad_labels = set()
-        for q_net in q_nets:
-            dst_nets = [row[0] for row in conn.execute(
-                select(rch.c.dst)
-                .where(
-                    and_(
-                        rch.c.bitstream == bs_id,
-                        rch.c.src == q_net,
-                        rch.c.min_hops <= 3,
-                    )
-                )
-            ).fetchall()]
-            for dst_net in dst_nets:
-                if dst_net in clk_pads:
-                    reached_pad_labels.add(clk_pads[dst_net])
-
-        if len(reached_pad_labels) == 1:
-            # All live Q nets converge on a single CLK pad label
-            label = next(iter(reached_pad_labels)).lower()
-            if label.endswith('_clk'):
-                label = label[:-4]  # strip trailing _clk → clk_dac not clk_dac_clk
-            semantic = f'clk_{label}'
-            assign(net, semantic)
-
-    # Rule 4 — clk_dac_data_a/b: Q nets reach DAC_D* pads
-    # Fix for ILIKE (not portable): use func.upper(col).like(func.upper(val))
+    # Rule 4's DAC pad map is fetched up front so rules 3 and 4 can share one
+    # parallel gather.  Safe to hoist: nothing between here and rule 4 writes
+    # to the DB (`assign` only mutates in-memory dicts).
     dac_data_pad_rows = conn.execute(
         select(pm.c.net_in, pm.c.label)
         .where(
@@ -600,33 +637,37 @@ def pass_clock_semantics(bs_id, conn):
     ).fetchall()
     dac_data_pads = {row[0]: row[1] for row in dac_data_pad_rows}
 
+    # Parallel read-only gather (#68) — see _gather_clock_pad_reach.  Computed
+    # for every candidate net, then consumed serially in clock_rows order.
+    reach_info = _gather_clock_pad_reach(
+        bs_id, [r[0] for r in clock_rows], clk_pads, dac_data_pads, n_workers,
+    )
+
+    for net, _name, _ff, _xout, _xin in clock_rows:
+        if net in assigned:
+            continue
+
+        q_nets, reached_pad_labels, _dac = reach_info[net]
+        if not q_nets:
+            continue
+
+        if len(reached_pad_labels) == 1:
+            # All live Q nets converge on a single CLK pad label
+            label = next(iter(reached_pad_labels)).lower()
+            if label.endswith('_clk'):
+                label = label[:-4]  # strip trailing _clk → clk_dac not clk_dac_clk
+            semantic = f'clk_{label}'
+            assign(net, semantic)
+
+    # Rule 4 — clk_dac_data_a/b: Q nets reach DAC_D* pads.  Pad map and reach
+    # counts already computed above; this loop stays serial and in
+    # clock_rows order because it reads `assigned`.
     dac_candidates = []   # (net, n_reaches)
     for net, _name, _ff, _xout, _xin in clock_rows:
         if net in assigned:
             continue
 
-        q_nets = [row[0] for row in conn.execute(
-            select(ffs.c.q)
-            .join(ns, and_(ns.c.bitstream == ffs.c.bitstream, ns.c.net == ffs.c.q))
-            .where(and_(ffs.c.bitstream == bs_id, ffs.c.clk == net, ns.c.fanout > 0))
-        ).fetchall()]
-
-        dac_reach_count = 0
-        for q_net in q_nets:
-            dst_nets = [row[0] for row in conn.execute(
-                select(rch.c.dst)
-                .where(
-                    and_(
-                        rch.c.bitstream == bs_id,
-                        rch.c.src == q_net,
-                        rch.c.min_hops <= 3,
-                    )
-                )
-            ).fetchall()]
-            for dst_net in dst_nets:
-                if dst_net in dac_data_pads:
-                    dac_reach_count += 1
-
+        _q, _labels, dac_reach_count = reach_info[net]
         if dac_reach_count > 0:
             dac_candidates.append((net, dac_reach_count))
 
@@ -1162,6 +1203,14 @@ def main():
         "--bitstream", default="V07",
         help="Bitstream label to annotate (default: V07)",
     )
+    # Only pass 5's read-only reachability gather is threaded (#68).  Measured
+    # on V07 (790 Q-net probes): 4 threads 4.8x, 8 -> 4.2x, 16 -> 2.9x,
+    # 32 -> 2.2x — per-thread connection setup dominates past ~4-8, so the
+    # default caps at 8 rather than using every CPU.
+    ap.add_argument(
+        "--workers", type=int, default=min(8, os.cpu_count() or 1),
+        help="threads for the pass-5 reachability gather (default: min(8, ncpu))",
+    )
     args = ap.parse_args()
 
     # Resolve bitstream ID
@@ -1219,7 +1268,7 @@ def main():
     # Pass 5 — clock semantic naming
     n, elapsed = run_pass(
         "Pass 5: clock semantic naming",
-        lambda c: pass_clock_semantics(bs_id, c),
+        lambda c: pass_clock_semantics(bs_id, c, args.workers),
     )
     print(f"  Renamed {n} clock nets with semantic names  ({elapsed:.2f}s)")
 
