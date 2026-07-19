@@ -20,3 +20,8 @@ out/
 
 # Vendor tool installers / downloaded sources (large, not part of the repo)
 sources/
+
+# Anlogic eagle_s20 fuse DB — DERIVED from proprietary Tang Dynasty; regenerable
+# via scripts/anlogic_dbdecode.py (see boards/fnirsi-eg4s20/README.md).  Never commit.
+boards/*/eagle_s20_db/
+*.anloconfig

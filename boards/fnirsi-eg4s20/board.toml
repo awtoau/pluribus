@@ -1,0 +1,49 @@
+# Pluribus board config — FNIRSI 2D15P (Anlogic EG4S20BG256, eagle_s20)  [#67]
+#
+# Third pluribus FPGA family: Anlogic EG4, alongside MachXO2 (prjtrellis) and
+# Gowin (apicula).  The bitstream container is decoded by scripts/anlogic_unpack.py
+# and lifted by lifters/anlogic_lift.py against a fuse DB extracted from Tang
+# Dynasty by scripts/anlogic_dbdecode.py.  See ./README.md for the fuse-DB recipe.
+#
+# Usage:
+#   ANLOGIC_DB=tmp/anlogic/db \
+#     python3 scripts/run_pipeline.py --board boards/fnirsi-eg4s20 --all
+#   ANLOGIC_DB=tmp/anlogic/db \
+#     python3 scripts/run_pipeline.py --board boards/fnirsi-eg4s20 --label FNIRSI_V07
+#
+# Scope landed: device/idcode/sysconfig (CRC-verified container), the full tile
+# grid with per-tile CRAM occupancy, and LUT4-init recovery.  Routing/mux decode
+# (Anlogic muxes are binary-encoded) is future work, so the anlogic pipeline
+# stops after unpack + load (no reach/report/verilog).
+
+[board]
+name    = "FNIRSI 2D15P (Anlogic EG4S20)"
+device  = "EG4S20BG256"   # eagle_s20; JTAG idcode 0x0a014c35
+package = "BG256"
+lifter  = "anlogic"
+top     = "top"
+
+# The eagle_s20 fuse DB (tilegrid.json + bccinfo.json) is DERIVED from the
+# proprietary Tang Dynasty arch DB, so it is NOT checked into the repo.  Point
+# $ANLOGIC_DB at it, or drop it in this board dir as ./eagle_s20_db/ .  Rebuild:
+#   python3 scripts/anlogic_dbdecode.py <TD>/arch/eagle_s20.db --out tmp/anlogic/db
+# See README.md.
+
+[files]
+# pins_tsv is honoured if present, but the anlogic path has no pad-map layer yet
+# (IO/routing decode is future work), so this carries device/package metadata only.
+pins_tsv = "pins.tsv"
+
+# Known bitstreams, keyed by the label they load under.
+#   bin    — raw vendor bitstream (source of truth).  The FNIRSI target is a
+#            flash .bin under the awto-2000 RE project (read-only, external).
+#   config — the .anloconfig (scripts/anlogic_unpack.py output) — REGENERABLE,
+#            so it points at pluribus tmp/.  run_pipeline's [unpack] stage runs
+#            only when `bin` is set AND `config` does not exist yet.
+[bitstreams.FNIRSI_V07]
+bin    = "../../../awto-2000/fpga/finirsi/2d15p/FPGA_2D15P_v0.7_251118.bin"
+config = "../../tmp/anlogic/FNIRSI_V07.anloconfig"
+
+[bitstreams.FNIRSI_V06]
+bin    = "../../../awto-2000/fpga/finirsi/2d15p/FPGA_2D15P_V0.6_from_V1.2.0.6.bin"
+config = "../../tmp/anlogic/FNIRSI_V06.anloconfig"

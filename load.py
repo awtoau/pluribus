@@ -266,10 +266,101 @@ def resolve_net(design, lift, row, col, wire):
     return design.net_name.get(design.dsu.find(key))
 
 
+# ── Anlogic EG4 load (issue #67) ──────────────────────────────────────────────
+
+def load_anlogic(label, config_path, device, package):
+    """Dedicated load path for the Anlogic EG4 (eagle_s20) family.
+
+    The anlogic backend recovers the structural floorplan (tile grid + per-tile
+    CRAM occupancy) and the LUT4-init layer, but NOT routing/connectivity yet
+    (Anlogic muxes are binary-encoded; the mux/expr decode is future work — see
+    lifters/anlogic_lift.py).  So rather than drive load()'s routing-centric
+    generic core, this inserts exactly what is recovered: the bitstream row, the
+    anlogic_tiles grid, and the LUT cells (with classify_lut fn), each LUT's
+    output net.  arcs / net_fanout / reach layers stay empty for this family.
+
+    Always-rebuild per label (project rule): every dependent row for the label
+    is deleted and re-inserted from scratch.
+    """
+    if not os.path.exists(config_path):
+        die(f"Config file not found: {config_path}")
+    lift = make_lift("anlogic", device)
+    pc = lift.parse_config(config_path)
+    design = lift.recover_netlist(pc)
+    device = pc.device or device
+    package = pc.package or package
+    print(f"  device={device} package={package} idcode={pc.idcode} "
+          f"tiles={len(pc.tiles)} active={design.active_tiles} "
+          f"luts={design.n_luts_nonzero}")
+
+    schema.init()
+    with engine().begin() as conn:
+        _now = datetime.now(timezone.utc)
+        if BACKEND == "sqlite":
+            conn.execute(insert(schema.bitstreams).prefix_with("OR REPLACE").values(
+                label=label, filename=os.path.basename(config_path),
+                device=device, package=package, loaded_at=_now))
+            bs_id = conn.execute(select(schema.bitstreams.c.id)
+                                 .where(schema.bitstreams.c.label == label)).scalar()
+        else:
+            bs_id = conn.execute(
+                _pg_insert(schema.bitstreams)
+                .values(label=label, filename=os.path.basename(config_path),
+                        device=device, package=package, loaded_at=_now)
+                .on_conflict_do_update(
+                    index_elements=["label"],
+                    set_=dict(filename=os.path.basename(config_path),
+                              device=device, package=package, loaded_at=_now))
+                .returning(schema.bitstreams.c.id)).scalar()
+        if bs_id is None:
+            die("INSERT INTO bitstreams returned NULL id")
+        print(f"  bitstream id={bs_id}")
+
+        # always-rebuild: drop this label's anlogic rows before re-inserting
+        for tbl in (schema.anlogic_tiles, schema.luts, schema.net_fanout,
+                    schema.nets):
+            conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
+
+        if pc.tiles:
+            conn.execute(insert(schema.anlogic_tiles), [
+                {"bitstream": bs_id, "name": t["name"], "tile_type": t["type"],
+                 "x": t["x"], "y": t["y"], "start_frame": t["start_frame"],
+                 "start_bit": t["start_bit"], "rows": t["rows"], "cols": t["cols"],
+                 "occupancy": t["occupancy"]}
+                for t in pc.tiles])
+
+        # LUT cells + their output nets.  Inputs are unconnected (routing/mux
+        # decode is future work), so net_fanout stays empty — the DB carries no
+        # fabricated connectivity for this family.
+        net_rows, lut_rows = [], []
+        for lt in design.luts:
+            init = lt["init"]
+            lut_rows.append({
+                "bitstream": bs_id, "cell": lt["name"], "init": init,
+                "a": lt["a"], "b": lt["b"], "c": lt["c"], "d": lt["d"],
+                "z": lt["z"], "deps": sorted(mx.lut_dependence(init)),
+                "fn": classify_lut(init)})
+            if lt["z"]:
+                net_rows.append({"bitstream": bs_id, "name": lt["z"]})
+        if net_rows:
+            conn.execute(_insert_or_ignore(schema.nets), net_rows)
+        if lut_rows:
+            conn.execute(insert(schema.luts), lut_rows)
+
+    print(f"  loaded: {len(pc.tiles)} tiles, {len(design.luts)} LUT cells, "
+          f"{len(net_rows)} nets")
+    return bs_id
+
+
 # ── Main load ─────────────────────────────────────────────────────────────────
 
 def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=False,
          lifter="machxo2"):
+    # Anlogic EG4 uses a dedicated structural load path (no routing layer yet).
+    if lifter == "anlogic":
+        print(f"Loading Anlogic EG4 netlist from {config_path}…")
+        return load_anlogic(label, config_path, device, package)
+
     t0 = time.time()
 
     # ── parse pin annotation file ──────────────────────────────────────────
@@ -1517,7 +1608,8 @@ def main():
 
     if not args.label:
         ap.error("--label is required when not using --dump-pins")
-    if not pins:
+    # Anlogic has no pad-map layer yet, so its dedicated load path ignores pins.
+    if not pins and lifter != "anlogic":
         ap.error("--pins is required (or provide --board with pins_tsv in board.toml)")
     load(args.label, args.config, pins, device, package, nets,
          fuzz=args.fuzz, lifter=lifter)

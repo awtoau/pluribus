@@ -17,6 +17,10 @@ Supported families:
               from a `.gwconfig` text config decoded by scripts/gowin_unpack.py.
               Not a Trellis family, but shares the lifter interface so load.py's
               generic core (nets/FFs/LUTs/net_fanout/arcs) drives it unchanged.
+  "anlogic"   Anlogic EG4 / eagle_s20 (lifters/anlogic_lift.py) — tile grid +
+              LUT4-init recovery from a `.anloconfig` decoded by
+              scripts/anlogic_unpack.py against the Tang-Dynasty fuse DB
+              (scripts/anlogic_dbdecode.py).  Routing/mux decode is future work.
 """
 
 
@@ -36,10 +40,13 @@ def TrellisLift(family, device, **kwargs):
     elif fam == "gowin":
         from lifters.gowin_lift import GowinLift
         return GowinLift(device, **kwargs)
+    elif fam == "anlogic":
+        from lifters.anlogic_lift import AnlogicLift
+        return AnlogicLift(device, **kwargs)
     else:
         raise ValueError(
             f"Unknown family {family!r}. "
-            f"Supported: machxo2, ecp5, gowin. "
+            f"Supported: machxo2, ecp5, gowin, anlogic. "
             f"To add a new family, create lifters/<family>_lift.py and "
             f"register it here."
         )

@@ -1,0 +1,9 @@
+# device:   EG4S20BG256
+# package:  BG256
+#
+# Anlogic EG4 (eagle_s20) IO/pad mapping is not modelled yet — the anlogic load
+# path (load.py load_anlogic) has no pad_map layer.  This file carries only the
+# device/package metadata so a --board run is self-sufficient; the pin rows are
+# documentation and are not consumed on the anlogic path.
+#
+# pin  row  col  pio  dir  label  function  confidence

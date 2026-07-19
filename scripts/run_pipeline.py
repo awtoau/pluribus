@@ -95,6 +95,35 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
     # stay MachXO2-only (they lean on the MachXO2 pad/hard-IP layers).
     is_gowin = (lifter == "gowin")
 
+    # ANLOGIC EG4 (eagle_s20, #67): the structural lift (tile grid + occupancy +
+    # LUT-init) lands in the DB, but routing/mux decode is future work — with no
+    # arcs the reach/report/verilog stages have nothing to analyse, so the
+    # anlogic pipeline stops after unpack + load.  The fuse DB (from
+    # scripts/anlogic_dbdecode.py) is passed via --db / $ANLOGIC_DB.
+    is_anlogic = (lifter == "anlogic")
+    if is_anlogic:
+        anlogic_db = os.environ.get("ANLOGIC_DB") or (
+            board and os.path.join(board, "eagle_s20_db")) or None
+        if raw_bin and not os.path.exists(config):
+            os.makedirs(os.path.dirname(config) or ".", exist_ok=True)
+            cmd = [PY, "scripts/anlogic_unpack.py", raw_bin, config]
+            if anlogic_db and os.path.isdir(anlogic_db):
+                cmd += ["--db", anlogic_db]
+            if device:
+                cmd += ["--device", device]
+            run("unpack", label, cmd)
+        if not skip_load:
+            load_cmd = [PY, "load.py", "--label", label, "--config", config,
+                        "--lifter", "anlogic", "--fuzz",
+                        "--device", device or "EG4S20BG256",
+                        "--package", package or "BG256"]
+            if pins:                       # anlogic ignores pins, but honour one
+                load_cmd += ["--pins", pins]
+            run("load", label, load_cmd)
+        print(f"pipeline complete for {label} (anlogic: structural lift + LUTs; "
+              f"routing decode is future work)", flush=True)
+        return
+
     if raw_bin and not os.path.exists(config):
         os.makedirs(os.path.dirname(config) or ".", exist_ok=True)
         if is_gowin:
@@ -273,7 +302,9 @@ def main():
         if not config:
             sys.exit(f"no config for {label}: pass --config or declare "
                      f"[bitstreams.{label}] in board.toml")
-        if not args.skip_load and not pins:
+        # anlogic has no pad-map layer yet, so its load path needs no pins
+        if (not args.skip_load and not pins
+                and board.get("lifter") != "anlogic"):
             sys.exit("load needs --pins (or --board with pins_tsv)")
         top = args.top or board.get("top") or "top"
         # Optional board-provided Verilog header note (board-specific context).

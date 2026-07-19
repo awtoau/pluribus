@@ -187,6 +187,29 @@ clock_domains = Table("clock_domains", metadata,
     UniqueConstraint("bitstream", "clk_net", "ff_cell"),
 )
 
+# Anlogic EG4 (eagle_s20) tile-grid + per-tile CRAM occupancy (issue #67).
+# One row per placed tile from the Tang-Dynasty fuse DB (scripts/anlogic_dbdecode.py):
+# where it sits in the grid, where its bits live in the CRAM, and how many of
+# those bits the bitstream sets (utilisation).  This is the structural floorplan
+# recovered from an Anlogic bitstream; the LUT-init layer lands in `luts`, while
+# the routing/mux layer (binary-encoded, needs the per-bit boolean expr) is not
+# yet decoded (arcs stay empty for the anlogic family).
+anlogic_tiles = Table("anlogic_tiles", metadata,
+    Column("id",          Integer, primary_key=True, autoincrement=True),
+    Column("bitstream",   Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("name",        Text,    nullable=False),
+    Column("tile_type",   Text,    nullable=False),
+    Column("x",           Integer, nullable=False),
+    Column("y",           Integer, nullable=False),
+    Column("start_frame", Integer, nullable=False),
+    Column("start_bit",   Integer, nullable=False),
+    Column("rows",        Integer, nullable=False),
+    Column("cols",        Integer, nullable=False),
+    Column("occupancy",   Integer, nullable=False, server_default="0"),
+    UniqueConstraint("bitstream", "name"),
+)
+Index("idx_anlogic_tiles_type", anlogic_tiles.c.bitstream, anlogic_tiles.c.tile_type)
+
 # ── 2. Analysis layer ─────────────────────────────────────────────────────────
 
 reachability = Table("reachability", metadata,
