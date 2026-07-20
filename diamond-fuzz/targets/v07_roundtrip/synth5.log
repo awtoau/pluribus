@@ -1,0 +1,152 @@
+
+synthesis -f "v07_impl1_lattice.synproj"
+synthesis:  version Diamond (64-bit) 3.14.0.75.2
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+Fri Jul 17 19:17:16 2026
+
+
+Command Line:  synthesis -f v07_impl1_lattice.synproj 
+
+INFO - synthesis: Lattice Synthesis Engine Launched.
+Synthesis options:
+The -a option is MachXO2.
+The -s option is 5.
+The -t option is TQFP100.
+The -d option is LCMXO2-1200HC.
+Using package TQFP100.
+Using performance grade 5.
+                                                          
+
+##########################################################
+
+### Lattice Family : MachXO2
+
+### Device  : LCMXO2-1200HC
+
+### Package : TQFP100
+
+### Speed   : 5
+
+##########################################################
+
+                                                          
+
+INFO - synthesis: User-Selected Strategy Settings
+Optimization goal = Balanced
+The -top option is not used.
+Target frequency = 200.000000 MHz.
+Maximum fanout = 1000.
+Timing path count = 3
+BRAM utilization = 100.000000 %
+DSP usage = true
+DSP utilization = 100.000000 %
+fsm_encoding_style = auto
+resolve_mixed_drivers = 0
+fix_gated_clocks = 1
+
+Mux style = Auto
+Use Carry Chain = true
+carry_chain_length = 0
+Loop Limit = 1950.
+Use IO Insertion = TRUE
+Use IO Reg = AUTO
+
+Resource Sharing = TRUE
+Propagate Constants = TRUE
+Remove Duplicate Registers = TRUE
+force_gsr = auto
+ROM style = auto
+RAM style = auto
+The -comp option is FALSE.
+The -syn option is FALSE.
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip (searchpath added)
+-p /home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data (searchpath added)
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/impl1 (searchpath added)
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip (searchpath added)
+Verilog design file = /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v
+NGD file = v07_impl1.ngd
+-sdc option: SDC file input not used.
+-lpf option: Output file option is ON.
+Hardtimer checking is enabled (default). The -dt option is not used.
+The -r option is OFF. [ Remove LOC Properties is OFF. ]
+WARNING - synthesis: Setting aw2 as the top-level module. To specify the top-level module explicitly, use the -top option.
+Technology check ok...
+
+Analyzing Verilog file /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v. VERI-1482
+Compile design.
+Compile Design Begin
+Analyzing Verilog file /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v. VERI-1482
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(9320): assignment to input ADC_D4AVERI-1214
+Analyzing Verilog file /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v. VERI-1482
+Top module name (Verilog): aw2
+INFO - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(42): compiling module aw2. VERI-1018
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5683): Register spec_reg_r8c16_0_2875 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5695): Register spec_reg_r7c18_0_2879 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5711): Register spec_reg_r10c2_1_2889 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6520): Register spec_reg_r4c1_2_3271 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6119): Register spec_reg_r5c10_0_3073 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6291): Register spec_reg_r5c19_4_3177 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(727): net lut_r7c2_Ak0 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(948): net spec_carry_r3c6_Ak0 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(962): net spec_carry_r5c7_Ck0 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(964): net spec_carry_r5c7_Dk0 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1178): net spec_ghost_d_1 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1182): net spec_ghost_d_13 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1186): net spec_ghost_d_17 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1196): net spec_ghost_d_26 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1209): net spec_ghost_d_38 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1210): net spec_ghost_d_39 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1231): net spec_ghost_d_58 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1250): net spec_ghost_d_75 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1261): net spec_ghost_d_85 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1262): net spec_ghost_d_86 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1367): net spec_lut_0111_r9c5_Bk0 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1435): net spec_n1469_n1470_n1469_n1470 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2495): net n37 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2506): net n343 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2519): net n530 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2520): net n553 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2587): net n1363 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2610): net n1817 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2640): net n2050 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2649): net n2087 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2674): net n2177 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2677): net n2207 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2678): net n2208 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2682): net n2239 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2686): net n2271 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2687): net n2274 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2695): net n2304 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2696): net n2305 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2697): net n2318 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2698): net n2319 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2706): net n2356 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2716): net n2408 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2717): net n2409 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2730): net n2447 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2832): net n2603 does not have a driver. VDB-1002
+Last elaborated design is aw2()
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00a/data/xo2alib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data/xo2clib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/mg5g00/data/mg5glib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/or5g00/data/orc5glib.ngl'...
+Loading device for application map from file 'xo2c1200.nph' in environment: /home/dan/lscc/diamond/3.14/ispfpga.
+Package Status:                     Final          Version 1.44.
+Top-level module name = aw2.
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5809): Register spec_reg_r7c20_0_2910 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5819): Register spec_reg_r9c20_2_2915 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5842): Register spec_reg_r5c20_0_2921 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5890): Register spec_reg_r4c2_0_2930 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5900): Register spec_reg_r2c7_0_2934 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6711): Register spec_reg_r9c11_2_3347 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7840): Register spec_reg_r9c6_6_3823 is stuck at Zero. VDB-5013
+ERROR - synthesis: Multiple Non-Tristate drivers exist for net ADC_D4A.
+Running milestone "Synthesis" failed
+    while executing
+"prj_run Synthesis -impl impl1"
+    (file "run.tcl" line 3)

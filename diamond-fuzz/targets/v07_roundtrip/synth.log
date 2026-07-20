@@ -1,0 +1,7 @@
+ERROR - No implementation in project.
+ERROR - Project DRC checking failed.
+ERROR - Error in reading project file 'v07.ldf', can't load the project.
+Failed to open project
+    while executing
+"prj_project open "[file normalize [file join [file dirname [info script]] v07.ldf]]""
+    (file "run.tcl" line 1)

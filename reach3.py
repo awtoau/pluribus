@@ -410,12 +410,17 @@ def _find_buf_lut_shortcuts(lut_rows):
     return buf_shortcuts
 
 
-def _build_ff_q_to_d_edges(ff_rows, buf_shortcuts):
+def _build_ff_q_to_d_edges(ff_rows, buf_shortcuts, lut_rows=None):
     """
     Return {src_ff_cell: (dst_ff_cell, dst_clk, dst_ce, via_buf)} for every
-    FF whose Q net feeds directly (or via one BUF LUT) into another FF's D.
+    FF whose Q net feeds directly (or via one BUF LUT or AND-gating LUT) into
+    another FF's D.
 
     ff_rows: list of (cell, clk, ce, d, q)
+    lut_rows: list of (cell, fn, a, b, c, d, z) for gated-shift detection
+
+    Issue #77: Extended to recognize gated shift chains where a LUT computes
+    (Q_prev & enable) between FF stages. This is used in SPI/command registers.
     """
     ff_by_q_net = {}   # q_net -> (cell, clk, ce)
     ff_by_d_net = {}   # d_net -> (cell, clk, ce)
@@ -425,6 +430,24 @@ def _build_ff_q_to_d_edges(ff_rows, buf_shortcuts):
             ff_by_q_net[q_net] = (cell, clk, ce)
         if d_net and not d_net.startswith("1'b"):
             ff_by_d_net[d_net] = (cell, clk, ce)
+
+    # Build gated-shift LUT map if lut_rows provided
+    gated_shifts = {}
+    if lut_rows:
+        for _cell, fn, pa, pb, pc, pd, out_z in lut_rows:
+            if not (fn and out_z):
+                continue
+            # Recognize AND functions: fn='AND(a,b)' or similar 2-input AND patterns
+            if "AND(" in fn:
+                match = re.match(r'AND\(([abcd]),([abcd])\)', fn)
+                if match:
+                    port1, port2 = match.group(1), match.group(2)
+                    net_map = {'a': pa, 'b': pb, 'c': pc, 'd': pd}
+                    net1 = net_map.get(port1)
+                    net2 = net_map.get(port2)
+                    if net1 and net2:
+                        # Both inputs connected; this is a gating LUT
+                        gated_shifts[out_z] = (net1, net2)
 
     edges = {}   # src_ff_cell -> (dst_ff_cell, dst_clk, dst_ce, via_buf)
 
@@ -438,6 +461,17 @@ def _build_ff_q_to_d_edges(ff_rows, buf_shortcuts):
             buf_output = buf_shortcuts[q_net]
             if buf_output in ff_by_d_net:
                 dst_cell, dst_clk, dst_ce = ff_by_d_net[buf_output]
+                edges[src_cell] = (dst_cell, dst_clk, dst_ce, True)
+        elif q_net in gated_shifts:
+            # Q → AND_LUT → D connection (gated shift stage)
+            # The AND LUT output may feed into the next FF's D directly
+            lut_output = None
+            for out_z, (net1, net2) in gated_shifts.items():
+                if net1 == q_net or net2 == q_net:
+                    lut_output = out_z
+                    break
+            if lut_output and lut_output in ff_by_d_net:
+                dst_cell, dst_clk, dst_ce = ff_by_d_net[lut_output]
                 edges[src_cell] = (dst_cell, dst_clk, dst_ce, True)
 
     return edges
@@ -518,7 +552,7 @@ def pass_shift_registers(bs_id):
             ff_q_by_cell[cell] = q_net
 
     buf_shortcuts = _find_buf_lut_shortcuts(lut_rows)
-    edges         = _build_ff_q_to_d_edges(ff_rows, buf_shortcuts)
+    edges         = _build_ff_q_to_d_edges(ff_rows, buf_shortcuts, lut_rows)
     chains        = _walk_ff_chains(edges, ff_by_q_net)
 
     # Remove old shift-register patterns for this bitstream before writing new ones

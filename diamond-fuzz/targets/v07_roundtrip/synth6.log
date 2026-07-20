@@ -1,0 +1,455 @@
+
+synthesis -f "v07_impl1_lattice.synproj"
+synthesis:  version Diamond (64-bit) 3.14.0.75.2
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+Fri Jul 17 19:20:00 2026
+
+
+Command Line:  synthesis -f v07_impl1_lattice.synproj 
+
+INFO - synthesis: Lattice Synthesis Engine Launched.
+Synthesis options:
+The -a option is MachXO2.
+The -s option is 5.
+The -t option is TQFP100.
+The -d option is LCMXO2-1200HC.
+Using package TQFP100.
+Using performance grade 5.
+                                                          
+
+##########################################################
+
+### Lattice Family : MachXO2
+
+### Device  : LCMXO2-1200HC
+
+### Package : TQFP100
+
+### Speed   : 5
+
+##########################################################
+
+                                                          
+
+INFO - synthesis: User-Selected Strategy Settings
+Optimization goal = Balanced
+The -top option is not used.
+Target frequency = 200.000000 MHz.
+Maximum fanout = 1000.
+Timing path count = 3
+BRAM utilization = 100.000000 %
+DSP usage = true
+DSP utilization = 100.000000 %
+fsm_encoding_style = auto
+resolve_mixed_drivers = 0
+fix_gated_clocks = 1
+
+Mux style = Auto
+Use Carry Chain = true
+carry_chain_length = 0
+Loop Limit = 1950.
+Use IO Insertion = TRUE
+Use IO Reg = AUTO
+
+Resource Sharing = TRUE
+Propagate Constants = TRUE
+Remove Duplicate Registers = TRUE
+force_gsr = auto
+ROM style = auto
+RAM style = auto
+The -comp option is FALSE.
+The -syn option is FALSE.
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip (searchpath added)
+-p /home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data (searchpath added)
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/impl1 (searchpath added)
+-p /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip (searchpath added)
+Verilog design file = /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v
+NGD file = v07_impl1.ngd
+-sdc option: SDC file input not used.
+-lpf option: Output file option is ON.
+Hardtimer checking is enabled (default). The -dt option is not used.
+The -r option is OFF. [ Remove LOC Properties is OFF. ]
+WARNING - synthesis: Setting aw2 as the top-level module. To specify the top-level module explicitly, use the -top option.
+Technology check ok...
+
+Analyzing Verilog file /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v. VERI-1482
+Compile design.
+Compile Design Begin
+Analyzing Verilog file /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v. VERI-1482
+Analyzing Verilog file /home/dan/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo2.v. VERI-1482
+Top module name (Verilog): aw2
+INFO - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(42): compiling module aw2. VERI-1018
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5683): Register spec_reg_r8c16_0_2875 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5695): Register spec_reg_r7c18_0_2879 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5711): Register spec_reg_r10c2_1_2889 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6520): Register spec_reg_r4c1_2_3271 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6119): Register spec_reg_r5c10_0_3073 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6291): Register spec_reg_r5c19_4_3177 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(727): net lut_r7c2_Ak0 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(962): net spec_carry_r5c7_Ck0 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(964): net spec_carry_r5c7_Dk0 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1178): net spec_ghost_d_1 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1186): net spec_ghost_d_17 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1209): net spec_ghost_d_38 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1210): net spec_ghost_d_39 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1231): net spec_ghost_d_58 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(1435): net spec_n1469_n1470_n1469_n1470 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2495): net n37 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2520): net n553 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2587): net n1363 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2610): net n1817 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2677): net n2207 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2678): net n2208 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2682): net n2239 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2686): net n2271 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2695): net n2304 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2696): net n2305 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2697): net n2318 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2698): net n2319 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2706): net n2356 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2716): net n2408 does not have a driver. VDB-1002
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(2717): net n2409 does not have a driver. VDB-1002
+Last elaborated design is aw2()
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00a/data/xo2alib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data/xo2clib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/mg5g00/data/mg5glib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/or5g00/data/orc5glib.ngl'...
+Loading device for application map from file 'xo2c1200.nph' in environment: /home/dan/lscc/diamond/3.14/ispfpga.
+Package Status:                     Final          Version 1.44.
+Top-level module name = aw2.
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5890): Register spec_reg_r4c2_0_2930 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5900): Register spec_reg_r2c7_0_2934 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6711): Register spec_reg_r9c11_2_3347 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7840): Register spec_reg_r9c6_6_3823 is stuck at Zero. VDB-5013
+WARNING - synthesis: I/O Port pin4 's net has no driver and is unused.
+WARNING - synthesis: I/O Port U7_DS 's net has no driver and is unused.
+WARNING - synthesis: I/O Port FPGA_nCS 's net has no driver and is unused.
+######## Converting I/O port DAC_PD to input.
+WARNING - synthesis: I/O Port DAC_D6 's net has no driver and is unused.
+WARNING - synthesis: I/O Port DAC_D7 's net has no driver and is unused.
+WARNING - synthesis: I/O Port DAC_CLK 's net has no driver and is unused.
+WARNING - synthesis: I/O Port pin61 's net has no driver and is unused.
+WARNING - synthesis: I/O Port U1_STCP 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_ENCA 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D7A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D6A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D5A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D4A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D3A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D2A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D1A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D0A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D0B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D1B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D2B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D3B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D4B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D5B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D6B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D7B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_ENCB 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_12 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_6 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_main 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_23 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_15 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_3 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_2 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_21 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_18 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_19 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_25 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_28 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_26 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_h1_misc_a 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_h2_misc_a 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_29 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_h0_spi_ctrl_b 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_22 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_ebr_wclk 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ebr_raddr_5 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_9 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_16 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_14 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_13 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_27 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_30 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_20 's net has no driver and is unused.
+######## Missing driver on net pin4. Patching with GND.
+######## Missing driver on net U7_DS. Patching with GND.
+######## Missing driver on net DAC_D6. Patching with GND.
+######## Missing driver on net DAC_D7. Patching with GND.
+######## Missing driver on net DAC_CLK. Patching with GND.
+######## Missing driver on net pin61. Patching with GND.
+######## Missing driver on net U1_STCP. Patching with GND.
+######## Missing driver on net ADC_ENCA. Patching with GND.
+######## Missing driver on net ADC_ENCB. Patching with GND.
+######## Missing driver on net lut_r7c2_Ak0. Patching with GND.
+######## Missing driver on net spec_carry_r5c7_Ck0. Patching with GND.
+######## Missing driver on net spec_carry_r5c7_Dk0. Patching with GND.
+######## Missing driver on net spec_ghost_d_1. Patching with GND.
+######## Missing driver on net spec_ghost_d_17. Patching with GND.
+######## Missing driver on net spec_ghost_d_38. Patching with GND.
+######## Missing driver on net spec_ghost_d_39. Patching with GND.
+######## Missing driver on net spec_ghost_d_58. Patching with GND.
+######## Missing driver on net spec_n1469_n1470_n1469_n1470. Patching with GND.
+######## Missing driver on net n37. Patching with GND.
+######## Missing driver on net n553. Patching with GND.
+######## Missing driver on net n1363. Patching with GND.
+######## Missing driver on net n1817. Patching with GND.
+######## Missing driver on net n2207. Patching with GND.
+######## Missing driver on net n2208. Patching with GND.
+######## Missing driver on net n2239. Patching with GND.
+######## Missing driver on net n2271. Patching with GND.
+######## Missing driver on net n2304. Patching with GND.
+######## Missing driver on net n2305. Patching with GND.
+######## Missing driver on net n2318. Patching with GND.
+######## Missing driver on net n2319. Patching with GND.
+######## Missing driver on net n2356. Patching with GND.
+######## Missing driver on net n2408. Patching with GND.
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(5946): Register spec_reg_r3c12_1_2964 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6193): Register spec_reg_r7c19_3_3106 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6498): Register spec_reg_r7c2_0_3259 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6863): Register spec_reg_r5c1_4_3420 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7026): Register spec_reg_r7c13_7_3503 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7175): Register spec_reg_r7c19_1_3549 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7467): Register spec_reg_r8c17_1_3648 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7590): Register spec_reg_r3c11_3_3703 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7802): Register spec_reg_r7c5_1_3814 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7810): Register spec_reg_r8c5_1_3816 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7818): Register spec_reg_r8c7_5_3818 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(6705): Register spec_reg_r9c10_6_3346 is stuck at Zero. VDB-5013
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7193): Register spec_reg_r8c16_6_3554 is stuck at One. VDB-5014
+
+
+
+WARNING - synthesis: I/O Port FPGA_nCS 's net has no driver and is unused.
+WARNING - synthesis: I/O Port DAC_PD 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D7A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D6A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D5A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D4A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D3A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D2A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D1A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D0A 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D0B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D1B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D2B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D3B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D4B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D5B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D6B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ADC_D7B 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_12 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_6 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_main 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_23 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_15 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_dac_data_b 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_10 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_3 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_2 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_21 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_18 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_5 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_19 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_25 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_28 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_26 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_h1_misc_a 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_h2_misc_a 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_29 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_24 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_h0_spi_ctrl_b 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_22 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_ebr_wclk 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_h2_spi_ser_a 's net has no driver and is unused.
+WARNING - synthesis: I/O Port ebr_raddr_5 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_9 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_4 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_7 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_dac_data_a 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_16 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_8 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_17 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_14 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_13 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_27 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_30 's net has no driver and is unused.
+WARNING - synthesis: I/O Port spec_clk_20 's net has no driver and is unused.
+WARNING - synthesis: /mnt/2tb/git/pluribus/diamond-fuzz/targets/v07_roundtrip/v07_core.v(7700): Register spec_reg_r7c11_4_3758 is stuck at One. VDB-5014
+GSR will not be inferred because no asynchronous signal was found in the netlist.
+Applying 200.000000 MHz constraint to all clocks
+
+WARNING - synthesis: No user .sdc file.
+Results of NGD DRC are available in aw2_drc.log.
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00a/data/xo2alib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/xo2c00/data/xo2clib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/mg5g00/data/mg5glib.ngl'...
+Loading NGL library '/home/dan/lscc/diamond/3.14/ispfpga/or5g00/data/orc5glib.ngl'...
+
+
+Running DRC...
+
+WARNING - synthesis: logical net 'FPGA_nCS' has no load.
+WARNING - synthesis: input pad net 'FPGA_nCS' has no legal load.
+WARNING - synthesis: logical net 'DAC_PD' has no load.
+WARNING - synthesis: input pad net 'DAC_PD' has no legal load.
+WARNING - synthesis: logical net 'ADC_D7A' has no load.
+WARNING - synthesis: input pad net 'ADC_D7A' has no legal load.
+WARNING - synthesis: logical net 'ADC_D6A' has no load.
+WARNING - synthesis: input pad net 'ADC_D6A' has no legal load.
+WARNING - synthesis: logical net 'ADC_D5A' has no load.
+WARNING - synthesis: input pad net 'ADC_D5A' has no legal load.
+WARNING - synthesis: logical net 'ADC_D4A' has no load.
+WARNING - synthesis: input pad net 'ADC_D4A' has no legal load.
+WARNING - synthesis: logical net 'ADC_D3A' has no load.
+WARNING - synthesis: input pad net 'ADC_D3A' has no legal load.
+WARNING - synthesis: logical net 'ADC_D2A' has no load.
+WARNING - synthesis: input pad net 'ADC_D2A' has no legal load.
+WARNING - synthesis: logical net 'ADC_D1A' has no load.
+WARNING - synthesis: input pad net 'ADC_D1A' has no legal load.
+WARNING - synthesis: logical net 'ADC_D0A' has no load.
+WARNING - synthesis: input pad net 'ADC_D0A' has no legal load.
+WARNING - synthesis: logical net 'ADC_D0B' has no load.
+WARNING - synthesis: input pad net 'ADC_D0B' has no legal load.
+WARNING - synthesis: logical net 'ADC_D1B' has no load.
+WARNING - synthesis: input pad net 'ADC_D1B' has no legal load.
+WARNING - synthesis: logical net 'ADC_D2B' has no load.
+WARNING - synthesis: input pad net 'ADC_D2B' has no legal load.
+WARNING - synthesis: logical net 'ADC_D3B' has no load.
+WARNING - synthesis: input pad net 'ADC_D3B' has no legal load.
+WARNING - synthesis: logical net 'ADC_D4B' has no load.
+WARNING - synthesis: input pad net 'ADC_D4B' has no legal load.
+WARNING - synthesis: logical net 'ADC_D5B' has no load.
+WARNING - synthesis: input pad net 'ADC_D5B' has no legal load.
+WARNING - synthesis: logical net 'ADC_D6B' has no load.
+WARNING - synthesis: input pad net 'ADC_D6B' has no legal load.
+WARNING - synthesis: logical net 'ADC_D7B' has no load.
+WARNING - synthesis: input pad net 'ADC_D7B' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_12' has no load.
+WARNING - synthesis: input pad net 'spec_clk_12' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_6' has no load.
+WARNING - synthesis: input pad net 'spec_clk_6' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_main' has no load.
+WARNING - synthesis: input pad net 'spec_clk_main' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_23' has no load.
+WARNING - synthesis: input pad net 'spec_clk_23' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_15' has no load.
+WARNING - synthesis: input pad net 'spec_clk_15' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_dac_data_b' has no load.
+WARNING - synthesis: input pad net 'spec_clk_dac_data_b' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_10' has no load.
+WARNING - synthesis: input pad net 'spec_clk_10' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_3' has no load.
+WARNING - synthesis: input pad net 'spec_clk_3' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_2' has no load.
+WARNING - synthesis: input pad net 'spec_clk_2' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_21' has no load.
+WARNING - synthesis: input pad net 'spec_clk_21' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_18' has no load.
+WARNING - synthesis: input pad net 'spec_clk_18' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_5' has no load.
+WARNING - synthesis: input pad net 'spec_clk_5' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_19' has no load.
+WARNING - synthesis: input pad net 'spec_clk_19' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_25' has no load.
+WARNING - synthesis: input pad net 'spec_clk_25' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_28' has no load.
+WARNING - synthesis: input pad net 'spec_clk_28' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_26' has no load.
+WARNING - synthesis: input pad net 'spec_clk_26' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_h1_misc_a' has no load.
+WARNING - synthesis: input pad net 'spec_clk_h1_misc_a' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_h2_misc_a' has no load.
+WARNING - synthesis: input pad net 'spec_clk_h2_misc_a' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_29' has no load.
+WARNING - synthesis: input pad net 'spec_clk_29' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_24' has no load.
+WARNING - synthesis: input pad net 'spec_clk_24' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_h0_spi_ctrl_b' has no load.
+WARNING - synthesis: input pad net 'spec_clk_h0_spi_ctrl_b' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_22' has no load.
+WARNING - synthesis: input pad net 'spec_clk_22' has no legal load.
+WARNING - synthesis: logical net 'spec_ebr_wclk' has no load.
+WARNING - synthesis: input pad net 'spec_ebr_wclk' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_h2_spi_ser_a' has no load.
+WARNING - synthesis: input pad net 'spec_clk_h2_spi_ser_a' has no legal load.
+WARNING - synthesis: logical net 'ebr_raddr_5' has no load.
+WARNING - synthesis: input pad net 'ebr_raddr_5' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_9' has no load.
+WARNING - synthesis: input pad net 'spec_clk_9' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_4' has no load.
+WARNING - synthesis: input pad net 'spec_clk_4' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_7' has no load.
+WARNING - synthesis: input pad net 'spec_clk_7' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_dac_data_a' has no load.
+WARNING - synthesis: input pad net 'spec_clk_dac_data_a' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_16' has no load.
+WARNING - synthesis: input pad net 'spec_clk_16' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_8' has no load.
+WARNING - synthesis: input pad net 'spec_clk_8' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_17' has no load.
+WARNING - synthesis: input pad net 'spec_clk_17' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_14' has no load.
+WARNING - synthesis: input pad net 'spec_clk_14' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_13' has no load.
+WARNING - synthesis: input pad net 'spec_clk_13' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_27' has no load.
+WARNING - synthesis: input pad net 'spec_clk_27' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_30' has no load.
+WARNING - synthesis: input pad net 'spec_clk_30' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_20' has no load.
+WARNING - synthesis: input pad net 'spec_clk_20' has no legal load.
+WARNING - synthesis: logical net 'spec_clk_h0_spi_rd_b_c' has no load.
+WARNING - synthesis: DRC complete with 111 warnings.
+
+Design Results:
+     32 blocks expanded
+completed the first expansion
+All blocks are expanded and NGD expansion is successful.
+Writing NGD file v07_impl1.ngd.
+
+################### Begin Area Report (aw2)######################
+Number of register bits => 0 of 1520 (0 % )
+GSR => 1
+IB => 1
+OB => 27
+################### End Area Report ##################
+
+################### Begin BlackBox Report ######################
+TSALL => 1
+################### End BlackBox Report ##################
+
+################### Begin Clock Report ######################
+Clock Nets
+Number of Clocks: 1
+  Net : spec_clk_h0_spi_rd_b_c, loads : 0
+Clock Enable Nets
+Number of Clock Enables: 0
+Top 0 highest fanout Clock Enables:
+Highest fanout non-clock nets
+Top 10 highest fanout non-clock nets:
+  Net : U1_STCP, loads : 0
+  Net : ADC_ENCA, loads : 0
+  Net : DAC_D4, loads : 0
+  Net : pin99, loads : 0
+  Net : DAC_D9, loads : 0
+  Net : DAC_D6, loads : 0
+  Net : ADC_ENCB, loads : 0
+  Net : pin60, loads : 0
+  Net : DAC_CLK, loads : 0
+  Net : DAC_D10, loads : 0
+################### End Clock Report ##################
+
+Peak Memory Usage: 177.191  MB
+
+--------------------------------------------------------------
+Elapsed CPU time for LSE flow : 0.172  secs
+--------------------------------------------------------------

@@ -107,22 +107,34 @@ def _correct_pio_iostandard(pio_enums: "dict[str, str]") -> "dict[str, str]":
     corrected = dict(pio_enums)
     # Handle both "PIOA.PULLMODE" (full-key form from pc.enums) and
     # plain "PULLMODE" (per-PIO-slice form from fpga_iomap parse_config).
+    found_full_key_form = False
     for pio in ('A', 'B', 'C', 'D'):
         qualified_pm  = f'PIO{pio}.PULLMODE'
         qualified_bt  = f'PIO{pio}.BASE_TYPE'
         if qualified_pm in corrected:
             # Full-key form: dict is indexed as "PIOA.PULLMODE" etc.
+            found_full_key_form = True
             pm = corrected.get(qualified_pm)
             bt = corrected.get(qualified_bt)
             if pm == 'NONE' and bt in _PULLMODE_NONE_GHOST_IOSTDS:
                 corrected[qualified_bt] = 'OUTPUT_LVTTL33'
-        else:
-            # Plain-key form: single-PIO dict with "PULLMODE" / "BASE_TYPE".
-            pm = corrected.get('PULLMODE')
-            bt = corrected.get('BASE_TYPE')
+    
+    if not found_full_key_form:
+        # Plain-key form: single-PIO dict with "PULLMODE" / "BASE_TYPE".
+        # This is used by fpga_iomap for one-off PIO slices; it should have
+        # both keys or neither (issue #81: silently skipping when neither is
+        # present is the latent bug; now it's a hard error).
+        pm = corrected.get('PULLMODE')
+        bt = corrected.get('BASE_TYPE')
+        if 'PULLMODE' in corrected or 'BASE_TYPE' in corrected:
+            # At least one PIO property is present: this is a legitimate PIO dict
             if pm == 'NONE' and bt in _PULLMODE_NONE_GHOST_IOSTDS:
                 corrected['BASE_TYPE'] = 'OUTPUT_LVTTL33'
-            break  # plain-key form has no per-PIO iteration needed
+        # If neither is present, the dict is not a PIO enumeration at all
+        # (could be generic tile config, or the wrong dict was passed).
+        # Silent pass-through is safer than a hard error here, since PIO-less
+        # dicts may legitimately flow through this function.
+    
     return corrected
 
 
@@ -237,6 +249,7 @@ class MachXO2Lift:
 
         self._wn_index = {}
         self._bel_cache = {}
+        self._gkey_origins = {}    # gkey -> set of (row,col,name) that produce it (issue #78)
 
     # ---- node-key helpers --------------------------------------------------
     def wname_id(self, col, row, name):
@@ -341,8 +354,19 @@ class MachXO2Lift:
                     if self.wname_id(g.loc.x, crow, cname) is not None:
                         gc = self.rg.globalise_net(crow, g.loc.x, cname)
                         if gc.loc.x >= 0 and gc.loc.y >= 0:
-                            return (gc.loc.x, gc.loc.y, gc.id)
-            return (g.loc.x, g.loc.y, g.id)
+                            gk = (gc.loc.x, gc.loc.y, gc.id)
+                            origin = (row, col, name)
+                            if gk not in self._gkey_origins:
+                                self._gkey_origins[gk] = set()
+                            self._gkey_origins[gk].add(origin)
+                            return gk
+            # Main return: record origin and return the key
+            gk = (g.loc.x, g.loc.y, g.id)
+            origin = (row, col, name)
+            if gk not in self._gkey_origins:
+                self._gkey_origins[gk] = set()
+            self._gkey_origins[gk].add(origin)
+            return gk
 
         # Walk-back recovery for segment longlines near chip boundaries.
         m = (self._SEG_EAST.match(name)  or self._SEG_WEST.match(name) or
@@ -426,7 +450,15 @@ class MachXO2Lift:
                     continue
                 g2 = self.rg.globalise_net(probe_row, probe_col, name)
                 if g2.loc.x >= 0 and g2.loc.y >= 0:
-                    return (g2.loc.x, g2.loc.y, g2.id)
+                    gk = (g2.loc.x, g2.loc.y, g2.id)
+                    # Issue #78: Detect canonicalization collisions — different
+                    # wires from different (row,col) origins computing the same key.
+                    # This is silent data corruption (two drivers on one net).
+                    origin = (row, col, name)
+                    if gk not in self._gkey_origins:
+                        self._gkey_origins[gk] = set()
+                    self._gkey_origins[gk].add(origin)
+                    return gk
 
         return None
 
@@ -779,6 +811,23 @@ class MachXO2Lift:
                     })
 
         d.all_nets = sorted(set(net_name.values()), key=lambda s: int(s[1:]))
+        
+        # Issue #78: Check for gkey canonicalization collisions — distinct wires
+        # computing the same key. This would silently fuse unrelated nets (e.g.,
+        # pad input and FF output both mapping to the same location).
+        collisions = {gk: origins for gk, origins in self._gkey_origins.items()
+                      if len(origins) > 1}
+        if collisions:
+            # Emit collision details as a die message so the recovery fails
+            # loudly rather than silently corrupting the netlist.
+            msgs = []
+            for gk, origins in sorted(collisions.items()):
+                origin_strs = [f"({r},{c},{n!r})" for r, c, n in sorted(origins)]
+                msgs.append(f"  gkey {gk}: {', '.join(origin_strs)}")
+            from db import die
+            die(f"gkey canonicalization collision(s) — net-merge data corruption:\n"
+                + "\n".join(msgs))
+        
         return d
 
     # ---- pad connectivity --------------------------------------------------

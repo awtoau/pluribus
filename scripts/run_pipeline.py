@@ -201,16 +201,11 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
     # Analysis + naming.  reach2/3/4 build reachability and the 9-pass
     # auto-naming; auto_name adds LUT INIT/expression-derived net names on top
     # (additive, not redundant), and patterns fills the structural-pattern
-    # table the report consumes.  These were dropped when the pipeline moved
-    # off the old tools/build.py orchestrator — without them the recovered
-    # names and the report's pattern section are incomplete.  All run before
-    # report/deliverables so those carry the full naming.
-    # reach2/3/4 build reachability; auto_name/patterns add MachXO2 net-name
-    # and structural-pattern layers the report consumes.  For gowin the naming
-    # heuristics and the chains report lean on the pad/hard-IP layers that are
-    # not modelled yet, so run only the generic reachability passes.
-    analysis = (("reach2", "reach3", "reach4") if is_gowin
-                else ("reach2", "reach3", "reach4", "auto_name", "patterns"))
+    # table the report consumes.  These are run for all families, though some
+    # parts are family-specific (#82: enable these for gowin; auto_name and
+    # patterns have machxo2-specific heuristics and require the pad/hard-IP
+    # model, but generic parts (reach2/3/4, const detection) apply everywhere).
+    analysis = ("reach2", "reach3", "reach4", "auto_name", "patterns")
     for stage in analysis:
         run(stage, label, [PY, f"{stage}.py", "--bitstream", label])
 

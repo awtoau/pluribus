@@ -81,6 +81,17 @@ alu_cells = Table("alu_cells", metadata,
     UniqueConstraint("bitstream", "cell"),
 )
 
+mux_cells = Table("mux_cells", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("cell",   Text, nullable=False),
+    Column("i0",     Text),      # first input net (O = S ? I1 : I0)
+    Column("i1",     Text),      # second input net
+    Column("sel",    Text),      # select signal
+    Column("o",      Text),      # output net
+    UniqueConstraint("bitstream", "cell"),
+)
+
 net_fanout = Table("net_fanout", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),

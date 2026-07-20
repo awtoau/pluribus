@@ -82,6 +82,7 @@ class Design:
         self.luts = []
         self.ffs = []
         self.alus = []           # GOWIN ALU (carry/adder) cells
+        self.muxes = []          # GOWIN wide-mux cells (MUX2_LUT5/6/7/8)
         self.pads = []           # IOB pad_map records (pin/label/dir/nets)
         self.ebrs = []           # BSRAM blocks: {block,row,col,ports:[...]}
         self.net_name = {}       # dsu-root -> "n<k>"
@@ -335,6 +336,23 @@ class GowinLift:
                 })
             d.ebrs.append({"block": block, "row": hp["row"], "col": hp["col"],
                            "ports": sorted(ports, key=lambda p: p["port"])})
+
+        # 3c) Wide mux cells (MUX2_LUT5/6/7/8) — the GW1N wide-mux chain that
+        #     composes multiple LUT outputs into wide multiplexers (issue #77).
+        #     Each cell is a 2:1 mux: O = S ? I1 : I0.  They are recovered as
+        #     netlist cells so fan-in (the sel/data nets) and fan-out (the mux
+        #     output) are properly connected in the recovered netlist.
+        for hp in pc.hardips:
+            if hp["type"] != "MUX":
+                continue
+            name = hp.get("bel", f"mux_r{hp['row']}c{hp['col']}")
+            d.muxes.append({
+                "name": name,
+                "i0":   resolve(hp.get("I0"), None),
+                "i1":   resolve(hp.get("I1"), None),
+                "sel":  resolve(hp.get("S"), None),
+                "o":    net_of(hp["O"]) if hp.get("O") else None,
+            })
 
         # 4) LUT4s (skip constants — handled above)
         for lt in pc.luts:
