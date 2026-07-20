@@ -43,6 +43,16 @@ OVERRIDES = {
             },
             "EBR.SITE_ID_C15": {"SET": "F1B32"},
         }},
+        # Item 5 — CIB_CFG2 F3B0: EFB_ENABLE flag (issue #62).
+        # F3B0 is set whenever any EFB peripheral (I2C, SPI, TC, UFM) is
+        # instantiated; clear in designs with no EFB.  Confirmed across all
+        # three corpus bitstreams (V02/V4/V07 all have EFB/SPI) and all 31
+        # EFB fuzz targets.  Not set by SYSCONFIG LPF preferences — those
+        # live in the CTRL0 register outside the tile CRAM.
+        # Not in CIB_CFG2/bits.db — genuinely uncatalogued.
+        "CIB_CFG2": {"enum_options": {
+            "EFB.ENABLE": {"ENABLED": "F3B0"},
+        }},
         # Gap 4 — PIC_B0 FAILSAFE_RCV. A standalone failsafe-receiver bit set
         # alone (no BASE_TYPE companion) in 31 corpus targets (EFB/syscfg/cfgspi)
         # was dropped. It is PIOC=F4B39 / PIOD=F5B39 (not PIOA/PIOB as #29 first
