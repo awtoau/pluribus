@@ -16,13 +16,13 @@ Inputs:
 
     The tile is named by edge position (PB20 = peripheral bottom #20),
     NOT by grid row/col, so we translate `name:type` -> grid (row,col)
-    via pytrellis.
+    via native_trellis tile geometry (pure Python).
   - the Trellis iodb.json for the device. `packages` map
     pin -> {row,col,pio}; `pio_metadata` maps {row,col,pio} ->
     {bank, function}. Both use the grid (row,col).
 
 Usage: fpga_iomap.py CONFIG [IODB_JSON]
-Env:   TRELLIS_BUILD / TRELLIS_DBROOT / TRELLIS_DEVICE as usual;
+Env:   TRELLIS_DBROOT / TRELLIS_DEVICE as usual;
        TRELLIS_PACKAGE pins the package (e.g. TQFP100) instead of
        best-fit auto-detection.
 
@@ -67,25 +67,11 @@ def tile_grid_map(cache=os.path.join(REPO, "tmp", "lcmxo2_tile_rowcol.json")):
         with open(cache) as fh:
             return {k: tuple(v) for k, v in json.load(fh).items()}
 
-    if os.environ.get("PLURIBUS_TRELLIS_BACKEND", "native") == "so":
-        sys.path.insert(0, BUILD_DIR)
-        import pytrellis  # noqa: E402
-        pytrellis.load_database(DBROOT)
-        chip = pytrellis.Chip(DEVICE)
-        found = {}
-        for r in range(chip.get_max_row() + 1):
-            for c in range(chip.get_max_col() + 1):
-                try:
-                    tiles = chip.get_tiles_by_position(r, c)
-                except Exception:
-                    tiles = []
-                for t in tiles:
-                    found[t.info.name] = (r, c)
-    else:
-        sys.path.insert(0, REPO)
-        from native_trellis.geometry import ChipGeometry
-        geom = ChipGeometry(DEVICE, DBROOT)
-        found = dict(geom.tile_rc)
+    # Use native pure-Python tile geometry; stale pytrellis.so segfaults on 3.14t/3.15t.
+    sys.path.insert(0, REPO)
+    from native_trellis.geometry import ChipGeometry
+    geom = ChipGeometry(DEVICE, DBROOT)
+    found = dict(geom.tile_rc)
 
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     with open(cache, "w") as fh:
