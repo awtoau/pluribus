@@ -68,8 +68,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/ for verify_common
 from load import classify_lut                      # noqa: E402
 from lifters.gowin_lift import GowinLift            # noqa: E402
+from verify_common import (                        # noqa: E402  (#76)
+    is_2to1_mux, classify_fn)
 
 GOWINHOME = os.environ.get("GOWINHOME", "/mnt/2tb/gowin")
 GW_SH = str(Path(GOWINHOME) / "IDE" / "bin" / "gw_sh")
@@ -318,42 +321,6 @@ def census_vendor_vg(vg: Path):
 
 
 # ── LUT-function classification (the oracle-A currency) ───────────────────────
-def is_2to1_mux(init: str) -> bool:
-    """True iff the 16-bit LUT (over its active inputs) is a 2:1 mux for SOME
-    wiring.  classify_lut only tries 3 of the 6 (sel,data0,data1) orderings, so a
-    mux with swapped data inputs lands in COMBO3 — this checks all six (ported
-    verbatim from scripts/gowin_lec.py)."""
-    import itertools
-    v = int(init, 2)
-    act = [pos for pos in range(4)
-           if any(((v >> p) & 1) != ((v >> (p ^ (1 << pos))) & 1)
-                  for p in range(16))]
-    if len(act) != 3:
-        return False
-    for sel in act:
-        d = [p for p in act if p != sel]
-        for i0, i1 in ((d[0], d[1]), (d[1], d[0])):
-            good = True
-            for bits in itertools.product((0, 1), repeat=3):
-                a = dict(zip(act, bits))
-                p = sum(a[pos] << pos for pos in act)
-                if ((v >> p) & 1) != (a[i1] if a[sel] else a[i0]):
-                    good = False
-                    break
-            if good:
-                return True
-    return False
-
-
-def classify_fn(init16: str) -> str:
-    """Function head for a 16-bit INIT, resolving the mux case classify_lut
-    under-reports (COMBO3 that is really a 2:1 mux)."""
-    head = re.match(r"[A-Z0-9]+", classify_lut(init16)).group(0)
-    if head.startswith("COMBO") and is_2to1_mux(init16):
-        return "MUX"
-    return head
-
-
 _VG_LUT_RE = re.compile(
     r"\bLUT([1-4])\s+(\S+)\s*\(.*?defparam\s+\2\.INIT\s*=\s*(\d+)'h([0-9a-fA-F]+)",
     re.S)
