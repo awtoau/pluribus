@@ -344,6 +344,14 @@ class MachXO2Lift:
         (col + N > max_col at a non-boundary tile) and return None instead of
         the wrong key, so those stub arcs are silently dropped rather than
         causing a net-merge bug."""
+        # Issue #65: in recovered configs, these plain V02S local names can be
+        # dead-end aliases while their V02N counterparts carry the routed net.
+        # Keep this mapping intentionally narrow to avoid broad V-span merges.
+        if name == "V02S0601":
+            name = "V02N0601"
+        elif name == "V02S0701":
+            name = "V02N0701"
+
         g = self.rg.globalise_net(row, col, name)
         if g.loc.x >= 0 and g.loc.y >= 0:
             # Top/bottom-edge vertical-span canonicalization (net_merge_gap
@@ -374,6 +382,19 @@ class MachXO2Lift:
                             gk = (gc.loc.x, gc.loc.y, gc.id)
                             return gk
             # Main return
+            # Interior V02S alias remap: some plain V02S#### names at interior
+            # tiles resolve to isolated fanin=0 copies when their V02N mates
+            # carry drivers. Remap to the N form to unify the nets (issue #65).
+            # Only remap specific known problematic indices to avoid broad
+            # vertical-span merges that trigger #78 collisions.
+            if g.loc.x >= 0 and g.loc.y >= 0:
+                mv = self._VSPAN.match(self.rg.to_str(g.id))
+                if mv and mv.group(2) == 'S' and int(mv.group(1)) == 2 and mv.group(3) in ('0601', '0701'):
+                    flip_name = f"V{mv.group(1)}N{mv.group(3)}"
+                    if self.wname_id(g.loc.x, g.loc.y, flip_name) is not None:
+                        gm = self.rg.globalise_net(g.loc.y, g.loc.x, flip_name)
+                        if gm.loc.x >= 0 and gm.loc.y >= 0 and gm.loc != g.loc:
+                            return (gm.loc.x, gm.loc.y, gm.id)
             return (g.loc.x, g.loc.y, g.id)
 
         # Walk-back recovery for segment longlines near chip boundaries.
@@ -510,15 +531,17 @@ class MachXO2Lift:
                 m = TILE_RE.match(s)
                 if m:
                     mode = "tile"
-                    # Prefer explicit coordinates encoded in the tile header
-                    # (e.g. "R5C15:PLC"). Some multi-column PLC tile names can
-                    # map to an adjacent physical column in tile_rc, which
-                    # splits intra-tile arc endpoints from their real drivers.
-                    # Using the textual R/C here keeps arc wires and bel wires
-                    # in the same local frame.
-                    rc_match = re.match(r"^R(\d+)C(\d+)$", m.group(1))
-                    if rc_match:
-                        cur_rc = (int(rc_match.group(1)), int(rc_match.group(2)))
+                    # PLC headers can carry a one-column naming offset in
+                    # tile_rc for some devices. For PLC only, trust explicit
+                    # R/C from the textcfg header when present; for all other
+                    # tile types keep tile_rc mapping (required for PIO/CIB
+                    # adjacencies and avoids #78 pad/FF fusion regressions).
+                    if m.group(2) == "PLC":
+                        rc_match = re.match(r"^R(\d+)C(\d+)$", m.group(1))
+                        if rc_match:
+                            cur_rc = (int(rc_match.group(1)), int(rc_match.group(2)))
+                        else:
+                            cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
                     else:
                         cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
                     if cur_rc:
