@@ -56,9 +56,9 @@ def get_bitstream_info(conn, label):
 
 def get_tiles(conn, bs_id):
     """Get all tile types and positions for a bitstream (from arcs table)."""
-    # Arcs table has (bitstream, row, col, sink, source), so we can extract tiles
+    # Arcs table has (bitstream, tile_row, tile_col, ...), so we can extract tiles
     arcs = conn.execute(
-        select(schema.arcs.c.row, schema.arcs.c.col)
+        select(schema.arcs.c.tile_row, schema.arcs.c.tile_col)
         .where(schema.arcs.c.bitstream == bs_id)
         .distinct()
     ).fetchall()
