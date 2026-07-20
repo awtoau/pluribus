@@ -263,6 +263,8 @@ def main():
         # SSTL25_I because the NONE bits overlap with those BASE_TYPE
         # encodings in the MachXO2 Trellis database.  See
         # _correct_pio_iostandard() in lifters/machxo2_lift.py.
+        # If the correction finds a ghost BASE_TYPE without the expected
+        # PULLMODE key, it will die() loudly (fail-fast, issue #81).
         props_corrected = _correct_pio_iostandard(props)
         rows.append({
             "pin": pin,

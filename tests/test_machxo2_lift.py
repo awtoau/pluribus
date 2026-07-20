@@ -248,6 +248,26 @@ class TestCorrectPioIostandard:
         assert "SSTL25_I" in _PULLMODE_NONE_GHOST_IOSTDS
         assert "OUTPUT_SSTL25_I" in _PULLMODE_NONE_GHOST_IOSTDS
 
+    def test_fullkey_ghost_without_pullmode_is_hard_error(self):
+        """Ghost BASE_TYPE in full-key form without PULLMODE must die — decoder inconsistency."""
+        import pytest
+        enums = {"PIOA.BASE_TYPE": "OUTPUT_MIPI"}  # ghost without PULLMODE
+        with pytest.raises(SystemExit):
+            _correct_pio_iostandard(enums)
+
+    def test_plainkey_ghost_without_pullmode_is_hard_error(self):
+        """Ghost BASE_TYPE in plain-key form without PULLMODE must die — decoder inconsistency."""
+        import pytest
+        enums = {"BASE_TYPE": "OUTPUT_MIPI"}  # ghost without PULLMODE
+        with pytest.raises(SystemExit):
+            _correct_pio_iostandard(enums)
+
+    def test_non_ghost_without_pullmode_ok(self):
+        """A non-ghost BASE_TYPE without PULLMODE is fine (e.g. INPUT_LVTTL33)."""
+        enums = {"BASE_TYPE": "INPUT_LVTTL33"}
+        result = _correct_pio_iostandard(enums)
+        assert result["BASE_TYPE"] == "INPUT_LVTTL33"
+
 
 # ── classify_pin ─────────────────────────────────────────────────────────────
 

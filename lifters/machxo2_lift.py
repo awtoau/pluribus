@@ -118,23 +118,40 @@ def _correct_pio_iostandard(pio_enums: "dict[str, str]") -> "dict[str, str]":
             bt = corrected.get(qualified_bt)
             if pm == 'NONE' and bt in _PULLMODE_NONE_GHOST_IOSTDS:
                 corrected[qualified_bt] = 'OUTPUT_LVTTL33'
-    
+        elif qualified_bt in corrected and corrected[qualified_bt] in _PULLMODE_NONE_GHOST_IOSTDS:
+            # BASE_TYPE looks like a ghost (PULLMODE=NONE artefact) but the
+            # corresponding PULLMODE key is absent.  In all real textcfg
+            # output, PULLMODE=NONE and the ghost BASE_TYPE appear together —
+            # seeing one without the other is a decoder inconsistency.
+            # This is a hard error per project fail-fast policy (#81).
+            from db import die
+            die(
+                f"PIO{pio}.BASE_TYPE={corrected[qualified_bt]!r} looks like a "
+                f"PULLMODE=NONE ghost but PIO{pio}.PULLMODE is absent — "
+                f"decoder inconsistency (both must appear together or neither). "
+                f"Full dict: {dict(pio_enums)!r}"
+            )
+
     if not found_full_key_form:
         # Plain-key form: single-PIO dict with "PULLMODE" / "BASE_TYPE".
-        # This is used by fpga_iomap for one-off PIO slices; it should have
-        # both keys or neither (issue #81: silently skipping when neither is
-        # present is the latent bug; now it's a hard error).
+        # This is used by fpga_iomap for per-PIO-slice dicts.
         pm = corrected.get('PULLMODE')
         bt = corrected.get('BASE_TYPE')
         if 'PULLMODE' in corrected or 'BASE_TYPE' in corrected:
-            # At least one PIO property is present: this is a legitimate PIO dict
             if pm == 'NONE' and bt in _PULLMODE_NONE_GHOST_IOSTDS:
                 corrected['BASE_TYPE'] = 'OUTPUT_LVTTL33'
-        # If neither is present, the dict is not a PIO enumeration at all
-        # (could be generic tile config, or the wrong dict was passed).
-        # Silent pass-through is safer than a hard error here, since PIO-less
-        # dicts may legitimately flow through this function.
-    
+            elif bt in _PULLMODE_NONE_GHOST_IOSTDS and 'PULLMODE' not in corrected:
+                # Ghost BASE_TYPE without PULLMODE — same decoder inconsistency as
+                # the full-key case above.  Hard error per fail-fast policy (#81).
+                from db import die
+                die(
+                    f"BASE_TYPE={bt!r} looks like a PULLMODE=NONE ghost but "
+                    f"PULLMODE is absent from the PIO dict — decoder inconsistency. "
+                    f"Full dict: {dict(pio_enums)!r}"
+                )
+        # If neither PULLMODE nor BASE_TYPE is present, the dict is a non-PIO
+        # config dict (generic tile config, or truly empty) — pass through unchanged.
+
     return corrected
 
 
