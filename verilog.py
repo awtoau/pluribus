@@ -1573,12 +1573,14 @@ def emit_ebr(data: dict) -> list[str]:
     """
     rn = lambda net: resolve_net(net, data["net_name_map"], data["const_net_map"])
     nm = data["net_name_map"]
+    is_gowin = data.get("is_gowin", False)
 
     from collections import defaultdict
 
-    # Gather per-block connectivity
-    buses: dict[str, dict] = defaultdict(lambda: {"write_data": {}, "read_data": {},
-                                                    "write_addr": {}, "read_addr": {}})
+    # Gather per-block connectivity.  The inner container is a nested defaultdict
+    # so an *unknown* bus_role (e.g. GOWIN's shared 'addr', issue #75) can never
+    # raise KeyError — fail-soft on shape, not on data.
+    buses: dict[str, dict] = defaultdict(lambda: defaultdict(dict))
     for row in data["ebr_buses"]:
         buses[row.block][row.bus_role][row.bit_index] = row.net
 
@@ -1586,15 +1588,13 @@ def emit_ebr(data: dict) -> list[str]:
     for row in data["ebr_ctrl"]:
         ctrl[row.block][row.port] = row.net
 
-    # Classify blocks from net names — no hardcoded tile positions
+    # Classify blocks from net names — no hardcoded tile positions.  The rules
+    # are MachXO2 design-specific hints; any block that matches none (every GOWIN
+    # block, issue #75) degrades cleanly to "unknown" without asserting MachXO2
+    # semantics.
     def _block_kind(block):
-        all_nets = (
-            list(buses[block].get("write_data", {}).values()) +
-            list(buses[block].get("read_data",  {}).values()) +
-            list(buses[block].get("write_addr", {}).values()) +
-            list(buses[block].get("read_addr",  {}).values()) +
-            list(ctrl[block].values())
-        )
+        all_nets = [n for role in buses[block].values() for n in role.values()]
+        all_nets += list(ctrl[block].values())
         names = {nm.get(n, "") for n in all_nets if n}
         if any(name.startswith("awg_") for name in names):
             return "awg"
@@ -1613,7 +1613,9 @@ def emit_ebr(data: dict) -> list[str]:
         "    // WARNING: EBR is hard IP. These behavioral models represent",
         "    // structural connections recovered from the bitstream.",
         "    // INIT is the REAL recovered content (native decode, #54): each",
-        "    // block is the physical 1024×9 array with its .bram_init words.",
+        ("    // block is the GW1N BSRAM array with its recovered init words."
+         if is_gowin else
+         "    // block is the physical 1024×9 array with its .bram_init words."),
         "    // A BLANK block carries no bitstream init — it is runtime-loaded",
         "    // by the MCU over SPI (e.g. the AWG table via cmd 0x50).",
         "    //",
@@ -1634,6 +1636,23 @@ def emit_ebr(data: dict) -> list[str]:
     def _bus_ports(block_buses, role):
         return sorted(block_buses.get(role, {}).items())
 
+    def _collapse_views(pairs):
+        """GOWIN records the same physical wires under three aliased views at
+        bit_index offsets 0 / +64 / +128 (A-side / B-side / unsuffixed, #69).
+        Collapse to one coherent view by choosing the offset band carrying the
+        most routed bits and rebasing its indices to 0.  MachXO2 bus indices are
+        all < 64, so band 0 holds every pair and they pass through unchanged —
+        keeping MachXO2 emission byte-identical.
+        """
+        if not pairs:
+            return pairs
+        bands: dict[int, list] = {0: [], 64: [], 128: []}
+        for i, n in pairs:
+            base = 128 if i >= 128 else (64 if i >= 64 else 0)
+            bands[base].append((i - base, n))
+        best = max((0, 64, 128), key=lambda b: (len(bands[b]), -b))
+        return sorted(bands[best])
+
     def _vec(pairs, width, default="1'b0"):
         bits = dict(pairs)
         return "{" + ", ".join(
@@ -1646,24 +1665,42 @@ def emit_ebr(data: dict) -> list[str]:
         c = ctrl[block]
         tag = block.lower().replace("r", "r").replace("c", "c")  # R6C20 → r6c20
 
-        wdata_pairs = _bus_ports(b, "write_data")
-        rdata_pairs = _bus_ports(b, "read_data")
-        waddr_pairs = _bus_ports(b, "write_addr")
-        raddr_pairs = _bus_ports(b, "read_addr")
+        wdata_pairs = _collapse_views(_bus_ports(b, "write_data"))
+        rdata_pairs = _collapse_views(_bus_ports(b, "read_data"))
+        # GOWIN GW1N BSRAM has ONE address bus per port (role 'addr', #69/#75)
+        # shared by reads and writes, unlike MachXO2's split write/read address.
+        # Fall back to the shared bus for either side when the split roles are
+        # absent so the emitter is family-generic.
+        addr_pairs  = _collapse_views(_bus_ports(b, "addr"))
+        waddr_pairs = _collapse_views(_bus_ports(b, "write_addr")) or addr_pairs
+        raddr_pairs = _collapse_views(_bus_ports(b, "read_addr"))  or addr_pairs
 
         wdw = (max(i for i, _ in wdata_pairs) + 1) if wdata_pairs else 1
         rdw = (max(i for i, _ in rdata_pairs) + 1) if rdata_pairs else 1
         raw = (max(i for i, _ in raddr_pairs) + 1) if raddr_pairs else 1
         dep = 1 << raw
 
-        wclk = _net(c.get("JCLK0"))
-        rclk = _net(c.get("JCLK3"))
-        lsr  = _net(c.get("JLSR0") or c.get("JLSR1"))
+        if is_gowin:
+            # GW1N BSRAM control ports: CLKA/CLKB (or unsuffixed CLK), RESETx.
+            wclk = _net(c.get("CLKA") or c.get("CLK"))
+            rclk = _net(c.get("CLKB") or c.get("CLK") or c.get("CLKA"))
+            lsr  = _net(c.get("RESETA") or c.get("RESETB") or c.get("RESET"))
+        else:
+            wclk = _net(c.get("JCLK0"))
+            rclk = _net(c.get("JCLK3"))
+            lsr  = _net(c.get("JLSR0") or c.get("JLSR1"))
 
-        # Physical EBR: 1024 nine-bit words.  Init presence (not net names)
-        # decides runtime-loaded (blank) vs bitstream-preloaded.
-        PW, PD = 9, 1024
-        PA = (PD - 1).bit_length()          # 10 physical address bits
+        # Physical EBR geometry.  MachXO2 EBR is a 1024×9 array; GW1N BSRAM is
+        # wider/shallower (data width and address width recovered from the DB).
+        # Init presence (not net names) decides runtime-loaded (blank) vs
+        # bitstream-preloaded.
+        if is_gowin:
+            PW = max(wdw, rdw, 1)
+            PA = max((max(i for i, _ in addr_pairs) + 1) if addr_pairs else raw, 1)
+            PD = 1 << PA
+        else:
+            PW, PD = 9, 1024
+            PA = (PD - 1).bit_length()          # 10 physical address bits
         init    = data["ebr_init_map"].get(block, {})
         ib      = data["ebr_init_blocks"].get(block)
         nonzero = ib.n_nonzero if ib else 0

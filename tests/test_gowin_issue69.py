@@ -269,3 +269,96 @@ def test_machxo2_ebr_classification_still_works():
     assert cls("JC0") == ("write_addr", 0)
     assert cls("JE1") == ("ctrl", 1)
     assert cls("NOT_A_PORT") is None
+
+
+# ================================ verilog.emit_ebr GOWIN BSRAM (issue #75) ====
+
+from collections import namedtuple
+
+_BusRow  = namedtuple("_BusRow", "block bus_role bit_index port net")
+_CtrlRow = namedtuple("_CtrlRow", "block port role net")
+
+
+def _emit_ebr_data(rows, ctrl, *, is_gowin):
+    """Minimal `data` dict for verilog.emit_ebr with no fabric drivers/inits."""
+    nets = {r.net for r in rows} | {r.net for r in ctrl}
+    return {
+        "net_name_map":     {n: n for n in nets},
+        "const_net_map":    {},
+        "ebr_buses":        rows,
+        "ebr_ctrl":         ctrl,
+        "ebr_init_map":     {},
+        "ebr_init_blocks":  {},
+        "is_gowin":         is_gowin,
+        "lut_driven_net_ids": set(),
+        "ff_q_all_wire_ids":  set(),
+        "input_port_names":   set(),
+    }
+
+
+def test_emit_ebr_gowin_addr_role_no_keyerror():
+    """A GOWIN block with the shared 'addr' bus_role must emit a memory model,
+    not raise KeyError (issue #75)."""
+    import verilog
+
+    rows = []
+    # single-port view (offset +128): 16 data-in, 16 data-out, 14 addr bits
+    for i in range(16):
+        rows.append(_BusRow("BSRAM0", "write_data", 128 + i, f"DI{i}", f"di{i}"))
+        rows.append(_BusRow("BSRAM0", "read_data",  128 + i, f"DO{i}", f"do{i}"))
+    for i in range(14):
+        rows.append(_BusRow("BSRAM0", "addr", 128 + i, f"AD{i}", f"ad{i}"))
+    ctrl = [
+        _CtrlRow("BSRAM0", "CLK", "ctrl", "clk0"),
+        _CtrlRow("BSRAM0", "WRE", "ctrl", "wre0"),
+    ]
+    data = _emit_ebr_data(rows, ctrl, is_gowin=True)
+
+    out = "\n".join(verilog.emit_ebr(data))   # must not raise
+    assert "ebr_bsram0_mem" in out
+    # 16-bit data words, 2^14 depth recovered from the routed buses
+    assert "reg [15:0] ebr_bsram0_mem [0:16383];" in out
+    # shared addr feeds both read and write ports
+    assert "always @(posedge clk0)" in out
+
+
+def test_emit_ebr_gowin_view_collapse():
+    """The A/B/unsuffixed aliases must collapse to one coherent view, not build
+    a >128-bit-wide vector."""
+    import verilog
+
+    rows = []
+    for view_off in (0, 64, 128):
+        for i in range(8):
+            rows.append(_BusRow("BSRAM0", "write_data", view_off + i,
+                                f"DI{i}", f"di{view_off}_{i}"))
+            rows.append(_BusRow("BSRAM0", "addr", view_off + i,
+                                f"AD{i}", f"ad{view_off}_{i}"))
+    data = _emit_ebr_data(rows, [_CtrlRow("BSRAM0", "CLK", "ctrl", "clk0")],
+                          is_gowin=True)
+    out = "\n".join(verilog.emit_ebr(data))
+    # 8-bit data (one view), not 136-bit
+    assert "reg [7:0] ebr_bsram0_mem" in out
+
+
+def test_emit_ebr_machxo2_still_works():
+    """The MachXO2 split write/read address path is unchanged by #75."""
+    import verilog
+
+    rows = []
+    for i in range(9):
+        rows.append(_BusRow("R6C20", "write_data", i, f"JA{i}", f"wd{i}"))
+        rows.append(_BusRow("R6C20", "read_data",  i, f"JB{i}", f"rd{i}"))
+    for i in range(9):
+        rows.append(_BusRow("R6C20", "write_addr", i, f"JC{i}", f"wa{i}"))
+        rows.append(_BusRow("R6C20", "read_addr",  i, f"JD{i}", f"ra{i}"))
+    ctrl = [
+        _CtrlRow("R6C20", "JCLK0", "ctrl", "wclk"),
+        _CtrlRow("R6C20", "JCLK3", "ctrl", "rclk"),
+    ]
+    data = _emit_ebr_data(rows, ctrl, is_gowin=False)
+    out = "\n".join(verilog.emit_ebr(data))
+    # unchanged MachXO2 1024×9 geometry
+    assert "reg [8:0] ebr_r6c20_mem [0:1023];" in out
+    assert "always @(posedge wclk)" in out
+    assert "always @(posedge rclk)" in out
