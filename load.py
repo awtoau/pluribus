@@ -319,18 +319,21 @@ def load_anlogic(label, config_path, device, package):
         if BACKEND == "sqlite":
             conn.execute(insert(schema.bitstreams).prefix_with("OR REPLACE").values(
                 label=label, filename=os.path.basename(config_path),
-                device=device, package=package, loaded_at=_now))
+                device=device, package=package, diamond_version=pc.diamond_version,
+                loaded_at=_now))
             bs_id = conn.execute(select(schema.bitstreams.c.id)
                                  .where(schema.bitstreams.c.label == label)).scalar()
         else:
             bs_id = conn.execute(
                 _pg_insert(schema.bitstreams)
                 .values(label=label, filename=os.path.basename(config_path),
-                        device=device, package=package, loaded_at=_now)
+                        device=device, package=package, diamond_version=pc.diamond_version,
+                        loaded_at=_now)
                 .on_conflict_do_update(
                     index_elements=["label"],
                     set_=dict(filename=os.path.basename(config_path),
-                              device=device, package=package, loaded_at=_now))
+                              device=device, package=package, diamond_version=pc.diamond_version,
+                              loaded_at=_now))
                 .returning(schema.bitstreams.c.id)).scalar()
         if bs_id is None:
             die("INSERT INTO bitstreams returned NULL id")
@@ -432,6 +435,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     filename=os.path.basename(config_path),
                     device=device,
                     package=package,
+                    diamond_version=pc.diamond_version,
                     loaded_at=_now,
                 )
             )
@@ -446,6 +450,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     filename=os.path.basename(config_path),
                     device=device,
                     package=package,
+                    diamond_version=pc.diamond_version,
                     loaded_at=_now,
                 )
                 .on_conflict_do_update(
@@ -454,6 +459,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                         filename=os.path.basename(config_path),
                         device=device,
                         package=package,
+                        diamond_version=pc.diamond_version,
                         loaded_at=_now,
                     ),
                 )

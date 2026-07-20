@@ -83,6 +83,7 @@ class AnlogicParsedConfig:
         self.device = None
         self.package = None
         self.idcode = None
+        self.diamond_version = None          # Diamond version if known
         self.sysconfig = {}                  # name -> "0x...."
         self.tiles = []                      # dicts: name,type,x,y,sf,sb,rows,cols,occ
         self.luts = []                       # dicts: tile,slice,lut,init

@@ -199,6 +199,7 @@ class ParsedConfig:
         # word — see load.py); efb_blocks keys are the 0x72 `sel` selector.
         self.bram_init = {}                  # ebr_write_index -> [1024 ints] (9-bit words)
         self.efb_blocks = {}                 # sel(int) -> [payload bytes]
+        self.diamond_version = None          # Diamond version if known (e.g. "3.14.0.201")
 
 
 class Design:

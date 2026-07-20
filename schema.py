@@ -22,12 +22,13 @@ metadata = MetaData()
 # ── 1. Netlist layer ──────────────────────────────────────────────────────────
 
 bitstreams = Table("bitstreams", metadata,
-    Column("id",        Integer,  primary_key=True, autoincrement=True),
-    Column("label",     Text,     nullable=False, unique=True),
-    Column("filename",  Text,     nullable=False),
-    Column("device",    Text,     nullable=False),
-    Column("package",   Text,     nullable=False),
-    Column("loaded_at", DateTime(timezone=True)),
+    Column("id",               Integer,  primary_key=True, autoincrement=True),
+    Column("label",            Text,     nullable=False, unique=True),
+    Column("filename",         Text,     nullable=False),
+    Column("device",           Text,     nullable=False),
+    Column("package",          Text,     nullable=False),
+    Column("diamond_version",  Text),    # e.g. "3.14.0.201", NULL if unknown
+    Column("loaded_at",        DateTime(timezone=True)),
 )
 
 nets = Table("nets", metadata,

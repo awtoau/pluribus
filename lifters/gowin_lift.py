@@ -116,6 +116,7 @@ class GowinParsedConfig:
         self.lut_init = {}
         self.bram_init = {}
         self.efb_blocks = {}
+        self.diamond_version = None          # Diamond version if known
 
 
 def _kv(tokens):
