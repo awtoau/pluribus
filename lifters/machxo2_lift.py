@@ -510,7 +510,17 @@ class MachXO2Lift:
                 m = TILE_RE.match(s)
                 if m:
                     mode = "tile"
-                    cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
+                    # Prefer explicit coordinates encoded in the tile header
+                    # (e.g. "R5C15:PLC"). Some multi-column PLC tile names can
+                    # map to an adjacent physical column in tile_rc, which
+                    # splits intra-tile arc endpoints from their real drivers.
+                    # Using the textual R/C here keeps arc wires and bel wires
+                    # in the same local frame.
+                    rc_match = re.match(r"^R(\d+)C(\d+)$", m.group(1))
+                    if rc_match:
+                        cur_rc = (int(rc_match.group(1)), int(rc_match.group(2)))
+                    else:
+                        cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
                     if cur_rc:
                         pc.tile_type[cur_rc] = m.group(2)
                     continue
