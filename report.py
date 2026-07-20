@@ -527,6 +527,7 @@ def section_boundary(conn, bs_id, net_names):
             select(nf.c.net)
             .where(and_(nf.c.bitstream == bs_id, nf.c.out_net == net,
                         nf.c.pin.like("A%")))
+            .order_by(nf.c.id)
             .limit(1)
         ).fetchone()
         lookup_net = fabric_net_row[0] if fabric_net_row else net
@@ -790,7 +791,7 @@ def section_clock_crossings(conn, bs_id, net_names):
         select(cc.c.src_clk, cc.c.dst_clk, func.count().label("n"))
         .where(cc.c.bitstream == bs_id)
         .group_by(cc.c.src_clk, cc.c.dst_clk)
-        .order_by(func.count().desc())
+        .order_by(func.count().desc(), cc.c.src_clk, cc.c.dst_clk)
         .limit(15)
     ).fetchall()
 
@@ -798,7 +799,7 @@ def section_clock_crossings(conn, bs_id, net_names):
         select(cc.c.dst_ff, cc.c.dst_clk, func.count(distinct(cc.c.src_clk)).label("n_srcs"))
         .where(cc.c.bitstream == bs_id)
         .group_by(cc.c.dst_ff, cc.c.dst_clk)
-        .order_by(func.count(distinct(cc.c.src_clk)).desc())
+        .order_by(func.count(distinct(cc.c.src_clk)).desc(), cc.c.dst_ff, cc.c.dst_clk)
         .limit(10)
     ).fetchall()
 
@@ -998,7 +999,7 @@ def section_spi_efb(conn, bs_id):
         first_rows = conn.execute(
             select(r.c.dst)
             .where(and_(r.c.bitstream == bs_id, r.c.src == net))
-            .order_by(r.c.min_hops)
+            .order_by(r.c.min_hops, r.c.dst)
             .limit(6)
         ).fetchall()
         first_nets = [row[0] for row in first_rows]
