@@ -25,11 +25,24 @@ OVERRIDES = {
         # every active block. With F1B35 the enum never matched and MODE (plus 6
         # width bits) dropped as unknown. Width bits unchanged; only the two
         # mode-select bits corrected.
-        "EBR1": {"enum_options": {"EBR.MODE": {
-            "DP8KC":   "F0B13 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
-            "FIFO8KB": "F0B13 F1B0 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
-            "PDPW8KC": "F0B13 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
-        }}},
+        #
+        # Gap 2 — EBR1 F1B32 positional-site bit (issue #62).
+        # F1B32 is set in every EBR1 tile placed at column C15 (EBR_R6C15 and
+        # EBR_R6C16), regardless of configuration (mode/width/regmode/writemode).
+        # It is never set in EBR tiles at C2, C11, C18, C21.
+        # Confirmed by corpus cross-check: dp8kc_x4 (auto-placed C15) SET;
+        # dp8kc_x1/x2/x9 (auto-placed C11) all clear.  F1B32 is not listed in
+        # EBR1/bits.db — it is a genuine uncatalogued positional bit.
+        # Named here so the decoder can match and emit it rather than leaving it
+        # as an unknown residue.  It is HARMLESS — it carries no configuration.
+        "EBR1": {"enum_options": {
+            "EBR.MODE": {
+                "DP8KC":   "F0B13 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
+                "FIFO8KB": "F0B13 F1B0 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
+                "PDPW8KC": "F0B13 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
+            },
+            "EBR.SITE_ID_C15": {"SET": "F1B32"},
+        }},
         # Gap 4 — PIC_B0 FAILSAFE_RCV. A standalone failsafe-receiver bit set
         # alone (no BASE_TYPE companion) in 31 corpus targets (EFB/syscfg/cfgspi)
         # was dropped. It is PIOC=F4B39 / PIOD=F5B39 (not PIOA/PIOB as #29 first
