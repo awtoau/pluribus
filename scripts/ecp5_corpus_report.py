@@ -144,6 +144,18 @@ def main():
     W("is nothing to check the *lift* against for exactness, so 'lifted' means")
     W("'structurally sane', never 'correct'.")
     W("")
+    n_lift = sum(1 for r in results + diamond
+                 if r.get("lift") not in (None, "skipped"))
+    n_dec = sum(1 for r in results + diamond if r.get("decode") == "ok")
+    if n_lift < n_dec:
+        W(f"**Coverage differs by claim.** Decode and oracle were run over all")
+        W(f"**{n_dec}** decoded files; the lift stage costs minutes per 85F")
+        W(f"design and has been run over **{n_lift}** of them so far. Gap rates")
+        W(f"below are therefore proportions *of the lifted subset*, and the")
+        W(f"subset is not a random sample — it is roughly corpus order. Treat")
+        W(f"the decode/oracle counts as complete and the lift rates as")
+        W(f"indicative.")
+        W("")
 
     # ---- device identification note
     W("## Device identification")
