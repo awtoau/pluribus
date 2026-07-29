@@ -25,3 +25,14 @@ sources/
 # via scripts/anlogic_dbdecode.py (see boards/fnirsi-eg4s20/README.md).  Never commit.
 boards/*/eagle_s20_db/
 *.anloconfig
+
+# Third-party ECP5 bitstreams (decoder interop corpus).  These are OTHER
+# PEOPLE'S binaries, downloaded to test a decoder against real-world input.
+# Downloading a publicly offered file to test interoperability is fine;
+# redistributing it from this repo is not.  corpus/manifest.json IS committed
+# and records URL + SHA-256 for every file, so the corpus is reproducible from
+# the original sources without us mirroring anyone's build output.
+# Rebuild with: python3.15t scripts/ecp5_corpus_fetch.py --candidates ...
+corpus/ecp5/
+# Our own Diamond builds — regenerable via scripts/ecp5_diamond_build.py.
+corpus/diamond/
