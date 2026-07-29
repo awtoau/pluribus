@@ -417,6 +417,10 @@ def test_one(rec, log, do_lift=True):
     path = os.path.join(REPO, rec["local"]) if "local" in rec else rec["path"]
     label = rec.get("label") or os.path.basename(path)
     out = dict(label=label, source=rec.get("url", "local"),
+               # Carry the corpus-relative path into the result so the report
+               # can join back to the manifest (licence, project, toolchain)
+               # without re-deriving it from a label that may be truncated.
+               local=rec.get("local"),
                project=rec.get("project"), license=rec.get("license"),
                bytes=rec.get("bytes") or (os.path.getsize(path)
                                           if os.path.exists(path) else None),

@@ -73,15 +73,43 @@ def main():
                                          "ecp5_corpus_results.json"))
     ap.add_argument("--diamond",
                     default=os.path.join(REPO, "tmp", "diamond_all.json"))
+    ap.add_argument("--decode-only",
+                    default=os.path.join(REPO, "tmp",
+                                         "ecp5_corpus_decode_only.json"),
+                    help="results from a --no-lift pass; supplies decode and "
+                         "oracle status for files the lift pass has not "
+                         "reached, so those claims cover the whole corpus")
     ap.add_argument("--out", default=os.path.join(REPO, "docs",
                                                   "ecp5-corpus.md"))
     args = ap.parse_args()
 
     man = json.load(open(MANIFEST)) if os.path.exists(MANIFEST) else {"entries": []}
+    # Index the manifest by BOTH path and content hash.  The hash is the
+    # reliable join key: results carry it always, whereas `local` was added
+    # later and older result files predate it.
     by_local = {e["local"]: e for e in man["entries"]}
+    by_sha = {e["sha256"]: e for e in man["entries"] if e.get("sha256")}
+
+    def manifest_of(r):
+        return (by_local.get(r.get("local") or "")
+                or by_sha.get(r.get("sha256") or "")
+                or {})
 
     results = json.load(open(args.results)) if os.path.exists(args.results) else []
     diamond = json.load(open(args.diamond)) if os.path.exists(args.diamond) else []
+
+    # Merge in the decode-only pass.  Decoding is cheap and covers all 228
+    # files; lifting is expensive and may still be running or may have been
+    # run over a subset.  The decode+oracle claims should be reported over
+    # EVERYTHING that was decoded, so take decode-stage fields from the
+    # decode-only run wherever the lift run has not reached that file yet.
+    if os.path.exists(args.decode_only):
+        by_key = {r.get("sha256") or r.get("label"): r for r in results}
+        for r in json.load(open(args.decode_only)):
+            k = r.get("sha256") or r.get("label")
+            if k not in by_key:
+                results.append(r)
+                by_key[k] = r
 
     L = []
     W = L.append
@@ -159,7 +187,11 @@ def main():
             W(f"- **DIFFER from `ecpunpack`: {od}**")
         if ou:
             W(f"- oracle unavailable (ecpunpack itself refused): {ou}")
-        W(f"- lifted to a consistent netlist: **{lif}**")
+        attempted = sum(1 for r in rows
+                        if r.get("lift") not in (None, "skipped"))
+        W(f"- lifted to a consistent netlist: **{lif}**"
+          + (f" (of {attempted} attempted — lifting is the expensive stage "
+             f"and was run over a subset)" if attempted < dec else ""))
         fused = sum(1 for r in rows
                     if r.get("metrics", {}).get("nets_multi_driver"))
         W(f"- netlists with a fused net (mis-connect): **{fused}**")
@@ -188,7 +220,7 @@ def main():
     if results:
         by_flow = {}
         for r in results:
-            f = flow_of(by_local.get(r.get("local") or "", {}))
+            f = flow_of(manifest_of(r))
             by_flow.setdefault(f, []).append(r)
         W("### Third-party results split by originating toolchain")
         W("")
@@ -298,7 +330,7 @@ def main():
     W("|---|---|---|---|---|---|---|---|---|---|")
     for i, r in enumerate(sorted(results, key=lambda r: r.get("label", "")), 1):
         loc = r.get("local") or ""
-        src = by_local.get(loc, {})
+        src = manifest_of(r)
         sha = (r.get("sha256") or src.get("sha256") or "")[:12]
         size = r.get("bytes") or src.get("bytes") or 0
         dec = r.get("decode", "?")
