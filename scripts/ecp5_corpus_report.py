@@ -262,10 +262,22 @@ def main():
             W("")
             W("  Worst-affected designs:")
             W("")
-            for r in sorted(ck, key=lambda r: -r["metrics"]["ff_clk_const_pct"])[:5]:
+            # De-duplicate by design: several projects publish the same build
+            # under many release tags, and five rows of one design reads as
+            # five findings when it is one.
+            seen = set()
+            shown = 0
+            for r in sorted(ck, key=lambda r: -r["metrics"]["ff_clk_const_pct"]):
                 m = r["metrics"]
-                W(f"  - `{short(r['label'], 44)}` — "
+                key = (m["ff_clk_const"], m["ffs"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                W(f"  - `{short(r['label'], 52)}` — "
                   f"{m['ff_clk_const']}/{m['ffs']} FFs ({m['ff_clk_const_pct']}%)")
+                shown += 1
+                if shown >= 6:
+                    break
         W("")
         W("Note the direction of every one of these. A dropped clock leaves a")
         W("flip-flop with `clk=1'b0` — visibly wrong, and safe. It never")
