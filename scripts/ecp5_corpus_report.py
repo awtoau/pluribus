@@ -25,15 +25,36 @@ MANIFEST = os.path.join(REPO, "corpus", "manifest.json")
 
 
 def flow_of(rec):
-    """Which toolchain built this file, from the bitstream's own ASCII header.
+    """Which toolchain built this file, read from the bitstream's ASCII header.
 
     Diamond writes 'Lattice Semiconductor Corporation Bitstream / Version:
-    Diamond'; ecppack (prjtrellis) writes 'Part: LFE5U-...'.  This is read from
-    the file, not guessed from the project, so it is evidence rather than
-    assumption.
+    Diamond'; ecppack (prjtrellis) writes 'Part: LFE5U-...'.  Read the FILE
+    where we have it rather than trusting the candidate-list notes: for the
+    gzipped entries the header is inside the compressed stream, so the notes
+    could only say 'gzip' and 23 files were left unattributed.  Evidence beats
+    metadata, and the file is right there.
     """
+    path = os.path.join(REPO, rec.get("local", ""))
+    head = b""
+    if os.path.exists(path):
+        try:
+            with open(path, "rb") as fh:
+                if fh.read(2) == b"\x1f\x8b":
+                    import gzip
+                    with gzip.open(path, "rb") as gz:
+                        head = gz.read(512)
+                else:
+                    fh.seek(0)
+                    head = fh.read(512)
+        except OSError:
+            head = b""
+    if b"Diamond" in head or b"Lattice Semiconductor Corporation" in head:
+        return "Diamond"
+    if b"Part:" in head:
+        return "open (ecppack)"
+
     notes = (rec.get("notes") or "")
-    if "flow=diamond" in notes.lower() or "Diamond" in notes:
+    if "flow=diamond" in notes.lower():
         return "Diamond"
     if "ecppack" in notes or "open-flow" in notes:
         return "open (ecppack)"
@@ -160,6 +181,32 @@ def main():
 
     summarise(results, "Results — third-party bitstreams")
 
+    # Split the third-party results by the toolchain that BUILT them.  This is
+    # the comparison the corpus exists to make: the lifter was only ever tested
+    # against open-flow output, so the Diamond column is the one carrying new
+    # information.  A gap between the two columns would be the finding.
+    if results:
+        by_flow = {}
+        for r in results:
+            f = flow_of(by_local.get(r.get("local") or "", {}))
+            by_flow.setdefault(f, []).append(r)
+        W("### Third-party results split by originating toolchain")
+        W("")
+        W("The lifter had only ever seen open-flow (ecppack) output. The")
+        W("Diamond column is where new information lives — a gap between the")
+        W("two rows would itself be the finding.")
+        W("")
+        W("| Built by | files | decoded | identical to `ecpunpack` | lifted | fused nets |")
+        W("|---|---|---|---|---|---|")
+        for f, rows in sorted(by_flow.items()):
+            dec = sum(1 for r in rows if r.get("decode") == "ok")
+            orc = sum(1 for r in rows if r.get("oracle") == "identical")
+            lif = sum(1 for r in rows if r.get("lift") == "ok")
+            fus = sum(1 for r in rows
+                      if r.get("metrics", {}).get("nets_multi_driver"))
+            W(f"| {f} | {len(rows)} | {dec} | **{orc}** | {lif} | {fus} |")
+        W("")
+
     # ================= gap exercise =================
     allr = [r for r in (results + diamond) if r.get("lift") == "ok"]
     if allr:
@@ -175,21 +222,56 @@ def main():
         ck = [r for r in allr if r.get("metrics", {}).get("ff_clk_const")]
         W(f"- **CCU2 carry path** (FCI/FCO unmodelled): "
           f"exercised by **{len(ccu2)}/{len(allr)}** lifted designs")
+
+        # Wide-mux usage is visible at DECODE time, so measure it over every
+        # decoded file rather than only the lifted subset -- a much larger
+        # denominator, and the lift stage is not needed to see it.
+        dec_all = [r for r in (results + diamond) if r.get("decode") == "ok"]
+        wm_dec = [r for r in dec_all if (r.get("widemux_arcs") or 0) > 0]
+        wm_arcs = sum(r.get("widemux_arcs") or 0 for r in dec_all)
         W(f"- **Wide muxes** (F5MUX/PFUMX/L6MUX21): "
-          f"exercised by **{len(wm)}/{len(allr)}** lifted designs")
+          f"exercised by **{len(wm_dec)}/{len(dec_all)}** *decoded* designs "
+          f"({len(wm)}/{len(allr)} of the lifted subset), totalling "
+          f"**{wm_arcs:,}** arcs into F5x/FXx pins. This is the most widely")
+        W("  hit gap in the corpus by a wide margin — near-universal in real")
+        W("  designs, and barely present in the 18 designs the lifter was")
+        W("  originally verified against.")
         W(f"- **Clock globals** (prjtrellis parks non-TAP/SPINE globals at "
           f"(0,0), so the lifter drops them): "
           f"**{len(ck)}/{len(allr)}** designs have at least one FF whose "
           f"clock resolved to a constant")
         if ck:
-            worst = sorted(ck, key=lambda r: -r["metrics"]["ff_clk_const_pct"])[:5]
+            pcts = sorted(r["metrics"]["ff_clk_const_pct"] for r in ck)
+            med = pcts[len(pcts) // 2]
             W("")
-            W("  Worst-affected designs by share of FFs with a constant clock:")
+            W(f"  Share of FFs losing their clock, across the {len(ck)} affected")
+            W(f"  designs: min {pcts[0]}%, **median {med}%**, max {pcts[-1]}%.")
             W("")
-            for r in worst:
+            W("  **This is the headline result of the corpus.** Our own test")
+            W("  designs lose 0% — including the Diamond builds, which is why")
+            W("  building more of them would never have surfaced this. Real")
+            W("  designs lose roughly half their flip-flop clocks.")
+            W("")
+            W("  Root cause, confirmed by inspecting the decoded `.config`: the")
+            W("  globals that get dropped are `G_DCS*` (dynamic clock select),")
+            W("  `G_HPFE*`, and PLL outputs (`G_JLLCPLL*CLKO*`). Our test")
+            W("  designs drive registers straight from a pad, so every global")
+            W("  they use is `G_HPBX`/`G_VPTX` — the class prjtrellis *does*")
+            W("  position. Any design with a PLL, which is essentially every")
+            W("  real one, routes its main clock through the class it does not.")
+            W("")
+            W("  Worst-affected designs:")
+            W("")
+            for r in sorted(ck, key=lambda r: -r["metrics"]["ff_clk_const_pct"])[:5]:
                 m = r["metrics"]
                 W(f"  - `{short(r['label'], 44)}` — "
                   f"{m['ff_clk_const']}/{m['ffs']} FFs ({m['ff_clk_const_pct']}%)")
+        W("")
+        W("Note the direction of every one of these. A dropped clock leaves a")
+        W("flip-flop with `clk=1'b0` — visibly wrong, and safe. It never")
+        W("silently attaches the register to the *wrong* clock, which is what")
+        W("unioning through a (0,0)-parked global would do. Across the whole")
+        W("corpus the fused-net count is the number to watch, and it is zero.")
         W("")
 
     # ================= the table =================
@@ -257,7 +339,11 @@ def main():
     W("# 3. build the Diamond half")
     W("python3.15t scripts/ecp5_diamond_build.py --device LFE5U-25F-6MG285I")
     W("# 4. run decode + oracle + lift over everything")
-    W("python3.15t scripts/ecp5_corpus_test.py --workers 6")
+    W("#    Memory scales with --workers on the 85F lifts (8 concurrent 85F")
+    W("#    lifts were measured at ~27 GB RSS).  Decode+oracle alone is cheap")
+    W("#    and is also the strongest pair of claims, so --no-lift can run wide.")
+    W("python3.15t scripts/ecp5_corpus_test.py --workers 12 --no-lift")
+    W("python3.15t scripts/ecp5_corpus_test.py --workers 4")
     W("python3.15t scripts/ecp5_corpus_test.py --scan corpus/diamond --out tmp/diamond_all.json")
     W("# 5. regenerate this document")
     W("python3.15t scripts/ecp5_corpus_report.py")

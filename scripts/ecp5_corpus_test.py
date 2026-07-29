@@ -539,7 +539,13 @@ def test_one(rec, log, do_lift=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", default=MANIFEST)
-    ap.add_argument("--workers", type=int, default=4)
+    # Lifting is the memory-hungry stage, not decoding: an LFE5U-85F lift holds
+    # the full routing graph plus the union-find, and eight concurrent 85F
+    # lifts were measured at ~27 GB RSS combined.  Decode-only runs are cheap
+    # and can use many more workers, so --no-lift pairs well with a high count.
+    ap.add_argument("--workers", type=int, default=4,
+                    help="parallel workers (memory scales with this on 85F "
+                         "lifts; 4 needs roughly 16 GB, 8 roughly 30 GB)")
     ap.add_argument("--only", help="substring filter on label")
     ap.add_argument("--no-lift", action="store_true")
     ap.add_argument("--extra", action="append", default=[],
@@ -548,6 +554,11 @@ def main():
                     help="directory to search recursively for .bit files")
     ap.add_argument("--out", default=os.path.join(REPO, "tmp",
                                                   "ecp5_corpus_results.json"))
+    ap.add_argument("--resume", metavar="JSON",
+                    help="merge in a previous results file and skip entries "
+                         "it already covers.  Lifting an 85F design is "
+                         "expensive, so a run interrupted by memory pressure "
+                         "should not repeat the work it already finished.")
     args = ap.parse_args()
     log = setup_logging("ecp5_corpus_test")
 
@@ -573,17 +584,46 @@ def main():
     if args.only:
         entries = [e for e in entries
                    if args.only in (e.get("label") or e.get("local", ""))]
+    done = {}
+    if args.resume and os.path.exists(args.resume):
+        for r in json.load(open(args.resume)):
+            # Only carry forward entries that actually completed the stage we
+            # are about to run; a partial record would silently understate the
+            # work still outstanding.
+            if r.get("decode") == "ok" and (args.no_lift
+                                            or r.get("lift") not in (None, "skipped")):
+                done[r.get("sha256") or r.get("label")] = r
+        entries = [e for e in entries
+                   if (e.get("sha256") or e.get("label")) not in done]
+        log.info("resume: %d already complete, %d to do", len(done), len(entries))
+
     log.info("testing %d bitstreams, %d workers", len(entries), args.workers)
 
-    results = []
+    results = list(done.values())
+    def flush():
+        """Write results after every completion.
+
+        An 85F lift is minutes of work, and a run that only writes at the end
+        loses all of it to one interruption -- which is exactly what happened
+        when eight concurrent 85F lifts exhausted memory and the run had to be
+        killed at 104/228 with nothing on disk.  Writing as we go makes
+        --resume actually usable.
+        """
+        tmp = args.out + ".partial"
+        with open(tmp, "w") as fh:
+            json.dump(sorted(results, key=lambda r: r.get("label", "")), fh,
+                      indent=2, sort_keys=True)
+        os.replace(tmp, args.out)
+
     with concurrent.futures.ThreadPoolExecutor(args.workers) as ex:
         futs = [ex.submit(test_one, e, log, not args.no_lift) for e in entries]
         for f in concurrent.futures.as_completed(futs):
             results.append(f.result())
+            with _lock:
+                flush()
 
     results.sort(key=lambda r: r["label"])
-    with open(args.out, "w") as fh:
-        json.dump(results, fh, indent=2, sort_keys=True)
+    flush()
 
     # ---- the three claims, counted separately
     dec = sum(1 for r in results if r.get("decode") == "ok")
