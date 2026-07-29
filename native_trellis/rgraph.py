@@ -20,8 +20,8 @@ makes to_str the identity).
 """
 from collections import namedtuple
 
-from .geometry import ChipGeometry
-from .globalise import Globaliser
+from .geometry import ChipGeometry, family_of
+from .globalise import make_globaliser
 
 RId = namedtuple("RId", ["x", "y", "name"])          # a wire reference
 Arc = namedtuple("Arc", ["src", "sink", "configurable"])  # src/sink are RId
@@ -105,17 +105,54 @@ def _add_ramw():
     return "SLICEC.RAMW", "TRELLIS_RAMW", 4 * 4 + 2, pins
 
 
+def _add_pio(z):
+    """Ecp5Bels::add_pio (Bels.cpp).  ECP5's IO bel.
+
+    Pad data rides `*_PIO`-suffixed nodes, bridged to the switchbox by FIXED
+    pips that never appear in `.config` — exactly the role `_SLICE` plays for
+    slice pins.  The lifter strips either suffix in remap().
+    """
+    l = _ABCD[z]
+    pins = {
+        "I": f"PADDO{l}_PIO",       # fabric -> pad (output data)
+        "T": f"PADDT{l}_PIO",       # fabric -> pad (tristate)
+        "O": f"JPADDI{l}_PIO",      # pad -> fabric (input data)
+        "IOLDO": f"IOLDO{l}_PIO",
+        "IOLTO": f"IOLTO{l}_PIO",
+    }
+    return f"PIO{l}", "PIO", z, pins
+
+
+# Tile types that carry PIO bels, and how many (Chip.cpp
+# get_routing_graph_ecp5).  Left/right edges hold 4 PIOs, top/bottom 2.
+def _ecp5_pio_count(ttype):
+    if "PICL0" in ttype or "PICR0" in ttype:
+        return 4
+    if ttype == "SPICB0":
+        return 1
+    if "PIOT0" in ttype or ("PICB0" in ttype and ttype != "SPICB0"):
+        return 2
+    return 0
+
+
 class NativeRoutingGraph:
     """Pure-Python routing graph -- pytrellis-free."""
 
-    def __init__(self, device, db_root, family="MachXO2", tiledb=None):
+    def __init__(self, device, db_root, family=None, tiledb=None):
         self.device = device
         self.db_root = db_root
+        # family=None -> resolve from devices.json, so a caller only has to
+        # know the part number.  MachXO2 stays the behaviour it always had.
+        if family is None:
+            family = family_of(device, db_root)
         self.geom = ChipGeometry(device, db_root, family)
         self.family = self.geom.family
         self.max_row = self.geom.max_row
         self.max_col = self.geom.max_col
-        self.gl = Globaliser(device, self.max_row, self.max_col)
+        self.gl = make_globaliser(self.family, device,
+                                  self.max_row, self.max_col)
+        # PLC tile type differs by family: "PLC" on MachXO2, "PLC2" on ECP5.
+        self._plc_type = "PLC2" if self.family == "ECP5" else "PLC"
 
         # per-location structures
         self.wires = {}   # (x,y) -> set(name)
@@ -166,8 +203,10 @@ class NativeRoutingGraph:
                 self._wire(*gsink)
                 arclist.append(Arc(gsrc, gsink, False))
 
-            # SLICE bels for PLC tiles (split_slice_mode path).
-            if ttype == "PLC":
+            # SLICE bels for PLC tiles (split_slice_mode path).  The bel
+            # builders are CommonBels in prjtrellis — shared verbatim between
+            # ECP5 and MachXO2; only the tile type name differs.
+            if ttype == self._plc_type:
                 belmap = self.bels.setdefault((col, row), {})
                 for z in range(8):
                     for bname, btype, bz, pins in (
@@ -183,6 +222,21 @@ class NativeRoutingGraph:
                     self._wire(col, row, wname)
                     rpins[pin] = RId(col, row, wname)
                 belmap[bname] = Bel(bname, btype, bz, rpins)
+
+            # ECP5 PIO bels.  MachXO2 pads ride JQ/JA joint nodes and need no
+            # bel; ECP5 pads have a real PIO bel whose pins are the *_PIO
+            # fixed-pip nodes, so build them here.
+            if self.family == "ECP5":
+                npio = _ecp5_pio_count(ttype)
+                if npio:
+                    belmap = self.bels.setdefault((col, row), {})
+                    for z in range(npio):
+                        bname, btype, bz, pins = _add_pio(z)
+                        rpins = {}
+                        for pin, wname in pins.items():
+                            self._wire(col, row, wname)
+                            rpins[pin] = RId(col, row, wname)
+                        belmap[bname] = Bel(bname, btype, bz, rpins)
 
     # --- pytrellis-compatible-ish accessors (Stage E wraps these) -----------
     def get_max_row(self):

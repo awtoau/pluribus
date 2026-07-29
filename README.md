@@ -75,7 +75,7 @@ bitstream into it.
 | **Lattice MachXO2** | prjtrellis (native port) | `lifters/machxo2_lift.py` | production — fabric + routing + BRAM/EFB, verified vs vendor round-trip |
 | **Gowin GW1N** | Project Apicula chipdb | `lifters/gowin_lift.py` | production — decode validated byte-faithful vs the vendor toolchain |
 | **Anlogic EG4** | prjtang (arch-DB decode) | `lifters/anlogic_lift.py` | fabric + LUTs land; routing/mux decode is WIP |
-| Lattice ECP5 | prjtrellis | *(planned)* | via the parametric `lifters/trellis_lift.py` |
+| **Lattice ECP5** | prjtrellis (native port) | `lifters/ecp5_lift.py` | fabric + routing + LUT/FF/pads, round-trip verified vs nextpnr placement on 18 designs; decode byte-identical to `ecpunpack` |
 
 ---
 

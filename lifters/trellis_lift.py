@@ -12,7 +12,11 @@ The returned object exposes the same interface regardless of family:
 
 Supported families:
   "machxo2"   fully implemented (lifters/machxo2_lift.py)
-  "ecp5"      device init only; recovery raises NotImplementedError (issue #9)
+  "ecp5"      implemented (lifters/ecp5_lift.py) — LUT4/FF/routing/pad recovery,
+              round-trip verified against nextpnr placement.  A sibling class
+              rather than a family flag on MachXO2Lift on purpose: the MachXO2
+              gkey() carries tile-database workarounds that are wrong for ECP5.
+              Shared machinery (DSU/ParsedConfig/Design/ff_d_source) is imported.
   "gowin"     GW1N first slice (lifters/gowin_lift.py) — LUT4 + DFF recovery
               from a `.gwconfig` text config decoded by scripts/gowin_unpack.py.
               Not a Trellis family, but shares the lifter interface so load.py's

@@ -96,11 +96,12 @@ class RoutingGraph:
 
 
 class Chip:
-    def __init__(self, device):
+    def __init__(self, device, family=None):
         db = _state["dbroot"]
         if db is None:
             raise RuntimeError("call load_database() before Chip()")
-        self._native = NativeRoutingGraph(device, db)
+        # family=None resolves from devices.json (MachXO2, ECP5, ...).
+        self._native = NativeRoutingGraph(device, db, family)
         self._rg = None
         self.info = _TileInfo(device, self._native.family)
 

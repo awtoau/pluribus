@@ -27,6 +27,8 @@ RId = namedtuple("RId", ["x", "y", "name"])
 # --- name -> chip_prefix (RoutingGraph.cpp:23-69). Order matters: check the
 #     more specific MachXO3D "...D-..." names implicitly via substring tests. ---
 _PREFIX_RULES = [
+    # ECP5 first, matching the C++ if/else-if order exactly: a 12F/25F part
+    # shares the 25K_ prefix (one tile DB serves both).
     ("25F", "25K_"), ("12F", "25K_"), ("45F", "45K_"), ("85F", "85K_"),
     ("LCMXO256", "256X_"), ("LCMXO640", "640X_"),
     ("LCMXO1200", "1200X_"), ("LCMXO2280", "2280X_"),
@@ -280,3 +282,94 @@ class Globaliser:
 
     def _is_pio_wire(self, db_name):
         return any(s in db_name for s in self._PIO_SUBSTR)
+
+
+class Ecp5Globaliser:
+    """globalise_net for the ECP5 family.
+
+    Faithful port of RoutingGraph::globalise_net_ecp5
+    (prjtrellis RoutingGraph.cpp).  Materially simpler than the MachXO2
+    version: ECP5 has no spine/stride tables and no CENTER_MAP, because
+    prjtrellis does not model ECP5 clock quadrants.  Non-TAP/SPINE globals
+    are all parked at the nominal location (0, 0) — see the "TODO: quadrants
+    and TAP_DRIVE regions" in the upstream source.
+
+    Consequences the lifter must respect, both inherited from upstream:
+      * every `G_*` clock net that is not VPTX/HPBX/HPRX collapses to the
+        single key (0, 0, name).  Distinct global nets with the same db name
+        are therefore indistinguishable; the ECP5 lifter treats such keys as
+        chip-global and refuses to union through them (same policy the
+        MachXO2 lifter applies to its own invalid-location globals).
+      * off-grid results return None (upstream returns a default RoutingId),
+        which callers read as "drop this net".
+    """
+
+    _LOCAL_RE = re.compile(r"^([NS]\d+)?([EW]\d+)?_(.*)")
+    # Globals that keep their own tile position rather than collapsing to
+    # (0,0): the TAP_DRIVE / SPINE distribution wires.
+    _POSITIONAL_GLOBAL = ("VPTX", "HPBX", "HPRX")
+
+    def __init__(self, chip_name, max_row, max_col):
+        self.chip_name = chip_name
+        self.max_row = max_row
+        self.max_col = max_col
+        self.prefix = chip_prefix(chip_name)
+
+    def globalise_net(self, row, col, db_name):
+        stripped = db_name
+
+        # Device-size prefix (25K_/45K_/85K_): keep only our own device's
+        # wires, drop the rest.  Unlike MachXO2 all ECP5 prefixes are 4 chars.
+        if db_name.startswith(("25K_", "45K_", "85K_")):
+            if db_name[:4] != self.prefix:
+                return None
+            stripped = db_name[4:]
+
+        # PCSA/PCSB share one tile DB; on the right half the "A" is a "B".
+        if col >= 69:
+            p = stripped.find("PCSA")
+            if p != -1:
+                stripped = stripped[:p + 3] + "B" + stripped[p + 4:]
+
+        if stripped.startswith(("G_", "L_", "R_")):
+            if (stripped.startswith("G_")
+                    and not any(s in stripped
+                                for s in self._POSITIONAL_GLOBAL)):
+                return RId(0, 0, stripped)
+            return RId(col, row, stripped)
+
+        # Local net: apply N/S/E/W relative offsets.
+        x, y = col, row
+        m = self._LOCAL_RE.match(stripped)
+        if m:
+            for i in (1, 2):
+                g = m.group(i)
+                if not g:
+                    continue
+                d = int(g[1:])
+                if g[0] == "N":
+                    y -= d
+                elif g[0] == "S":
+                    y += d
+                elif g[0] == "W":
+                    x -= d
+                elif g[0] == "E":
+                    x += d
+                else:
+                    raise AssertionError(g)
+            name = m.group(3)
+        else:
+            name = stripped
+
+        if x < 0 or x > self.max_col or y < 0 or y > self.max_row:
+            return None
+        return RId(x, y, name)
+
+
+def make_globaliser(family, chip_name, max_row, max_col):
+    """Family-dispatch for globalise_net (RoutingGraph::globalise_net)."""
+    if family == "ECP5":
+        return Ecp5Globaliser(chip_name, max_row, max_col)
+    if family in ("MachXO2", "MachXO3", "MachXO3D"):
+        return Globaliser(chip_name, max_row, max_col)
+    raise ValueError(f"no globaliser for family {family!r}")

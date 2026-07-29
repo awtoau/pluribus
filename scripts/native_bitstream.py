@@ -21,6 +21,7 @@ CRAM layout matches pytrellis: `cram[idx][j]`, idx = frame index (MachXO2 is
 NOT reversed), j in [0, bits_per_frame).
 """
 import argparse
+import os
 
 PREAMBLE = bytes([0xFF, 0xFF, 0xBD, 0xB3])
 CRC16_POLY = 0x8005
@@ -65,13 +66,70 @@ CMD_NAME = {
     CMD_0x72: "CMD_0x72",
 }
 
-# LCMXO2-1200 geometry (only device needed for now; generalise later).
+# LCMXO2-1200 geometry.  Kept as the default so every existing MachXO2 caller
+# behaves exactly as before; new callers should use geometry_for(device).
 MACHXO2_1200 = dict(
     idcode=0x012ba043, name="LCMXO2-1200",
     num_frames=333, bits_per_frame=1080,
     pad_bits_after_frame=0, pad_bits_before_frame=0,
     reversed_frames=False, one_hot_dictionary=False,
 )
+
+# Per-family bitstream options — a port of prjtrellis BitstreamOptions
+# (Bitstream.cpp).  Only the fields the PARSER needs are kept; the writer-only
+# ones (crc_meta, dummy_bytes_after_preamble, security_sed_space) are not used
+# on the read path because the values are read back out of the stream itself.
+#
+# ECP5 differs from MachXO2 in exactly one parser-visible way: frames are
+# written in REVERSE order (frame N-1 first).  Getting that wrong does not
+# desynchronise the byte stream — every frame is still the right length — it
+# silently mirrors the whole fabric top-to-bottom, which is far worse than a
+# parse error because it decodes "successfully" into a wrong answer.
+_FAMILY_OPTIONS = {
+    "MachXO2":  dict(reversed_frames=False, one_hot_dictionary=False),
+    "MachXO3":  dict(reversed_frames=False, one_hot_dictionary=False),
+    "MachXO3D": dict(reversed_frames=False, one_hot_dictionary=True),
+    "ECP5":     dict(reversed_frames=True,  one_hot_dictionary=False),
+    "MachXO":   dict(reversed_frames=False, one_hot_dictionary=False),
+}
+
+DEFAULT_DB_ROOT = os.environ.get(
+    "TRELLIS_DBROOT", "/home/dan/opt/oss-cad-suite/share/trellis/database")
+
+
+def geometry_for(device, db_root=None):
+    """Bitstream geometry for `device`, read from the Trellis devices.json.
+
+    Replaces the hardcoded MACHXO2_1200 dict so any supported part can be
+    decoded.  Frame count, frame width and the pad-bit counts all come from
+    the database; the reversed-frame and dictionary flags come from the
+    family option table above.
+
+    Raises KeyError if the part is not in the database — better than silently
+    decoding with another device's geometry, which produces a plausible but
+    wrong fabric.
+    """
+    import json
+    root = db_root or DEFAULT_DB_ROOT
+    dj = json.load(open(os.path.join(root, "devices.json")))
+    for family, fi in dj["families"].items():
+        dev = fi["devices"].get(device)
+        if dev is None:
+            continue
+        opts = _FAMILY_OPTIONS.get(family)
+        if opts is None:
+            raise KeyError(f"no bitstream options for family {family!r}")
+        idcode = dev.get("idcode")
+        return dict(
+            idcode=int(idcode, 16) if isinstance(idcode, str) else idcode,
+            name=device, family=family,
+            num_frames=int(dev["frames"]),
+            bits_per_frame=int(dev["bits_per_frame"]),
+            pad_bits_after_frame=int(dev.get("pad_bits_after_frame", 0)),
+            pad_bits_before_frame=int(dev.get("pad_bits_before_frame", 0)),
+            **opts,
+        )
+    raise KeyError(f"device {device!r} not in {root}/devices.json")
 
 
 class ParseError(RuntimeError):

@@ -264,9 +264,18 @@ def serialize(pb, decoded, tilegrid, device, family=FAMILY):
 
 
 def config_from_file(bitpath, device="LCMXO2-1200", db_root=DEFAULT_DB_ROOT,
-                     family=FAMILY, self_check=True):
-    """Parse a .bit/.bin natively and return (text, pb, bram) for the full config."""
-    pb = native_bitstream.parse_file(bitpath)
+                     family=None, self_check=True):
+    """Parse a .bit/.bin natively and return (text, pb, bram) for the full config.
+
+    Geometry (frame count/width, frame ordering, dictionary format) is derived
+    from `device` via the Trellis database rather than assumed, so ECP5 parts
+    decode as readily as MachXO2 ones.  `family` defaults to whichever family
+    owns `device` in devices.json.
+    """
+    geom = native_bitstream.geometry_for(device, db_root)
+    if family is None:
+        family = geom.get("family", FAMILY)
+    pb = native_bitstream.parse_file(bitpath, geom=geom)
     tilegrid = load_tilegrid(device, db_root, family)
     decoded = decode_chip_full(pb.cram, tilegrid, db_root, family,
                                self_check=self_check)

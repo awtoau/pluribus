@@ -114,6 +114,23 @@ def get_row_col(name, chip_size, row_bias, col_bias):
     raise RuntimeError(f"Could not extract position from {name}")
 
 
+def family_of(device, db_root):
+    """Which devices.json family owns `device`.
+
+    Lets callers pass just a part number (e.g. "LFE5U-12F" or "LCMXO2-1200")
+    and have the family resolved from the database rather than hardcoded.
+    Raises if the part is absent or ambiguous.
+    """
+    dj = json.load(open(os.path.join(db_root, "devices.json")))
+    hits = [fam for fam, fi in dj["families"].items()
+            if device in fi["devices"]]
+    if not hits:
+        raise KeyError(f"device {device!r} not in {db_root}/devices.json")
+    if len(hits) > 1:
+        raise KeyError(f"device {device!r} is ambiguous across {hits}")
+    return hits[0]
+
+
 def load_device_info(device, db_root, family="MachXO2"):
     """Port of get_chip_info (Database.cpp): read devices.json for the part."""
     dj = json.load(open(os.path.join(db_root, "devices.json")))
