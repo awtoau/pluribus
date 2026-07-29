@@ -53,21 +53,28 @@ def running():
     return False
 
 
-def counts():
-    if not os.path.exists(LOG):
-        return 0, 0, 0
-    lines = open(LOG, errors="replace").read().splitlines()
-    starts = [i for i, l in enumerate(lines) if "testing" in l and "bitstreams" in l]
-    cur = lines[starts[-1]:] if starts else lines
-    ok = sum(1 for l in cur if "decode=ok" in l)
-    fail = sum(1 for l in cur
-               if re.search(r"DECODE-FAIL|ORACLE-DIFF|LIFT-FAIL|UNIDENTIFIED", l))
-    total = 0
-    if starts:
-        m = re.search(r"testing (\d+) bitstreams", lines[starts[-1]])
-        if m:
-            total = int(m.group(1))
-    return ok, fail, total
+def counts(results_path):
+    """Progress from the RESULTS FILE, not the log.
+
+    Both the decode-only and the lift pass append to one shared log, so
+    counting log lines sums two concurrent runs and reports nonsense like
+    "251/228".  The results file is per-run and rewritten atomically after
+    every completion, so it is the authoritative count.
+    """
+    if not os.path.exists(results_path):
+        return 0, 0
+    try:
+        import json
+        rows = json.load(open(results_path))
+    except (ValueError, OSError):
+        return 0, 0                      # mid-rewrite; try again next poll
+    ok = len(rows)
+    fail = sum(1 for r in rows
+               if r.get("decode") != "ok"
+               or r.get("oracle") not in ("identical", None)
+               and str(r.get("oracle", "")).startswith("DIFFERS")
+               or str(r.get("lift", "")).startswith("raised"))
+    return ok, fail
 
 
 def main():
@@ -75,13 +82,18 @@ def main():
     ap.add_argument("--every", type=int, default=10)
     ap.add_argument("--floor-mb", type=int, default=5000)
     ap.add_argument("--poll", type=float, default=20.0)
+    ap.add_argument("--results",
+                    default=os.path.join(REPO, "tmp",
+                                         "ecp5_corpus_results.json"))
+    ap.add_argument("--total", type=int, default=228)
     args = ap.parse_args()
 
     last_bucket = -1
     last_fail = 0
     warned_low = False
     while True:
-        ok, fail, total = counts()
+        ok, fail = counts(args.results)
+        total = args.total
         avail = available_mb()
 
         if fail > last_fail:
