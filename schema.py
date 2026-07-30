@@ -495,9 +495,49 @@ cdc_synchronisers = Table("cdc_synchronisers", metadata,
 # ── Schema management ─────────────────────────────────────────────────────────
 
 def init(eng=None):
-    """Create all tables (IF NOT EXISTS).  Safe to call on every startup."""
+    """Create all tables (IF NOT EXISTS), then FAIL FAST on schema drift.
+
+    `create_all` is create-only: it never adds a column to a table that already
+    exists.  So a database written before a column was added keeps its old shape
+    silently, and the first INSERT dies hundreds of lines into a pipeline stage
+    with `table ffs has no column named dtype` -- which reads as a code bug, not as
+    "your database is out of date".  That happened, and it cost real time.
+
+    Derived artefacts have no legacy in this project: the fix for an outdated
+    database is to delete it and rebuild, never to migrate.  This check exists to
+    say so at startup instead of letting a stale file look usable.
+    """
     import db as _db
-    metadata.create_all(eng or _db.engine())
+    eng = eng or _db.engine()
+    metadata.create_all(eng)
+    _assert_no_drift(eng)
+
+
+def _assert_no_drift(eng):
+    """Compare declared columns against what the database actually has."""
+    from sqlalchemy import inspect as _inspect
+    insp = _inspect(eng)
+    have_tables = set(insp.get_table_names())
+    missing: list[str] = []
+    for table in metadata.sorted_tables:
+        if table.name not in have_tables:
+            continue  # create_all just made it, or it is genuinely new
+        actual = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name not in actual:
+                missing.append(f"{table.name}.{col.name}")
+    if not missing:
+        return
+    shown = ", ".join(missing[:8]) + (" ..." if len(missing) > 8 else "")
+    import db as _db
+    _db.die(
+        f"database schema is OUT OF DATE: {len(missing)} declared column(s) are "
+        f"absent from the existing tables ({shown}).\n"
+        f"CREATE TABLE IF NOT EXISTS cannot add columns, so this database predates "
+        f"the current schema.py and writes to it will fail mid-pipeline.\n"
+        f"Derived data has no legacy here -- delete the database and rebuild "
+        f"rather than migrating it. For SQLite that is simply removing the file "
+        f"named by $PLURIBUS_SQLITE_PATH (default ./pluribus.db).")
 
 
 def drop_all(eng=None):

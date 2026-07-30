@@ -29,7 +29,34 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-DEFAULT_DB_ROOT = os.environ.get("TRELLIS_DBROOT", "tmp/prjtrellis/database")
+def _default_db_root():
+    """Resolve the Trellis database, or fall back to the legacy relative path.
+
+    The old default was the bare string "tmp/prjtrellis/database", which does not
+    exist -- so every caller that did not set $TRELLIS_DBROOT failed with
+    `FileNotFoundError: tmp/prjtrellis/database/devices.json`, and it failed
+    per-worker inside a process pool where the cause is easy to misread.  That bit
+    the unknown-bits census.
+
+    Resolution now goes through scripts/toolchain.py (#90), which finds the
+    database via $TRELLIS_DBROOT then the oss-cad-suite install.  The legacy string
+    is kept as a last resort ONLY so that importing this module never dies on a
+    machine with no toolchain: the failure then happens at first use, naming a path,
+    exactly as before.
+    """
+    import sys as _sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in _sys.path:
+        _sys.path.insert(0, here)
+    try:
+        import toolchain
+        root = toolchain.trellis_dbroot(required=False)
+    except Exception:
+        root = None
+    return root or "tmp/prjtrellis/database"
+
+
+DEFAULT_DB_ROOT = _default_db_root()
 FAMILY = "MachXO2"
 
 # Pluribus-owned corrections applied on top of the base tiledata (issue #29) —
