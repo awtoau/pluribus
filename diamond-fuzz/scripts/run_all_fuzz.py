@@ -207,26 +207,95 @@ def unpack_bitstream(target_dir: Path) -> tuple[Path | None, str]:
 
 # ── pluribus load ─────────────────────────────────────────────────────────────
 
-def make_minimal_pins_tsv(out_path: Path) -> None:
+# Fallback device/package when a target's .ldf cannot be parsed.  This used
+# to be hardcoded at the load.py call site, which is why every result in
+# diamond-fuzz/results/ is MachXO2 -- an ECP5 target would build fine and
+# then be loaded under the wrong device.  Device/package are now derived
+# per-target from the project file, with these as a last resort only.
+DEFAULT_DEVICE  = "LCMXO2-1200"
+DEFAULT_PACKAGE = "TQFP100"
+
+# Diamond spells packages as e.g. "BG256"/"BG381" inside the part string but
+# the trellis database and load.py expect the marketing name.
+_PKG_ALIASES = {
+    "BG256": "CABGA256",
+    "BG381": "CABGA381",
+    "BG554": "CABGA554",
+    "BG756": "CABGA756",
+    "MG285": "CSFBGA285",
+    "MG225": "CSFBGA225",
+    # MachXO2 spellings, kept so the existing MachXO2 corpus keeps resolving
+    # to exactly the device/package it did before this change.
+    "TG100": "TQFP100",
+    "TG144": "TQFP144",
+}
+
+# MachXO2 part strings carry a speed/temp suffix on the density
+# (LCMXO2-1200HC) that load.py does not want -- the existing corpus was
+# loaded as plain "LCMXO2-1200".  Strip the trailing grade letters.
+_XO2_GRADE_RE = re.compile(r"^(LCMXO[23]D?-\d+)[A-Z]*$")
+
+_LDF_DEVICE_RE = re.compile(r'device\s*=\s*"([^"]+)"')
+
+# ECP5 part strings look like LFE5U-25F-8BG256C: family-density-speed pkg temp
+_ECP5_PART_RE = re.compile(
+    r"^(?P<base>LFE5UM?5?G?-\d+F)-(?P<speed>\d)(?P<pkg>[A-Z]+\d+)(?P<temp>[CI])$")
+# MachXO2 parts look like LCMXO2-1200HC-5TG100C
+_XO2_PART_RE = re.compile(
+    r"^(?P<base>LCMXO[23]D?-\d+[A-Z]*)-(?P<speed>\d)(?P<pkg>[A-Z]+\d+)(?P<temp>[CI])$")
+
+
+def device_package_for(target_dir: Path) -> tuple[str, str]:
+    """Derive (device, package) for a target from its Diamond .ldf.
+
+    Returns the trellis-style device name (e.g. "LFE5U-25F") and package
+    (e.g. "CABGA256").  Falls back to the MachXO2 defaults if the project
+    file is missing or unparseable, preserving the previous behaviour for
+    the existing MachXO2 target corpus.
+    """
+    ldf = target_dir / "fuzz.ldf"
+    if not ldf.exists():
+        return DEFAULT_DEVICE, DEFAULT_PACKAGE
+    m = _LDF_DEVICE_RE.search(ldf.read_text(errors="replace"))
+    if not m:
+        return DEFAULT_DEVICE, DEFAULT_PACKAGE
+    part = m.group(1).strip()
+
+    for regex in (_ECP5_PART_RE, _XO2_PART_RE):
+        pm = regex.match(part)
+        if pm:
+            pkg = pm.group("pkg")
+            base = pm.group("base")
+            gm = _XO2_GRADE_RE.match(base)
+            if gm:
+                base = gm.group(1)
+            return base, _PKG_ALIASES.get(pkg, pkg)
+
+    return DEFAULT_DEVICE, DEFAULT_PACKAGE
+
+
+def make_minimal_pins_tsv(out_path: Path, device: str, package: str) -> None:
     """Write a minimal header-only pins TSV for fuzz configs that have no named pins."""
     out_path.write_text(
-        "# device: LCMXO2-1200\n"
-        "# package: TQFP100\n"
+        f"# device: {device}\n"
+        f"# package: {package}\n"
         "# label: FUZZ\n"
         "# pin\trow\tcol\tpio\tdirection\tlabel\tfunction\tconfidence\n"
     )
 
 
 def load_fuzz_config(target_name: str, config_path: Path,
-                     pins_tsv: Path | None = None) -> tuple[bool, str]:
+                     pins_tsv: Path | None = None,
+                     device: str = DEFAULT_DEVICE,
+                     package: str = DEFAULT_PACKAGE) -> tuple[bool, str]:
     """Load a fuzz .config into pluribus with label FUZZ_<target_name>."""
     label = f"FUZZ_{target_name}"
     pins  = pins_tsv if pins_tsv and pins_tsv.exists() else FUZZ_PINS
 
     # Fallback: generate a minimal header-only pins TSV if FUZZ_PINS doesn't exist
     if not pins.exists():
-        minimal = RESULTS_DIR / "minimal_pins.tsv"
-        make_minimal_pins_tsv(minimal)
+        minimal = RESULTS_DIR / f"minimal_pins.{device}.{package}.tsv"
+        make_minimal_pins_tsv(minimal, device, package)
         pins = minimal
 
     env = dict(os.environ)
@@ -237,8 +306,8 @@ def load_fuzz_config(target_name: str, config_path: Path,
          "--label",   label,
          "--config",  str(config_path),
          "--pins",    str(pins),
-         "--device",  "LCMXO2-1200",
-         "--package", "TQFP100",
+         "--device",  device,
+         "--package", package,
          "--fuzz",    # skip FF/LUT/net count sanity checks for small fuzz designs
         ],
         capture_output=True, text=True,
@@ -325,7 +394,16 @@ def pluribus_worker(done_q: queue.Queue,
             done_q.task_done()
             continue
 
-        ok_load, detail = load_fuzz_config(name, br.config_path)
+        # Device/package come from the target's own .ldf unless overridden
+        # on the command line, so ECP5 and MachXO2 targets can coexist in
+        # one corpus and each be loaded under the right device.
+        if stats["device_override"]:
+            device, package = stats["device_override"]
+        else:
+            device, package = device_package_for(br.target_dir)
+
+        ok_load, detail = load_fuzz_config(name, br.config_path,
+                                           device=device, package=package)
         with stats_lock:
             if ok_load:
                 stats["loaded"] += 1
@@ -351,7 +429,19 @@ def main() -> None:
                          "each uses ~2 GB RAM)")
     ap.add_argument("--no-pluribus", action="store_true",
                     help="Skip pluribus load step (useful for offline Diamond runs)")
+    ap.add_argument("--device", default=None, metavar="DEV",
+                    help="Override the device passed to load.py for ALL targets "
+                         "(e.g. LFE5U-25F). Default: derive per-target from its "
+                         "fuzz.ldf, so MachXO2 and ECP5 targets can share a corpus.")
+    ap.add_argument("--package", default=None, metavar="PKG",
+                    help="Override the package passed to load.py for ALL targets "
+                         "(e.g. CABGA256). Requires --device.")
     args = ap.parse_args()
+
+    if args.package and not args.device:
+        sys.exit("--package requires --device")
+    device_override = (args.device, args.package or DEFAULT_PACKAGE) \
+        if args.device else None
 
     if not DIAMONDC.exists():
         sys.exit(f"diamondc not found at {DIAMONDC}")
@@ -396,6 +486,7 @@ def main() -> None:
         "hashes":        loaded_hashes,
         "failures":      [],   # list of (name, detail)
         "load_failures": [],
+        "device_override": device_override,
     }
     stats_lock = threading.Lock()
 
