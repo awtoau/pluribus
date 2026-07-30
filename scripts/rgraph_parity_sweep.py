@@ -22,24 +22,29 @@ Small devices first, deliberately.  A systematic port bug shows up on a 256-cell
 MachXO2 in seconds; discovering it after an hour of 85F dumping wastes the hour.
 
 SIXTEEN DEVICES IS NOT SIXTEEN SAMPLES -- read the coverage claim carefully.
-The ECP5 parts share dies.  Identical `frames` x `bits_per_frame` in devices.json,
-identical tile counts, identical globalise counts:
+Run `scripts/die_classes.py` for the current grouping; do not re-derive it here.
 
-    7562 x 592   LFE5U-12F, LFE5U-25F, LFE5UM-25F, LFE5UM5G-25F
-    9470 x 846   LFE5U-45F, LFE5UM-45F, LFE5UM5G-45F
-    13294 x 1136 LFE5U-85F, LFE5UM-85F, LFE5UM5G-85F
+Group by the SHA-256 of tilegrid.json, not by `frames` x `bits_per_frame`.  Frame
+geometry is the weaker signal and gets this wrong: LFE5U-45F and LFE5UM-45F are both
+9470 x 846 yet have DIFFERENT tilegrids, because the UM parts add SERDES tiles.  An
+earlier version of this note grouped by geometry and undercounted ECP5 as three
+classes; it is six:
 
-Only the IDCODE's top nibble separates them (2=12F, 4=U, 0=UM, 8=UM5G), which is
-how the configuration engine tells parts apart on shared silicon.  The UM/UM5G
-variants add a few hundred globalise entries for SERDES/PCS wiring and nothing
-else.  So the ten ECP5 devices are THREE independent fabric geometries, and 12F in
-particular is not a cheap small sample -- it is the 25F sample.  The six MachXO2
-parts do have genuinely distinct tile counts (88/171/322/459/792/1260).
+    LFE5U-12F   + LFE5U-25F        shared   (idcode 0x2… / 0x4…)
+    LFE5UM-25F  + LFE5UM5G-25F     shared   (0x0… / 0x8…)
+    LFE5UM-45F  + LFE5UM5G-45F     shared
+    LFE5UM-85F  + LFE5UM5G-85F     shared
+    LFE5U-45F                      unique
+    LFE5U-85F                      unique
 
-Effective independent coverage is therefore about NINE configurations, not sixteen.
-The sweep still runs all sixteen -- per-device IDCODE and variant handling is worth
-exercising, and it is cheap once the die is dumped -- but a summary saying "16/16
-devices" overstates the fabric variety behind it.
+Only the IDCODE's top nibble separates parts inside a class, which is how the
+configuration engine tells them apart on shared silicon.  The six MachXO2 parts are
+genuinely distinct (333x1080 through 770x1992).
+
+So the sixteen swept devices exercise TWELVE distinct fabrics.  12F in particular is
+not a cheap small sample -- it is the 25F sample.  The sweep still runs all sixteen,
+because per-device IDCODE and variant handling is worth exercising and is cheap once
+the die is dumped, but "16/16 devices" overstates the fabric variety behind it.
 
     scripts/rgraph_parity_sweep.py [--devices A,B] [--family ECP5|MachXO2]
                                    [--keep] [--min-free-gb 40]
