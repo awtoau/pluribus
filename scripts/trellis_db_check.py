@@ -305,6 +305,12 @@ def d6_word_overlap(fam: str, db: TileDb) -> list[Finding]:
         seen: dict[tuple[int, int], int] = {}
         dup = []
         for i, b in enumerate(w.bits):
+            # None is a held position (`-` in the file): it occupies an index in
+            # the vector but names no bit, so it cannot collide.  Enumerate over
+            # the full list regardless, because the INDEX is the field's bit
+            # number and skipping holes would renumber everything after one.
+            if b is None:
+                continue
             if b.pos in seen:
                 dup.append(b.pos)
             seen[b.pos] = i
