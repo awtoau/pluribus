@@ -69,7 +69,10 @@ CMD_NAME = {
 # LCMXO2-1200 geometry.  Kept as the default so every existing MachXO2 caller
 # behaves exactly as before; new callers should use geometry_for(device).
 MACHXO2_1200 = dict(
-    idcode=0x012ba043, name="LCMXO2-1200",
+    # `family` is required, not decorative: encode() gates on it, and geometry_for()
+    # supplies it for every other part.  Omitting it here made this legacy constant
+    # report family None and fail the encoder's own verified-family check.
+    idcode=0x012ba043, name="LCMXO2-1200", family="MachXO2",
     num_frames=333, bits_per_frame=1080,
     pad_bits_after_frame=0, pad_bits_before_frame=0,
     reversed_frames=False, one_hot_dictionary=False,
@@ -330,6 +333,37 @@ def _store_frame(pb, idx, frame_bytes, bytes_per_frame, pad_after, invert=False)
         row[j] = b ^ 1 if invert else b
 
 
+def _check_idcode(pb, geom):
+    """Fail fast when the bitstream is not the device we are decoding it as.
+
+    THE BITSTREAM DECLARES ITS OWN PART, so a geometry mismatch is detectable at
+    the moment the IDCODE is read rather than being left to emerge downstream.
+    That matters because `geom` defaults to MACHXO2_1200 for backwards
+    compatibility, so any caller that forgets to pass one gets MachXO2 geometry
+    applied to whatever it handed in.
+
+    That is #86 exactly: ECP5 frames read at MachXO2 width desynchronised the
+    parser, which surfaced as `crc fail ... expecting 0x0000` -- an error that
+    reads as a corrupt file or a broken CRC routine, and cost real time before
+    anybody suspected geometry.  Worse, per the family-options note above, a
+    wrong `reversed_frames` does NOT desynchronise anything: every frame is still
+    the right length, so the fabric is silently mirrored top-to-bottom and the
+    decode looks entirely successful.  This check is the only thing standing
+    between that and a plausible, wrong netlist.
+    """
+    want = geom.get("idcode")
+    if want is None or pb.idcode is None or pb.idcode == want:
+        return
+    raise ParseError(
+        f"device mismatch: bitstream IDCODE is 0x{pb.idcode:08x} but it is "
+        f"being decoded with {geom.get('name', '?')} geometry "
+        f"(idcode 0x{want:08x}, {geom.get('num_frames')} frames x "
+        f"{geom.get('bits_per_frame')} bits, family {geom.get('family', '?')}). "
+        f"Pass geom=geometry_for(<device>) for the actual part -- decoding with "
+        f"another device's geometry produces a plausible but wrong fabric, not "
+        f"an error (#86).")
+
+
 def parse(data, geom=MACHXO2_1200, verbose=False):
     """Parse a header-stripped command stream into a ParsedBitstream."""
     rd = BitstreamReader(data)
@@ -383,6 +417,7 @@ def parse(data, geom=MACHXO2_1200, verbose=False):
                 pb.idcode = rd.get_uint32()
                 rec("RAW", raw=raw_span(off))
                 log(off, cmd, f"id=0x{pb.idcode:08x}")
+                _check_idcode(pb, geom)
 
         elif cmd == LSC_PROG_CNTRL0_2:
             no_id_mode = True
@@ -777,12 +812,54 @@ def _repack_ebr_words(words):
     return bytes(frame)
 
 
-def encode(pb, geom=MACHXO2_1200):
+# Families whose RE-ENCODE path is verified byte-exact against a real vendor
+# bitstream.  Decoding is far more widely proven than encoding: decode is
+# byte-identical to ecpunpack on 396 third-party ECP5 designs across ten parts,
+# while the only encoder proof is MachXO2 (#34, scripts/native_bitstream_roundtrip.py).
+#
+# Listing this explicitly, rather than letting encode() run on anything, is the
+# point.  An unverified family would not fail loudly -- it would emit a bitstream
+# that looks structurally fine, and the wrongness would only appear on hardware
+# or not at all.  Add a family here ONLY once the round-trip harness carries a
+# vector for it.
+ENCODE_VERIFIED_FAMILIES = frozenset({"MachXO2"})
+
+
+def encode(pb, geom=None, allow_unverified=False):
     """Re-serialise a ParsedBitstream into the exact byte stream (inverse of parse).
 
     Config frames come from `pb.cram`, EFB/EBR from their decoded records, and
     every CRC16 is recomputed.  Structural scaffolding is replayed verbatim.
+
+    `geom` is taken from `pb.geom` -- the geometry the bitstream was actually
+    PARSED with -- so encode can no longer disagree with decode.  It used to
+    default to MACHXO2_1200 independently of `pb`, which meant re-encoding an
+    ECP5 bitstream silently applied MachXO2 geometry: #86 in reverse, and this
+    direction has no CRC to trip over because we are the one computing them.
+    Passing `geom` explicitly is still allowed but must match `pb.geom`.
+
+    Unverified families raise rather than emitting a bitstream nobody has checked.
+    `allow_unverified=True` is the deliberate opt-in for doing that verification.
     """
+    if geom is not None and geom is not pb.geom and geom != pb.geom:
+        raise ParseError(
+            f"geom does not match the parsed bitstream: asked to encode as "
+            f"{geom.get('name', '?')} ({geom.get('num_frames')} frames) but it "
+            f"was parsed as {pb.geom.get('name', '?')} "
+            f"({pb.geom.get('num_frames')} frames). Omit geom -- it comes from "
+            f"pb.geom.")
+    geom = pb.geom
+    family = geom.get("family")
+    if not allow_unverified and family not in ENCODE_VERIFIED_FAMILIES:
+        raise NotImplementedError(
+            f"re-encode is not verified for family {family!r} "
+            f"(device {geom.get('name', '?')}). Verified: "
+            f"{sorted(ENCODE_VERIFIED_FAMILIES)}. DECODE is supported for this "
+            f"part -- it is the encoder that has no byte-exact vector, so the "
+            f"output would be unchecked rather than wrong-and-loud. Add a vector "
+            f"to scripts/native_bitstream_roundtrip.py and list the family in "
+            f"ENCODE_VERIFIED_FAMILIES, or pass allow_unverified=True to do "
+            f"exactly that verification.")
     w = BitstreamWriter()
     w.write_raw(pb.header)   # .bit ASCII header (b"" for a bare .bin)
     w.write_raw(pb.pre)      # leading bytes + preamble (never CRC'd)
@@ -893,11 +970,17 @@ def encode(pb, geom=MACHXO2_1200):
     return bytes(w.out)
 
 
-def re_encode_file(path, geom=MACHXO2_1200):
-    """Parse `path` then re-encode; returns (original_bytes, encoded_bytes)."""
+def re_encode_file(path, geom=MACHXO2_1200, allow_unverified=False):
+    """Parse `path` then re-encode; returns (original_bytes, encoded_bytes).
+
+    `geom` still defaults to MachXO2 here because this is the round-trip entry
+    point and its existing callers are MachXO2, but the parse now cross-checks it
+    against the bitstream's own IDCODE, so a wrong default fails loudly instead
+    of producing a mirrored fabric.
+    """
     raw = open(path, "rb").read()
     pb = parse_file(path, geom=geom)
-    return raw, encode(pb, geom=geom)
+    return raw, encode(pb, allow_unverified=allow_unverified)
 
 
 def main():

@@ -319,7 +319,14 @@ def decode_file(bitpath, device="LCMXO2-1200", db_root=DEFAULT_DB_ROOT,
                 family=FAMILY, workers=None):
     """Full path: parse .bit/.bin -> CRAM -> per-tile config."""
     import native_bitstream
-    pb = native_bitstream.parse_file(bitpath)
+    # Derive the bitstream geometry from `device` too, not just the tilegrid.
+    # This used to call parse_file() with no geom, so it silently decoded every
+    # part with MachXO2 geometry while loading the REQUESTED device's tilegrid --
+    # two different devices in one decode, which is the #86 failure with the
+    # mismatch moved inside a single function.  geometry_for() raises on an
+    # unknown part, so a device this decoder cannot handle now fails fast.
+    geom = native_bitstream.geometry_for(device, db_root)
+    pb = native_bitstream.parse_file(bitpath, geom=geom)
     tilegrid = load_tilegrid(device, db_root, family)
     return decode_chip(pb.cram, tilegrid, db_root, family, workers), pb
 
