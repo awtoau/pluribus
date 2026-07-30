@@ -122,6 +122,10 @@ MAX_PLAUSIBLE = 8 * 1024 * 1024
 MAX_DEPTH = 6
 # Do not try to unwrap or scan anything absurd; ECP5 update files are MB-scale.
 MAX_MEMBER = 512 * 1024 * 1024
+# Trailing 0xFF run kept as the vendor's own padding after DONE (see exact_end).
+# A standalone .bit ends in a handful of pad bytes; a megabyte of 0xFF is erased
+# flash, which is not part of the bitstream.
+TAIL_PAD_MAX = 4096
 
 
 def setup_logging(name):
@@ -410,9 +414,11 @@ def _max_size(device):
     frames * bits_per_frame / 8 -- rather than a fixed constant, because the
     parts span 12F to 85F (and MachXO2-256 to XO3-9400), a 30x range.  Doubled
     plus a fixed slack to cover the command stream, per-frame CRCs, padding, and
-    an uncompressed-with-overhead worst case.  The point is to bound a runaway
-    carve, not to predict the exact length: a bound that is somewhat too large
-    is harmless, one that is too small truncates a real bitstream.
+    an uncompressed-with-overhead worst case.
+
+    This is only the OUTER bound that keeps a carve from running away; the exact
+    end comes from `exact_end()`, which decodes the candidate.  Too large here is
+    recoverable, too small truncates a real bitstream, so it errs large.
 
     Falls back to MAX_PLAUSIBLE for devices not in the database (e.g. GOWIN).
     """
@@ -428,6 +434,57 @@ def _max_size(device):
         pass
     _MAXSIZE_CACHE[device] = limit
     return limit
+
+
+def exact_end(data, start, cap, device):
+    """Exact byte length of the bitstream at `start`, per the decoder itself.
+
+    Returns (length, note).  `length` is None when the span cannot be decoded,
+    in which case the caller keeps the generous `_max_size()` bound.
+
+    WHY THIS IS NOT COSMETIC.  A carve bounded only by "the next bitstream or the
+    device's maximum size" ends with whatever container bytes happened to follow
+    -- shared-library `.rodata`, zip structures, erased flash.  Our own decoder
+    never notices, because `parse()` stops at ISC_PROGRAM_DONE.  `ecpunpack` does
+    not stop: it decodes to `program DONE` and then keeps reading, and dies with
+
+        Failed to process input bitstream: unsupported command 0x00 [at 0x35297]
+
+    So an over-long carve silently costs us CLAIM 2 -- agreement with the
+    reference decoder, the only independent oracle available without source.
+    Every carved Saleae bitstream failed the oracle for exactly this reason while
+    decoding perfectly, which reads as a decoder problem and is not one.
+
+    Trimming also upgrades the evidence for the carve itself.  A hit accepted on
+    a sync word plus a plausible IDCODE is circumstantial; a span that parses to
+    DONE with every frame consumed is a bitstream beyond argument, so the
+    returned note doubles as the validation record.
+
+    TRAILING 0xFF.  Padding after DONE is kept when the remainder of the source
+    is nothing BUT padding and is short -- that is the vendor's own tail, and
+    keeping it leaves a standalone `.bit` byte-identical to the shipped file.  An
+    unbounded 0xFF run (erased flash) or any non-0xFF byte means foreign data, so
+    the carve stops at DONE.
+    """
+    try:
+        import native_bitstream as nb
+        geom = nb.geometry_for(device)
+    except Exception as exc:
+        return None, f"no geometry for {device!r} ({exc})"
+    span = bytes(data[start:cap])
+    try:
+        stripped = nb.strip_bit_header(span)
+        pb = nb.parse(stripped, geom=geom)
+    except Exception as exc:
+        return None, f"decode failed: {exc}"
+    if pb.frames_read != pb.num_frames:
+        return None, (f"decoded but frames incomplete "
+                      f"({pb.frames_read}/{pb.num_frames})")
+    n = (len(span) - len(stripped)) + (len(stripped) - len(pb.trailer))
+    tail = data[start + n:]
+    if tail and len(tail) <= TAIL_PAD_MAX and set(tail) == {0xFF}:
+        n += len(tail)
+    return n, f"decoded to DONE, {pb.frames_read}/{pb.num_frames} frames"
 
 
 def find_bitstreams(data, idcodes, log, origin="", families=ALL_FAMILIES):
@@ -470,19 +527,33 @@ def find_bitstreams(data, idcodes, log, origin="", families=ALL_FAMILIES):
     #
     # The cap matters when a bitstream is embedded in something much larger.  A
     # Saleae bitstream sits in the `.rodata` of a 30 MB shared library, so
-    # "to EOF" carved 29 MB of unrelated library for one 45F design.  Decoding
-    # survives that (the frame count is fixed by the device, so trailing bytes
-    # are ignored) but the corpus entry and its SHA-256 then describe mostly
-    # not-bitstream, which makes the manifest misleading.
+    # "to EOF" carved 29 MB of unrelated library for one 45F design.  OUR
+    # decoding survives that (parse() stops at DONE, so trailing bytes are never
+    # read) but `ecpunpack` does not, so an over-carve silently costs the oracle
+    # -- see exact_end(), which decodes each span and trims it to its true end.
     for n, h in enumerate(hits):
         nxt = hits[n + 1]["start"] if n + 1 < len(hits) else len(data)
         h["end"] = min(nxt, h["start"] + _max_size(h.get("device")))
+        if h["family"] in LATTICE_FAMILIES:
+            exact, note = exact_end(data, h["start"], h["end"], h.get("device"))
+            h["validated"] = note
+            if exact is not None and exact < h["end"] - h["start"]:
+                log.info("  trim %s+0x%x %s: %d -> %d bytes (%s)", origin,
+                         h["start"], h["device"], h["end"] - h["start"], exact,
+                         note)
+                h["end"] = h["start"] + exact
+            elif exact is None:
+                log.info("  no exact end for %s+0x%x %s: %s -- keeping the "
+                         "%d-byte bound", origin, h["start"], h["device"], note,
+                         h["end"] - h["start"])
         h["length"] = h["end"] - h["start"]
     kept = [h for h in hits if h["length"] >= MIN_CARVE]
     for h in hits:
         if h["length"] < MIN_CARVE:
-            log.info("  reject %s+0x%x: %s but only %d bytes",
-                     origin, h["sync_off"], h["device"], h["length"])
+            # sync_off is None for the families with no sync word (GOWIN .fs),
+            # so it is formatted as a string rather than hex.
+            log.info("  reject %s at %s: %s but only %d bytes", origin,
+                     h["sync_off"], h["device"], h["length"])
     return kept
 
 

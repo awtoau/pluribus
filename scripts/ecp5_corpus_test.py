@@ -111,6 +111,9 @@ FAMILY_SUPPORT = {
     "Anlogic":  dict(oracle=None, lifter="anlogic"),
 }
 MANIFEST = os.path.join(REPO, "corpus", "manifest.json")
+# Written by scripts/commercial_manifest.py, which joins the fetch manifest to
+# the carve records.  Provenance is taken from there rather than re-derived here.
+CARVED_MANIFEST = os.path.join(REPO, "corpus", "commercial-bitstreams.json")
 OUTDIR = os.path.join(REPO, "tmp", "corpus-decode")
 
 _lock = threading.Lock()
@@ -248,16 +251,29 @@ def make_lifter(kind, device):
     return TrellisLift(kind, device)
 
 
-def run_oracle(bitpath, out, device):
-    """ecpunpack the file.  Returns (ok, note, lines)."""
+def run_oracle(bitpath, out, device, idcode=None):
+    """ecpunpack the file.  Returns (ok, note, lines).
+
+    The retry passes `--idcode` as a NUMBER, because that is what ecpunpack
+    parses -- handing it a device name produced `Invalid idcode: LFE5UM-25F`,
+    an error about our own argument that replaced the real first-attempt error in
+    the report.  The genuine failure it was hiding was
+    `unsupported command 0x00`, i.e. an over-long carve, and it stayed hidden
+    until the retry was made to report honestly.  So the first error is kept and
+    reported when the retry is not applicable.
+    """
     cmd = [ECPUNPACK, bitpath, out]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        # ecpunpack needs --idcode for parts whose header it cannot place.
-        r = subprocess.run(cmd + ["--idcode", device], capture_output=True,
-                           text=True)
+        first = r.stderr.strip()[-200:]
+        if idcode is None:
+            return False, f"ecpunpack rc={r.returncode}: {first}", None
+        r = subprocess.run(cmd + ["--idcode", f"0x{idcode:08x}"],
+                           capture_output=True, text=True)
         if r.returncode != 0:
-            return False, f"ecpunpack rc={r.returncode}: {r.stderr.strip()[-200:]}", None
+            return False, (f"ecpunpack rc={r.returncode}: {first} "
+                           f"(retry with --idcode 0x{idcode:08x}: "
+                           f"{r.stderr.strip()[-120:]})"), None
     return True, "", meaningful(open(out).readlines())
 
 
@@ -565,7 +581,7 @@ def test_one(rec, log, do_lift=True):
         out["oracle"] = "no-oracle-for-family"
         ok, oracle_lines = False, None
     else:
-        ok, note, oracle_lines = run_oracle(path, oracle_p, dev)
+        ok, note, oracle_lines = run_oracle(path, oracle_p, dev, idcode=idc)
         if not ok:
             out["oracle"] = f"unavailable: {note}"
     if ok:
@@ -615,6 +631,9 @@ def test_one(rec, log, do_lift=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", default=MANIFEST)
+    ap.add_argument("--carved", default=CARVED_MANIFEST,
+                    help="carve manifest (scripts/ecp5_carve.py --manifest-out) "
+                         "supplying vendor provenance for scanned .bit files")
     # Lifting is the memory-hungry stage, not decoding: an LFE5U-85F lift holds
     # the full routing graph plus the union-find, and eight concurrent 85F
     # lifts were measured at ~27 GB RSS combined.  Decode-only runs are cheap
@@ -646,6 +665,16 @@ def main():
         for root, _dirs, files in os.walk(d):
             extra.extend(os.path.join(root, f) for f in sorted(files)
                          if f.endswith(".bit"))
+    # Provenance for scanned files.  A carved bitstream is bytes cut out of a
+    # vendor download and carries no provenance of its own, so without this join
+    # it would inherit the default below and be recorded as OUR Diamond build --
+    # which is the one conflation the corpus cannot afford, since our designs
+    # show 0% clock loss and third-party ones a median 43%.
+    carved = {}
+    if os.path.exists(args.carved):
+        for e in json.load(open(args.carved)).get("entries", []):
+            if e.get("local"):
+                carved[e["local"]] = e
     for p in sorted(set(extra)):
         # Label by the design directory, not the basename: Diamond names every
         # output <project>_impl1.bit, so basenames alone collide in the report.
@@ -654,9 +683,22 @@ def main():
         parts = rel.split(os.sep)
         if len(parts) >= 3 and parts[-2] == "impl1":
             label = parts[-3]
-        entries.append({"local": rel, "url": "local (our Diamond build)",
-                        "project": "pluribus diamond build", "license": "n/a",
-                        "label": label})
+        c = carved.get(rel)
+        if c:
+            vendor, product = c.get("vendor"), c.get("product")
+            entries.append({"local": rel, "label": label,
+                            "url": c.get("url") or "carved (vendor firmware)",
+                            "project": " ".join(x for x in (vendor, product) if x)
+                                       or "carved; product not matched",
+                            "license": c.get("license") or "unknown",
+                            "vendor": vendor,
+                            "carved_from": c.get("carved_from"),
+                            "carved_origin": c.get("origin"),
+                            "sha256": c.get("sha256")})
+        else:
+            entries.append({"local": rel, "url": "local (our Diamond build)",
+                            "project": "pluribus diamond build",
+                            "license": "n/a", "label": label})
     if args.only:
         entries = [e for e in entries
                    if args.only in (e.get("label") or e.get("local", ""))]
