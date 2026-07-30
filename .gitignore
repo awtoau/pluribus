@@ -36,3 +36,9 @@ boards/*/eagle_s20_db/
 corpus/ecp5/
 # Our own Diamond builds — regenerable via scripts/ecp5_diamond_build.py.
 corpus/diamond/
+# Commercial-product firmware, and the bitstreams carved out of it by
+# scripts/ecp5_carve.py.  Same rule as corpus/ecp5/, and it matters more here:
+# these are vendor update files downloaded for decoder interoperability testing.
+# Never redistributed; corpus/commercial-manifest.json records the provenance.
+corpus/commercial/
+corpus/vendor-firmware/
