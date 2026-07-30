@@ -876,14 +876,36 @@ def encode(pb, geom=None, allow_unverified=False):
     w.write_raw(pb.header)   # .bit ASCII header (b"" for a bare .bin)
     w.write_raw(pb.pre)      # leading bytes + preamble (never CRC'd)
 
-    # If a compressed frame block exists, build its dictionary + payload once so
+    # If a compressed frame block exists, settle its dictionary + payload once so
     # the DICT record and the FRAMES record stay consistent.
+    #
+    # PREFER THE DICTIONARY THAT WAS IN THE FILE.  This used to rebuild one from a
+    # byte histogram unconditionally, which is wrong for a re-encode in the same
+    # way that recomputing the CRAM would be: the dictionary is decoded DATA, not
+    # something to re-derive.  Rebuilding it produced a dictionary that merely
+    # compresses correctly, and a different-but-legal dictionary is still a byte
+    # mismatch -- 0 of 8 compressed MachXO2 bitstreams round-tripped byte-exact.
+    #
+    # Diamond's dictionaries are also not reproducible by that histogram at all:
+    # real ones contain DUPLICATE entries (a live example ends `01 01`), which a
+    # "top 8 distinct bytes by frequency" build can never emit.  So the rebuild
+    # could not have matched even in principle.
+    #
+    # _build_dictionary remains for the synthesis case -- a bitstream we are
+    # constructing rather than re-serialising, where no DICT record exists.
     dict_entries = None
     compressed_payload = None
+    parsed_dict = next((r for kind, r in pb.records if kind == "DICT"), None)
     for kind, r in pb.records:
         if kind == "FRAMES" and r["compressed"]:
             frames = _cram_to_frames(pb, geom)
-            dict_entries = _build_dictionary(frames)
+            if parsed_dict is not None:
+                # dict_bytes[j] is the entry selected by compressed index j, the
+                # same orientation the reader used (comp_dict[8 + j]), so the
+                # payload and the DICT record cannot disagree.
+                dict_entries = list(parsed_dict["dict_bytes"])
+            else:
+                dict_entries = _build_dictionary(frames)
             compressed_payload = _compress_frames(frames, dict_entries)
             break
 
