@@ -812,17 +812,25 @@ def _repack_ebr_words(words):
     return bytes(frame)
 
 
-# Families whose RE-ENCODE path is verified byte-exact against a real vendor
-# bitstream.  Decoding is far more widely proven than encoding: decode is
-# byte-identical to ecpunpack on 396 third-party ECP5 designs across ten parts,
-# while the only encoder proof is MachXO2 (#34, scripts/native_bitstream_roundtrip.py).
+# (family, frames_compressed) pairs whose RE-ENCODE is verified byte-exact against
+# a real vendor bitstream.  Decoding is far more widely proven than encoding:
+# decode is byte-identical to ecpunpack on 396 third-party ECP5 designs across ten
+# parts, while the only encoder proof is ONE uncompressed MachXO2 bitstream
+# (#34, scripts/native_bitstream_roundtrip.py).
+#
+# COMPRESSION IS PART OF THE KEY, not an implementation detail, because it is
+# where the encoder is actually broken.  Gating on family alone was too generous:
+# re-encoding compressed MachXO2 -- the supposedly verified family -- is byte-exact
+# on 0 of 8 fuzz bitstreams.  The dictionary is stored REVERSED in the file and the
+# writer emits it forward with two entries wrong, and since the payload is encoded
+# against that dictionary the damage spreads past the DICT record.  ECP5 merely hit
+# it first because Diamond compresses ECP5 bitstreams by default.  See #97.
 #
 # Listing this explicitly, rather than letting encode() run on anything, is the
-# point.  An unverified family would not fail loudly -- it would emit a bitstream
-# that looks structurally fine, and the wrongness would only appear on hardware
-# or not at all.  Add a family here ONLY once the round-trip harness carries a
-# vector for it.
-ENCODE_VERIFIED_FAMILIES = frozenset({"MachXO2"})
+# point: an unverified combination does not fail loudly, it emits a bitstream that
+# looks structurally fine and is wrong only on hardware.  Add a pair here ONLY once
+# the round-trip harness carries a byte-exact vector for it.
+ENCODE_VERIFIED = frozenset({("MachXO2", False)})
 
 
 def encode(pb, geom=None, allow_unverified=False):
@@ -850,15 +858,19 @@ def encode(pb, geom=None, allow_unverified=False):
             f"pb.geom.")
     geom = pb.geom
     family = geom.get("family")
-    if not allow_unverified and family not in ENCODE_VERIFIED_FAMILIES:
+    compressed = any(kind == "FRAMES" and r.get("compressed")
+                     for kind, r in pb.records)
+    if not allow_unverified and (family, compressed) not in ENCODE_VERIFIED:
         raise NotImplementedError(
-            f"re-encode is not verified for family {family!r} "
-            f"(device {geom.get('name', '?')}). Verified: "
-            f"{sorted(ENCODE_VERIFIED_FAMILIES)}. DECODE is supported for this "
+            f"re-encode is not verified for family {family!r} with "
+            f"compressed={compressed} (device {geom.get('name', '?')}). "
+            f"Verified: {sorted(ENCODE_VERIFIED)}. DECODE is supported for this "
             f"part -- it is the encoder that has no byte-exact vector, so the "
-            f"output would be unchecked rather than wrong-and-loud. Add a vector "
-            f"to scripts/native_bitstream_roundtrip.py and list the family in "
-            f"ENCODE_VERIFIED_FAMILIES, or pass allow_unverified=True to do "
+            f"output would be unchecked rather than wrong-and-loud. "
+            + ("The compressed-frame path is KNOWN BROKEN (#97): the dictionary "
+               "is written in the wrong byte order. " if compressed else "")
+            + f"Add a vector to scripts/native_bitstream_roundtrip.py and list "
+            f"the pair in ENCODE_VERIFIED, or pass allow_unverified=True to do "
             f"exactly that verification.")
     w = BitstreamWriter()
     w.write_raw(pb.header)   # .bit ASCII header (b"" for a bare .bin)
