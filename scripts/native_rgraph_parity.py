@@ -21,7 +21,7 @@ DBROOT = os.environ.get(
 
 import re  # noqa: E402
 from native_trellis.geometry import ChipGeometry  # noqa: E402
-from native_trellis.globalise import Globaliser  # noqa: E402
+from native_trellis.globalise import make_globaliser  # noqa: E402
 from native_trellis.rgraph import NativeRoutingGraph  # noqa: E402
 
 _LUTIN = re.compile(r"^[A-D][0-7]$")
@@ -95,7 +95,13 @@ def main():
           f"(native has {nextra} extra tilegrid entries not in golden rc)")
 
     print(f"=== Stage C: globalise_net parity ({device}) ===")
-    gl = Globaliser(device, geom.max_row, geom.max_col)
+    # Dispatch on the golden's family rather than hardcoding the MachXO2 class.
+    # globalise.py has had an ECP5 path and this dispatcher all along; the checker
+    # simply never used them, so `Globaliser(...)` raised KeyError on (50, 72) --
+    # ECP5 has no CENTER_MAP because prjtrellis does not model its clock quadrants.
+    # That is a gap in the CHECK, not in the port, and it is why the ECP5 routing
+    # graph has been unverified: nothing could run against it.
+    gl = make_globaliser(g["family"], device, geom.max_row, geom.max_col)
     gfails, gtotal = check_globalise(g, gl)
     if gfails:
         print(f"  FAIL ({len(gfails)} mismatches of {gtotal} globalise calls):")
