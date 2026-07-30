@@ -144,10 +144,28 @@ final config-word emission is missing (#88, #96).
 encoder (#97) the route is decode → set `SED.*` in `EFB2_PICB0` → re-encode. The
 upstream patch is no longer on the critical path for the use case.
 
-### NOT A BUG — one chipdb per die
+### NOT A BUG — one chipdb per die, and the silicon agrees
 `--12k` and `--25k` both report 24,288 LUT4s, because the chipdb is per-die and
 LFE5U-12F and -25F are the same die (#98). This looks like a bug and is not; do not
 file it. It is why a 12F can use the whole die with no IDCODE patching.
+
+**Confirmed on hardware, 2026-07-30** (#98): a design occupying **20,143 / 24,288
+LUT4s — 7,855 past the 12,288 the part advertises** — ran on a Cynthion r1.4 marked
+`LFE5U-12F`, at 86.43 MHz against a 60 MHz constraint, for 22,026 self-checked
+rounds across two runs with **zero** mismatches. `ecpunpack` reads the genuine 12F
+IDCODE `0x21111043`; nothing was patched. The extra logic was placed across 44 of
+47 tile rows, so the utilisation figure is not one dense corner.
+
+The result is credible mainly because of its **negative control**: the same design
+rebuilt with a deliberately wrong golden constant reported 1,575/1,575 rounds
+mismatched on the same silicon, so the clean run measures something rather than
+merely failing to fail.
+
+What it does **not** establish: an intermittent per-part defect rate. Treating
+rounds as independent trials, 0 failures in 22,026 bounds the per-round rate at
+about **1.4e-4** (95%, rule of three) at one temperature and supply — which
+constrains binning/salvage without excluding it, and says nothing about other
+parts. The honest scope is "this part, these conditions".
 
 ---
 
