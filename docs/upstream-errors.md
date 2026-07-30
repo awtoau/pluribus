@@ -34,14 +34,46 @@ corrupt a recovered netlist.
 
 ## prjtrellis
 
-### DEFECT — decoder truncates at command 0x72
-The stock decoder stops at the undocumented `0x72` command (present when the EFB
-is active), silently dropping the post-frame configuration including real EBR
-block-RAM initialisation. Not an error — a short read that looks complete.
+### DEFECT — command 0x72 breaks the decoder, and therefore the DATABASE ITSELF
+The `0x72` command (present when the EFB is active) is undocumented and unhandled.
+Two variants, both bad:
 
-Our native Python decoder makes this impossible by construction, and
-`scripts/native_bitstream_roundtrip.py` check [3] exists specifically to prove the
-EFB blocks and EBR writes survive a round-trip. Tracked around #31/#34.
+- **stock prjtrellis: hard failure.** Measured, not inferred —
+  `pytrellis.Bitstream.read_bit(p).deserialise_chip()` raises
+  `ValueError: Bitstream Parse Error: unsupported command 0x72 [at 0x1804]`
+  on **6 of 6** EFB fuzz targets (`efb_i2c1`, `efb_i2c1_i2c2`, `..._spi`,
+  `..._spi_tc`, `..._spi_tc_ufm`, `..._spi_ufm`).
+- **a lenient patch: silent truncation.** Stops at `0x72` and drops the post-frame
+  configuration including real EBR block-RAM init — a short read that looks
+  complete, which is the worse of the two.
+
+**Why this contaminates the DATABASE, not merely a decode.**
+`util/fuzz/nonrouting.py` — the module that writes `.config_enum` and word entries
+into `bits.db` — decodes every Diamond-built variant with exactly that call:
+
+    chips[val] = pytrellis.Bitstream.read_bit(bit_bitf).deserialise_chip()
+
+So for any fuzz design with an active EFB the fuzzer either cannot decode the
+bitstream at all, or decodes a truncated one. It then diffs CRAM across variants to
+attribute bits. Bits in the lost region look **identical in every variant**, so the
+parameter is recorded as *having no bits*.
+
+That is the exact signature this project has been attributing to under-fuzzing:
+#85's "every `INPUT_*` standard encodes to zero bits", and #96's "MachXO yields zero
+enums, zero muxes and zero words across all 71 tiles". Those may be decoder
+casualties rather than missing fuzzers — and the two have opposite fixes.
+
+**We are in the unusual position of being able to regenerate this better than
+upstream can.** The native decoder reads all six EFB targets (1–4 EFB blocks each,
+config recovered into `efb_config`), so substituting it for the pytrellis call in
+`nonrouting.py` would let a fuzzer re-run attribute bits the C++ path structurally
+cannot see. That upgrades #96's "fuzzer re-run differential" from a **staleness**
+check to a **correctness** one.
+
+Caveat before anyone commits to the full 235-fuzzer build: this is proven for
+EFB-active designs, but **how many database entries actually depend on such a design
+is not yet measured**, and it may be few. The cheap measurement is to re-run one
+affected fuzzer with each decoder and diff the resulting `bits.db`.
 
 ### DEFECT — degenerate enum encodings (under-fuzzed I/O standards)
 `PIOA.BASE_TYPE` holds 84 values in several ECP5 tiles that resolve to only 3
