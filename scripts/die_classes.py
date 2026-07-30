@@ -50,6 +50,31 @@ in separate device trees (`xo2c00` vs `xo3c00a`/`xo3c00f`) and only the MachXO2 
 ships a `.bfd`, so the trees themselves cannot be diffed -- the tilegrid is the
 comparison that works.
 
+DO NOT READ CAPACITY OFF THE PART NUMBER
+----------------------------------------
+The marketing density in a part number does not track the LUT count across
+families, and taking it at face value produced a wrong claim once already (an
+apparent 3% of extra LUTs to "recover" on a MachXO2-1200 by treating it as a
+MachXO3L-1300).  Counting bels instead:
+
+    LCMXO2-1200   LUT4 = 1,280   FF = 1,280   640 slices
+    LCMXO3-1300   LUT4 = 1,280   FF = 1,280   640 slices    <- identical
+    LCMXO2-2000   LUT4 = 2,112   FF = 2,112   1,056 slices
+    LCMXO3-2100   LUT4 = 2,112   FF = 2,112   1,056 slices   <- identical
+
+The tier was renamed (1200 -> 1300, 2000 -> 2100, 4000 -> 4300, 7000 -> 6900) while
+the fabric stayed put.  There is no spare capacity in the difference because there
+is no difference.
+
+OPEN, and it cuts against the corroboration above: Lattice's MachXO3L datasheet
+quotes 1320 LUTs for the -1300, not 1280.  Either the datasheet counts by a
+different definition, or prjtrellis's MachXO3 tilegrid was copied from MachXO2
+after all -- `fuzz=1` says the extractor WOULD run Diamond per device, which is not
+proof it did for the committed file.  The MachXO3D control favours the first
+reading, but MachXO3D is a separate tree with its own `.bfd`, so it does not fully
+transfer.  Settling it means running Diamond for LCMXO3L-1300 and extracting the
+tilegrid ourselves.
+
 WHAT IT STILL CANNOT SAY
 ------------------------
 A shared die does not imply shared usable capacity.  Fusing, binning and speed grade
