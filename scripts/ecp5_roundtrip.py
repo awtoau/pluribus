@@ -43,8 +43,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-DEF_DBROOT = os.environ.get(
-    "TRELLIS_DBROOT", "/home/dan/opt/oss-cad-suite/share/trellis/database")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import toolchain  # noqa: E402  (path set above)
+
+DEF_DBROOT = toolchain.trellis_dbroot()
 
 # "X5/Y42/SLICEA.FF0" / "X3/Y38/SLICEB.K1" / "X0/Y7/PIOA"
 BEL_RE = re.compile(r"^X(\d+)/Y(\d+)/(?:SLICE([A-D])\.(K|FF)([01])|PIO([A-D]))$")

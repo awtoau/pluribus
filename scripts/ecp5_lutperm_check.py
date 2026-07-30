@@ -31,8 +31,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-DEF_DBROOT = os.environ.get(
-    "TRELLIS_DBROOT", "/home/dan/opt/oss-cad-suite/share/trellis/database")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import toolchain  # noqa: E402  (path set above)
+
+DEF_DBROOT = toolchain.trellis_dbroot()
 
 
 def setup_logging(name):

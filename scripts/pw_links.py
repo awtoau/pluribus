@@ -2,7 +2,7 @@
 """Fetch a page via the playwrong headed-Chrome engine and print download links.
 
 Usage: pw_links.py <url> [extra-regex-extension ...]
-Logs to ./tmp/logs/pw_links.log relative to /mnt/2tb/git/pluribus.
+Logs to ./tmp/logs/pw_links.log, relative to the repository root.
 """
 import json
 import logging
@@ -12,7 +12,8 @@ import sys
 import urllib.request
 
 BASE = "http://127.0.0.1:8731"
-LOGDIR = "/mnt/2tb/git/pluribus/tmp/logs"
+LOGDIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "tmp", "logs")
 os.makedirs(LOGDIR, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,

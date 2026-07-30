@@ -44,7 +44,8 @@ Environment
   ANLOGIC_DB      decoded fuse DB directory (from anlogic_dbdecode.py).
                   Required for LUT-INIT recovery.  If absent the FN check is
                   skipped and the harness only validates the build/unpack flow.
-  OSS_CAD         oss-cad-suite bin dir (yosys).  Default /home/dan/opt/oss-cad-suite/bin.
+  OSS_CAD         oss-cad-suite bin dir (yosys).  Default: discovered from PATH
+                  or $OSS_CAD_SUITE by scripts/toolchain.py.
   PY_PLURIBUS     free-threaded pluribus interpreter.  Default python3.15t.
 
 Usage::
@@ -83,7 +84,9 @@ TD_LICENSE = Path(os.environ.get(
     "TD_LICENSE",
     str(REPO / "sources" / "tang-dynasty" / "Anlogic_202003.lic")))
 ANLOGIC_DB = os.environ.get("ANLOGIC_DB", "")
-OSS_CAD    = os.environ.get("OSS_CAD", "/home/dan/opt/oss-cad-suite/bin")
+import toolchain  # noqa: E402  (path set above)
+
+OSS_CAD    = os.environ.get("OSS_CAD") or toolchain.oss_cad_bin(required=True)
 PY         = os.environ.get("PY_PLURIBUS", "python3.15t")
 
 # ── Target device ─────────────────────────────────────────────────────────────

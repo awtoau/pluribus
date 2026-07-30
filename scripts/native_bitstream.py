@@ -93,8 +93,23 @@ _FAMILY_OPTIONS = {
     "MachXO":   dict(reversed_frames=False, one_hot_dictionary=False),
 }
 
-DEFAULT_DB_ROOT = os.environ.get(
-    "TRELLIS_DBROOT", "/home/dan/opt/oss-cad-suite/share/trellis/database")
+def _default_db_root():
+    """Resolved lazily so importing this module never dies (#90).
+
+    `scripts/toolchain.py` finds the database via $TRELLIS_DBROOT, then the
+    oss-cad-suite install; there is deliberately no machine-specific default.
+    Lazy because callers that pass an explicit `db_root` -- and the tests, which
+    never touch the database -- must not require a toolchain to be installed
+    merely to import the decoder.
+    """
+    # This module is imported both as `native_bitstream` (scripts/ on the path)
+    # and from the repo root, so make its own directory importable either way.
+    import sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import toolchain
+    return toolchain.trellis_dbroot()
 
 
 def geometry_for(device, db_root=None):
@@ -110,7 +125,7 @@ def geometry_for(device, db_root=None):
     wrong fabric.
     """
     import json
-    root = db_root or DEFAULT_DB_ROOT
+    root = db_root or _default_db_root()
     dj = json.load(open(os.path.join(root, "devices.json")))
     for family, fi in dj["families"].items():
         dev = fi["devices"].get(device)

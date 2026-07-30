@@ -63,28 +63,13 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 
-DBROOT = os.environ.get("TRELLIS_DBROOT",
-                        "/home/dan/opt/oss-cad-suite/share/trellis/database")
+import toolchain
 
-
-def _tool(name, env_var, fallback):
-    """Resolve an external tool from $env_var, then PATH, then a fallback.
-
-    Hardcoded absolute paths pin the engine to one machine, which is separately
-    blocking branch pushes (#90).  The pattern here matches commit fc75e153a,
-    which did the same for the prjtrellis paths: honour an explicit override
-    first, fall back to PATH so a normal oss-cad-suite environment just works,
-    and keep the old absolute path last so existing runs are unchanged.
-    """
-    p = os.environ.get(env_var)
-    if p:
-        return p
-    found = shutil.which(name)
-    return found or fallback
-
-
-ECPUNPACK = _tool("ecpunpack", "ECPUNPACK",
-                  "/home/dan/opt/oss-cad-suite/bin/ecpunpack")
+# Resolution lives in scripts/toolchain.py (#90) rather than in a per-script
+# copy of the same chain: two scripts holding their own defaults can disagree
+# about where the database is, and then their results cannot be compared.
+DBROOT = toolchain.trellis_dbroot()
+ECPUNPACK = toolchain.tool("ecpunpack", "ECPUNPACK")
 
 # ---------------------------------------------------------------------------
 # Per-family dispatch.

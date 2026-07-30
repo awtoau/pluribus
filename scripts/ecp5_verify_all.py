@@ -29,9 +29,16 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-DEF_DBROOT = os.environ.get(
-    "TRELLIS_DBROOT", "/home/dan/opt/oss-cad-suite/share/trellis/database")
-ECP5_TEST = "/mnt/2tb/git/cynthion-workspace/ecp5-test"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import toolchain  # noqa: E402  (path set above)
+
+DEF_DBROOT = toolchain.trellis_dbroot()
+# The ECP5 test designs live in the cynthion-workspace repository, not this one,
+# so there is no default to give: $ECP5_TEST, else a sibling checkout (#90).
+ECP5_TEST = toolchain.sibling_repo("cynthion-workspace", "ECP5_TEST",
+                                   "ECP5 test designs")
+if os.path.isdir(os.path.join(ECP5_TEST, "ecp5-test")):
+    ECP5_TEST = os.path.join(ECP5_TEST, "ecp5-test")
 
 _log_lock = threading.Lock()
 

@@ -2,12 +2,13 @@
 """Run DuckDuckGo-lite searches through the awto-playwrong headed-Chrome engine.
 
 Usage: pw_search.py "query one" "query two" ...
-Logs to ./tmp/logs/pw_search.log relative to /mnt/2tb/git/pluribus.
+Logs to ./tmp/logs/pw_search.log, relative to the repository root.
 """
 import sys, json, re, html, urllib.parse, urllib.request, os, logging
 
 BASE = "http://127.0.0.1:8731"
-LOGDIR = "/mnt/2tb/git/pluribus/tmp/logs"
+LOGDIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "tmp", "logs")
 os.makedirs(LOGDIR, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,

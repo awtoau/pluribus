@@ -42,9 +42,12 @@ LEC (two verdicts)
 Nothing here is committed and nothing in awto-2000 is modified: the source is
 imported read-only and all build artefacts land under pluribus/tmp/repl_scope/.
 
-Env (defaults target this machine):
-  OSS_CAD     = /home/dan/opt/oss-cad-suite/bin  (yosys/nextpnr-machxo2/ecppack)
-  RTL_DIR     = /mnt/2tb/git/awto-2000/fpga/hantek/rtl  (KNOWN source, read-only)
+Env (all discovered by scripts/toolchain.py when unset -- see #90; no path here
+is specific to any one machine):
+  OSS_CAD     yosys/nextpnr-machxo2/ecppack bin dir.  Default: the oss-cad-suite
+              found via PATH or $OSS_CAD_SUITE.
+  RTL_DIR     KNOWN source, read-only.  Default: fpga/hantek/rtl inside an
+              awto-2000 checkout beside this repository, or $AWTO2000_ROOT.
   TRELLIS_DBROOT = prjtrellis database root
   PY_AMARANTH = python3            (interpreter with amaranth, for source regen)
   PY_PLURIBUS = python3.15t        (free-threaded pipeline interpreter)
@@ -67,11 +70,15 @@ from verify_common import SATBoundedSweep, default_sat_jobs  # noqa: E402  (#76)
 WORK = REPO / "tmp" / "repl_scope"
 LOG = WORK / "roundtrip.log"
 
-OSS = os.environ.get("OSS_CAD", "/home/dan/opt/oss-cad-suite/bin")
-RTL_DIR = os.environ.get("RTL_DIR", "/mnt/2tb/git/awto-2000/fpga/hantek/rtl")
-DBROOT = os.environ.get(
-    "TRELLIS_DBROOT",
-    "/mnt/2tb/git/github.com/awtoau/prjtrellis/database")
+import toolchain  # noqa: E402  (path set above)
+
+OSS = os.environ.get("OSS_CAD") or toolchain.oss_cad_bin(required=True)
+# The known-good RTL lives in awto-2000, a different repository (#90): $RTL_DIR,
+# else the same path inside a sibling checkout.
+RTL_DIR = os.environ.get("RTL_DIR") or os.path.join(
+    toolchain.sibling_repo("awto-2000", "AWTO2000_ROOT", "awto-2000 checkout"),
+    "fpga", "hantek", "rtl")
+DBROOT = toolchain.trellis_dbroot()
 PY_AMARANTH = os.environ.get("PY_AMARANTH", "python3")
 PY_PLURIBUS = os.environ.get("PY_PLURIBUS", "python3.15t")
 

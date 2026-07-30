@@ -23,7 +23,7 @@ already passed — `q0<=a^b; q1<=a&b; q2<=a|b` recovers as XOR/AND/OR exactly.
 Environment
 -----------
   OSS_CAD_BIN   oss-cad-suite bin dir on PATH (yosys/nextpnr-himbaechel/gowin_pack)
-                default /home/dan/opt/oss-cad-suite/bin
+                default: discovered from PATH or $OSS_CAD_SUITE (scripts/toolchain.py)
   PLURIBUS_GOWIN_PYTHON   interpreter with apycula (for gowin_unpack)
                 default OSS_CAD_BIN/../py3bin/python3
   PLURIBUS_PYTHON         free-threaded pluribus interpreter (load/verilog)
@@ -50,7 +50,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/ for verify_
 from load import classify_lut  # noqa: E402
 from verify_common import is_2to1_mux  # noqa: E402  (#76)
 
-OSS_CAD_BIN = os.environ.get("OSS_CAD_BIN", "/home/dan/opt/oss-cad-suite/bin")
+import toolchain  # noqa: E402  (path set above)
+
+OSS_CAD_BIN = (os.environ.get("OSS_CAD_BIN")
+               or toolchain.oss_cad_bin(required=True))
 GOWIN_PY = os.environ.get(
     "PLURIBUS_GOWIN_PYTHON",
     str(Path(OSS_CAD_BIN).parent / "py3bin" / "python3"))

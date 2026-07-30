@@ -151,9 +151,8 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
             # emitting a .gwconfig the free-threaded 3.15t lifter reads back.
             # --package resolves IOB locations to physical pins (pad_map); no
             # separate iomap stage.
-            gowin_py = os.environ.get(
-                "PLURIBUS_GOWIN_PYTHON",
-                "/home/dan/opt/oss-cad-suite/py3bin/python3")
+            import toolchain
+            gowin_py = toolchain.gowin_python(required=True)
             unpack_cmd = [gowin_py, "scripts/gowin_unpack.py", raw_bin, config,
                           "--device", device or "GW1N-1"]
             if package:

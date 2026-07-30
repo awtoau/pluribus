@@ -74,7 +74,11 @@ from lifters.gowin_lift import GowinLift            # noqa: E402
 from verify_common import (                        # noqa: E402  (#76)
     is_2to1_mux, classify_fn)
 
-GOWINHOME = os.environ.get("GOWINHOME", "/mnt/2tb/gowin")
+import toolchain  # noqa: E402  (path set above)
+
+# Vendor EDA install.  No default: there is no convention for where Gowin's IDE
+# is unpacked, and guessing would reintroduce a machine-specific path (#90).
+GOWINHOME = toolchain.external_dir("GOWINHOME", "Gowin IDE install")
 GW_SH = str(Path(GOWINHOME) / "IDE" / "bin" / "gw_sh")
 GWLIC_INI = Path(GOWINHOME) / "IDE" / "bin" / "gwlicense.ini"
 GOWIN_LICENSE = os.environ.get("GOWIN_LICENSE", str(Path(GOWINHOME) / "gowin.lic"))
@@ -82,11 +86,9 @@ FREETYPE = os.environ.get("GOWIN_FREETYPE_PRELOAD",
                           "/usr/lib64/libfreetype.so.6.20.6")
 QT_PLUGINS = Path(GOWINHOME) / "IDE" / "plugins" / "qt"
 
-APICULA_PP = os.environ.get("APICULA_PYTHONPATH",
-                            "/mnt/2tb/git_mirror/YosysHQ/apicula")
-GOWIN_PY = os.environ.get(
-    "PLURIBUS_GOWIN_PYTHON",
-    "/home/dan/opt/oss-cad-suite/py3bin/python3")
+APICULA_PP = os.environ.get("APICULA_PYTHONPATH") or toolchain.sibling_repo(
+    "apicula", "APICULA_PYTHONPATH", "apicula checkout", required=False) or ""
+GOWIN_PY = toolchain.gowin_python(required=True)
 
 # ── target device (vendor part / apycula chipdb / package) ────────────────────
 # GW1N-2 (== GW1N-1P5C die) is issue #66's subject and is the family whose device

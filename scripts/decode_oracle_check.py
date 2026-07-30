@@ -31,31 +31,31 @@ import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-DBROOT = os.environ.get(
-    "TRELLIS_DBROOT", "/home/dan/opt/oss-cad-suite/share/trellis/database")
-ECPUNPACK = "/home/dan/opt/oss-cad-suite/bin/ecpunpack"
+import toolchain  # noqa: E402  (path set above)
 
-# (label, bitstream, device).  Small first, then the large real designs.
-CORPUS = [
-    ("led_patterns",
-     "/mnt/2tb/git/cynthion-workspace/ecp5-test/led_patterns.bit",
-     "LFE5U-12F"),
-    ("analyzer",
-     "/mnt/2tb/git/cynthion-workspace/tmp/gsg/analyzer/top.bit",
-     "LFE5U-12F"),
-    ("adv_uart",
-     "/mnt/2tb/git/cynthion-workspace/ecp5-test/adv_uart/build/top.bit",
-     "LFE5U-12F"),
-    ("riscv",
-     "/mnt/2tb/git/cynthion-workspace/ecp5-test/riscv/build/top.bit",
-     "LFE5U-12F"),
-    ("usb_bulk",
-     "/mnt/2tb/git/cynthion-workspace/ecp5-test/usb_bulk/build/top.bit",
-     "LFE5U-12F"),
-    ("hyperram",
-     "/mnt/2tb/git/cynthion-workspace/ecp5-test/hyperram/build/top.bit",
-     "LFE5U-12F"),
+DBROOT = toolchain.trellis_dbroot()
+ECPUNPACK = toolchain.tool("ecpunpack", "ECPUNPACK")
+
+# The test designs are built in the cynthion-workspace repository, so only the
+# paths RELATIVE to it are knowable here; the root comes from $ECP5_TEST or a
+# sibling checkout (#90).  Missing entries are skipped with a note rather than
+# failing the run, because this check is about decode agreement on whichever
+# designs are present, not about having all six.
+_WS = toolchain.sibling_repo("cynthion-workspace", "ECP5_TEST",
+                             "ECP5 test designs", required=False)
+
+# (label, path relative to the workspace, device).  Small first, then the large
+# real designs.
+_CORPUS_REL = [
+    ("led_patterns", "ecp5-test/led_patterns.bit", "LFE5U-12F"),
+    ("analyzer", "tmp/gsg/analyzer/top.bit", "LFE5U-12F"),
+    ("adv_uart", "ecp5-test/adv_uart/build/top.bit", "LFE5U-12F"),
+    ("riscv", "ecp5-test/riscv/build/top.bit", "LFE5U-12F"),
+    ("usb_bulk", "ecp5-test/usb_bulk/build/top.bit", "LFE5U-12F"),
+    ("hyperram", "ecp5-test/hyperram/build/top.bit", "LFE5U-12F"),
 ]
+CORPUS = ([(label, os.path.join(_WS, rel), dev)
+           for label, rel, dev in _CORPUS_REL] if _WS else [])
 
 _lock = threading.Lock()
 
