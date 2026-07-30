@@ -1,7 +1,31 @@
 # An unexplained crash window on the development workstation, 2026-07-30
 
-**Status:** real, and **no longer reproducing**.  Cause NOT identified.
+**Status:** real, and **reproduced again** at 13:34:06 the same day, hours
+after the original window was thought to have closed.  Cause NOT identified.
 **Detector:** `scripts/cpu_sanity_check.py`.
+
+## Update, 13:34: reproduced under `cpu_sanity_check.py`, CPU 8 only
+
+A pinned sweep of the four favoured (6.0 GHz) cores against the exact original
+container (`corpus/vendor-firmware/tiliqua_bitstreams/bitstreams.zip`, 23 MB)
+crashed CPU 8 immediately (0 of 320 carve ops) while CPUs 9, 10 and 11 each
+completed all 320 and agreed byte-for-byte on every hash — no silent
+corruption, just CPU 8 dying outright:
+
+```
+[13:34:06] python3[1332804]: segfault at 18 ip 0000000000435939 sp 00007ffee75258f0
+           error 4 in python3.15 ... likely on CPU 8 (core 16, socket 0)
+```
+
+This matters more than the original unpinned crashes: pinning removes the
+favoured-core-steering confound raised below, and CPU 8 is *still* the one that
+falls over while the other three cores at the same clock target run clean.
+That is now two independent pinned-run data points against CPU 8 (this run,
+plus the "3 of 3" pinned runs the same day) versus a single later clean pinned
+run that had been read as a refutation. The clean run no longer looks like
+the stronger signal. Next step is still `memtest86+` to separate marginal RAM
+from marginal silicon on core 16, plus repeating this sweep to see whether CPU
+8 fails every time now or only sometimes.
 
 This is written down because it presents as a pluribus bug and is not one: the
 engine crashes inside its own pure-Python decoder, in code that cannot crash, so
