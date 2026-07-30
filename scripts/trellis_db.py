@@ -133,7 +133,7 @@ class TileDb:
             for bs in e.values.values():
                 pos |= {b.pos for b in bs}
         for w in self.words.values():
-            pos |= {b.pos for b in w.bits}
+            pos |= {b.pos for b in w.bits if b is not None}
         return pos
 
     def all_mux_bits(self) -> set[tuple[int, int]]:
@@ -198,7 +198,17 @@ def parse_tile_db(path: Path) -> TileDb:
                 cur_enum.values[parts[0]] = parse_bits(parts[1:])
             elif section == "word" and cur_word is not None:
                 # A word body is one bare bit token per line, MSB first.
-                cur_word.bits.extend(sorted(parse_bits(parts), key=lambda b: b.pos))
+                #
+                # A line of `-` is a HELD POSITION, not an absent one: the word is a
+                # bit VECTOR, so dropping it shifts every later bit one place and
+                # silently misaligns the field.  664 such lines exist across 52
+                # tiles in 5 families, so this is common rather than exotic.  None
+                # marks the hole; consumers must skip it rather than index past it.
+                if len(parts) == 1 and parts[0] == "-":
+                    cur_word.bits.append(None)
+                else:
+                    cur_word.bits.extend(
+                        sorted(parse_bits(parts), key=lambda b: b.pos))
             else:
                 db.errors.append(f"{path}:{lineno}: data outside any section: {line!r}")
         except ValueError as exc:

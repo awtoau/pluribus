@@ -105,7 +105,7 @@ def d1_overlap_across_fields(fam: str, db: TileDb) -> list[Finding]:
             for b in bs:
                 owner[b.pos].add(name)
     for name, w in db.words.items():
-        for b in w.bits:
+        for b in (x for x in w.bits if x is not None):
             owner[b.pos].add(name)
 
     # Group by the exact set of colliding fields so one shared bit-range does
@@ -233,7 +233,7 @@ def d4_mux_bit_collision(fam: str, db: TileDb) -> list[Finding]:
             for b in bs:
                 cfg_owner.setdefault(b.pos, name)
     for name, w in db.words.items():
-        for b in w.bits:
+        for b in (x for x in w.bits if x is not None):
             cfg_owner.setdefault(b.pos, name)
 
     groups: dict[tuple[str, str], list[tuple[int, int]]] = defaultdict(list)
