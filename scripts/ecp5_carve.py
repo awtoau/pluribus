@@ -162,6 +162,40 @@ def _ecp5_idcodes(tbl):
 # preamble validation
 # ---------------------------------------------------------------------------
 
+def _lattice_opcodes():
+    """The set of known Lattice configuration opcodes.
+
+    Taken from native_bitstream's own CMD_NAMES table rather than duplicated, so
+    the carver's idea of a valid command cannot drift from the decoder's.
+    """
+    try:
+        import native_bitstream
+        return set(native_bitstream.CMD_NAMES)
+    except Exception:
+        # Conservative fallback: the opcodes actually observed opening real
+        # bitstreams (RESET_CRC, dictionary write, control regs, ID, jump).
+        return {0x3B, 0x02, 0xE2, 0x22, 0x23, 0xC4, 0x46, 0x08, 0x09, 0x50,
+                0xB8, 0x5E, 0x82, 0xA4, 0xF0, 0xC2, 0x30, 0x40}
+
+
+def _plausible_opcodes(opcodes):
+    """True if a command sequence looks like a real Lattice preamble.
+
+    The first command after the sync word is essentially always LSC_RESET_CRC
+    (0x3B) in the images observed, and the next few are recognised opcodes.  A
+    coincidental sync word inside compressed data fails this immediately -- that
+    is what keeps the 8 MB-of-random-data false-positive count at zero even
+    without an IDCODE to check.
+    """
+    if not opcodes:
+        return False
+    known = _lattice_opcodes()
+    if opcodes[0] != 0x3B:                   # LSC_RESET_CRC
+        return False
+    head = opcodes[:4]
+    return sum(1 for c in head if c in known) >= max(2, len(head) - 1)
+
+
 def parse_preamble(data, sync_off, idcodes, part_hint=None):
     """Validate a Lattice sync-word hit by parsing the command stream after it.
 
@@ -170,47 +204,70 @@ def parse_preamble(data, sync_off, idcodes, part_hint=None):
     compressed data is overwhelmingly unlikely to be followed by a well-formed
     VERIFY_ID carrying a genuine ECP5 IDCODE.
 
-    MachXO2/XO3 have no IDCODEs in devices.json, so an unrecognised IDCODE is
-    NOT automatically a false positive.  We fall back to requiring a plausible
-    command stream (a VERIFY_ID in the right place, followed by commands that
-    parse) plus a MachXO part string in the surrounding header.  Without one we
-    return the hit as family-unresolved rather than guessing, because naming the
-    wrong part decodes into a plausible, wrong fabric instead of failing.
+    A VERIFY_ID IS NOT ALWAYS PRESENT.  MachXO2 images built for SPI-flash
+    configuration routinely omit it: the SummerCart64 LCMXO2-7000HC bitstream
+    (chunk 3 of its update container) goes straight from the sync word to
+
+        3B 00 00 00   LSC_RESET_CRC
+        02 00 00 00   LSC_WRITE_COMP_DIC     <- compressed bitstream
+        09 03 30 28   ...
+        ...
+
+    with no 0xE2 anywhere.  Requiring VERIFY_ID therefore rejects genuine
+    MachXO2 bitstreams, so acceptance falls back to "the command stream opens
+    with recognised Lattice opcodes".  Opcodes come from native_bitstream's own
+    table, so the carver and the decoder agree on what a command is.
+
+    ECP5 is still identified by IDCODE when a VERIFY_ID exists -- that remains
+    the strongest discriminator, and ECP5 images do carry it.  For a MachXO hit
+    the part is taken from a nearby ASCII part string when there is one, and
+    otherwise left unresolved for the tester's geometry search to settle: naming
+    the wrong part decodes into a plausible, wrong fabric instead of failing.
     """
     i = sync_off + 4
-    # The command stream before the frame data is short; VERIFY_ID appears in
-    # the first few hundred bytes in every bitstream observed.  Cap the walk so
-    # a garbage region cannot run away.
+    # The command stream before the frame data is short; VERIFY_ID, when
+    # present, appears within the first few hundred bytes.  Cap the walk so a
+    # garbage region cannot run away.
     end = min(len(data) - 8, i + 4096)
     idcode = None
     verify_off = None
-    ncmds = 0
+    opcodes = []
     while i < end:
         cmd = data[i]
+        if cmd == 0xFF:                      # DUMMY padding byte
+            i += 1
+            continue
         if cmd == 0xE2:                      # VERIFY_ID
             idcode = int.from_bytes(data[i + 4:i + 8], "big")
             verify_off = i
             break
-        if cmd == 0xFF:                      # DUMMY padding byte
-            i += 1
-            continue
-        ncmds += 1
+        opcodes.append(cmd)
+        if len(opcodes) >= 6:                # enough to judge plausibility
+            break
         i += 4
-    if idcode is None:
-        return None
-    if idcode in idcodes:
+    if idcode is not None and idcode in idcodes:
         return {"sync_off": sync_off, "verify_off": verify_off,
                 "idcode": idcode, "device": idcodes[idcode], "family": "ecp5"}
-    # Not an ECP5 IDCODE.  Only accept it as a MachXO-family bitstream if a
-    # matching part string is nearby -- otherwise this is noise.
+    # No usable IDCODE.  Accept only if the stream opens with real Lattice
+    # commands -- a chance sync word in compressed data almost never does.
+    if not _plausible_opcodes(opcodes):
+        return None
+    fam, dev = "machxo2", None
     if part_hint:
-        for fam in ("machxo2", "machxo3", "machxo"):
-            m = PART_RES[fam].search(part_hint)
+        for f in ("machxo2", "machxo3", "machxo"):
+            m = PART_RES[f].search(part_hint)
             if m:
-                return {"sync_off": sync_off, "verify_off": verify_off,
-                        "idcode": idcode, "device": m.group().decode(),
-                        "family": fam}
-    return None
+                fam, dev = f, m.group().decode()
+                break
+    return {"sync_off": sync_off, "verify_off": verify_off, "idcode": idcode,
+            # Keep the device token filesystem-safe: it becomes part of the
+            # carved filename, and spaces/parens there break downstream tooling
+            # that takes an unquoted path.
+            "device": dev or "unresolved-no-id",
+            "device_note": None if dev else
+                           "no VERIFY_ID record and no part string in the "
+                           "container; part must come from external evidence",
+            "family": fam, "opcodes": [f"0x{c:02x}" for c in opcodes]}
 
 
 def parse_anlogic(data, sync_off):

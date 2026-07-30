@@ -65,7 +65,51 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 
 DBROOT = os.environ.get("TRELLIS_DBROOT",
                         "/home/dan/opt/oss-cad-suite/share/trellis/database")
-ECPUNPACK = "/home/dan/opt/oss-cad-suite/bin/ecpunpack"
+
+
+def _tool(name, env_var, fallback):
+    """Resolve an external tool from $env_var, then PATH, then a fallback.
+
+    Hardcoded absolute paths pin the engine to one machine, which is separately
+    blocking branch pushes (#90).  The pattern here matches commit fc75e153a,
+    which did the same for the prjtrellis paths: honour an explicit override
+    first, fall back to PATH so a normal oss-cad-suite environment just works,
+    and keep the old absolute path last so existing runs are unchanged.
+    """
+    p = os.environ.get(env_var)
+    if p:
+        return p
+    found = shutil.which(name)
+    return found or fallback
+
+
+ECPUNPACK = _tool("ecpunpack", "ECPUNPACK",
+                  "/home/dan/opt/oss-cad-suite/bin/ecpunpack")
+
+# ---------------------------------------------------------------------------
+# Per-family dispatch.
+#
+# `oracle`: an INDEPENDENT reference decoder, or None where none exists.  Claim
+# 2 is only meaningful when there is one; where there is not, the report must
+# say "no oracle available for this family", NOT a pass and not a failure.
+# ecpunpack covers ECP5 and, given --idcode, the MachXO families too (it is a
+# Trellis tool and Trellis models both).  GOWIN's reference decoder is apycula,
+# which only imports under the oss-cad-suite interpreter, so it runs as a
+# subprocess via scripts/gowin_unpack.py.  Anlogic has no independent decoder at
+# all -- scripts/anlogic_unpack.py is OURS, so comparing against it would be
+# circular and is deliberately not claimed as an oracle.
+#
+# `lifter`: the lifters/ module that turns a decoded config into a netlist.
+# ---------------------------------------------------------------------------
+FAMILY_SUPPORT = {
+    "ECP5":     dict(oracle="ecpunpack", lifter="ecp5"),
+    "MachXO2":  dict(oracle="ecpunpack", lifter="machxo2"),
+    "MachXO3":  dict(oracle="ecpunpack", lifter="machxo2"),
+    "MachXO3D": dict(oracle="ecpunpack", lifter="machxo2"),
+    "MachXO":   dict(oracle="ecpunpack", lifter="machxo2"),
+    "GOWIN":    dict(oracle="gowin_unpack", lifter="gowin"),
+    "Anlogic":  dict(oracle=None, lifter="anlogic"),
+}
 MANIFEST = os.path.join(REPO, "corpus", "manifest.json")
 OUTDIR = os.path.join(REPO, "tmp", "corpus-decode")
 
@@ -185,6 +229,23 @@ def meaningful(lines):
     """Drop `.comment` — package metadata the reference takes from argv, not
     from the bitstream, so it is not recovered content."""
     return [ln.rstrip("\n") for ln in lines if not ln.startswith(".comment")]
+
+
+def make_lifter(kind, device):
+    """Construct the lifter for a family.
+
+    Delegates to `lifters.trellis_lift.TrellisLift`, the repo's existing
+    family-dispatch entry point, rather than re-implementing the mapping here --
+    a second dispatch table would be one more thing to keep in sync when a
+    family is added.
+
+    Only the Trellis families take `dbroot`; GOWIN and Anlogic read their
+    databases from their own environment variables, so passing it would raise.
+    """
+    from lifters.trellis_lift import TrellisLift
+    if kind in ("ecp5", "machxo2"):
+        return TrellisLift(kind, device, dbroot=DBROOT)
+    return TrellisLift(kind, device)
 
 
 def run_oracle(bitpath, out, device):
@@ -444,11 +505,16 @@ def test_one(rec, log, do_lift=True):
         with _lock:
             log.warning("%-46s UNIDENTIFIED  %s", label, how)
         return out
-    if family != "ECP5":
-        out["decode"] = f"not-ecp5 ({family})"
+    support = FAMILY_SUPPORT.get(family)
+    if support is None:
+        out["decode"] = f"unsupported-family ({family})"
         with _lock:
-            log.info("%-46s SKIP not ECP5 (%s %s)", label, family, dev)
+            log.info("%-46s SKIP unsupported family (%s %s)", label, family, dev)
         return out
+    # Record whether claim 2 is even available for this family, so a missing
+    # oracle is never silently read as an oracle pass.
+    out["oracle_tool"] = support["oracle"]
+    out["lifter"] = support["lifter"]
 
     os.makedirs(OUTDIR, exist_ok=True)
     # Output paths must be unique PER FILE, not per label.  Two corpus entries
@@ -491,11 +557,18 @@ def test_one(rec, log, do_lift=True):
     out["unknown_lines"] = sum(1 for ln in text.splitlines()
                                if ln.startswith("unknown:"))
 
-    # ---- CLAIM 2: identical to ecpunpack?
-    ok, note, oracle_lines = run_oracle(path, oracle_p, dev)
-    if not ok:
-        out["oracle"] = f"unavailable: {note}"
+    # ---- CLAIM 2: identical to an INDEPENDENT reference decoder?
+    if support["oracle"] is None:
+        # Anlogic: the only decoder available is ours, so a comparison would be
+        # circular.  Say so plainly rather than leaving the field blank, which
+        # a reader could mistake for a pass.
+        out["oracle"] = "no-oracle-for-family"
+        ok, oracle_lines = False, None
     else:
+        ok, note, oracle_lines = run_oracle(path, oracle_p, dev)
+        if not ok:
+            out["oracle"] = f"unavailable: {note}"
+    if ok:
         native_lines = meaningful(text.splitlines(keepends=True))
         if native_lines == oracle_lines:
             out["oracle"] = "identical"
@@ -514,8 +587,7 @@ def test_one(rec, log, do_lift=True):
     # ---- CLAIM 3: lift to a netlist and check consistency
     if do_lift:
         try:
-            from lifters.ecp5_lift import ECP5Lift
-            lift = ECP5Lift(dev, dbroot=DBROOT)
+            lift = make_lifter(support["lifter"], dev)
             pc = lift.parse_config(native_p)
             design = lift.recover_netlist(pc)
             metrics, findings = check_netlist(design, out)
