@@ -17,6 +17,7 @@ purely against the native parser+encoder.  Run under python3.14t.
 
 Logs to tmp/native_bitstream_roundtrip.log.
 """
+import glob
 import os
 import sys
 
@@ -40,8 +41,25 @@ VENDOR_BITSTREAMS = [p for p in
                      if p]
 
 CASES = [("fuzz re_efb_00000_S_nc (uncompressed)", FUZZ_BIT)]
-CASES += [(f"vendor {os.path.basename(p)} (compressed)", p)
-          for p in VENDOR_BITSTREAMS]
+
+# Compressed MachXO2, in-repo so it runs out of the box.  The uncompressed vector
+# above was the ONLY case for a long time, which is how the compressed path came to
+# be broken without any test noticing: the dictionary was rebuilt from a histogram
+# instead of re-using the one in the file, and every compressed re-encode was wrong
+# (#97).  A test suite that cannot fail on the common case is not covering it --
+# Diamond compresses by default, so compressed is the norm and uncompressed the
+# exception.
+_XO2_COMPRESSED = sorted(glob.glob(os.path.join(
+    REPO, "diamond-fuzz", "targets", "*", "impl1", "*.bit")))[:3]
+CASES += [(f"fuzz {p.split(os.sep)[-3]} (compressed)", p)
+          for p in _XO2_COMPRESSED]
+
+# ECP5, if the corpus is present.  Gitignored third-party binaries, so these are
+# opt-in by their existence rather than required: a clean checkout still runs the
+# MachXO2 cases.  ECP5 exercises what MachXO2 never does -- per-frame CRC plus
+# dummy bytes between frames (params 0x91), which was the second encoder defect.
+_ECP5 = sorted(glob.glob(os.path.join(REPO, "corpus", "commercial", "*.bit")))[:3]
+CASES += [(f"corpus {os.path.basename(p)[:36]} (ECP5)", p) for p in _ECP5]
 
 _log_fh = None
 
@@ -82,6 +100,22 @@ def compare_semantic(a, b):
     return diffs
 
 
+def _geom_for(path):
+    """Geometry from the bitstream's own IDCODE, or None for the MachXO2 default.
+
+    Needed because the cases now span families.  Decoding an ECP5 bitstream with
+    the MachXO2 default would be caught by the IDCODE cross-check in parse(), but
+    failing the harness on our own test-setup error rather than on the code under
+    test is a waste of a good error message.
+    """
+    try:
+        from ecp5_corpus_test import identify
+        dev, _family, _idc, _how = identify(path)
+        return nb.geometry_for(dev) if dev else None
+    except Exception:
+        return None
+
+
 def first_diff(a, b):
     n = min(len(a), len(b))
     for i in range(n):
@@ -113,7 +147,8 @@ def main():
             continue
 
         raw = open(path, "rb").read()
-        pb = nb.parse_file(path)
+        geom = _geom_for(path)
+        pb = nb.parse_file(path, geom=geom) if geom else nb.parse_file(path)
         setbits = sum(sum(r) for r in pb.cram)
         n_efb = len(pb.efb_blocks)
         n_ebr = sum(1 for k, _ in pb.records if k == "EBR_WRITE")
@@ -138,7 +173,8 @@ def main():
                 log(f"      raw={raw[d:d+12].hex()}  enc={enc[d:d+12].hex()}")
 
         # --- (2) semantic round-trip ------------------------------------
-        pb2 = nb.parse(nb.strip_bit_header(enc))
+        pb2 = (nb.parse(nb.strip_bit_header(enc), geom=geom) if geom
+               else nb.parse(nb.strip_bit_header(enc)))
         sem_diffs = compare_semantic(semantic_view(pb), semantic_view(pb2))
         semantic_ok = not sem_diffs
         if semantic_ok:

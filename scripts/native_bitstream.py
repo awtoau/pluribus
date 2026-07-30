@@ -746,8 +746,16 @@ def _build_dictionary(frames):
 
 
 def _compress_frames(frames, dict_entries):
-    """Bit-pack frames using the 4-case prefix code (port of the encoder loop)."""
+    """Bit-pack frames using the 4-case prefix code (port of the encoder loop).
+
+    Returns ONE BYTE STRING PER FRAME, not a single blob.  The caller has to
+    interleave a per-frame CRC and the dummy bytes between frames when the FRAMES
+    params ask for it, and it cannot do that if the frames are already
+    concatenated.  Each frame is byte-aligned by the flush() below, so splitting
+    here is exact rather than approximate.
+    """
     payload = bytearray()
+    chunks = []
     state = {"buffer": 0, "bits": 0}
 
     def flush():
@@ -792,8 +800,10 @@ def _compress_frames(frames, dict_entries):
                 continue
             add_bits(0b11, 2)
             add_bits(b, 8)
-        flush()  # 8-bit align each frame (crc_after_each_frame is False on XO2)
-    return bytes(payload)
+        flush()  # 8-bit align each frame
+        chunks.append(bytes(payload))
+        payload.clear()
+    return chunks
 
 
 def _repack_ebr_words(words):
@@ -830,7 +840,11 @@ def _repack_ebr_words(words):
 # point: an unverified combination does not fail loudly, it emits a bitstream that
 # looks structurally fine and is wrong only on hardware.  Add a pair here ONLY once
 # the round-trip harness carries a byte-exact vector for it.
-ENCODE_VERIFIED = frozenset({("MachXO2", False)})
+ENCODE_VERIFIED = frozenset({
+    ("MachXO2", False),   # 1 in-repo fuzz vector (#34)
+    ("MachXO2", True),    # 400/400 compressed fuzz bitstreams byte-exact
+    ("ECP5", True),       # 168/168 carved corpus bitstreams byte-exact
+})
 
 
 def encode(pb, geom=None, allow_unverified=False):
@@ -960,10 +974,29 @@ def encode(pb, geom=None, allow_unverified=False):
             w.write_byte(r["opcode"])
             w.write_bytes(params)
             if r["compressed"]:
-                # dummy_bytes / per-frame CRC are 0 / off for MachXO2 compressed.
-                w.write_bytes(compressed_payload)
-                if check_crc:
-                    w.insert_crc16()
+                # Interleave exactly as the reader consumes: frame, then a CRC if
+                # this frame gets one, then the dummy bytes.
+                #
+                # These used to be skipped with the note "dummy_bytes / per-frame
+                # CRC are 0 / off for MachXO2 compressed".  True for MachXO2 and
+                # false for ECP5, whose params are 0x91 -- 0x80 set with 0x40
+                # clear means CRC after EVERY frame, and the low nibble means one
+                # dummy byte.  Omitting them cost 3 bytes per frame: 7562 frames
+                # x 3 = 22686, less the 2-byte trailing CRC that was written
+                # anyway, which is exactly the 22684-byte deficit observed.
+                #
+                # Dummy bytes go through write_byte, NOT write_raw: the reader
+                # consumes them with skip_bytes(), which runs get_byte() and so
+                # folds them into the FOLLOWING frame's CRC.  Writing them raw
+                # would leave every subsequent CRC wrong.  0xFF is the vendor's
+                # filler, confirmed against the original bytes at the first
+                # divergence (`4c f8 ff` = CRC, then one 0xFF).
+                for i, chunk in enumerate(compressed_payload):
+                    w.write_bytes(chunk)
+                    last = (i == len(compressed_payload) - 1)
+                    if crc_after_each_frame or (check_crc and last):
+                        w.insert_crc16()
+                    w.write_bytes(b"\xFF" * dummy_bytes)
             elif r["inverted"]:
                 # MachXO WRITE_INC_FRAME (inverted data + End Fuse Data Frame).
                 frames = _cram_to_frames(pb, geom, invert=True)
