@@ -25,13 +25,41 @@ Agreement between the two is what makes this more than a coincidence, and the
 tilegrid hash is the stronger signal: two dies could coincidentally have equal
 frame counts, but not an identical tile map.
 
-WHAT IT CANNOT SAY
-------------------
-That two parts share a die in the DATABASE is strictly a statement about the model.
-For ECP5 it is corroborated by the vendor's own package files being byte-identical
-(Diamond's `LFE5U-12F_CABGA256.con` vs `..._25F_...`) and by hardware, but this
-script only reads Trellis.  Treat a match as a strong hypothesis, and check the
-vendor's `.con` files before acting on a family this has not been confirmed for.
+PROVENANCE — why a tilegrid match is vendor evidence, not a copy
+---------------------------------------------------------------
+The obvious objection is that prjtrellis derived one family's database from
+another, making identical files an artefact.  It does not: `tools/get_tilegrid_all.py`
+runs **Diamond once per device** (`diamond.run(device, wire.v)`) and extracts the
+tilegrid from Diamond's own output, for every device marked `fuzz=1` -- which is all
+of MachXO2, MachXO3 and MachXO3D.  So an identical tilegrid means DIAMOND described
+two parts with the same tile map.
+
+The method also demonstrably discriminates, which is what rules out a degenerate
+"everything matches" result: `LCMXO3D-4300` and `LCMXO3-4300` have the **same** frame
+geometry (623 x 1560) and **different** tilegrids, the MachXO3D security block being
+real fabric.  A test that separates those is not merely echoing frame counts.
+
+On that basis, and cross-checked against frames x bits_per_frame from a separate
+source, these are vendor-corroborated rather than hypotheses:
+
+    LCMXO2-1200 == LCMXO3-1300      LCMXO2-4000 == LCMXO3-4300
+    LCMXO2-2000 == LCMXO3-2100      LCMXO2-7000 == LCMXO3-6900
+
+MachXO3 is the MachXO2 fabric with a different periphery.  Note Diamond keeps them
+in separate device trees (`xo2c00` vs `xo3c00a`/`xo3c00f`) and only the MachXO2 tree
+ships a `.bfd`, so the trees themselves cannot be diffed -- the tilegrid is the
+comparison that works.
+
+WHAT IT STILL CANNOT SAY
+------------------------
+A shared die does not imply shared usable capacity.  Fusing, binning and speed grade
+are orthogonal, and only hardware settles them -- see #98, where the ECP5 12F/25F
+case was confirmed on silicon at 82.9% utilisation but an intermittent per-part
+defect rate could only be bounded, not excluded.
+
+Nothing here says the two parts are pin-compatible, electrically equivalent, or that
+a bitstream for one will configure the other; the MachXO3 periphery differs even
+where the fabric does not.
 
 Nor does a shared die mean shared usable capacity: fusing, binning and speed grade
 are orthogonal, and only hardware settles them (see #98's caveats).
