@@ -34,14 +34,21 @@ _FUZZ_ROOT  = _SCRIPTS.parent
 _PLURIBUS   = _FUZZ_ROOT.parent
 TARGETS_DIR = _FUZZ_ROOT / "targets"
 RESULTS_DIR = _FUZZ_ROOT / "results"
-_PRJT       = Path(os.environ.get("TRELLIS_ROOT",
-                   "/mnt/2tb/git/awto-2000/debris/tmp/prjtrellis"))
+sys.path.insert(0, str(_PLURIBUS / "scripts"))
+import toolchain  # noqa: E402  (path set above)
+
+# A prjtrellis SOURCE build, which is what supplies libtrellis/build here -- not
+# the packaged suite.  $TRELLIS_ROOT wins, else a sibling checkout (#90).
+_PRJT       = Path(os.environ.get("TRELLIS_ROOT")
+                   or toolchain.sibling_repo("prjtrellis", "TRELLIS_ROOT",
+                                             "prjtrellis source build"))
 ECPUNPACK   = _PRJT / "libtrellis/build/ecpunpack"
 TRELLIS_DB  = _PRJT / "database"
 DIAMOND_LIB = _PRJT / "libtrellis/build"
 
 sys.path.insert(0, str(_PLURIBUS))
-from db import connect
+import db
+from sqlalchemy import text as sa_text
 
 
 # ── ecpunpack ────────────────────────────────────────────────────────────────
@@ -77,7 +84,7 @@ def load_fuzz_config(target_name: str, config_path: Path, label: str) -> bool:
 
 # ── Structural checks ─────────────────────────────────────────────────────────
 
-def structural_checks(cur, bs_id: int, target_name: str, config_text: str) -> list:
+def structural_checks(conn, bs_id: int, target_name: str, config_text: str) -> list:
     errors = []
 
     iologic_tiles = re.findall(r'\.tile (\S+:PIC_\w+)', config_text)
@@ -91,15 +98,17 @@ def structural_checks(cur, bs_id: int, target_name: str, config_text: str) -> li
             if "IOLOGIC" in section and "MODE" not in section:
                 errors.append(f"WARN: tile {tile} has IOLOGIC config but no MODE enum")
 
-    cur.execute("""
-        SELECT COUNT(*) FROM pad_map WHERE bitstream=%s AND direction IN ('in','bidir')
-    """, (bs_id,))
-    n_inputs = cur.fetchone()[0]
+    # Named parameters via SQLAlchemy, not `%s`: the paramstyle differs between
+    # the backends (pg8000 vs sqlite3), so literal `%s` only ever worked on one.
+    n_inputs = conn.execute(sa_text(
+        "SELECT COUNT(*) FROM pad_map "
+        "WHERE bitstream = :bs AND direction IN ('in','bidir')"),
+        {"bs": bs_id}).scalar_one()
     if n_inputs == 0:
         errors.append("WARN: no input pads found — design may be fully optimised away")
 
-    cur.execute("SELECT COUNT(*) FROM nets WHERE bitstream=%s", (bs_id,))
-    n_nets = cur.fetchone()[0]
+    n_nets = conn.execute(sa_text("SELECT COUNT(*) FROM nets WHERE bitstream = :bs"),
+                          {"bs": bs_id}).scalar_one()
     if n_nets < 3:
         errors.append(f"ERROR: only {n_nets} nets — design likely optimised to constants")
 
@@ -190,17 +199,18 @@ def validate_target(target_name: str, baseline_text: str | None) -> dict:
         report_lines.append("WARN: DB load failed — skipping DB checks")
         db_errors = ["DB load failed"]
     else:
-        conn = connect()
-        cur  = conn.cursor()
-        cur.execute("SELECT id FROM bitstreams WHERE label=%s", (label,))
-        row = cur.fetchone()
-        if not row:
-            db_errors = ["bitstream not found in DB after load"]
-        else:
-            bs_id = row[0]
-            db_errors = structural_checks(cur, bs_id, target_name, config_text)
-        cur.close()
-        conn.close()
+        # db.connect() was removed with the psycopg2 shim; db.engine() is the
+        # documented normal path (CLAUDE.md), and the context manager replaces
+        # the manual cursor/connection close this used to do.
+        with db.engine().connect() as conn:
+            row = conn.execute(
+                sa_text("SELECT id FROM bitstreams WHERE label = :label"),
+                {"label": label}).fetchone()
+            if not row:
+                db_errors = ["bitstream not found in DB after load"]
+            else:
+                db_errors = structural_checks(conn, row[0], target_name,
+                                              config_text)
 
     for e in db_errors:
         report_lines.append(f"  {e}")

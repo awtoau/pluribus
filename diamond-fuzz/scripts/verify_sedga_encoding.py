@@ -43,13 +43,14 @@ RESULTS_DIR = FUZZ_DIR / "results"
 LOG_DIR = ROOT / "tmp" / "logs"
 WORK = ROOT / "tmp" / "sedga_verify"
 
-TRELLIS_DB = Path(os.environ.get(
-    "TRELLIS_DBROOT",
-    "/home/dan/opt/oss-cad-suite/share/trellis/database"))
-ECPUNPACK = Path(os.environ.get(
-    "ECPUNPACK", "/home/dan/opt/oss-cad-suite/bin/ecpunpack"))
-ECPPACK = Path(os.environ.get(
-    "ECPPACK", "/home/dan/opt/oss-cad-suite/bin/ecppack"))
+sys.path.insert(0, str(ROOT / "scripts"))
+import toolchain  # noqa: E402  (path set above)
+
+# Resolved, not hardcoded (#90).  $TRELLIS_DBROOT / $ECPUNPACK / $ECPPACK still
+# win; the fallback is now the discovered oss-cad-suite rather than one machine.
+TRELLIS_DB = Path(toolchain.trellis_dbroot())
+ECPUNPACK = Path(toolchain.tool("ecpunpack", "ECPUNPACK", required=True))
+ECPPACK = Path(toolchain.tool("ecppack", "ECPPACK", required=True))
 
 NAME_RE = re.compile(
     r"^sedga_(?P<dev>\w+?)_f(?P<freq>[\dp]+)_ca(?P<ca>dis|ena)"

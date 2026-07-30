@@ -32,7 +32,14 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_DB_ROOT = Path("/home/dan/opt/oss-cad-suite/share/trellis/database")
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import toolchain  # noqa: E402  (path set above)
+
+# Resolved, not hardcoded (#90).  Callers that pass an explicit root are
+# unaffected; this is only the default.
+DEFAULT_DB_ROOT = Path(toolchain.trellis_dbroot())
 
 _BIT_RE = re.compile(r"^(!?)F(\d+)B(\d+)$")
 

@@ -25,14 +25,27 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # --------------------------------------------------------------------------
-# Paths.  All absolute; none of them are written to except our own outputs.
+# Paths.  Resolved, never hardcoded (#90) -- see scripts/toolchain.py.  None of
+# them are written to except our own outputs.
+#
+# The three third-party checkouts (prjtrellis, nextpnr) are `required=False`,
+# because this matrix's whole job is to report what each tool is missing: a tool
+# that is simply absent must show up as "not compared", not stop the run.
 # --------------------------------------------------------------------------
-REPO = Path("/mnt/2tb/git/pluribus")
-DIAMOND_ECP5U = Path.home() / "lscc/diamond/3.14/cae_library/simulation/verilog/ecp5u"
-TRELLIS_FUZZ = Path("/mnt/2tb/git_mirror/YosysHQ/prjtrellis/fuzzers/ECP5")
-TRELLIS_DB = Path("/home/dan/opt/oss-cad-suite/share/trellis/database/ECP5/tiledata")
-YOSYS_ECP5 = Path("/home/dan/opt/oss-cad-suite/share/yosys/ecp5")
-NEXTPNR_ECP5 = Path("/mnt/2tb/git/nextpnr/ecp5")
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts"))
+import toolchain  # noqa: E402  (path set above)
+
+DIAMOND_ECP5U = (Path(toolchain.diamond_root())
+                 / "cae_library/simulation/verilog/ecp5u")
+_TRELLIS_SRC = toolchain.sibling_repo("prjtrellis", "PRJTRELLIS_ROOT",
+                                      "prjtrellis checkout", required=False)
+TRELLIS_FUZZ = Path(_TRELLIS_SRC) / "fuzzers/ECP5" if _TRELLIS_SRC else None
+TRELLIS_DB = Path(toolchain.trellis_dbroot()) / "ECP5/tiledata"
+YOSYS_ECP5 = Path(toolchain.suite_share("yosys", "ecp5", required=True))
+_NEXTPNR = toolchain.sibling_repo("nextpnr", "NEXTPNR_ROOT",
+                                 "nextpnr checkout", required=False)
+NEXTPNR_ECP5 = Path(_NEXTPNR) / "ecp5" if _NEXTPNR else None
 
 LOG_DIR = REPO / "tmp/logs"
 OUT_DOC = REPO / "docs/ecp5-gap-matrix.md"
@@ -121,8 +134,9 @@ def fuzzer_index(log) -> dict[str, list[str]]:
     cellmodel-name / comp reference.  Grep every file in each fuzzer dir.
     """
     idx: dict[str, list[str]] = {}
-    if not TRELLIS_FUZZ.is_dir():
-        log.error("prjtrellis ECP5 fuzzers not found at %s", TRELLIS_FUZZ)
+    if TRELLIS_FUZZ is None or not TRELLIS_FUZZ.is_dir():
+        log.error("prjtrellis ECP5 fuzzers not found (%s); set $PRJTRELLIS_ROOT "
+                  "or check prjtrellis out beside this repo", TRELLIS_FUZZ)
         return idx
     blobs: dict[str, str] = {}
     for d in sorted(TRELLIS_FUZZ.iterdir()):
@@ -186,6 +200,10 @@ def yosys_cells(log) -> tuple[set[str], set[str]]:
 
 def nextpnr_index(log) -> tuple[set[str], dict[str, int], dict[str, int], dict[str, int]]:
     def read(name: str) -> str:
+        if NEXTPNR_ECP5 is None:
+            log.warning("nextpnr not found; set $NEXTPNR_ROOT or check it out "
+                        "beside this repo. %s not compared", name)
+            return ""
         p = NEXTPNR_ECP5 / name
         if not p.is_file():
             log.warning("missing %s", p)

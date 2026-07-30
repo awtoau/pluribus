@@ -41,6 +41,7 @@ Usage:
     DBROOT    = trellis_dbroot()                        # dies if not found
     TESTS     = external_dir("ECP5_TEST", "ECP5 test designs")
 """
+import glob
 import os
 import shutil
 import sys
@@ -170,6 +171,53 @@ def trellis_dbroot(required=True):
     return None
 
 
+def suite_share(*parts, required=False):
+    """A path under the suite's `share/`, e.g. suite_share("yosys", "ecp5").
+
+    Derived rather than defaulted so the yosys cell library and the Trellis
+    database always come from the SAME install as the tools being run.
+    """
+    root = suite_root()
+    if root:
+        cand = os.path.join(root, "share", *parts)
+        if os.path.exists(cand):
+            return cand
+    if required:
+        die(f"cannot find share/{os.path.join(*parts)} in the oss-cad-suite; "
+            "set $OSS_CAD_SUITE to the install root")
+    return None
+
+
+def diamond_root(required=True):
+    """The Lattice Diamond install root.
+
+    `$DIAMOND` wins; otherwise the newest versioned directory under a
+    user-relative `~/lscc/diamond`, which is the installer's own default layout.
+    Version is discovered rather than pinned so a Diamond upgrade does not
+    silently leave scripts pointing at the old tree -- and picking the tree
+    matters more here than elsewhere, because Diamond's device directories are
+    themselves a trap: `ep5c00` is LatticeECP3, while ECP5 is `sa5p00` (#92).
+    """
+    env = os.environ.get("DIAMOND")
+    if env:
+        if os.path.isdir(_expand(env)):
+            return _expand(env)
+        die(f"$DIAMOND is set to {env!r} but that is not a directory")
+    base = _expand("~/lscc/diamond")
+    if os.path.isdir(base):
+        vers = sorted((d for d in os.listdir(base)
+                       if os.path.isdir(os.path.join(base, d))),
+                      key=lambda s: [int(p) if p.isdigit() else p
+                                     for p in s.replace(".", " ").split()],
+                      reverse=True)
+        if vers:
+            return os.path.join(base, vers[0])
+    if required:
+        die("cannot find Lattice Diamond; set $DIAMOND to the install root "
+            "(e.g. <prefix>/lscc/diamond/3.14)")
+    return None
+
+
 def gowin_python(required=False):
     """An interpreter that can import apycula.
 
@@ -206,13 +254,30 @@ def sibling_repo(name, env_var, what, required=True):
         if os.path.isdir(_expand(p)):
             return _expand(p)
         die(f"${env_var} is set to {p!r} but that is not a directory")
-    cand = os.path.join(os.path.dirname(REPO), name)
-    if os.path.isdir(cand):
-        return cand
+    for cand in _sibling_candidates(name):
+        if os.path.isdir(cand):
+            return cand
     if required:
         die(f"cannot find the {what}; set ${env_var}, or check {name!r} out "
-            f"beside this repository (looked in {os.path.dirname(REPO)})")
+            f"beside this repository (searched under {os.path.dirname(REPO)})")
     return None
+
+
+def _sibling_candidates(name):
+    """Where a related checkout plausibly sits, nearest first.
+
+    Beyond a direct sibling, one level of host/owner nesting is searched, because
+    a `<root>/github.com/<owner>/<repo>` layout is common and prjtrellis in fact
+    lives there here.  Bounded to two globbed levels deliberately: an unbounded
+    walk of a directory holding dozens of checkouts would be slow and could match
+    something unintended.
+    """
+    parent = os.path.dirname(REPO)
+    yield os.path.join(parent, name)
+    for pattern in (os.path.join(parent, "*", name),
+                    os.path.join(parent, "*", "*", name)):
+        for hit in sorted(glob.glob(pattern)):
+            yield hit
 
 
 def external_dir(env_var, what, required=True):

@@ -46,8 +46,13 @@ REPO = Path(__file__).resolve().parent.parent
 LOG_DIR = REPO / "tmp/logs"
 OUT = REPO / "tmp/diamond_harvest.json"
 
-DIAMOND = Path.home() / "lscc/diamond/3.14"
-OSS_CAD = Path("/home/dan/opt/oss-cad-suite")
+sys.path.insert(0, str(REPO / "scripts"))
+import toolchain  # noqa: E402  (path set above)
+
+# Resolved, not hardcoded (#90).  The Diamond version is discovered rather than
+# pinned to 3.14, so an upgrade does not leave this harvesting the old tree.
+DIAMOND = Path(toolchain.diamond_root())
+OSS_CAD = Path(toolchain.suite_root() or "")
 
 # ECP5 device trees.  Named here so the inventory reports them as a family
 # rather than as unrelated directories.

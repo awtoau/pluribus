@@ -43,22 +43,26 @@ RESULTS_DIR = FUZZ_DIR / "results"
 LOG_DIR = ROOT / "tmp" / "logs"
 TMP = ROOT / "tmp"
 
-TRELLIS_DB = Path(os.environ.get(
-    "TRELLIS_DBROOT",
-    "/home/dan/opt/oss-cad-suite/share/trellis/database"))
+sys.path.insert(0, str(ROOT / "scripts"))
+import toolchain  # noqa: E402  (path set above)
+
+TRELLIS_DB = Path(toolchain.trellis_dbroot())
 
 # Decode ECP5 bitstreams with prjtrellis' reference ecpunpack.
 #
-# pluribus' own scripts/trellis_unpack.py (native pure-Python decoder) does
-# NOT work on these bitstreams: it aborts with
+# HISTORICAL NOTE, kept because it was the reason for this choice: the native
+# pure-Python decoder used to fail on every ECP5 .bit with
 #     native_bitstream.ParseError: crc fail at offset 173
-# on every ECP5 .bit tried here, including the trivial SEDGA-free baseline.
-# The native decoder was written for MachXO2 and its CRC/frame handling does
-# not carry over to ECP5.  That is a real gap in pluribus (worth its own
-# issue) but not one this task needs to fix, so the reference C++ decoder is
-# used instead.  Recorded rather than worked around silently.
-ECPUNPACK = Path(os.environ.get(
-    "ECPUNPACK", "/home/dan/opt/oss-cad-suite/bin/ecpunpack"))
+# which was filed as #86 and is now FIXED -- the cause was not the CRC but
+# hardcoded MachXO2 geometry, so ECP5 frames were read at the wrong width and
+# the parser desynchronised.  `native_bitstream.geometry_for(device)` now derives
+# geometry from devices.json.
+#
+# The reference decoder is still used here, now deliberately rather than from
+# necessity: this script verifies a fuzzed ENCODING, so it must not be validated
+# by the same decoder the encoding will be consumed with.  That would be
+# circular.  ecpunpack is the independent oracle.
+ECPUNPACK = Path(toolchain.tool("ecpunpack", "ECPUNPACK", required=True))
 
 # Trellis device name per target tag (the .config decode needs the device
 # whose tilegrid matches the bitstream).
