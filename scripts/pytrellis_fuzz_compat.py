@@ -154,6 +154,35 @@ class TileBitDatabase:
         self.db.words[wsb.name] = ConfigWord(name=wsb.name, default=wsb.defval,
                                              bits=bits)
 
+    def get_data_for_enum(self, name: str) -> EnumSettingBits:
+        """Existing enum, in pytrellis's shape.  Raises if absent, which is what
+        the fuzzers' check functions expect (they catch and report MISSING_IN_DB)."""
+        e = self.db.enums[name]
+        return EnumSettingBits(
+            name=e.name, defval=e.default,
+            options={v: BitGroup(bits) for v, bits in e.values.items()})
+
+    def get_data_for_word(self, name: str) -> WordSettingBits:
+        w = self.db.words[name]
+        return WordSettingBits(
+            name=w.name, defval=w.default,
+            bits=[BitGroup([b] if b is not None else []) for b in w.bits])
+
+    def add_mux_arc(self, arc) -> None:
+        """Routing arc: (sink, source, bits) or an object with those attrs."""
+        from trellis_db import Mux, MuxArc
+        sink = getattr(arc, "sink", None) or arc[0]
+        source = getattr(arc, "source", None) or arc[1]
+        bits = getattr(arc, "bits", None) or arc[2]
+        mux = self.db.muxes.setdefault(sink, Mux(sink=sink))
+        frozen = bits.frozen() if isinstance(bits, BitGroup) else frozenset(bits)
+        mux.arcs.append(MuxArc(source, frozen))
+
+    def add_fixed_conn(self, conn) -> None:
+        sink = getattr(conn, "sink", None) or conn[0]
+        source = getattr(conn, "source", None) or conn[1]
+        self.db.fixed_conns.append((sink, source))
+
     def save(self, path: Path | None = None) -> None:
         target = Path(path or self.path)
         target.parent.mkdir(parents=True, exist_ok=True)
