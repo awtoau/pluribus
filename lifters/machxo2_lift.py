@@ -390,8 +390,18 @@ class MachXO2Lift:
                     flip_name = f"V{mv.group(1)}N{mv.group(3)}"
                     if self.wname_id(g.loc.x, g.loc.y, flip_name) is not None:
                         gm = self.rg.globalise_net(g.loc.y, g.loc.x, flip_name)
-                        if gm.loc.x >= 0 and gm.loc.y >= 0 and gm.loc != g.loc:
-                            return (gm.loc.x, gm.loc.y, gm.id)
+                        # Compare the whole KEY, not just the location.  The
+                        # remap's entire job is to change the wire id at the
+                        # SAME location, so a `gm.loc != g.loc` guard rejects
+                        # exactly the cases it exists to fix -- and then the
+                        # bare-name rewrite above (V02S0701 -> V02N0701) and
+                        # this hop-prefixed path disagree, giving one physical
+                        # wire two canonical keys.  That is what stranded every
+                        # bottom-edge output pad on its own net (#46).
+                        gk = (gm.loc.x, gm.loc.y, gm.id)
+                        if (gm.loc.x >= 0 and gm.loc.y >= 0
+                                and gk != (g.loc.x, g.loc.y, g.id)):
+                            return gk
             return (g.loc.x, g.loc.y, g.id)
 
         # Walk-back recovery for segment longlines near chip boundaries.
@@ -528,19 +538,18 @@ class MachXO2Lift:
                 m = TILE_RE.match(s)
                 if m:
                     mode = "tile"
-                    # PLC headers can carry a one-column naming offset in
-                    # tile_rc for some devices. For PLC only, trust explicit
-                    # R/C from the textcfg header when present; for all other
-                    # tile types keep tile_rc mapping (required for PIO/CIB
-                    # adjacencies and avoids #78 pad/FF fusion regressions).
-                    if m.group(2) == "PLC":
-                        rc_match = re.match(r"^R(\d+)C(\d+)$", m.group(1))
-                        if rc_match:
-                            cur_rc = (int(rc_match.group(1)), int(rc_match.group(2)))
-                        else:
-                            cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
-                    else:
-                        cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
+                    # tile_rc is AUTHORITATIVE and the textual R/C in a tile
+                    # name is not.  Trellis tile names number columns from 1
+                    # ("R2C12:PLC") while routing-graph positions number them
+                    # from 0 (that tile is at col 11) -- a naming convention,
+                    # not a database error.  Reading coordinates out of the
+                    # name shifts every R<r>C<c> tile (all PLC/EBR) one column
+                    # right while prefixed tiles (CIB_*, PT*, PB*, PL*, PR*)
+                    # stay put, which desynchronises PLC internals from the
+                    # surrounding CIB routing chip-wide: FF/LUT outputs stop
+                    # merging with the pad nets they drive.  Doing that cost
+                    # 438 of 454 corpus targets their equivalence proof (#46).
+                    cur_rc = self.tile_rc.get(f"{m.group(1)}:{m.group(2)}")
                     if cur_rc:
                         pc.tile_type[cur_rc] = m.group(2)
                     continue

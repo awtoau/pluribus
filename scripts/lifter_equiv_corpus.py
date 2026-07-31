@@ -61,9 +61,12 @@ sys.path.insert(0, REPO)
 sys.path.insert(0, SCRIPTS)
 
 # ---- Trellis paths come from the env (free-threaded pytrellis build + DB),
-# with the repo's relative default; an explicit environment always wins.
+# falling back to the single toolchain resolver (#90) rather than to the literal
+# path a since-removed in-tree prjtrellis checkout used to occupy.  An explicit
+# environment always wins.
+import toolchain  # noqa: E402
 os.environ.setdefault("TRELLIS_BUILD", "tmp/prjtrellis/libtrellis/build")
-os.environ.setdefault("TRELLIS_DBROOT", "tmp/prjtrellis/database")
+os.environ.setdefault("TRELLIS_DBROOT", toolchain.trellis_dbroot())
 
 DEVICE = "LCMXO2-1200"
 PACKAGE = "TQFP100"
