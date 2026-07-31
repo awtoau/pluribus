@@ -512,10 +512,28 @@ class MachXO2Lift:
             if mvs and ((is_north and row - hops < 0)
                         or (not is_north and wire[0] == 'S'
                             and row + hops > max_row)):
+                # ...but ONLY when the hop overshoots the die by exactly one
+                # row.  That is the truncated-at-the-edge case this rule exists
+                # for: the span's last on-die segment really is the mate at this
+                # tile.  Overshoot two or more and the wire being reached for
+                # does not exist at all, so redirecting onto the mate seizes an
+                # UNRELATED wire -- which is how an EFB Wishbone data-out came
+                # to share a net with an address-in on the full-chip design.
+                #
+                # The split is structural, not a fit to the two cases that
+                # motivated it: across V02/V4/V07 every off-die vertical-span
+                # reference overshoots by exactly 1 (264 refs) or exactly 2
+                # (202 refs), with nothing else.  The graph also lists V##N and
+                # V##S as SEPARATE wires at these tiles, so they are not aliases
+                # and the redirect must stay this narrow.
+                #
+                # Declining leaves the span unmerged: an under-connect, the safe
+                # direction.
+                overshoot = (hops - row) if is_north else (row + hops - max_row)
                 flip = "S" if mvs.group(2) == "N" else "N"
                 bare = f"V{mvs.group(1)}{flip}{mvs.group(3)}"
                 gv = self.rg.globalise_net(row, col, bare)
-                if gv.loc.x >= 0 and gv.loc.y >= 0:
+                if overshoot == 1 and gv.loc.x >= 0 and gv.loc.y >= 0:
                     return (gv.loc.x, gv.loc.y, gv.id)
 
             for delta in range(1, hops + 1):
