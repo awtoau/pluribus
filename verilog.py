@@ -206,6 +206,30 @@ def load_data(conn, bs_id: int) -> dict:
             _name_seen[base] = idx + 1
             net_name_map[net] = f"{base}_{net}"
 
+    # A net bound to a resolved PAD is confirmed by construction: it is a physical
+    # pin, whatever confidence the pins TSV carried.  Bind it to the pad label here
+    # so the port declaration and every body reference agree.
+    #
+    # Without this they diverge.  Ports are named from the pad label (always clean);
+    # nets are named from net_names, which prefixes `spec_` for anything below
+    # `confirmed`.  So a pad whose net_names row said `estimate` emitted a port
+    # `ADC_ENCA` AND a separate `spec_ADC_ENCA` carrying the driver -- leaving pin 65
+    # declared but undriven, and `spec_ADC_ENCA` used without declaration.  That is a
+    # disconnected output in the recovered design, not a cosmetic warning, and
+    # verilog.py:578 already recorded the net as a known escape.
+    #
+    # Done in the data builder, not in emit_ports, so it cannot depend on which
+    # emitter runs first.
+    _pad_bound = 0
+    for _pin, _label, _dir, _ni, _no in pads:
+        _fabric = (_ni or _no) if _dir != "out" else (_no or _ni)
+        if not _fabric or not _label:
+            continue
+        _clean = _sanitise(_label)
+        if net_name_map.get(_fabric) != _clean:
+            net_name_map[_fabric] = _clean
+            _pad_bound += 1
+
     # Cell names: cell → (name, description)
     cell_name_rows = q("SELECT cell, name, description, confidence FROM cell_names WHERE bitstream=:bs_id")
     cell_name_map  = {cell: _spec(name, conf) for cell, name, _desc, conf in cell_name_rows}
