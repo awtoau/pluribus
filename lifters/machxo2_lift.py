@@ -1327,8 +1327,27 @@ class MachXO2Lift:
         r"(?:OFX\d+|F5[A-D]?(?:_SLICE)?|FX[AB]?[A-D](?:_SLICE)?"
         r"|HL7W\d+|HF5E\d+)$")
 
+    # A direction hop prefix (E1_, W1_, N1_, S1_) means the endpoint lives in a
+    # NEIGHBOURING tile.
+    _HOP_PREFIXED = re.compile(r"^[EWNS]\d+_")
+
     def _load_plc_conns(self, pattern, dbroot=None):
-        """`.fixed_conn` pairs of PLC/bits.db whose BOTH endpoints match."""
+        """Same-tile `.fixed_conn` pairs of PLC/bits.db whose endpoints match.
+
+        Cross-tile pairs are deliberately EXCLUDED.  A carry chain or a LUT7 mux
+        tree only spans tiles where the design actually built one, but a
+        fixed_conn is a property of the silicon and is present at every tile.
+        Unioning the cross-tile links everywhere welds independent chains that
+        merely happen to be adjacent into a single net: on a real full-chip
+        design that fused the carry nets of 77 CCU2 tiles into one, which yosys
+        then reported as 20 combinational loops and 7 conflicting drivers.
+        Within a tile there is no such ambiguity -- SLICEA's FCO feeds SLICEB's
+        FCI and nothing else -- so the same-tile links are always safe.
+
+        (The older F0..F7 fast-connect loader above intentionally keeps its
+        hop-prefixed wires: there the neighbour's fast-connect wire IS the far
+        endpoint of one physical route, not a chain-membership question.)
+        """
         db_root = dbroot or DEF_DBROOT
         bits_path = os.path.join(db_root, "MachXO2", "tiledata", "PLC", "bits.db")
         conns = []
@@ -1342,6 +1361,9 @@ class MachXO2Lift:
                     if len(parts) != 3:
                         continue
                     sink, source = parts[1], parts[2]
+                    if (self._HOP_PREFIXED.match(sink)
+                            or self._HOP_PREFIXED.match(source)):
+                        continue
                     if pattern.match(sink) and pattern.match(source):
                         conns.append((sink, source))
         except OSError:
