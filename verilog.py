@@ -805,9 +805,12 @@ def emit_efb_comment(data: dict) -> list[str]:
 
     lines = [
         "    // ── EFB (embedded function block) ─────────────────────────────────────",
-        "    // EFB is hard IP — not instantiable in standard Verilog; a behavioral",
-        "    // model is needed to simulate it (see #49).  Recovered config + the",
-        "    // port→net mapping are shown below; nets are declared as wires above.",
+        "    // EFB is hard IP: its behaviour is silicon, only its CONFIG and its",
+        "    // fabric interface are recoverable.  It is emitted as a (* blackbox *)",
+        "    // module and instantiated, so the design ELABORATES and can be",
+        "    // simulated or LEC'd with the block as a cut point (#49).  The stub has",
+        "    // no body on purpose — inventing behaviour would make a wrong model",
+        "    // look like a passing one.  Drop in a behavioural model to go further.",
     ]
     # Recovered 0x72 config block(s): kind (e.g. SPI) is the enabled function.
     for sel, kind, length, payload in efb_config:
@@ -828,13 +831,63 @@ def emit_efb_comment(data: dict) -> list[str]:
         arrow = "→" if direction == "out" else "?"
         lines.append(f"    // EFB.{port_name} {arrow} {wire_name}  (raw net: {net}"
                      f"{', ' + direction if direction else ''})")
-    if n_out == len(efb_ports) and efb_ports:
-        # Say what is missing, or the comment block reads like a full port list.
-        lines.append("    //   NOTE: all recovered ports are EFB OUTPUTS (the block")
-        lines.append("    //   driving fabric).  EFB INPUTS are not recovered, so this")
-        lines.append("    //   is not a complete interface and an instantiation would")
-        lines.append("    //   be under-connected (#49).")
+    if efb_ports and n_out == len(efb_ports):
+        # Only reachable if the input side regressed (#100 recovered it); say so
+        # rather than emitting a half-connected instance that looks complete.
+        lines.append("    //   NOTE: all recovered ports are OUTPUTS — the input side")
+        lines.append("    //   is missing, so this instance is under-connected (#100).")
+
+    # The instantiation.  Ports carry their recovered direction, so a reader (and
+    # yosys) can tell driven from driving without consulting the table above.
+    if efb_ports:
+        lines.append("    EFB efb_inst (")
+        conns = []
+        for row in efb_ports:
+            pn, net = row[0], row[1]
+            d = row[2] if len(row) > 2 else None
+            conns.append((pn, resolve_net(net, net_name_map, const_net_map), d))
+        for i, (pn, wire, d) in enumerate(conns):
+            comma = "," if i < len(conns) - 1 else ""
+            tag = {"in": "// fabric -> EFB", "out": "// EFB -> fabric"}.get(d, "")
+            lines.append(f"        .{pn}({wire}){comma:<2} {tag}")
+        lines.append("    );")
     lines.append("")
+    return lines
+
+
+def emit_efb_module(data: dict) -> list[str]:
+    """The (* blackbox *) EFB declaration, emitted after the top module.
+
+    `(* blackbox *)` is the correct representation for hard IP: yosys keeps the
+    cell, does not optimise it away, and does not require a body.  That is what
+    lets the recovered design elaborate and gives LEC a clean cut point at the
+    hard-IP boundary -- which is precisely what #46's ten failures need, since
+    they fail today for expecting fabric to explain a block that is silicon.
+    """
+    efb_ports = data.get("efb_ports") or []
+    if not efb_ports:
+        return []
+    ins = [r[0] for r in efb_ports if (r[2] if len(r) > 2 else None) == "in"]
+    outs = [r[0] for r in efb_ports if (r[2] if len(r) > 2 else None) == "out"]
+    unknown = [r[0] for r in efb_ports
+               if (r[2] if len(r) > 2 else None) not in ("in", "out")]
+    lines = [
+        "",
+        "// ── EFB black box ─────────────────────────────────────────────────────────",
+        "// Hard IP. Behaviour is NOT recovered and is NOT modelled here; the ports and",
+        "// their directions are, from the bitstream (#100).  Outputs read as X in",
+        "// simulation until a behavioural model replaces this stub -- which is honest,",
+        "// where driving them to a constant would fake a result.",
+        "(* blackbox *)",
+        "module EFB (",
+    ]
+    decls = ([f"    input  wire {p}" for p in ins]
+             + [f"    output wire {p}" for p in outs]
+             + [f"    inout  wire {p}  // direction not recovered" for p in unknown])
+    for i, d in enumerate(decls):
+        lines.append(d + ("," if i < len(decls) - 1 else ""))
+    lines.append(");")
+    lines.append("endmodule")
     return lines
 
 
@@ -2142,6 +2195,10 @@ def main():
         emit_output_drives(data),
         emit_unresolved_pads_comment(data),
         emit_footer(),
+        # After emit_footer() closes the top module: a blackbox declaration is a
+        # sibling module, not nested.  Emitted before the commented SPI model so a
+        # reader meets the interface first and the optional behaviour second.
+        emit_efb_module(data),
         emit_efb_model(data),
     ]
 
