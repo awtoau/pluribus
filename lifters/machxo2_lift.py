@@ -968,9 +968,21 @@ class MachXO2Lift:
                         # slot is always the const-1 case.)  Without this the D
                         # falls through to the 1'b0 default and a registered
                         # constant 1 is silently recovered as 0.
+                        #
+                        # The absent INIT word is the WHOLE signal.  No INIT
+                        # word means no LUT, which means nothing drives F --
+                        # whether or not the F wire itself shows up in the DSU,
+                        # which it often does because some arc names it.  An
+                        # earlier `not connected(dkey)` clause required it to be
+                        # absent too, so every one of these registers instead
+                        # resolved its D to a real but undriven net and read as
+                        # 0.  That is what made lut4_all1 / nand4 / notbit08..15
+                        # (all constant-1 once D is tied low) fail LEC (#46).
+                        # Memory modes are excluded: there the DPRAM pass
+                        # synthesises a driver onto F with no INIT word present.
                         if ((r, c, sl, str(j)) not in pc.lut_init
-                                and (dkey is None or not connected(dkey))):
-                            d_default = "1'b1"
+                                and senum.get("MODE") not in ("DPRAM", "RAMW")):
+                            dkey, d_default = None, "1'b1"
                     else:
                         dkey = pins.get("M")
 
