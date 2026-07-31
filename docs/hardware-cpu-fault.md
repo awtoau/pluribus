@@ -1,8 +1,25 @@
 # An unexplained crash window on the development workstation, 2026-07-30
 
-**Status:** real, and **reproduced again** at 13:34:06 the same day, hours
-after the original window was thought to have closed.  Cause NOT identified.
+**Status:** RESOLVED (isolated). A full 32-core sweep at 15:49 found **CPU 8
+is the only faulty core on the chip** — all other 31 cores completed the
+workload cleanly and agree byte-for-byte. CPU 8 has been taken offline
+(`echo 0 > /sys/devices/system/cpu/cpu8/online`) and pinned offline
+permanently via a udev rule (`/etc/udev/rules.d/99-cpu8-offline.rules`) so it
+survives reboots. Root cause is still not proven (no `memtest86+` yet, so RAM
+isn't formally excluded), but the fault is now fully characterized and
+mitigated. See awto-terminal [issue #11](https://github.com/awto-au/awto-terminal/issues/11).
 **Detector:** `scripts/cpu_sanity_check.py`.
+
+## Update, 15:49: full 32-core sweep — CPU 8 is uniquely faulty
+
+Ran the detector across every logical CPU (`--cpus 0,1,...,31`), sequential,
+against the same 23 MB reproducer. Result: **31 of 32 CPUs completed 320/320
+carve ops and agreed exactly**; CPU 8 crashed immediately (0/320, signal 11),
+same as every prior pinned run. No other core has ever failed this workload,
+across four separate pinned test sessions today. This is as close to a
+definitive verdict as this detector can give: the fault is CPU 8 specifically,
+not a wider silicon, thermal, or memory-controller issue affecting the whole
+die.
 
 ## Update, 13:34: reproduced under `cpu_sanity_check.py`, CPU 8 only
 
