@@ -340,6 +340,38 @@ class MachXO2Lift:
             return f"W{m.group(1)}_H06W{m.group(2)}"
         return None
 
+    def _v02_alias(self, x, y, wire_id):
+        """Canonicalise a globalised key onto the V02N form of its span.
+
+        Some plain V02S#### names resolve to isolated fanin=0 copies while their
+        V02N mates carry the drivers (issue #65).  Kept narrow -- span 2, indices
+        0601/0701 only -- because broad vertical-span merges trigger the #78
+        pad/FF fusion.
+
+        EVERY exit from gkey's valid-globalise path must come through here.  The
+        bare-name rewrite at the top of gkey flips S->N before globalising, and
+        the top/bottom-edge rule flips N->S after; if either bypasses this, one
+        physical wire ends up with two canonical keys and its net splits in two.
+        Both of today's #46 net-merge failures were exactly that (#46).
+        """
+        if x < 0 or y < 0:
+            return (x, y, wire_id)
+        mv = self._VSPAN.match(self.rg.to_str(wire_id))
+        if not (mv and mv.group(2) == 'S' and int(mv.group(1)) == 2
+                and mv.group(3) in ('0601', '0701')):
+            return (x, y, wire_id)
+        flip_name = f"V{mv.group(1)}N{mv.group(3)}"
+        if self.wname_id(x, y, flip_name) is None:
+            return (x, y, wire_id)
+        gm = self.rg.globalise_net(y, x, flip_name)
+        if gm.loc.x < 0 or gm.loc.y < 0:
+            return (x, y, wire_id)
+        # Compare the whole KEY, not just the location: this remap's job is to
+        # change the wire id AT the same location, so a location-only guard
+        # would reject precisely the cases it exists to fix.
+        gk = (gm.loc.x, gm.loc.y, gm.id)
+        return gk if gk != (x, y, wire_id) else (x, y, wire_id)
+
     def gkey(self, row, col, name):
         """Canonical node key, or None if the name globalises to an invalid
         (-1,-1) location (chip-global clock/spine longlines).
@@ -394,33 +426,15 @@ class MachXO2Lift:
                     if self.wname_id(g.loc.x, crow, cname) is not None:
                         gc = self.rg.globalise_net(crow, g.loc.x, cname)
                         if gc.loc.x >= 0 and gc.loc.y >= 0:
-                            gk = (gc.loc.x, gc.loc.y, gc.id)
-                            return gk
+                            # Normalise like every other exit, do NOT return
+                            # raw.  This branch flips N->S; the bare-name
+                            # rewrite at the top of gkey flips S->N.  Returning
+                            # early let the two meet at one location holding
+                            # opposite letters -- one physical wire, two keys.
+                            # That is what stranded top-edge pads 85 and 86.
+                            return self._v02_alias(gc.loc.x, gc.loc.y, gc.id)
             # Main return
-            # Interior V02S alias remap: some plain V02S#### names at interior
-            # tiles resolve to isolated fanin=0 copies when their V02N mates
-            # carry drivers. Remap to the N form to unify the nets (issue #65).
-            # Only remap specific known problematic indices to avoid broad
-            # vertical-span merges that trigger #78 collisions.
-            if g.loc.x >= 0 and g.loc.y >= 0:
-                mv = self._VSPAN.match(self.rg.to_str(g.id))
-                if mv and mv.group(2) == 'S' and int(mv.group(1)) == 2 and mv.group(3) in ('0601', '0701'):
-                    flip_name = f"V{mv.group(1)}N{mv.group(3)}"
-                    if self.wname_id(g.loc.x, g.loc.y, flip_name) is not None:
-                        gm = self.rg.globalise_net(g.loc.y, g.loc.x, flip_name)
-                        # Compare the whole KEY, not just the location.  The
-                        # remap's entire job is to change the wire id at the
-                        # SAME location, so a `gm.loc != g.loc` guard rejects
-                        # exactly the cases it exists to fix -- and then the
-                        # bare-name rewrite above (V02S0701 -> V02N0701) and
-                        # this hop-prefixed path disagree, giving one physical
-                        # wire two canonical keys.  That is what stranded every
-                        # bottom-edge output pad on its own net (#46).
-                        gk = (gm.loc.x, gm.loc.y, gm.id)
-                        if (gm.loc.x >= 0 and gm.loc.y >= 0
-                                and gk != (g.loc.x, g.loc.y, g.id)):
-                            return gk
-            return (g.loc.x, g.loc.y, g.id)
+            return self._v02_alias(g.loc.x, g.loc.y, g.id)
 
         # Walk-back recovery for segment longlines near chip boundaries.
         m = (self._SEG_EAST.match(name)  or self._SEG_WEST.match(name) or
