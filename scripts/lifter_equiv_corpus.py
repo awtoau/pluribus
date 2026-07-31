@@ -369,10 +369,19 @@ design -copy-from gate -as gate fuzz
 equiv_make gold gate equiv
 hierarchy -top equiv
 clean
-equiv_simple
-equiv_induct
+equiv_simple -seq 32
+equiv_induct -seq 32
 equiv_status
 """
+# -seq 32, not the yosys default (1 for equiv_simple, 4 for equiv_induct).
+# The default is too shallow for anything with a counter deeper than a couple of
+# bits: five SPI/ident targets whose recovered netlists are correct were being
+# reported as `logic_mismatch` purely because the induction could not reach far
+# enough.  A deeper proof is still a proof, and the shallow one was producing
+# false defect attributions -- the expensive kind of wrong, since it sends you
+# looking for a lifter bug that is not there.  32 covers every target that
+# proves at all; the three that still fail also fail at 70, so they are a real
+# gap and not a depth problem.
 
 
 def _run_yosys_equiv(gold_v, gate_v, workdir):
