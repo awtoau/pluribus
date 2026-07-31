@@ -213,4 +213,4 @@ class AnlogicLift:
         return []
 
     def apply_efb_fixed_conns(self, dsu, efb_conns, cfg_row=1, cfg_col=4):
-        return set()
+        return {}       # {port: direction}, as MachXO2Lift returns

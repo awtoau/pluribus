@@ -31,32 +31,29 @@ DEF_BUILD_DIR = os.environ.get("TRELLIS_BUILD",
                                "tmp/prjtrellis/libtrellis/build")
 DEF_DBROOT = os.environ.get("TRELLIS_DBROOT", "tmp/prjtrellis/database")
 
-# EFB fixed-connection wire → EFB port name, for every driver wire that
-# appears in the CIB_CFG0/bits.db `.fixed_conn` entries.  These are
-# hard-wired routes between the EFB hard IP and the switchbox that are
-# never emitted as `.config` arcs, so they are invisible to the normal
-# routing-arc union-find.  We read bits.db ourselves and union them in.
+# EFB fixed connections are hard-wired routes between the EFB hard IP and the
+# switchbox.  They are never emitted as `.config` arcs, so they are invisible
+# to the normal routing-arc union-find; load_efb_fixed_conns() reads them out
+# of CIB_CFG0/bits.db and apply_efb_fixed_conns() unions them in.
 #
-# Wire names are local to the CIB_CFG0 tile at (row=1, col=4).
-# Key   = local wire name on the FABRIC side of the fixed pip
-# Value = canonical EFB port name (used as the synthetic DSU node label)
-_EFB_FIXED_DRIVER_WIRES = {
-    # WISHBONE data bus (EFB → fabric)
-    "E2_JF0": "JWBDATO0", "E2_JF1": "JWBDATO1",
-    "E2_JF2": "JWBDATO2", "E2_JF3": "JWBDATO3",
-    "E2_JF4": "JWBDATO4", "E2_JF5": "JWBDATO5",
-    "E2_JF6": "JWBDATO6", "E2_JF7": "JWBDATO7",
-    # WISHBONE handshake outputs
-    "E2_JQ0": "JWBACKO",
-    "E2_JQ1": "JWBCUFMIRQ",
-    # SPI / Timer outputs (device-size-prefixed; handled in load_efb_fixed_conns)
-    # These vary by device so we parse them from bits.db dynamically.
-}
+# There is deliberately no hand-written wire → port table here.  One used to
+# exist (_EFB_FIXED_DRIVER_WIRES, listing E2_JF0 → JWBDATO0 and friends) but
+# was dead code: bits.db is the only source, and a second hand-maintained copy
+# of it could only ever drift.
 
-# Regex matching the fabric-side wire for SPI/Timer fixed drivers (device-
-# size-prefixed, e.g. "1200_E3_JQ0").  We extract just the non-prefixed
-# local wire name for gkey() lookup.
-_EFB_PREFIXED_WIRE_RE = re.compile(r'^\d+_(\S+)$')
+# Regex matching the fabric-side wire for SPI/Timer fixed connections, which
+# are device-size-prefixed (e.g. "1200_E3_JQ0", "2000_S14E4_JPADDIB_PIO").
+# Group 1 is the device-size token, group 2 the local wire name for gkey().
+#
+# The token MATTERS: CIB_CFG0/bits.db carries the prefixed connections for
+# every MachXO2 size at once, and for the pad-side ports they name different
+# wires per size (JSPIMISOI is S11E2_JPADDID_PIO on the 1200 but
+# S14E4_JPADDIB_PIO on the 2000).  Stripping the prefix without checking it
+# unions this chip's EFB against three other devices' pads.
+_EFB_PREFIXED_WIRE_RE = re.compile(r'^(\d+)_(\S+)$')
+
+# Device-size token of an "LCMXO2-<size>[HC|HE|ZE]" part name.
+_DEVICE_SIZE_RE = re.compile(r'-(\d+)')
 
 TILE_RE = re.compile(r"^\.tile\s+(\S+):(\S+)")
 ARC_RE = re.compile(r"^arc:\s+(\S+)\s+(\S+)")
@@ -895,45 +892,45 @@ class MachXO2Lift:
         return sources, sinks
 
     def load_efb_fixed_conns(self, dbroot=None):
-        """Parse CIB_CFG0/bits.db and return a list of (local_wire, efb_port)
-        pairs for every EFB output fixed connection in that tile.
+        """Parse CIB_CFG0/bits.db and return (local_wire, efb_port, direction)
+        triples for every EFB fixed connection in that tile, BOTH directions.
 
-        The bits.db format uses `.fixed_conn <fabric_wire> <efb_port>` lines.
-        We only care about "driver" direction: EFB → fabric.  The known driver
-        ports are JWBDATO[0-7], JWBACKO, JWBCUFMIRQ, JSPIIRQO, JTCOC, JTCINT,
-        JSPIMISOO, JSPIMISOEN, JSPICSNEN, JSPIMOSIO, JSPIMOSIEN, JSPISCKO,
-        JSPISCKEN, JSPIMCSN[0-7], JPLLDATO[0-7], JPLLADRO[0-4], JPLLWEO,
-        JPLLRSTO, JPLLCLKO, JPLL[01]STBO, CFGWAKE, CFGSTDBY, JUFMSN.
+        prjtrellis writes these lines sink-first --- `BitDatabase.cpp`:
 
-        Only ports that are actual EFB→fabric drivers are returned (sink ports
-        such as JWBDATI, JWBADRI, JWBWEI etc. are omitted — they represent
-        fabric→EFB direction and are already captured by routing arcs).
+            out << ".fixed_conn " << es.sink << " " << es.source << endl;
+
+        so the COLUMN the `_EFB` port sits in is what states its direction:
+
+            .fixed_conn E2_JF0       JWBDATO0_EFB   EFB is the source -> "out"
+            .fixed_conn JWBDATI0_EFB E2_JA0         EFB is the sink   -> "in"
+
+        This function used to read `parts[1]` as the fabric wire and `parts[2]`
+        as the EFB port unconditionally, so it could only ever see the first
+        form.  Every input-side line has its columns the other way round, which
+        is why the recovered EFB interface came out as 17 ports all marked
+        "out" and not one input (issue #100).  The old docstring claimed the
+        sink ports were "already captured by routing arcs"; they are not ---
+        matching JF_RE against the arc sink in CIB_CFG2 yields zero rows,
+        because the input side is not routed as arcs at all.  It is here.
+
+        The direction is therefore read off the file's own sink/source
+        convention, never inferred from the port's name.  (The names do agree:
+        every source-column port is O-suffixed and every sink-column port is
+        I-suffixed, which is corroboration, not the rule being applied.)
         """
-        # bits.db uses "_EFB" suffix on port names; strip it for canonical names
-        _EFB_DRIVER_PORTS = {
-            "JWBDATO0_EFB", "JWBDATO1_EFB", "JWBDATO2_EFB", "JWBDATO3_EFB",
-            "JWBDATO4_EFB", "JWBDATO5_EFB", "JWBDATO6_EFB", "JWBDATO7_EFB",
-            "JWBACKO_EFB", "JWBCUFMIRQ_EFB",
-            "JSPIIRQO_EFB", "JSPIMISOO_EFB", "JSPIMISOEN_EFB",
-            "JSPICSNEN_EFB", "JSPIMOSIO_EFB", "JSPIMOSIEN_EFB",
-            "JSPISCKO_EFB",  "JSPISCKEN_EFB",
-            "JSPIMCSN0_EFB", "JSPIMCSN1_EFB", "JSPIMCSN2_EFB", "JSPIMCSN3_EFB",
-            "JSPIMCSN4_EFB", "JSPIMCSN5_EFB", "JSPIMCSN6_EFB", "JSPIMCSN7_EFB",
-            "JTCOC_EFB", "JTCINT_EFB",
-            # I2C outputs (absent from original list)
-            "JI2C1SCLO_EFB", "JI2C1SDAO_EFB", "JI2C1SCLOEN_EFB", "JI2C1SDAOEN_EFB",
-            "JI2C2SCLO_EFB", "JI2C2SDAO_EFB", "JI2C2SCLOEN_EFB", "JI2C2SDAOEN_EFB",
-            "JPLLDATO0_EFB", "JPLLDATO1_EFB", "JPLLDATO2_EFB", "JPLLDATO3_EFB",
-            "JPLLDATO4_EFB", "JPLLDATO5_EFB", "JPLLDATO6_EFB", "JPLLDATO7_EFB",
-            "JPLLADRO0_EFB", "JPLLADRO1_EFB", "JPLLADRO2_EFB", "JPLLADRO3_EFB",
-            "JPLLADRO4_EFB",
-            "JPLLWEO_EFB", "JPLLRSTO_EFB", "JPLLCLKO_EFB",
-            "JPLL0STBO_EFB", "JPLL1STBO_EFB",
-            "CFGWAKE_EFB", "CFGSTDBY_EFB",
-        }
         db_root = dbroot or DEF_DBROOT
         bits_path = os.path.join(db_root, "MachXO2", "tiledata",
                                  "CIB_CFG0", "bits.db")
+        m = _DEVICE_SIZE_RE.search(self.device or "")
+        want_size = m.group(1) if m else None
+
+        def _local(wire):
+            """Strip the device-size prefix, or None if it is another device's."""
+            pm = _EFB_PREFIXED_WIRE_RE.match(wire)
+            if not pm:
+                return wire
+            return pm.group(2) if pm.group(1) == want_size else None
+
         conns = []
         try:
             with open(bits_path) as fh:
@@ -944,38 +941,46 @@ class MachXO2Lift:
                     parts = line.split()
                     if len(parts) != 3:
                         continue
-                    fabric_wire, efb_port = parts[1], parts[2]
-                    # Strip device-size prefix (e.g. "1200_E3_JQ0" → "E3_JQ0")
-                    m = _EFB_PREFIXED_WIRE_RE.match(fabric_wire)
-                    if m:
-                        fabric_wire = m.group(1)
-                    if efb_port in _EFB_DRIVER_PORTS:
-                        # Strip _EFB suffix for canonical port name
-                        canonical = efb_port[:-4] if efb_port.endswith("_EFB") else efb_port
-                        conns.append((fabric_wire, canonical))
+                    sink, source = parts[1], parts[2]
+                    if source.endswith("_EFB"):
+                        efb_port, fabric_wire, direction = source, sink, "out"
+                    elif sink.endswith("_EFB"):
+                        efb_port, fabric_wire, direction = sink, source, "in"
+                    else:
+                        continue            # not an EFB connection at all
+                    fabric_wire = _local(fabric_wire)
+                    if fabric_wire is None:
+                        continue            # belongs to a different device size
+                    conns.append((fabric_wire, efb_port[:-4], direction))
         except OSError:
             pass
         return conns
 
     def apply_efb_fixed_conns(self, dsu, efb_conns, cfg_row=1, cfg_col=4):
-        """Union EFB output fixed connections into the DSU.
+        """Union EFB fixed connections into the DSU.
 
-        For each (fabric_wire, efb_port) pair returned by load_efb_fixed_conns:
+        For each (fabric_wire, efb_port, direction) triple from
+        load_efb_fixed_conns:
           1. Resolve fabric_wire to a canonical key via gkey(cfg_row, cfg_col, wire).
           2. Use the string efb_port as a synthetic DSU node (it will never
              collide with a real (int,int,RoutingId) tuple key).
           3. Union them so that any fabric net already connected to fabric_wire
              inherits the EFB port label, and vice versa.
 
-        Returns the set of EFB port strings that were successfully unioned
-        (i.e. their fabric-side wire globalised to a valid key).
+        The union itself is direction-agnostic --- it fuses two names for one
+        physical node --- so inputs need no separate mechanism, only to stop
+        being discarded at parse time.  The direction is carried through so the
+        caller can record it.
+
+        Returns {efb_port: direction} for the ports whose fabric-side wire
+        globalised to a valid key.
         """
-        resolved = set()
-        for fabric_wire, efb_port in efb_conns:
+        resolved = {}
+        for fabric_wire, efb_port, direction in efb_conns:
             k = self.gkey(cfg_row, cfg_col, fabric_wire)
             if k is not None:
                 dsu.union(k, efb_port)
-                resolved.add(efb_port)
+                resolved[efb_port] = direction
         return resolved
 
     def load_plc_fixed_conns(self, dbroot=None):

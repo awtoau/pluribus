@@ -848,6 +848,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         if lifter == "machxo2":
             # ── efb_ports ─────────────────────────────────────────────────────────
             found_efb = {}
+            efb_dir = {}          # port -> observed direction, never name-inferred
             for (er,ec),t in pc.tile_type.items():
                 if t != "CIB_CFG2": continue
                 for (r,c,sink,src) in pc.arcs:
@@ -858,6 +859,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                         net  = resolve_net(design, lift, er, ec, sink)
                         if net and port not in found_efb:
                             found_efb[port] = net
+                            efb_dir[port] = "out"
                             conn.execute(
                                 _insert_or_ignore(schema.efb_ports).values(
                                     # The JF wire is the arc SOURCE here, so the EFB
@@ -867,22 +869,29 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                                 )
                             )
 
-            # EFB output fixed connections: JWBDATO[0-7], JWBACKO, JSPIIRQO, etc.
-            # machxo2_lift.apply_efb_fixed_conns() unioned synthetic string nodes
-            # (e.g. "JWBDATO0") into the DSU so that FFs whose D-input wires trace
-            # back to EFB outputs now get real net names.  We look them up here and
-            # insert them as efb_ports so the knowledge layer can reference them.
-            for efb_port in sorted(getattr(design, "efb_resolved", ())):
+            # EFB fixed connections, BOTH directions: outputs JWBDATO[0-7],
+            # JWBACKO, JSPIIRQO ... and inputs JWBDATI[0-7], JWBADRI[0-7],
+            # JWBSTBI, JWBCYCI, JWBWEI ...  machxo2_lift.apply_efb_fixed_conns()
+            # unioned synthetic string nodes (e.g. "JWBDATO0") into the DSU so
+            # that FFs whose D-input wires trace back to EFB outputs now get real
+            # net names.  We look them up here and insert them as efb_ports so the
+            # knowledge layer can reference them.
+            #
+            # The direction comes from the bits.db sink/source column the port
+            # sat in (see load_efb_fixed_conns), not from its name: it is read
+            # out of the database, not inferred.  Reading only the output column
+            # is what made the recovered interface outputs-only (issue #100).
+            efb_resolved = getattr(design, "efb_resolved", {})
+            for efb_port in sorted(efb_resolved):
                 root = design.dsu.find(efb_port)
                 net = design.net_name.get(root)
                 if net and efb_port not in found_efb:
                     found_efb[efb_port] = net
+                    efb_dir[efb_port] = efb_resolved[efb_port]
                     conn.execute(
                         _insert_or_ignore(schema.efb_ports).values(
-                            # EFB output fixed connections (JWBDATO*, JWBACKO,
-                            # JSPIIRQO, ...) -- driving fabric by definition.
                             bitstream=bs_id, port_name=efb_port, net=net,
-                            direction="out",
+                            direction=efb_resolved[efb_port],
                         )
                     )
 
@@ -890,17 +899,22 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             missing_efb = REQUIRED_EFB_PORTS - set(found_efb)
             if missing_efb and has_cfg2 and not fuzz:
                 die(f"Missing required EFB ports: {sorted(missing_efb)}")
-            # EFB output prefix patterns: ports that drive fabric (not JTAG inputs).
-            _EFB_OUT_PREFIXES = ("JWB", "JSPI", "JTC", "JPLL", "JI2C", "CFGWAKE", "CFGSTDBY")
-            efb_output_count = sum(1 for p in found_efb if p.startswith(_EFB_OUT_PREFIXES))
-            print(f"  EFB ports: {len(found_efb)} total ({efb_output_count} EFB outputs resolved from fixed conns)")
+            # Direction is whichever side of the fixed conn / arc the port was
+            # observed on.  This used to be a name-prefix guess
+            # (`p.startswith(("JWB", "JSPI", ...))`), which was harmless only
+            # while every recovered port was an output: now that inputs are
+            # recovered too it would call JWBDATI0 a driver, since it also
+            # starts with "JWB".  Use the measurement.
+            n_out = sum(1 for d in efb_dir.values() if d == "out")
+            n_in  = sum(1 for d in efb_dir.values() if d == "in")
+            print(f"  EFB ports: {len(found_efb)} total ({n_out} out, {n_in} in)")
 
             # Stitch EFB output nets into net_fanout so reach.py can traverse them.
             # Each EFB output is modelled as: "EFB" source net → EFB cell → out_net.
             # This makes EFB-driven nets visible in reverse reachability queries.
             efb_fanout_rows = []
             for port, net in found_efb.items():
-                if port.startswith(_EFB_OUT_PREFIXES):
+                if efb_dir.get(port) == "out":
                     efb_fanout_rows.append({
                         "bitstream": bs_id, "net": "EFB", "cell_type": "EFB",
                         "cell": "EFB", "pin": port, "out_net": net,

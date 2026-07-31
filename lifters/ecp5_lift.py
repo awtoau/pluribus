@@ -344,7 +344,7 @@ class ECP5Lift:
         d.n_arcs = len(pc.arcs)
         d.skipped_arcs = skipped
         # ECP5 has no EFB and no MachXO2-style PLC fast-connect table.
-        d.efb_resolved = 0
+        d.efb_resolved = {}
         d.plc_fc_applied = 0
 
         d.used_roots = {dsu.find(k) for k in src_keys}
@@ -570,7 +570,7 @@ class ECP5Lift:
 
     def apply_efb_fixed_conns(self, dsu, efb_conns, cfg_row=None, cfg_col=None):
         """No-op counterpart to load_efb_fixed_conns (see there)."""
-        return 0
+        return {}       # {port: direction}, as MachXO2Lift returns
 
     def pad_fabric_node(self, row, col, pio, direction):
         """Fabric node for a PIO pad.  `direction` in {'in','out'}.
