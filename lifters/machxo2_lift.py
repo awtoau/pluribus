@@ -812,6 +812,7 @@ class MachXO2Lift:
         # INIT=0xCACA; `Z = A ^ B` is INIT=0x6666.
         MUX2_INIT = "1100101011001010"   # 0xCACA: Z = C ? B : A
         XOR2_INIT = "0110011001100110"   # 0x6666: Z = A ^ B
+        carry_driven = set()             # FCO roots we have emitted a driver for
 
         def internal_net(tag):
             """Name a net internal to a slice (no fabric wire, hence no DSU
@@ -887,10 +888,19 @@ class MachXO2Lift:
                     if fkey is None:
                         continue
                     inject = senum.get(f"CCU2.INJECT1_{k}", "NO") == "YES"
-                    fci = resolve(pins.get("FCI"), "1'b0")
-                    # INJECT1 gates the carry out of the SUM only.  The FCO
-                    # generate term keeps the raw FCI -- see the model above,
-                    # where `gated_cin` feeds F but `FCO` uses FCI directly.
+                    # The carry-in only exists if something drives it: the
+                    # chain head's FCI is unioned to the tile's routing-side
+                    # node by a fixed_conn, so it always resolves to SOME net
+                    # even when the chain starts here.  Accept it only when an
+                    # arc really sources it, or when we emitted the FCO that
+                    # feeds it; otherwise the head would read a floating net.
+                    fci_key = pins.get("FCI")
+                    fci = "1'b0"
+                    if fci_key is not None:
+                        fr = dsu.find(fci_key)
+                        if fr in d.used_roots or fr in carry_driven:
+                            fci = resolve(fci_key, "1'b0")
+                    # INJECT1 gates the carry out of the SUM only.
                     fci_sum = "1'b0" if inject else fci
                     ins = {p: resolve(pins.get(p), None) for p in "ABCD"}
                     base = f"r{r}c{c}_{sl}k{k}"
@@ -918,23 +928,39 @@ class MachXO2Lift:
                     fcokey = pins.get("FCO")
                     if fcokey is None:
                         continue
-                    # FCO = l4o ? FCI : gated_l2o.  l2o is LUT2(INIT[3:0])(A,B),
-                    # i.e. the low nibble of the same INIT word -- as a LUT4 that
-                    # ignores C/D, the nibble repeated four times.
-                    l2o = "1'b0"
+                    # COUT = (~prop & gen) | (prop & CIN), i.e. prop ? CIN : gen
+                    # -- the same 2:1 mux, selected by prop (== l4o).
+                    #
+                    # `gen` is the part worth stating precisely, because the
+                    # generic Lattice COMB model in yosys's lattice/common_sim.vh
+                    # states it differently and following that gives a carry
+                    # chain that is silently always 0.  Lattice's OWN MachXO2
+                    # CCU2D model (Diamond ispfpga/verilog/data/machxo2/CCU2D.v)
+                    # is the authority here:
+                    #     y3  = INIT[12 + {B,A}]        <- the HIGH nibble
+                    #     gen = INJECT1 ? 1'b1 : ~y3    <- negated, and 1 (not 0)
+                    #                                      when INJECT1 is set
+                    # Checked against the real counter: INIT=0x0555 with A=cnt[0]
+                    # gives sum=~A and cout=A, which is exactly what +1 needs.
+                    gen = "1'b1"
                     if not inject:
-                        l2o = internal_net(f"{base}_l2o")
+                        gen = internal_net(f"{base}_gen")
+                        # High nibble, inverted; replicated so the LUT4 ignores
+                        # C/D.  The init string is MSB-first, so INIT[15:12] is
+                        # its first four characters and the nibble repeats.
+                        hi = "".join("1" if ch == "0" else "0" for ch in init[:4])
                         d.luts.append({
-                            "name": f"ccu2_{base}_l2",
-                            "init": init[-4:] * 4,
+                            "name": f"ccu2_{base}_gen",
+                            "init": hi * 4,
                             "a": ins["A"], "b": ins["B"], "c": None, "d": None,
-                            "z": l2o,
+                            "z": gen,
                             "z_used": True,
                         })
+                    carry_driven.add(dsu.find(fcokey))
                     d.luts.append({
                         "name": f"ccu2_{base}_fco",
                         "init": MUX2_INIT,       # Z = C ? B : A
-                        "a": l2o, "b": fci, "c": l4o, "d": None,
+                        "a": gen, "b": fci, "c": l4o, "d": None,
                         "z": net_of(fcokey),
                         "z_used": True,
                     })
