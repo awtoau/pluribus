@@ -860,7 +860,10 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                             found_efb[port] = net
                             conn.execute(
                                 _insert_or_ignore(schema.efb_ports).values(
+                                    # The JF wire is the arc SOURCE here, so the EFB
+                                    # drives this net: an output, as routed.
                                     bitstream=bs_id, port_name=port, net=net,
+                                    direction="out",
                                 )
                             )
 
@@ -876,7 +879,10 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     found_efb[efb_port] = net
                     conn.execute(
                         _insert_or_ignore(schema.efb_ports).values(
+                            # EFB output fixed connections (JWBDATO*, JWBACKO,
+                            # JSPIIRQO, ...) -- driving fabric by definition.
                             bitstream=bs_id, port_name=efb_port, net=net,
+                            direction="out",
                         )
                     )
 

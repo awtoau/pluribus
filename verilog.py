@@ -163,7 +163,7 @@ def load_data(conn, bs_id: int) -> dict:
     pads = q("SELECT pin, label, direction, net_in, net_out FROM pad_map WHERE bitstream=:bs_id ORDER BY pin")
 
     # EFB ports: (port_name, net)
-    efb_ports = q("SELECT port_name, net FROM efb_ports WHERE bitstream=:bs_id ORDER BY port_name")
+    efb_ports = q("SELECT port_name, net, direction FROM efb_ports WHERE bitstream=:bs_id ORDER BY port_name")
     # EFB config: (sel, kind, length, payload) — the 0x72 .efb_block preloads
     # the native decoder recovers (empty on a pre-native/truncated .config).
     efb_config = q("SELECT sel, kind, length, payload FROM efb_config WHERE bitstream=:bs_id ORDER BY sel")
@@ -820,9 +820,20 @@ def emit_efb_comment(data: dict) -> list[str]:
         # genuinely preloads no EFB config, not that we lost it.
         lines.append("    //   config: none present in this bitstream (the decoder"
                      " reads 0x72 preloads; absence here is real, not truncation)")
-    for port_name, net in efb_ports:
+    n_out = sum(1 for r in efb_ports if (r[2] if len(r) > 2 else None) == "out")
+    for row in efb_ports:
+        port_name, net = row[0], row[1]
+        direction = row[2] if len(row) > 2 else None
         wire_name = resolve_net(net, net_name_map, const_net_map)
-        lines.append(f"    // EFB.{port_name} → {wire_name}  (raw net: {net})")
+        arrow = "→" if direction == "out" else "?"
+        lines.append(f"    // EFB.{port_name} {arrow} {wire_name}  (raw net: {net}"
+                     f"{', ' + direction if direction else ''})")
+    if n_out == len(efb_ports) and efb_ports:
+        # Say what is missing, or the comment block reads like a full port list.
+        lines.append("    //   NOTE: all recovered ports are EFB OUTPUTS (the block")
+        lines.append("    //   driving fabric).  EFB INPUTS are not recovered, so this")
+        lines.append("    //   is not a complete interface and an instantiation would")
+        lines.append("    //   be under-connected (#49).")
     lines.append("")
     return lines
 
@@ -2034,8 +2045,11 @@ def emit_efb_model(data: dict) -> list[str]:
         "// Fill in the command/register decode from the board SPI protocol docs.",
         "// Recovered fabric-side EFB ports (port <-> net):",
     ]
-    for pn, net in efb_ports:
-        lines.append(f"//   {pn:<10} <-> {resolve_net(net, net_name_map, const_net_map)}")
+    for _row in efb_ports:
+        pn, net = _row[0], _row[1]
+        _dir = _row[2] if len(_row) > 2 else None
+        lines.append(f"//   {pn:<10} <-> {resolve_net(net, net_name_map, const_net_map)}"
+                     f"{'  (EFB drives this)' if _dir == 'out' else ''}")
     if kind != "SPI":
         lines.append(f"// NOTE: recovered kind is {kind}, not SPI — adapt this stub.")
     lines += [

@@ -130,6 +130,14 @@ efb_ports = Table("efb_ports", metadata,
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("port_name", Text, nullable=False),
     Column("net",       Text, nullable=False),
+    # Direction AS OBSERVED IN THE ROUTING, not as the datasheet defines the
+    # primitive: "out" means the EFB wire is the SOURCE of the arc, i.e. the block
+    # drives this net into the fabric.  Recording what the bitstream shows keeps
+    # this a measurement; inferring a port's datasheet direction would be a guess.
+    #
+    # Needed by #49: an EFB instantiation cannot be emitted without knowing which
+    # ports are driven and which are driving, and the emitter must not invent it.
+    Column("direction", Text),
     UniqueConstraint("bitstream", "port_name"),
 )
 
