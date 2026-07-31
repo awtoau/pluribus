@@ -44,19 +44,16 @@ CASES = [
     ("machxo2_regbuf_pin84_top.config", "84", "top"),
 ]
 
-# Pin 45 is a KNOWN REMAINING GAP, not a fixture mistake: three bottom-edge pads
-# (45, 85, 86) still strand their output net after both #46 net-merge fixes, and
-# they are the last `net_merge_gap` entries in the corpus sweep.  Kept as a
-# strict xfail so this test starts failing -- loudly -- the day it is fixed,
-# instead of the case being quietly deleted and the gap forgotten.
-KNOWN_UNMERGED_PINS = {"45"}
+# Pin 45 was carried here as a strict xfail while bottom-edge pads (45, 85, 86)
+# still stranded their output net.  The vertical-span canonicalisation fix made
+# it XPASS, which is precisely what the strict marker was for -- it reported the
+# gap closing instead of the case being quietly deleted.  Kept as a live case.
+KNOWN_UNMERGED_PINS = set()
 
 
 def _maybe_xfail(pin):
     if pin in KNOWN_UNMERGED_PINS:
-        return pytest.mark.xfail(strict=True,
-                                 reason="#46 residual: pins 45/85/86 still "
-                                        "strand their bottom-edge output net")
+        return pytest.mark.xfail(strict=True, reason="known net-merge gap")
     return ()
 
 

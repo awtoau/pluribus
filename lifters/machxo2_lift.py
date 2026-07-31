@@ -493,6 +493,33 @@ class MachXO2Lift:
                             return (gc.loc.x, gc.loc.y, gc.id)
                 return None
 
+            # Vertical span whose hop runs off the top/bottom edge.
+            #
+            # The generic walk-back below assumes "the canonical key is the same
+            # for every valid origin of the same wire".  For a vertical span that
+            # is FALSE: moving the origin moves the destination too, so walking
+            # back one row silently returns the NEIGHBOURING wire -- a key two
+            # rows from the truth, carrying the wrong direction letter.  One
+            # physical span then gets two keys and the net splits.
+            #
+            # A V-span's N and S names at one tile are the two ends of the same
+            # physical wire.  When the hop leaves the die, the wire is simply the
+            # one named locally in the opposite direction, at the ORIGINAL tile.
+            # Verified on two independent cases at opposite edges: the ident mux
+            # select stranded at the top edge (N3_V06N0003 -> V06S0003) and the
+            # bottom-edge output pads of pins 45/85/86 (S3_V06N0303 -> V06S0303).
+            # This only runs where globalise_net already failed, so it cannot
+            # disturb spans that resolve normally.
+            mvs = re.match(r'^[NS]\d+_V(\d+)([NS])(\d+)$', name)
+            if mvs and ((is_north and row - hops < 0)
+                        or (not is_north and wire[0] == 'S'
+                            and row + hops > max_row)):
+                flip = "S" if mvs.group(2) == "N" else "N"
+                bare = f"V{mvs.group(1)}{flip}{mvs.group(3)}"
+                gv = self.rg.globalise_net(row, col, bare)
+                if gv.loc.x >= 0 and gv.loc.y >= 0:
+                    return (gv.loc.x, gv.loc.y, gv.id)
+
             for delta in range(1, hops + 1):
                 if is_east or wire[0] == 'W':
                     probe_col = col - delta if is_east else col + delta
