@@ -49,8 +49,11 @@ from sqlalchemy import insert, delete, select, update, func, text
 # for now.  When ECP5 support lands these will move to lifters/common.py.
 from lifters import machxo2_lift as mx
 
-# EFB ports that MUST appear in the recovered bitstream for LCMXO2 with SPI enabled
-REQUIRED_EFB_PORTS = {"JTCK", "JTDI", "JUPDATE", "JRSTN", "JSHIFTDR", "JTDO"}
+# EFB ports that MUST appear in the recovered bitstream for LCMXO2 with SPI
+# enabled.  These are the JF0..7 fabric bus, which the device database shows is
+# the EFB's eight-bit Wishbone data-out (CIB_CFG0: E2_JF<n> <- JWBDATO<n>_EFB) --
+# NOT the JTAG signals this set used to name.  See db.EFB_JF.
+REQUIRED_EFB_PORTS = {f"JWBDATO{n}" for n in range(6)}
 
 
 def _no_package(board_dir):

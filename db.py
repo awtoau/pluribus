@@ -74,7 +74,25 @@ def die(msg):
     sys.exit(1)
 
 
-EFB_JF = {0: "JTCK", 1: "JTDI", 2: "JUPDATE", 3: "JRSTN",
-           4: "JSHIFTDR", 5: "JTDO", 6: "JF6", 7: "JF7"}
+# The JF0..7 fabric bus.  These names used to be a GUESS -- JTCK/JTDI/JUPDATE/
+# JRSTN/JSHIFTDR/JTDO, i.e. JTAG signals -- made when there was no fuzzer-derived
+# EFB evidence at all (docs/fuzzing-coverage.md), and flagged in
+# docs/diamond-re-oracle.md as "the anti-pattern".
+#
+# The device database says what these wires actually carry, and it is not JTAG:
+#     device-db/MachXO2/tiledata/CIB_CFG0/bits.db
+#     .fixed_conn E2_JF0 JWBDATO0_EFB   ...   .fixed_conn E2_JF7 JWBDATO7_EFB
+# an eight-bit Wishbone data-out bus, JF<n> -> JWBDATO<n>, one for one.
+#
+# Keeping the guess did real damage: load.py labelled every JF net from BOTH
+# sources -- JWBDATO<n> from the database's fixed_conn (evidence) and a JTAG name
+# from this table (invention) -- so each of the eight nets ended up with two
+# output drivers.  That is the 7 conflicting drivers that failed the yosys gate
+# on the only design here with an active EFB, while EFB-less designs passed.
+#
+# Now derived from the database rather than asserted.  Kept as a name map only
+# because load.py's JF_RE path wants a port name per index; the mapping is
+# mechanical and matches the fixed_conn table exactly.
+EFB_JF = {n: f"JWBDATO{n}" for n in range(8)}
 
 JF_RE = re.compile(r'^JF(\d)$')
