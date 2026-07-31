@@ -15,14 +15,13 @@ package = "TQFP100"
 lifter  = "machxo2"
 top     = "aw2"          # recovered-Verilog top module name
 
-# Where the RE project that owns this board keeps its prjtrellis build.
-# Optional: scripts/run_pipeline.py exports these as TRELLIS_BUILD /
-# TRELLIS_DBROOT when they are not already set in the environment, so a
-# --board run is self-sufficient.  Paths relative to this board.toml.
-# Pluribus hardcodes no toolchain path of its own.
-[trellis]
-build  = "../../../awto-2000/debris/tmp/prjtrellis/libtrellis/build"
-dbroot = "../../../awto-2000/debris/tmp/prjtrellis/database"
+# NOTE: this board used to override [trellis] to point at a prjtrellis copy in
+# the owning project's debris/ archive.  That is gone: pluribus now vendors the
+# device database itself (device-db/), because the tile database is DEVICE data
+# -- a property of the silicon -- not board data.  While the override existed the
+# corpus validated against one tree and this board lifted against another, and
+# they differed in CIB_EBR1/CIB_EBR2, which this board uses.  The two sets of
+# results were never comparable.  Set $TRELLIS_DBROOT to A/B another tree.
 
 # Paths relative to this board.toml file.
 # pins_tsv: required — pad location + direction annotations.

@@ -9,6 +9,11 @@ build/
 *.db
 *.db-shm
 *.db-wal
+# ...but device-db/ IS the vendored device (tile) database, and its per-tile
+# files are named bits.db.  Without this exception `*.db` above silently
+# excludes all 605 of them and `git status` shows nothing, which defeats the
+# entire point of vendoring the tree.  These are text, not SQLite.
+!device-db/**/*.db
 docs/issues/
 diamond-fuzz/results/
 diamond-fuzz/targets/**/impl1/

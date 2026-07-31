@@ -341,36 +341,23 @@ class MachXO2Lift:
         return None
 
     def _v02_alias(self, x, y, wire_id):
-        """Canonicalise a globalised key onto the V02N form of its span.
+        """Identity.  Kept as the single normalisation point for gkey's exits.
 
-        Some plain V02S#### names resolve to isolated fanin=0 copies while their
-        V02N mates carry the drivers (issue #65).  Kept narrow -- span 2, indices
-        0601/0701 only -- because broad vertical-span merges trigger the #78
-        pad/FF fusion.
+        This used to remap V02S0601/0701 onto their V02N mates (issue #65), on
+        the theory that the S copies were dead-end aliases while the N copies
+        carried the routed net.  They are NOT aliases: they are distinct spans,
+        and a real full-chip design uses both at once -- a slice's F output
+        driving the N span while the S span feeds one of that same slice's own
+        LUT inputs.  Declaring them one wire fused an output with its own input
+        and produced combinational loops that no fuzz target could expose.
 
-        EVERY exit from gkey's valid-globalise path must come through here.  The
-        bare-name rewrite at the top of gkey flips S->N before globalising, and
-        the top/bottom-edge rule flips N->S after; if either bypasses this, one
-        physical wire ends up with two canonical keys and its net splits in two.
-        Both of today's #46 net-merge failures were exactly that (#46).
+        Deleting the remap costs nothing, because the inconsistency was always
+        the real defect: the two references that motivated it agree WITHOUT any
+        remap (both globalise to V02S0701), and only disagreed because the
+        bare-name rewrite rewrote one of them and not the other.  Removing both
+        halves makes every reference to a span canonicalise the same way.
         """
-        if x < 0 or y < 0:
-            return (x, y, wire_id)
-        mv = self._VSPAN.match(self.rg.to_str(wire_id))
-        if not (mv and mv.group(2) == 'S' and int(mv.group(1)) == 2
-                and mv.group(3) in ('0601', '0701')):
-            return (x, y, wire_id)
-        flip_name = f"V{mv.group(1)}N{mv.group(3)}"
-        if self.wname_id(x, y, flip_name) is None:
-            return (x, y, wire_id)
-        gm = self.rg.globalise_net(y, x, flip_name)
-        if gm.loc.x < 0 or gm.loc.y < 0:
-            return (x, y, wire_id)
-        # Compare the whole KEY, not just the location: this remap's job is to
-        # change the wire id AT the same location, so a location-only guard
-        # would reject precisely the cases it exists to fix.
-        gk = (gm.loc.x, gm.loc.y, gm.id)
-        return gk if gk != (x, y, wire_id) else (x, y, wire_id)
+        return (x, y, wire_id)
 
     def gkey(self, row, col, name):
         """Canonical node key, or None if the name globalises to an invalid
@@ -391,13 +378,10 @@ class MachXO2Lift:
         (col + N > max_col at a non-boundary tile) and return None instead of
         the wrong key, so those stub arcs are silently dropped rather than
         causing a net-merge bug."""
-        # Issue #65: in recovered configs, these plain V02S local names can be
-        # dead-end aliases while their V02N counterparts carry the routed net.
-        # Keep this mapping intentionally narrow to avoid broad V-span merges.
-        if name == "V02S0601":
-            name = "V02N0601"
-        elif name == "V02S0701":
-            name = "V02N0701"
+        # NOTE: a bare-name rewrite of V02S0601/0701 -> V02N used to live here.
+        # It rewrote only the UNPREFIXED spelling, so a hop-prefixed reference to
+        # the same wire canonicalised differently and the net split.  Both halves
+        # are gone; see _v02_alias() for why the spans are not aliases at all.
 
         g = self.rg.globalise_net(row, col, name)
         if g.loc.x >= 0 and g.loc.y >= 0:

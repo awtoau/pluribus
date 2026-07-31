@@ -144,16 +144,34 @@ def have(name, env_var=None):
 
 
 def trellis_dbroot(required=True):
-    """The prjtrellis database directory.
+    """The device (tile) database directory.
 
-    Derived from the suite root rather than defaulted, because the database and
-    the tools must match: decoding with a database from a different Trellis build
-    than the `ecpunpack` used as the oracle would make claim 2 compare two
-    different models and call the difference ours.
+    Pluribus OWNS this now: `device-db/` in the repo is the canonical tree, and
+    it wins over any external copy.  It is DEVICE data -- what bit F25B0 means in
+    a CIB_EBR1 tile -- which is a property of the silicon, identical for every
+    board using that part.  That is engine data, like schema.py; it is not board
+    data, and the board-agnostic rule never applied to it.
+
+    Owning it fixes a real failure.  While the tree was external, two copies had
+    diverged: the fuzz corpus validated against one and a board pipeline lifted
+    against another, in tile types that board actually used, so the two results
+    were never comparable.  One copy had also been hand-edited with a correction
+    that db_overrides.py already applies -- an invisible edit that any re-clone
+    or rebuild would have silently dropped.
+
+    The vendored tree is kept PRISTINE upstream.  Every pluribus correction goes
+    in db_overrides.py and is applied on top at decode time.  Never hand-edit
+    device-db/: an edit there is invisible to review and cannot survive a
+    regeneration.
+
+    $TRELLIS_DBROOT still wins, for A/B testing against another tree.
     """
     env = os.environ.get("TRELLIS_DBROOT")
     if env:
         return env
+    own = os.path.join(REPO, "device-db")
+    if os.path.isdir(own):
+        return own
     root = suite_root()
     if root:
         cand = os.path.join(root, "share", "trellis", "database")
