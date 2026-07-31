@@ -29,7 +29,25 @@ from collections import defaultdict
 
 DEF_BUILD_DIR = os.environ.get("TRELLIS_BUILD",
                                "tmp/prjtrellis/libtrellis/build")
-DEF_DBROOT = os.environ.get("TRELLIS_DBROOT", "tmp/prjtrellis/database")
+
+
+def _default_dbroot():
+    """Resolve the trellis database through the single toolchain resolver (#90).
+
+    The old fallback was the literal path a since-removed in-tree prjtrellis
+    checkout used to occupy, so any caller that did not export TRELLIS_DBROOT
+    died on a missing devices.json instead of finding the installed database.
+    """
+    import sys
+    _scripts = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "scripts")
+    if _scripts not in sys.path:
+        sys.path.insert(0, _scripts)
+    import toolchain
+    return toolchain.trellis_dbroot()
+
+
+DEF_DBROOT = os.environ.get("TRELLIS_DBROOT") or _default_dbroot()
 
 # EFB fixed connections are hard-wired routes between the EFB hard IP and the
 # switchbox.  They are never emitted as `.config` arcs, so they are invisible
@@ -665,6 +683,22 @@ class MachXO2Lift:
         plc_tiles = [rc for rc, t in pc.tile_type.items() if t == "PLC"]
         d.plc_fc_applied = self.apply_plc_fixed_conns(dsu, plc_conns, plc_tiles)
 
+        # Carry chain, at CCU2 tiles ONLY.  A carry chain exists only through
+        # CCU2 slices, so restricting the unions to those tiles wires up every
+        # real chain without merging the dedicated carry wires of the whole
+        # device into one net.
+        ccu2_tiles = [(r, c) for (r, c, _sl), e in pc.slice_enum.items()
+                      if e.get("MODE") == "CCU2"]
+        d.plc_carry_applied = self.apply_plc_fixed_conns(
+            dsu, self.load_plc_carry_conns(), sorted(set(ccu2_tiles)))
+
+        # Wide-mux tree.  Unlike the carry chain there is no config bit saying
+        # a slice uses its muxes, so this must go in at every PLC tile; the
+        # wiring is hardwired in silicon regardless, and a mux nothing drives
+        # or reads simply leaves an inert net behind.
+        d.plc_ofx_applied = self.apply_plc_fixed_conns(
+            dsu, self.load_plc_ofx_conns(), plc_tiles)
+
         d.used_roots = {dsu.find(k) for k in src_keys}
 
         net_name = d.net_name
@@ -693,6 +727,11 @@ class MachXO2Lift:
             s = set(init)
             if s not in ({"0"}, {"1"}):
                 continue
+            # In CCU2 mode F is `LUT4(INIT) XOR carry-in`, so even an all-0 INIT
+            # does NOT make F constant -- it makes F track FCI.  Leave these to
+            # the CCU2 pass below.
+            if pc.slice_enum.get((r, c, sl), {}).get("MODE") == "CCU2":
+                continue
             pins = self.bels_of(r, c).get(f"SLICE{sl}.K{k}")
             if not pins:
                 continue
@@ -716,6 +755,12 @@ class MachXO2Lift:
         for (r, c, sl, k), init in pc.lut_init.items():
             if set(init) in ({"0"}, {"1"}):
                 continue
+            # A CCU2 (carry) slice's F output is NOT the bare LUT4 -- it is
+            # `LUT4(INIT) XOR carry-in`.  Emitting it here as a plain LUT4 does
+            # not under-connect, it MIS-connects: the recovered logic silently
+            # drops the carry term.  The CCU2 pass below models it properly.
+            if pc.slice_enum.get((r, c, sl), {}).get("MODE") == "CCU2":
+                continue
             pins = self.bels_of(r, c).get(f"SLICE{sl}.K{k}")
             if not pins:
                 continue
@@ -734,9 +779,167 @@ class MachXO2Lift:
                 "z_used": fkey is not None and dsu.find(fkey) in d.used_roots,
             })
 
-        # ---- flip-flops ----
         plc_tiles = {(r, c) for (r, c, _sl) in pc.slice_enum}
         plc_tiles |= {(r, c) for (r, c, _sl, _k) in pc.lut_init}
+
+        # ---- wide muxes (PFUMX -> OFX0, L6MUX21 -> OFX1) and CCU2 carry ----
+        #
+        # Runs BEFORE the flip-flop pass, exactly as the plain-LUT pass does:
+        # a register fed straight off its paired LUT reads that LUT's F key out
+        # of the DSU, and only emitting the cell puts the key there.  Run this
+        # after the FF pass instead and every CCU2 sum feeding a register
+        # silently resolves to the 1'b0 default.
+        #
+        # Both are pure SLICE STRUCTURE: no config bit enables them, so their
+        # presence is decided entirely by the routing graph (is the OFX output
+        # net consumed? is MODE=CCU2?).  Neither was modelled before, which is
+        # why a 64:1 constant mux ("read back an ident over SPI") recovered with
+        # its output net undriven, and why every counter recovered without its
+        # carry term (#46).
+        #
+        # Semantics are the vendor's, from Lattice's own simulation model
+        # (yosys lattice/common_sim.vh, module TRELLIS_COMB):
+        #     PFUMX    lut5_mux (.ALUT(F1), .BLUT(F),   .C0(M), .Z(OFX));  -> OFX0 = M ? F1  : F
+        #     L6MUX21  lutx_mux (.D0(FXA),  .D1(FXB),   .SD(M), .Z(OFX));  -> OFX1 = M ? FXB : FXA
+        #     CCU2:  F   = LUT4(INIT)(A,B,C,D) ^ (INJECT1 ? 0 : FCI)
+        #            FCO = (~l4o & (INJECT1 ? 0 : LUT2(INIT[3:0])(A,B))) | (l4o & FCI)
+        # and the ALUT/BLUT sense is corroborated by nextpnr's ECP5 packer,
+        # which moves PFUMX.ALUT onto the LUT's F1 pin (ecp5/pack.cc).
+        #
+        # Emitted as pseudo-LUT4 cells -- the same device the distributed-RAM
+        # pass above uses -- so no new cell type reaches the schema, load.py,
+        # verilog.py or the reachability passes.  A 2:1 mux `Z = C ? B : A` is
+        # INIT=0xCACA; `Z = A ^ B` is INIT=0x6666.
+        MUX2_INIT = "1100101011001010"   # 0xCACA: Z = C ? B : A
+        XOR2_INIT = "0110011001100110"   # 0x6666: Z = A ^ B
+
+        def internal_net(tag):
+            """Name a net internal to a slice (no fabric wire, hence no DSU
+            root).  Keyed off the DSU-root namespace with a marker tuple that
+            no (row, col, wire) key can collide with, so it still lands in
+            all_nets and keeps the n<k> numbering contiguous."""
+            counter[0] += 1
+            name = f"n{counter[0]}"
+            net_name[("slice_internal", tag)] = name
+            return name
+
+        for (r, c) in sorted(plc_tiles):
+            bels = self.bels_of(r, c)
+
+            # -- wide muxes --
+            # Every slice HAS both muxes, so emitting them unconditionally would
+            # add 8 dead cells per PLC tile chip-wide.  A mux is in this design
+            # if its OFX output is consumed, and there are two ways to consume
+            # it: the switchbox routes it away (an arc source, hence a used
+            # root), or -- for OFX0 only -- it feeds an OFX1 mux over the
+            # hardwired FXA/FXB tree, which is a fixed_conn and never an arc.
+            # Miss the second and a LUT6 recovers with its top mux driven by
+            # nothing, which is exactly how the 64:1 ident mux lost `miso`.
+            def _ofx_key(sl, k):
+                pins = bels.get(f"SLICE{sl}.K{k}")
+                ofx = pins.get("OFX") if pins else None
+                return pins, ofx
+
+            wanted = set()
+            for sl in "ABCD":
+                pins, ofx = _ofx_key(sl, 1)
+                if ofx is None or dsu.find(ofx) not in d.used_roots:
+                    continue
+                wanted.add((sl, 1))
+                for p in ("FXA", "FXB"):      # what this LUT6's halves need
+                    k_in = pins.get(p)
+                    if k_in is not None:
+                        wanted.add(dsu.find(k_in))
+            for sl in "ABCD":
+                _pins, ofx = _ofx_key(sl, 0)
+                if ofx is not None and (dsu.find(ofx) in d.used_roots
+                                        or dsu.find(ofx) in wanted):
+                    wanted.add((sl, 0))
+
+            for sl in "ABCD":
+                for k, (a_pin, b_pin) in ((0, ("F", "F1")), (1, ("FXA", "FXB"))):
+                    if (sl, k) not in wanted:
+                        continue
+                    pins, ofx = _ofx_key(sl, k)
+                    d.luts.append({
+                        "name": f"ofx{k}_r{r}c{c}_{sl}",
+                        "init": MUX2_INIT,
+                        "a": resolve(pins.get(a_pin), "1'b0"),
+                        "b": resolve(pins.get(b_pin), "1'b0"),
+                        "c": resolve(pins.get("M"), "1'b0"),
+                        "d": None,
+                        "z": net_of(ofx),
+                        "z_used": True,
+                    })
+
+            for sl in "ABCD":
+                senum = pc.slice_enum.get((r, c, sl), {})
+
+                # -- CCU2 carry --
+                if senum.get("MODE") != "CCU2":
+                    continue
+                for k in (0, 1):
+                    init = pc.lut_init.get((r, c, sl, str(k)))
+                    pins = bels.get(f"SLICE{sl}.K{k}")
+                    if init is None or not pins:
+                        continue
+                    fkey = pins.get("F")
+                    if fkey is None:
+                        continue
+                    inject = senum.get(f"CCU2.INJECT1_{k}", "NO") == "YES"
+                    fci = resolve(pins.get("FCI"), "1'b0")
+                    # INJECT1 gates the carry out of the SUM only.  The FCO
+                    # generate term keeps the raw FCI -- see the model above,
+                    # where `gated_cin` feeds F but `FCO` uses FCI directly.
+                    fci_sum = "1'b0" if inject else fci
+                    ins = {p: resolve(pins.get(p), None) for p in "ABCD"}
+                    base = f"r{r}c{c}_{sl}k{k}"
+
+                    if fci_sum == "1'b0":
+                        l4o = net_of(fkey)          # F == l4o, emit straight out
+                    else:
+                        l4o = internal_net(f"{base}_l4o")
+                    d.luts.append({
+                        "name": f"ccu2_{base}_l4",
+                        "init": init,
+                        "a": ins["A"], "b": ins["B"], "c": ins["C"], "d": ins["D"],
+                        "z": l4o,
+                        "z_used": True,
+                    })
+                    if fci_sum != "1'b0":
+                        d.luts.append({
+                            "name": f"ccu2_{base}_sum",
+                            "init": XOR2_INIT,
+                            "a": l4o, "b": fci_sum, "c": None, "d": None,
+                            "z": net_of(fkey),
+                            "z_used": dsu.find(fkey) in d.used_roots,
+                        })
+
+                    fcokey = pins.get("FCO")
+                    if fcokey is None:
+                        continue
+                    # FCO = l4o ? FCI : gated_l2o.  l2o is LUT2(INIT[3:0])(A,B),
+                    # i.e. the low nibble of the same INIT word -- as a LUT4 that
+                    # ignores C/D, the nibble repeated four times.
+                    l2o = "1'b0"
+                    if not inject:
+                        l2o = internal_net(f"{base}_l2o")
+                        d.luts.append({
+                            "name": f"ccu2_{base}_l2",
+                            "init": init[-4:] * 4,
+                            "a": ins["A"], "b": ins["B"], "c": None, "d": None,
+                            "z": l2o,
+                            "z_used": True,
+                        })
+                    d.luts.append({
+                        "name": f"ccu2_{base}_fco",
+                        "init": MUX2_INIT,       # Z = C ? B : A
+                        "a": l2o, "b": fci, "c": l4o, "d": None,
+                        "z": net_of(fcokey),
+                        "z_used": True,
+                    })
+
+        # ---- flip-flops ----
         for (r, c) in sorted(plc_tiles):
             bels = self.bels_of(r, c)
             for sl in "ABCD":
@@ -1027,6 +1230,52 @@ class MachXO2Lift:
         except OSError:
             pass
         return conns
+
+    # The CCU2 carry chain is fixed wiring too, and equally absent from
+    # `.config`: FCOA_SLICE -> FCIB_SLICE within a tile, FCO -> HFIE -> FCI
+    # between tiles.  Without these unions each slice's carry-in defaults to 0
+    # and every multi-slice counter recovers with a broken chain (#46).
+    _CARRY_RE = re.compile(r"^(?:[EWNS]\d+_)?(?:FCI|FCO|HFIE)")
+
+    # Wide-mux (PFUMX / L6MUX21) wiring.  A slice's OFX0/OFX1 bel pins are
+    # F5x_SLICE / FXx_SLICE, but the switchbox knows them as OFX0..OFX7, and the
+    # L6MUX21 data inputs FXA/FXB are hardwired to neighbouring slices' OFX0.
+    # None of it appears in `.config`, so without these unions a routed wire
+    # taken from "OFX1" never reaches the mux bel that drives it -- the mux
+    # looks unused and its output net has no driver.
+    _OFX_RE = re.compile(
+        r"^(?:[EWNS]\d+_)?"
+        r"(?:OFX\d+|F5[A-D]?(?:_SLICE)?|FX[AB]?[A-D](?:_SLICE)?"
+        r"|HL7W\d+|HF5E\d+)$")
+
+    def _load_plc_conns(self, pattern, dbroot=None):
+        """`.fixed_conn` pairs of PLC/bits.db whose BOTH endpoints match."""
+        db_root = dbroot or DEF_DBROOT
+        bits_path = os.path.join(db_root, "MachXO2", "tiledata", "PLC", "bits.db")
+        conns = []
+        try:
+            with open(bits_path) as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line.startswith(".fixed_conn "):
+                        continue
+                    parts = line.split()
+                    if len(parts) != 3:
+                        continue
+                    sink, source = parts[1], parts[2]
+                    if pattern.match(sink) and pattern.match(source):
+                        conns.append((sink, source))
+        except OSError:
+            pass
+        return conns
+
+    def load_plc_carry_conns(self, dbroot=None):
+        """`.fixed_conn` pairs of PLC/bits.db that form the CCU2 carry chain."""
+        return self._load_plc_conns(self._CARRY_RE, dbroot)
+
+    def load_plc_ofx_conns(self, dbroot=None):
+        """`.fixed_conn` pairs of PLC/bits.db that wire the wide-mux tree."""
+        return self._load_plc_conns(self._OFX_RE, dbroot)
 
     def apply_plc_fixed_conns(self, dsu, plc_conns, plc_tiles):
         """Union the PLC slice-output fast connections into the DSU.
