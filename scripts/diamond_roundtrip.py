@@ -46,15 +46,46 @@ SCRIPTS = REPO / "scripts"
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(SCRIPTS))
 
+import itertools
+
+
+def canonical_lut(init_bits):
+    """A LUT4 truth table's canonical form under INPUT PERMUTATION.
+
+    The smallest value reachable by relabelling the four inputs.  Two LUTs with
+    the same canonical form compute the same function up to which pin each
+    operand arrived on -- which is exactly the freedom Diamond exercises when it
+    re-synthesises a recovered netlist, and therefore not a difference worth
+    reporting.
+
+    `init_bits` is the raw MSB-first bit string as it appears in a .config word.
+    """
+    v = int(init_bits[::-1], 2)          # -> value with address 0 in bit 0
+    best = None
+    for perm in itertools.permutations(range(4)):
+        r = 0
+        for addr in range(16):
+            src = sum(((addr >> i) & 1) << perm[i] for i in range(4))
+            if (v >> src) & 1:
+                r |= 1 << addr
+        best = r if best is None or r < best else best
+    return best
+
+
 # ---- configuration ---------------------------------------------------------
-# Trellis build/DB from the env (repo-relative default); explicit env wins.
-DBROOT = os.environ.get("TRELLIS_DBROOT", "tmp/prjtrellis/database")
+# Everything external resolves through scripts/toolchain.py (#90).  The former
+# defaults here were a since-removed in-tree prjtrellis checkout and a bare
+# relative path built from an unset $DIAMONDDIR -- so with no environment set
+# this script pointed at a database that does not exist and a diamondc that is
+# not a file, and failed on the first build rather than at configuration time.
+import toolchain  # noqa: E402
+
+DBROOT = os.environ.get("TRELLIS_DBROOT") or toolchain.trellis_dbroot()
 BUILD = os.environ.get("TRELLIS_BUILD", "tmp/prjtrellis/libtrellis/build")
 DEVICE = os.environ.get("TRELLIS_DEVICE", "LCMXO2-1200")
 DEVICE_FULL = os.environ.get("TRELLIS_DEVICE_FULL", "LCMXO2-1200HC-5TG100C")
 
-# Diamond install from the env (DIAMONDDIR / LM_LICENSE_FILE); no baked paths.
-_DIAMOND = os.environ.get("DIAMONDDIR", "")
+_DIAMOND = os.environ.get("DIAMONDDIR") or toolchain.diamond_root(required=False) or ""
 DIAMONDC = os.environ.get("DIAMONDC",
                           os.path.join(_DIAMOND, "bin", "lin64", "diamondc"))
 LICENSE = os.environ.get("LM_LICENSE_FILE",
@@ -212,7 +243,20 @@ def compare_configs(orig_cfg, new_cfg):
         keys = set(a) | set(b)
         return sum(abs(a.get(k, 0) - b.get(k, 0)) for k in keys)
 
-    lut_match = fa["lut_inits"] == fb["lut_inits"]
+    # Raw INIT words encode the PIN ASSIGNMENT as well as the function, and
+    # Diamond re-assigns inputs freely when it re-synthesises.  Comparing them
+    # directly reports a mismatch for a LUT that computes exactly the same thing
+    # on permuted inputs: lut4_init_bit07 recovered 0xA000 (true on addresses
+    # {0,2}) and rebuilt as 0x8800 (true on {0,4}) -- one function, two
+    # encodings, flagged as a difference.  Compare canonical forms instead.
+    lut_match_raw = fa["lut_inits"] == fb["lut_inits"]
+    ca = Counter()
+    for k, v in fa["lut_inits"].items():
+        ca[canonical_lut(k)] += v
+    cb = Counter()
+    for k, v in fb["lut_inits"].items():
+        cb[canonical_lut(k)] += v
+    lut_match = ca == cb
     enum_res = cdiff(fa["enum_vals"], fb["enum_vals"])
     arc_res = cdiff(fa["arc_shapes"], fb["arc_shapes"])
 
@@ -231,6 +275,7 @@ def compare_configs(orig_cfg, new_cfg):
         "orig_luts": dict(fa["lut_inits"]),
         "new_luts": dict(fb["lut_inits"]),
         "lut_init_match": lut_match,
+        "lut_init_match_raw": lut_match_raw,
         "enum_residual": enum_res,
         "arc_residual": arc_res,
         "struct_residual": struct_residual,
@@ -288,7 +333,8 @@ def process(sample, do_diamond=True, control=False):
         native_decode(newbit, new_cfg)
         cmp = compare_configs(orig_cfg, new_cfg)
         rec.update(cmp)
-        log(f"  FUNCTIONAL: lut_init_match={cmp['lut_init_match']} "
+        log(f"  FUNCTIONAL: lut_fn_match={cmp['lut_init_match']} "
+            f"(raw_init_match={cmp['lut_init_match_raw']}) "
             f"orig_luts={cmp['orig_luts']} new_luts={cmp['new_luts']}")
         log(f"  STRUCTURAL: enum_residual={cmp['enum_residual']} "
             f"arc_residual={cmp['arc_residual']} "
