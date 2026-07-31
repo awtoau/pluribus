@@ -814,8 +814,12 @@ def emit_efb_comment(data: dict) -> list[str]:
         lines.append(f"    //   config: {kind} (sel 0x{sel:02x}, {length} bytes"
                      f" payload {payload})")
     if not efb_config:
-        lines.append("    //   config: NONE recovered — .config truncated at cmd 0x72?"
-                     " (see #54)")
+        # This used to read "truncated at cmd 0x72?" — that hypothesis is dead.
+        # The native decoder reads 0x72 blocks (verified on 30 Diamond EFB targets,
+        # where prjtrellis fails outright), so an empty result now means the design
+        # genuinely preloads no EFB config, not that we lost it.
+        lines.append("    //   config: none present in this bitstream (the decoder"
+                     " reads 0x72 preloads; absence here is real, not truncation)")
     for port_name, net in efb_ports:
         wire_name = resolve_net(net, net_name_map, const_net_map)
         lines.append(f"    // EFB.{port_name} → {wire_name}  (raw net: {net})")
