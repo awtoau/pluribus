@@ -1,1 +1,862 @@
-../../../awto-2000/fpga/hantek/aw2/aw2-nets.tsv
+# fpga_nets.tsv — FPGA net name / annotation table for awto-2000 (Hantek 2D82AUTO)
+#
+# PURPOSE
+#   Human-maintained source of truth for FPGA net names, replacing auto-generated clk_N placeholders.
+#   Loaded by load.py during rebuild → populates net_names table → used by chains.py / report2.py.
+#   Same pattern as ghidra_names.tsv for firmware: edit here, run ./scripts/rebuild, names appear everywhere.
+#
+# CONFIDENCE LEVELS — mandatory, read by all tooling and AI agents
+#   confirmed   Derived directly from bitstream, schematic, or physical measurement. Trust completely.
+#   inferred    Strong structural reasoning (spatial proximity, fanout pattern, known subsystem).
+#               Likely correct but not verified. AI-generated entries start here at best.
+#   speculative An educated guess. Could be wrong. Do not act on this without independent verification.
+#
+# NAMING CONVENTION
+#   Clock nets:  clk_<domain>_<function>
+#     domain:    h0=HPBX0000 (125 MHz, CLKOS), h1=HPBX0100, h2=HPBX0200 (250 MHz, CLKOP)
+#     function:  adc_cap=ADC capture pipeline, adc_enc=ADC encode clock output,
+#                awg_dds=AWG DDS / waveform read, awg_wr=AWG EBR write, dac=DAC output register
+#   Data nets:   <subsystem>_<noun>[_bit]
+#     subsystem: adc, dac, awg, spi, trig, afe
+#   Pad nets:    keep existing pad labels (ADC_D0A, DAC_CLK etc.) — confirmed in load.py from pin map
+#
+# COLUMNS
+#   net         Internal net ID (nNNNN from prjtrellis extraction). Primary key for join to DB.
+#   name        Canonical short name. Used in all report output instead of nNNNN.
+#   type        clk | data | ctrl | pad | unknown
+#   confidence  confirmed | inferred | speculative
+#   freq_mhz    Clock frequency in MHz (clk type only), or blank
+#   hpbx        HPBX spine (BRANCH_HPBX0000 / 0100 / 0200 / 0300), or blank
+#   ff_count    Number of FFs clocked by this net (clk type only), or blank
+#   notes       Free-form. For AI-generated entries: start with "AI:" and explain the reasoning chain.
+#               For confirmed entries: cite the source (bitstream word, schematic ref, measurement).
+#
+# HOW TO ADD ENTRIES
+#   1. Pick the right confidence level. When in doubt, use speculative.
+#   2. Use the naming convention above.
+#   3. Run ./scripts/rebuild to apply.
+#   4. If analysis later confirms or refutes a speculative entry, update confidence and notes.
+#
+# WHAT NOT TO PUT HERE
+#   - reg_rNcN_q[N] nets — auto-named by load.py from FF location, no value in duplicating
+#   - pad_NN nets — auto-named from pin map
+#   - Entries where confidence=speculative and notes is empty — write your reasoning or don't add it
+#
+# ─────────────────────────────────────────────────────────────────────────────────────────────────
+# net	name	type	confidence	freq_mhz	hpbx	ff_count	notes
+# ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+# ── Confirmed pad nets (from pin map + prjtrellis JQ/JA arcs) ─────────────────────────────────
+n1147	ADC_ENCB	pad	confirmed		BRANCH_HPBX0000		Shared net: pin 54 (DAC_CLK) and pin 98 (ADC_ENCB) — same 125 MHz CLKOS spine net. Confirmed from bitstream arc scan + shared-net anomaly report.
+
+# ── DCC and HPBX spine nets (global clock infrastructure at R6C3) ──────────────────────────────
+# MachXO2 has 4 DCC (Dynamic Clock Control) cells at the centre tile (R6C3).
+# Each has a bottom (B) and top (T) input/output pair → 8 DCC pass-through nets.
+# n2720/2721 are HPBX spine branch nets (no fabric driver — driven by PLL hard IP).
+# All are structurally identified from arc G_CLKIxB/T_DCC → G_CLKOxB/T_DCC at R6C3.
+n2720	hpbx0100_spine	clk	confirmed	62.5	BRANCH_HPBX0100		HPBX0100 global clock spine (62.5 MHz CLKOS2). Arc: U_VPTX0100→BRANCH_HPBX0100 at R6C3. Drives clk_h1_* domains.
+n2721	hpbx0300_spine	clk	confirmed	62.5	BRANCH_HPBX0300		HPBX0300 global clock spine (62.5 MHz, secondary branch). Arc: U_VPTX0300→BRANCH_HPBX0300 at R6C3. Drives clk_h1_* domains.
+n2722	dcc0_clk_b	clk	confirmed				DCC cell 0 bottom input/output pass-through (R6C3 G_CLKI0B_DCC→G_CLKO0B_DCC). DCC disabled (pass-through mode) — clock reaches fabric unmodified.
+n2723	dcc0_clk_t	clk	confirmed				DCC cell 0 top input/output pass-through (R6C3 G_CLKI0T_DCC→G_CLKO0T_DCC). DCC pass-through.
+n2724	dcc1_clk_b	clk	confirmed				DCC cell 1 bottom pass-through (R6C3 G_CLKI1B_DCC→G_CLKO1B_DCC). DCC pass-through.
+n2725	dcc1_clk_t	clk	confirmed				DCC cell 1 top pass-through (R6C3 G_CLKI1T_DCC→G_CLKO1T_DCC). DCC pass-through.
+n2726	dcc2_clk_b	clk	confirmed				DCC cell 2 bottom pass-through (R6C3 G_CLKI2B_DCC→G_CLKO2B_DCC). DCC pass-through.
+n2727	dcc2_clk_t	clk	confirmed				DCC cell 2 top pass-through (R6C3 G_CLKI2T_DCC→G_CLKO2T_DCC). DCC pass-through.
+n2728	dcc3_clk_b	clk	confirmed				DCC cell 3 bottom pass-through (R6C3 G_CLKI3B_DCC→G_CLKO3B_DCC). DCC pass-through.
+n2729	dcc3_clk_t	clk	confirmed				DCC cell 3 top pass-through (R6C3 G_CLKI3T_DCC→G_CLKO3T_DCC). DCC pass-through.
+
+# ── Confirmed / strongly inferred clock domains ───────────────────────────────────────────────
+#
+# PLL outputs (all confirmed from V07 bitstream — see vendors/hantek/2d82/docs/hardware/fpga.md):
+#   CLKOP  = 250 MHz → BRANCH_HPBX0200
+#   CLKOS  = 125 MHz → BRANCH_HPBX0000
+#   CLKOS2 =  62.5 MHz → BRANCH_HPBX0100 (inferred — no confirmed HPBX mapping yet)
+#
+# R6C20 = AWG EBR (PDPW8KC, 512×18-bit waveform table). Spatially: rows 2-3 col 20.
+# R6C1/4/7/10/14/17 = ADC EBR ring (DP8KC, 6×1024 B). Spatially: rows 2-5 cols 1-18.
+#
+# n1942 and n1943 are the only two clocks driving R6C20 FFs (chains.txt section 7).
+# n1942 = HPBX0000 (125 MHz), n1943 = HPBX0200 (250 MHz).
+# AWG write clock is 125 MHz (MCU writes waveform table via SPI at moderate rate).
+# AWG read/DDS clock is 250 MHz (DAC output pipeline runs at full PLL rate).
+n1942	clk_h0_awg_wr	clk	inferred	125	BRANCH_HPBX0000	16	AI: Only clock on HPBX0000 driving R6C20 (AWG EBR) FFs. 16 FFs all in rows 2-3 col 20. AWG EBR write clock. 125 MHz = CLKOS. Reasoning: R6C20 confirmed AWG EBR; write side needs slower clock matching SPI write cadence; HPBX0000 = 125 MHz CLKOS. Could be wrong if there's a separate write-domain clock not on the HPBX spine.
+n1943	clk_h2_awg_dds	clk	inferred	250	BRANCH_HPBX0200	19	AI: Only clock on HPBX0200 driving R6C20 (AWG EBR) FFs. 19 FFs rows 4-5 near col 20. AWG DDS / waveform readout pipeline. 250 MHz = CLKOP. Reasoning: R6C20 read side feeds DAC bus; DDS accumulator must run at full DAC clock rate = 250 MHz; HPBX0200 confirmed 250 MHz. Spatial match with DAC-adjacent FFs reinforces this.
+
+# n1858: 31 FFs all in rows 2-5 cols 1-3 (left edge, near DAC output pins 35-54 and ADC_ENCB pin 98).
+# DAC_CLK (pin 54) and ADC_ENCB (pin 98) share net n1147 = 125 MHz CLKOS.
+# The FF at ff_r3c2_B0 has D=1'b0 and drives ADC_ENCB output pad — meaning this clock domain
+# clocks the ENCB output register. That FF is the physical register driving pin 98.
+n1858	clk_h0_dac_enc	clk	inferred	125	BRANCH_HPBX0000	31	AI: 31 FFs concentrated at rows 2-5 cols 1-3 (left edge). Confirmed: ff_r3c2_B0 (D=1'b0) is clocked by this net and drives ADC_ENCB (pin 98) = 125 MHz CLKOS output. Left-edge FFs adjacent to DAC pins 35-54 — strongly suggests DAC output register pipeline. 125 MHz CLKOS. Could be wrong about DAC role if these FFs are actually SPI/control logic at left edge.
+
+# ── Spatial layout reference ──────────────────────────────────────────────────
+# FPGA is 11 rows (0-10) × 22 cols (0-21). Row 6 = EBR band.
+# Pad locations (from pad_map):
+#   ADC Ch A inputs (DA0-7+ENCA): rows 2-5, col 21 (right edge)
+#   ADC Ch B inputs (DB0-7+ENCB): row 0, cols 8-14 (top edge)
+#   DAC outputs (D0-D11+CLK+PD):  rows 9-12, cols 8-21 (bottom-right)
+#   AFE shift regs U1/U7:         rows 3-5 col 0 (left) / row 5 col 21 (right)
+#   SPI CS (FPGA_nCS):            row 12, col 3
+#   Crystal:                      row 2, col 0
+#
+# Data flows: ADC-A (col 21 right edge) → right-to-left through rows 2-5 → EBR row 6
+#             ADC-B (row 0 top)         → top-to-bottom through cols 8-14 → EBR row 6
+#             EBR row 6 → rows 7-10 (below EBR) → SPI MISO path (left edge)
+#             AWG: MCU SPI write → R6C20 EBR → DAC bus (bottom-right)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# n1877: 90 FFs, 250 MHz. Tiles: r2-5 c6-9. MIDFIELD between ADC-A input (col 21) and EBR (col 1-20).
+# This is the main ADC Ch A sample pipeline — data clocked from input registers (col 21) through
+# pipeline stages (cols 9→6) toward EBR write ports. Largest domain = main data path.
+n1877	clk_h2_adc_a_pipe	clk	inferred	250	BRANCH_HPBX0200	90	AI: 90 FFs, 250 MHz. Tiles r2-5 c6-9 — midfield band directly in the ADC Ch A data path (Ch A pads at col 21, EBRs at col 1-20). Position and size consistent with main ADC Ch A capture pipeline. 250 MHz = CLKOP = ADC sample rate. Inferred from spatial position; could be wrong if this region is used for something other than capture pipeline staging.
+
+# n1897: 73 FFs, 250 MHz. Tiles: r2-5 c10-13. Directly above EBR blocks R6C10/R6C1/R6C4.
+# Also confirmed (chains.txt section 7) drives write-side FFs on R6C1/4/10/17. ADC write pipeline.
+n1897	clk_h2_adc_wr_l	clk	inferred	250	BRANCH_HPBX0200	73	AI: 73 FFs, 250 MHz. Tiles r2-5 c10-13, directly above left ADC EBRs (R6C1/4/7/10). Chains.txt section 7 confirms drives write-side FFs on R6C1/4/10/17. ADC EBR write clock for left EBR group. 250 MHz = ADC sample rate. Spatial + EBR association is strong evidence; "inferred" because write-clock FFs could be address/enable not data.
+
+# n1928: 67 FFs, 125 MHz. Tiles: r2-5 c16-19. Right side of upper fabric.
+# ADC Ch B pads enter at row 0 cols 8-14. Data flows downward into rows 2-5.
+# Col 16-19 is the capture pipeline for Ch B (top-edge input → downward routing → EBR).
+# 125 MHz = CLKOS. ADC interleave: Ch A at 250 MHz, Ch B at 125 MHz (ENCB clock) is plausible
+# for the 2-phase interleave where Ch B samples on the opposite edge.
+n1928	clk_h0_adc_b_pipe	clk	inferred	125	BRANCH_HPBX0000	67	AI: 67 FFs, 125 MHz. Tiles r2-5 c16-19 — right-side fabric, position matches ADC Ch B data path (Ch B pads at row 0 cols 8-14, data flows downward then laterally). 125 MHz = CLKOS = ADC_ENCB clock frequency. Inferred: spatial position is consistent with Ch B capture pipeline; 125 MHz matches ENCB. Could be wrong — this region may serve a different 125 MHz function.
+
+# n1916: 56 FFs, 250 MHz. Tiles: r2-5 c14-17. Overlap zone between Ch A (c6-9) and Ch B (c16-19) paths.
+# Also extends into c14-15 — just right of R6C14 EBR. Could be the interleave merge/mux stage
+# where Ch A (250 MHz) and Ch B (125 MHz) samples are combined before EBR write.
+n1916	clk_h2_adc_merge	clk	inferred	250	BRANCH_HPBX0200	56	AI: 56 FFs, 250 MHz. Tiles r2-5 c14-17 — straddles the boundary between Ch A pipeline (c6-9) and Ch B pipeline (c16-19). Position consistent with interleave merge or mux stage where both ADC channels are combined. 250 MHz clock drives the merged output. Inferred from spatial position; role is speculative within the ADC data path.
+
+# n1860: 47 FFs, 250 MHz. Tiles: r2-5 c3-5. Just left of midfield, directly above R6C4/R6C7 EBRs.
+# Chains.txt section 7 confirms drives write FFs on R6C14/R6C7. ADC EBR write for mid EBRs.
+n1860	clk_h2_adc_wr_m	clk	inferred	250	BRANCH_HPBX0200	47	AI: 47 FFs, 250 MHz. Tiles r2-5 c3-5, directly above R6C4/R6C7 EBRs. Chains.txt section 7 confirms drives write-side FFs on R6C14 and R6C7. ADC EBR write clock for mid EBR group. Same reasoning as clk_h2_adc_wr_l.
+
+# n1944: 59 FFs, 250 MHz. Tiles: r3-10 c1-2 — spans the FULL HEIGHT of the fabric at left edge.
+# This is distinctive: left-edge columns 1-2 include rows 7-10 (below EBR) AND rows 3-5 (above EBR).
+# The SPI burst readout path (cmd 0xa4) serialises EBR data out to MISO. MISO would be on left edge
+# (SPI CS is at col 3). A clock spanning all rows at left edge is strongly suggestive of the SPI
+# output serialiser/shift register, which must be accessible from both above (EBR feed) and below.
+n1944	clk_h2_spi_rd	clk	inferred	250	BRANCH_HPBX0200	59	AI: 59 FFs, 250 MHz. Tiles r3-10 c1-2 — uniquely spans the full fabric height at left edge (cols 1-2). SPI CS (FPGA_nCS) is at col 3. A clock spanning all rows at left edge is consistent with the SPI burst readout serialiser (cmd 0xa4 reads EBR samples to MCU). The path must reach both EBR outputs (row 6) and the SPI interface (left edge, all rows). 250 MHz clock for high-speed SPI readout. Could be wrong — left-edge spanning could be a control/address bus instead.
+
+# n2223: 32 FFs, 250 MHz. Tiles: r7-9 c14-17. Below EBR, right area.
+# Chains.txt section 7: drives write FFs on ALL 6 ADC EBR blocks. Spanning all EBRs at 250 MHz
+# and located BELOW EBR row suggests this is write address counter or ring-buffer write pointer —
+# a single counter that increments for all EBRs simultaneously.
+n2223	clk_h2_adc_waddr	clk	inferred	250	BRANCH_HPBX0200	32	AI: 32 FFs, 250 MHz. Tiles r7-9 c14-17 (below EBR row). Chains.txt section 7 confirms drives write FFs on ALL 6 ADC EBR blocks simultaneously. A clock driving all EBRs suggests a shared write address counter or write-enable generator rather than a per-EBR data clock. Below-EBR position is consistent with control logic fed back upward to EBR ports. Inferred; could be wrong about address vs data role.
+
+# n1910: 37 FFs, 125 MHz. Tiles: r2-5 c12-15. Above EBR right area, 125 MHz.
+# Confirmed: drives ff_r2c13_B1 (D=1'b0) — EBR JQ output latch adjacent to ADC EBRs.
+# The JQ latch clock is the EBR read-side clock. 125 MHz = CLKOS = correct for EBR read domain.
+n1910	clk_h0_ebr_rd	clk	inferred	125	BRANCH_HPBX0000	37	AI: 37 FFs, 125 MHz. Tiles r2-5 c12-15 (above EBR, right of centre). Confirmed drives ff_r2c13_B1 (D=1'b0) — an EBR JQ output latch adjacent to ADC EBRs. EBR read-side latch clock. 125 MHz = CLKOS. The JQ output FFs latch DOB data at 125 MHz for handoff to the SPI readout path. Strong evidence from the confirmed JQ latch connection.
+
+# ── EBR address buses ─────────────────────────────────────────────────────────
+# Read address nets — shared across all 6 ADC EBRs (confirmed from ebr_ports query).
+# These are the ring-buffer read pointer bits, driven by SPI readout logic (rows 7-10).
+# All 6 ADC EBRs (R6C1/4/7/10/14/17) share the same read address bus = single read pointer.
+n1101	ebr_raddr_0	data	confirmed				AI: JC0/JD0 read-address input to all 6 ADC EBRs (R6C1/4/7/10/14/17). Confirmed from ebr_ports query — appears as read-role port on all 6 blocks. Bit 0 of shared EBR read address bus (ring buffer read pointer).
+n1099	ebr_raddr_1	data	confirmed				AI: JC0/JC1 read-address input to 5 ADC EBRs (R6C1/4/7/10/17 — not R6C14 which uses different port mapping). Confirmed from ebr_ports. Bit 1 of shared read address.
+n1103	ebr_raddr_2	data	confirmed				AI: JD0 read-address input to R6C1/4/10/17. Confirmed from ebr_ports. Bit 2 of shared read address.
+n1096	ebr_raddr_3	data	confirmed				AI: JD1 read-address input to R6C1/4/10/17. Confirmed from ebr_ports. Bit 3 of shared read address.
+n2146	ebr_raddr_4	data	confirmed				AI: JD2 read-address input to R6C1/4/10/17. Confirmed from ebr_ports. Bit 4 of shared read address.
+n2210	ebr_raddr_5	data	confirmed				AI: JC5 read-address input to R6C1/4/10/17. Confirmed from ebr_ports. Bit 5 of shared read address.
+n2117	ebr_raddr_6	data	confirmed				AI: JD5 read-address input to R6C1/10/17. Confirmed from ebr_ports. Bit 6 of shared read address (9-bit address for 512-deep DP8KC).
+
+# Write address/control nets — shared across 4 ADC EBRs (R6C1/4/10/17).
+# These are the ADC sample write address bits — incremented at 250 MSPS.
+n1098	ebr_waddr_0	data	confirmed				AI: JA0 write-address input to R6C1/4/10/17. Confirmed from ebr_ports. Bit 0 of EBR write address (ring buffer write pointer, 250 MHz domain).
+n1087	ebr_waddr_1	data	confirmed				AI: JA2 write-address input to R6C1/4/10/17. Confirmed from ebr_ports. Bit 1 of EBR write address.
+n2232	ebr_waddr_2	data	confirmed				AI: JA3 write-address input to R6C1/4/10/17. Confirmed from ebr_ports. Bit 2 of EBR write address.
+n2584	ebr_waddr_3	data	confirmed				AI: JB3 write-address input to R6C1/4/10/17. Confirmed from ebr_ports. Bit 3 of EBR write address.
+
+# Ch B EBR write address bus — R6C5/8/11/15/18 (Ch B ring buffer EBRs).
+# Parallel to Ch A waddr bus but targeting the Ch B EBR group.
+# Source FFs in clk_h2_adc_waddr domain (n2223), CE gated by separate enables.
+n1094	ebr_b_waddr_0	data	inferred				AI: JA2 write-address input to R6C2/5/11/18 and JD1 to R6C7/14. Ch B EBR write address bit 0. FF ff_r7c14_A0 in clk_h2_adc_waddr domain, CE=n612.
+n1092	ebr_b_waddr_1	data	inferred				AI: JA2 write-address input to R6C8/15, JB0 to R6C5/11/18, JCLK1 to R6C14. Ch B EBR write address bit 1. FF ff_r9c14_D0.
+n1090	ebr_b_waddr_2	data	inferred				AI: JB0 write-address input to R6C8/15, JD3 to R6C5/11/18. Ch B EBR write address bit 2. FF ff_r9c14_D1.
+
+# ── EBR LSR (capture arm / trigger reset) nets ───────────────────────────────
+# JLSR0 on the ADC EBRs is the synchronous load/set/reset — asserted to arm capture
+# or reset the ring buffer write pointer. Multiple FFs drive these nets across clock
+# domains indicating a synchronized trigger-arm mechanism.
+n776	ebr_arm	ctrl	inferred				AI: Drives JLSR0 on 6 ADC EBRs (R6C4/7/10/14/17/20). Three source FFs: ff_r2c7_A1 (clk_h2_adc_a_pipe, CE=n1881), ff_r5c13_A1 (clk_h2_adc_wr_l, CE=n612), ff_r9c19_B0 (clk_h2_dac_out, CE=n804=spi_ser_ce_b). Multi-domain drive = synchronized capture arm signal. When asserted, resets EBR write state machine across all channels simultaneously — this is the trigger arm / capture-complete flag.
+n1107	ebr_arm_b	ctrl	inferred				AI: Drives JLSR0 on R6C7/10 and is output of ff_r7c9_A0. Also fed by R6C10/7 EBR DOB — cascade reset from EBR read data. Secondary arm signal for left EBR group.
+n1790	ebr_arm_c	ctrl	inferred				AI: Drives JLSR0 on R6C14/17/20. Output of ff_r4c17_B0 and R6C14/17 EBR DOB. Arm signal for right EBR group + AWG EBR (R6C20).
+n813	ebr_clk2	ctrl	inferred				AI: Drives JCLK2 on R6C1/4. Output of ff_r9c1_B1. Secondary EBR clock input — possibly write clock for left EBR group sub-domain, or AWG reload clock.
+n1105	ebr_lsr_cascade	ctrl	inferred				AI: Driven by R6C17 EBR DOB output. Feeds JLSR0 on other EBRs — EBR read data cascading into reset of adjacent EBRs. Part of ring-buffer wrap/reset logic.
+
+# ── EBR read data output nets (JQ_src = DOB output after JQ latch) ────────────
+# These are the actual ADC sample data nets coming OUT of the EBR blocks.
+# Fanout 2000-4000 = they drive the entire SPI serialiser pipeline (rows 7-10).
+n1027	ebr_r6c1_dob_0	data	inferred				AI: JQ_src output from R6C1, fanout 2328. One of two read data bits from R6C1 (DP8KC 2-bit width). Drives SPI readout pipeline. Inferred bit index from port ordering — not confirmed against actual DOB pin.
+n2101	ebr_r6c1_dob_1	data	inferred				AI: JQ_src output from R6C1, fanout 2320. Second read data bit from R6C1.
+n998	ebr_r6c10_dob_0	data	inferred				AI: JQ_src output from R6C10, fanout 4008. Highest fanout net in design. One of two read data bits from R6C10 (DP8KC 2-bit width). Drives SPI serialiser.
+n2574	ebr_r6c10_dob_1	data	inferred				AI: JQ_src output from R6C10, fanout 4000. Second read data bit from R6C10.
+n1024	ebr_r6c14_dob_0	data	inferred				AI: JQ_src output from R6C14 (DP8KC 4-bit width). Fanout 2904.
+n983	ebr_r6c14_dob_1	data	inferred				AI: JQ_src output from R6C14. Fanout 2904.
+n997	ebr_r6c14_dob_2	data	inferred				AI: JQ_src output from R6C14. Fanout 2904.
+n1023	ebr_r6c17_dob_0	data	inferred				AI: JQ_src output from R6C17 (PDPW8KC 2-bit). Fanout 3392.
+n1045	ebr_r6c17_dob_1	data	inferred				AI: JQ_src output from R6C17. Fanout 3392.
+n1020	ebr_r6c4_dob_0	data	inferred				AI: JQ_src output from R6C4 (DP8KC 2-bit). Fanout 3736.
+n993	ebr_r6c4_dob_1	data	inferred				AI: JQ_src output from R6C4. Fanout 3736.
+n1019	ebr_r6c7_dob_0	data	inferred				AI: JQ_src output from R6C7 (DP8KC 2-bit or 4-bit). Fanout 3078.
+n1028	ebr_r6c7_dob_1	data	inferred				AI: JQ_src output from R6C7. Fanout 3078.
+n994	ebr_r6c7_dob_2	data	inferred				AI: JQ_src output from R6C7. Fanout 3078.
+
+# AWG waveform EBR (R6C20) read data — drives DAC bus
+n2665	ebr_r6c20_dob_0	data	inferred				AI: JQ_src output from R6C20 (AWG PDPW8KC 18-bit). Fanout 1764. Drives DAC output pipeline. One bit of the 18-bit waveform sample bus.
+n2676	ebr_r6c20_dob_1	data	inferred				AI: JQ_src output from R6C20. Fanout 1764.
+n2678	ebr_r6c20_dob_2	data	inferred				AI: JQ_src output from R6C20. Fanout 1764.
+
+# n2231: 45 FFs, 125 MHz. Tiles: r7-10 c16-19. BELOW EBR, right side.
+# n2219: 45 FFs, 125 MHz. Tiles: r7-10 c12-15. BELOW EBR, centre-right.
+# Both below-EBR at 125 MHz with equal FF counts. Below EBR = SPI readout / serialisation domain.
+# Equal counts + symmetric positions suggest Ch1 and Ch2 readout paths (or even/odd byte streams).
+n2231	clk_h0_spi_rd_a	clk	inferred	125	BRANCH_HPBX0000	45	AI: 45 FFs, 125 MHz. Tiles r7-10 c16-19 — below EBR band, right side. Equal FF count to n2219 (also below EBR, 125 MHz, c12-15). Symmetric positions and equal counts suggest Ch1/Ch2 EBR readout paths, or even/odd byte serialisation for SPI burst read. Below-EBR location is consistent with data flowing from EBR (row 6) downward toward SPI output. Inferred from spatial symmetry; specific channel assignment unknown.
+n2219	clk_h0_spi_rd_b	clk	inferred	125	BRANCH_HPBX0000	45	AI: 45 FFs, 125 MHz. Tiles r7-10 c12-15 — below EBR band, centre-right. Symmetric partner to n2231 (c16-19). Same reasoning — EBR readout path for SPI burst read, paired with n2231. Inferred from spatial symmetry.
+
+# Below-EBR 250 MHz domains — SPI serialiser / output pipeline running at full speed
+# n2206: r7-10 c10-13. n2188: r7-10 c3-5. n2198: r7-9 c6-9. n2247: r7-10 c18-20 (near DAC pins).
+n2206	clk_h2_spi_ser_a	clk	inferred	250	BRANCH_HPBX0200	56	AI: 56 FFs, 250 MHz. Tiles r7-10 c10-13 — below EBR band, centre. Below-EBR 250 MHz domain consistent with high-speed SPI serialiser or EBR-to-SPI pipeline. Inferred from below-EBR position + 250 MHz clock; specific function unknown.
+n2188	clk_h2_spi_ser_b	clk	inferred	250	BRANCH_HPBX0200	52	AI: 52 FFs, 250 MHz. Tiles r7-10 c3-5 — below EBR band, left-centre. Below-EBR 250 MHz. Same reasoning as clk_h2_spi_ser_a.
+n2198	clk_h2_spi_ser_c	clk	inferred	250	BRANCH_HPBX0200	41	AI: 41 FFs, 250 MHz. Tiles r7-9 c6-9 — below EBR band, centre-left. Below-EBR 250 MHz. Same reasoning.
+n2247	clk_h2_dac_out	clk	inferred	250	BRANCH_HPBX0200	30	AI: 30 FFs, 250 MHz. Tiles r7-10 c18-20 — below EBR band, far right, adjacent to DAC output pins (DAC_D9/10/11 at rows 9-10 col 21, DAC_CLK at row 9 col 21). Proximity to DAC pins suggests this is the AWG DAC output pipeline (EBR R6C20 → DAC bus). Inferred from spatial proximity to DAC pads.
+
+# Below-EBR 125 MHz domains
+n2201	clk_h0_spi_ctrl_a	clk	inferred	125	BRANCH_HPBX0000	36	AI: 36 FFs, 125 MHz. Tiles r7-10 c8-11. Below EBR band, centre. 125 MHz below EBR — likely SPI control, readout state machine, or EBR address decode. Chains.txt section 7: drives 1 FF on R6C10 and R6C14 write side — control signal fed to EBR write ports from below. Inferred from below-EBR position + EBR control connection.
+n2191	clk_h0_spi_ctrl_b	clk	inferred	125	BRANCH_HPBX0000	35	AI: 35 FFs, 125 MHz. Tiles r7-10 c5-7. Below EBR band, left-centre. 125 MHz below EBR. Same reasoning as clk_h0_spi_ctrl_a — SPI control / state machine domain.
+
+# n1891: 27 FFs, 125 MHz. Tiles: r2-5 c8-11. ABOVE EBR — same band as n1877/n1897 but 125 MHz.
+# Above EBR at 125 MHz while neighbours are 250 MHz — likely the slow-path side of ADC capture:
+# address counter, write-enable generation, or Ch B pipeline element running at ENCB clock rate.
+n1891	clk_h0_adc_ctrl	clk	inferred	125	BRANCH_HPBX0000	27	AI: 27 FFs, 125 MHz. Tiles r2-5 c8-11 — above EBR band, centre, surrounded by 250 MHz ADC pipeline domains (n1877 c6-9, n1897 c10-13). A 125 MHz island in the 250 MHz capture zone. Likely ADC write control (address counter, write-enable, trigger logic) running at CLKOS rather than full sample rate. Inferred from spatial context; specific control function unknown.
+
+# HPBX0100 domains (below EBR, ~62.5 MHz inferred — frequency not confirmed)
+# These span the bottom rows, suggesting SPI interface or slower control logic.
+n2310	clk_h1_ctrl_a	clk	speculative	62.5	BRANCH_HPBX0100	30	AI: 30 FFs, HPBX0100. Tiles r8-10 c9-12. Below EBR, centre. HPBX0100 frequency unconfirmed (inferred ~62.5 MHz = CLKOS2). Chains.txt section 7: drives 1 FF on R6C14 and R6C20 write side. Below-EBR position + EBR control connections suggest SPI interface or slow control domain. Speculative on frequency.
+n2237	clk_h1_ctrl_b	clk	speculative	62.5	BRANCH_HPBX0100	26	AI: 26 FFs, HPBX0100. Tiles r7-10 c13-16 approx. Chains.txt section 7: drives 2 FFs on R6C20 (AWG EBR write side). HPBX0100 = possibly SPI write clock for AWG table load. Speculative on frequency and role.
+n2227	clk_h1_ctrl_c	clk	speculative	62.5	BRANCH_HPBX0100	26	AI: 26 FFs, HPBX0100. Tiles r7-10 c13-16. Below EBR. Role unknown. Speculative.
+n2194	clk_h1_ctrl_d	clk	speculative	62.5	BRANCH_HPBX0100	24	AI: 24 FFs, HPBX0100. Below EBR. Role unknown. Speculative.
+n2185	clk_h0_ebr_ctrl_a	clk	speculative	125	BRANCH_HPBX0000	10	AI: 10 FFs, 125 MHz. Chains.txt section 7: drives 1 FF on R6C14 and R6C7 write side. Small domain — likely a specific EBR control signal (write-enable gating or mode select). Speculative.
+n2186	clk_h1_ebr_ctrl_b	clk	speculative	62.5	BRANCH_HPBX0100	10	AI: 10 FFs, HPBX0100. Chains.txt section 7: drives 1 FF on R6C14 and R6C7 write side. Small domain, HPBX0100. Likely EBR write control at slower clock. Speculative on frequency.
+n1947	clk_h1_ctrl_e	clk	speculative	62.5	BRANCH_HPBX0100	16	AI: 16 FFs, HPBX0100. Role unknown. Speculative.
+n2450	clk_h1_ctrl_f	clk	speculative	62.5	BRANCH_HPBX0100	16	AI: 16 FFs, HPBX0100. Role unknown. Speculative.
+n2028	clk_h1_ctrl_g	clk	speculative	62.5	BRANCH_HPBX0100	12	AI: 12 FFs, HPBX0100. Role unknown. Speculative.
+n1879	clk_h0_misc_a	clk	speculative	125	BRANCH_HPBX0000	9	AI: 9 FFs, 125 MHz. Role unknown. Speculative.
+n2027	clk_h1_ctrl_h	clk	speculative	62.5	BRANCH_HPBX0100	8	AI: 8 FFs, HPBX0100. Role unknown. Speculative.
+n2183	clk_h1_ctrl_i	clk	speculative	62.5	BRANCH_HPBX0100	6	AI: 6 FFs, HPBX0100. Role unknown. Speculative.
+n2349	clk_h0_misc_b	clk	speculative	125	BRANCH_HPBX0000	4	AI: 4 FFs, 125 MHz. Role unknown. Speculative.
+n2019	clk_h2_misc_a	clk	speculative	250	BRANCH_HPBX0200	4	AI: 4 FFs, 250 MHz. Role unknown. Speculative.
+n2014	clk_h1_awg_spi	clk	speculative	62.5	BRANCH_HPBX0100	4	AI: 4 FFs, HPBX0100. Chains.txt section 7: drives 1 FF on R6C20 write side (AWG EBR). Small domain touching AWG EBR — possibly SPI write interface for AWG waveform table load. Speculative on frequency and role.
+n2018	clk_h1_misc_a	clk	speculative	62.5	BRANCH_HPBX0100	2	AI: 2 FFs, HPBX0100. Role unknown. Speculative.
+n2114	clk_h1_misc_b	clk	speculative	62.5	BRANCH_HPBX0100	2	AI: 2 FFs, HPBX0100. Role unknown. Speculative.
+n2362	clk_h1_misc_c	clk	speculative	62.5	BRANCH_HPBX0100	2	AI: 2 FFs, HPBX0100. Role unknown. Speculative.
+
+# ── AWG DDS phase accumulator address bus ─────────────────────────────────────
+# R6C20 read-address ports (JC/JD) are driven by the DDS phase accumulator output.
+# The 32-bit DDS accumulator runs at 250 MHz (clk_h2_awg_dds). The upper bits of
+# the accumulator index into the 512-entry waveform table. These nets are the
+# accumulator MSBs going into R6C20 read address pins.
+n2353	awg_dds_addr_0	data	inferred				AI: JC0 read-address input to R6C20 (AWG EBR). Bit 0 of DDS phase accumulator output selecting waveform table entry. 250 MHz domain (clk_h2_awg_dds). Inferred from being a unique-to-R6C20 read-address port.
+n2346	awg_dds_addr_1	data	inferred				AI: JC1 read-address input to R6C20. Bit 1 of DDS address.
+n2432	awg_dds_addr_2	data	inferred				AI: JC3 read-address input to R6C20. Bit 2 of DDS address.
+n2687	awg_dds_addr_3	data	inferred				AI: JC5 read-address input to R6C20. Bit 3 of DDS address.
+n2352	awg_dds_addr_4	data	inferred				AI: JD0 read-address input to R6C20. Bit 4 of DDS address.
+n2340	awg_dds_addr_5	data	inferred				AI: JD1 read-address input to R6C20. Bit 5 of DDS address.
+n2171	awg_dds_addr_6	data	inferred				AI: JD2 read-address input to R6C20. Bit 6 of DDS address.
+n2089	awg_dds_addr_7	data	inferred				AI: JD4 read-address input to R6C20. Bit 7 of DDS address.
+n2438	awg_dds_addr_8	data	inferred				AI: JD5 read-address input to R6C20. Bit 8 of DDS address. (512-entry table = 9-bit address, so this is the MSB.)
+
+# ── AWG waveform write data (MCU → R6C20 via SPI) ─────────────────────────────
+n2347	awg_wdata_0	data	inferred				AI: JA0 write-data input to R6C20. Bit 0 of MCU waveform table entry written via SPI.
+n2684	awg_wdata_1	data	inferred				AI: JA4 write-data input to R6C20. Bit 1 of AWG waveform data.
+n2091	awg_wdata_2	data	inferred				AI: JA5 write-data input to R6C20. Bit 2 of AWG waveform data.
+n2433	awg_wdata_3	data	inferred				AI: JB0 write-data input to R6C20. Bit 3 of AWG waveform data.
+n2685	awg_wdata_4	data	inferred				AI: JB3 write-data input to R6C20. Bit 4 of AWG waveform data.
+n2686	awg_wdata_5	data	inferred				AI: JB4 write-data input to R6C20. Bit 5 of AWG waveform data.
+n2079	awg_wdata_6	data	inferred				AI: JB5 write-data input to R6C20. Bit 6 of AWG waveform data.
+
+# ── AWG EBR read data (R6C20 → DAC pipeline) — additional bits ────────────────
+# Earlier entries cover dob_0/1/2. R6C20 is 18-bit PDPW8KC, so up to 18 DOB bits.
+# The JQ_src query showed only 3 nets but there may be more via JQ_ff path.
+n2648	awg_ebr_lsr	ctrl	inferred				AI: JLSR0 (LSR = load/set/reset) ctrl input to R6C20 AWG EBR. Synchronous reset for the EBR. Likely tied to trigger/arm logic or SPI reset command.
+
+# ── AWG/DAC output pipeline control ──────────────────────────────────────────
+# ff_r10c19 (clk_h2_dac_out, CE=n786) feeds dpram_r9c20 and DAC latch LUTs.
+# n786 is the pipeline enable — it gates whether DAC output FFs clock new data.
+# n786 LUT inputs: n787 (R6C7/R6C10/R6C14 EBR DOB, ADC ring buffer read data),
+#                  n267 (R6C7/R6C10 EBR DOB), n785 (unknown LUT/FF)
+# Interpretation: n786 = data-valid CE for DAC output path. When ADC buffer
+# read data satisfies the LUT condition, DAC FFs latch the data (AWG replay path
+# or scope output mode).
+n786	dac_out_ce	ctrl	inferred				AI: CE input to clk_h2_dac_out FFs at r10c19 (AWG/DAC pipeline). Driven by LUT r3c7_Dk1 whose inputs are EBR DOB nets from ADC ring buffer (R6C7/10/14). Data-valid enable — gates DAC output latching.
+
+# ── EBR write address bus (JA4 on ADC ring buffer EBRs) ─────────────────────
+# n2117: output of ff_r10c10_A0 (clk=clk_h1_ctrl_a, D=0, CE=1 — output latch).
+# Feeds JA4 on R6C7, R6C10, R6C14 (ADC ring buffer EBRs). JA4 = write address bit.
+# n2209 and n2663 also feed JA4 (see arc query). Part of write address bus.
+n2117	ebr_waddr_4	data	inferred				AI: Output of ff_r10c10_A0 (clk_h1_ctrl_a, D=0, CE=1, output latch). Feeds JA4 write-address input on ADC ring buffer EBRs R6C7/10/14. EBR write address bit 4 (JA=lower write addr bits on PDPW8KC).
+n2209	ebr_waddr_5	data	inferred				AI: Feeds JA4 on ADC EBRs (same bus as n2117/ebr_waddr_4). Write address bit 5. Source: arc trace at r6c EBR JA4.
+
+# ── SPI register file EBR (R6C0) ─────────────────────────────────────────────
+# R6C0 is a small EBR used as the SPI config register file. Confirmed from arc trace:
+# FPGA_nCS (n2536) routes to R6C0 JB5 — write-enable controlled by chip-select.
+# Only 4 data/addr/ctrl ports connected (very sparse = small register file, not a ring buffer).
+# JQ0=n1027 and JQ1=n2101 are outputs (these were previously labelled ebr_r6c1_dob_0/1 —
+# CORRECTION: JQ outputs at tile R6C0 (col=0) not R6C1 (col=1); re-check col numbering.
+n2536	spi_ncs	ctrl	confirmed				Confirmed: FPGA_nCS input from MCU (STM32 PA4). Routes to R6C0 EBR JB5 (write-enable for SPI register file EBR). Active-low chip select gating all SPI register writes.
+n2202	ebr_wclk	ctrl	inferred				AI: FF output ff_r7c8_B0 (clk=n2201, D=0, CE=1). Feeds JCLK1 at R6C3 ADC EBR and JB4 at R6C0/4/7/10. EBR write clock — NOT SPI address (corrected: initial guess was wrong, n2202 feeds EBR clock ports not address).
+n1606	ebr_raddr_lut_in	data	inferred				AI: Input A to lut_r8c3_Bk1 → output n1099 (ebr_raddr_1). Part of EBR read address generation. NOT SPI data — misidentified initially from R6C0 JC4 port.
+n2575	ebr_ctrl_b	ctrl	speculative				AI: Feeds R6C0 JD3 and R6C9 JD3. Origin at r6c8/12 routing. Role unclear — EBR control or SPI-adjacent. Needs further tracing before naming confidently.
+
+# ── EBR DOB CE nets (SPI burst read path) ────────────────────────────────────
+# n806/n804 gate CE on clk_h2_spi_ser_a FFs (r10c11-13). These enable the SPI
+# output shift register when there is valid EBR read data to send.
+# Inputs to their LUTs (r3c8): n776(EBR DOB), n778(EBR DOB), n805(LUT), n588(EBR DOB)
+n806	spi_ser_ce_a	ctrl	inferred				AI: CE input to clk_h2_spi_ser_a FFs at r10c11. Gates SPI output serializer. Driven by LUT r3c8_Dk1 whose inputs include EBR DOB nets n776/n778/n588 — likely byte-valid or bit-counter enable for SPI burst read output.
+n804	spi_ser_ce_b	ctrl	inferred				AI: CE input to clk_h2_spi_ser_a FFs at r10c11/13. Companion enable to spi_ser_ce_a from same LUT (r3c8_Dk0). Controls second set of serializer bits.
+n2460	spi_ser_ce_c	ctrl	inferred				AI: CE input to clk_h2_spi_ser_a FFs at r10c12. Third serializer enable, different LUT source (r3c12 area). Possibly byte boundary or channel-select gate.
+
+# ── SPI read-side CE nets (clk_h2_spi_rd FFs at r10c1) ──────────────────────
+n1419	spi_rd_ce_a	ctrl	inferred				AI: CE input to clk_h2_spi_rd FFs at r10c1 A/B slice. Driven by LUT r8c10_Bk0 with inputs n559(EBR DOB from R6C14/R6C7/R6C10), n1259, n1261, n1420. Read-enable for SPI burst readout of ADC ring buffer.
+n556	spi_rd_ce_b	ctrl	inferred				AI: CE input to clk_h2_spi_rd FFs at r10c1 C slice. Driven by LUT r3c11_Bk1 with inputs n553/n557/n558/n559. Second read-enable gate for SPI output path.
+n2448	spi_rd_ce_c	ctrl	inferred				AI: CE input to clk_h2_spi_rd FFs at r10c1 D slice. Third read-enable variant — possibly for channel-B or burst-count boundary.
+
+# ── ADC DDR deserialiser path (rows 4-5, cols 1-5) ───────────────────────────
+# The LUT cluster at r5c1–r5c4 implements DDR deserialisation of the serial ADC
+# data bus. Init 0001000100011110 computes: if ENCB=0 → XOR(data, prev); if ENCB=1 →
+# NOT(data). Together the two half-cycles reconstruct parallel bits from the DDR stream.
+# ADC_ENCB is both the encode clock sent to the ADC and the deserialiser mux select.
+#
+# The 0101010101011010 single-input BUF LUTs at rows 2-4 are pure routing buffers
+# — only the bottom 2 bits of the init are reachable (NC fixes upper inputs to 0).
+# These fan out register bits across CIB routing tracks that can't be reached directly.
+#
+# The 1001100110011010/1001100110011100 2-input LUTs at cols 4-6 rows 2-3 are also
+# routing BUF/BUF pairs — one LUT passes input A, the other passes input B — used to
+# hop signals across adjacent CIB columns where direct routing is not available.
+#
+# Key ghost nets (fanin=0 — driven by EFB hard IP, not recoverable from bitstream):
+n35	spi_efb_byte_valid	ctrl	speculative				AI: Ghost net (fanin=0, fanout=24). Appears alongside reg_r10c5_q[2] (SPI shift reg bit 2) in 24 LUTs spread across rows 2-4. Most likely a byte-valid or burst-count flag from the EFB/config SPI controller — asserted when a complete SPI byte has been shifted in. Could also be a trigger-arm status bit from the JTAG EFB port.
+n492	spi_efb_addr	ctrl	speculative				AI: Ghost net (fanin=0, fanout=13). Appears in SPI control LUTs at r2c6, r4c8/9/10, r5c10 alongside ebr_clk2 and reg_r9c1_q[2]. Likely an SPI register address bit or EFB wishbone read-strobe from the fabric-invisible EFB SPI slave or config controller.
+n897	spi_efb_ctrl	ctrl	speculative				AI: Ghost net (fanin=0, fanout=6). Appears in r4c17/r5c12/r5c16 CE logic — NAND(n897, nXXXX) pattern used as FF enable gate. Likely EFB control output (byte-done, CE mask) gating write-enables of the SPI output pipeline FFs.
+# n274/n277/n278/n315 are intermediate nets in the ADC calibration path:
+# n277 = INV(ADC_D1A) via dpram_r4c14_d0k1; n278 = INV(ADC_D1B) via dpram_r3c16_d0k1
+# n315 = INV(n2873) where n2873 is a ghost (fanin=0, fanout=2) — likely calib reference
+# n384 = COMBO3(a,c,d) output of lut_r3c12_Ak1, high fanout (17), feeds SPI/trigger path
+
+# ── AWG serialiser gate ────────────────────────────────────────────────────────
+# n646 is a COMBO4 result from lut_r4c17_Bk1 with inputs from reg_r3c19_q[1],
+# reg_r3c20_q[0/1/7] — the AWG EBR output registers (clk_h0_awg_wr domain).
+# Drives 13 LUTs at r3c19/r3c20/r4c20 which are the 0101/0011 AWG serialiser
+# staging LUTs. This is the waveform-select or sample-valid gate for the AWG output bus.
+n646	awg_sample_gate	ctrl	speculative				AI: COMBO4 output of lut_r4c17_Bk1, inputs from reg_r3c19_q[1] and reg_r3c20_q[0/1/7] (clk_h0_awg_wr EBR output registers). Drives 13 AWG serialiser LUTs at r3c19/r3c20/r4c20. Acts as waveform-valid or sample-select gate for the AWG data bus serialisation into the DAC pipeline.
+
+# ── ADC sample routing buffers (LUT outputs buffering/inverting ADC data bits) ─────────
+# n25 = INV(ADC_D7A): output of dpram_r4c11_d1k0 = INV(n2783=ADC_D7A).
+# Drives 9 cells (dpram r3c15 + LUTs r10c11/r10c12/r3c12/r4c12/r4c13) in ADC Ch A
+# capture pipeline (cols 10-15, rows 2-4). ADC bit 7 MSB inverted for pipeline routing.
+n25	adc_a_d7_inv	data	inferred				AI: LUT output dpram_r4c11_d1k0 expr=INV(n2783)=INV(ADC_D7A). Fanout 9 — drives dpram write-data at r3c15 and capture LUTs at r10c11/r10c12/r3c12/r4c12/r4c13. ADC Ch A bit 7 (MSB) inverted for distribution to the capture pipeline. Confirmed from lut_symbolic: INV(ADC_D7A).
+# n47: driven by dpram_r4c15_d1k1 = INV(n2846). n2846 is a ghost net (fanin=0, no pad).
+# Drives 9 cells including dpram r9c12 (below-EBR SPI area) and LUTs at r2c15/r3c14/r4c13-17
+# (ADC Ch A/B interleave zone). Ghost n2846 suggests EFB output or static constant.
+n47	adc_interleave_inv	ctrl	speculative				AI: LUT output dpram_r4c15_d1k1 = INV(n2846) where n2846 is a ghost net (fanin=0, no pad driver). Fanout 9 — drives dpram_r9c12 (below-EBR SPI), dpram_r4c15, LUTs at r2c15/r3c14/r4c13-17. Ghost source ambiguous: could be EFB SPI controller output, JTAG register bit, or static 0/1. Drives cells across both ADC interleave zone (r4c13-17) and SPI area (r9c12). Speculative — ghost origin and role unclear.
+
+# ── High-fanout CE / LSR nets for named register clusters ────────────────────
+# n54: NAND(n55, n56) from lut_r10c13_Bk0. n55=ff_r4c18_D1 tick, n56=LSR of same FF cluster.
+# NAND(en, rst) = CE active only when not in reset. Controls 16 FFs at r10c7-c9 on
+# clk_h0_spi_ctrl_b/a domains producing reg_r10c7_q[1..7], reg_r10c8_q[0..7].
+n54	spi_ctrl_ce	ctrl	inferred				AI: NAND(n55, n56) from lut_r10c13_Bk0. n56 is also the LSR of the same r10c7/c8/c9 FF cluster — classic "ce = running & !rst" pattern. Controls 16 FFs in clk_h0_spi_ctrl_b (n2191) and clk_h0_spi_ctrl_a (n2201) domains. Q outputs = reg_r10c7_q[1..7], reg_r10c8_q[0..7] — SPI control state machine output shift register. Inferred from NAND(en,rst) shape and FF cluster context.
+# n912: NAND(n55, n913) — same n55 tick, n913=ff_r7c16_B0 from clk_h0_spi_rd_a.
+# Controls 15 FFs at r2c1-r2c3 on clk_h0_dac_enc (n1858). Q = reg_r2c1_q[1..7] etc.
+# n913 also drives LSR of the same FFs — same "ce = run & !rst" pattern.
+n912	dac_enc_ce	ctrl	inferred				AI: NAND(n55, n913) from lut_r4c18_Dk1. n913 also drives LSR of the same r2c1-r2c3 FF cluster — "ce = run & !rst" pattern. Controls 15 FFs in clk_h0_dac_enc (n1858) domain at rows r2c1-r2c3 (left edge near DAC pins). Q = reg_r2c1_q[1..7], reg_r2c2_q[0..7], reg_r2c3_q[0..]. DAC encode register cluster CE. Inferred from NAND(en,rst) pattern and DAC-adjacent spatial position.
+# n1881: CE for 16 FFs spanning r2c7/r4c2/r5c1/r9c6 across four clock domains.
+# Q outputs include n776=ebr_arm (ff_r2c7_A1, clk_h2_adc_a_pipe) — the EBR capture arm flag.
+# Multi-domain CE = EBR arm synchroniser enable, gates the arm register into all domains.
+n1881	ebr_arm_ce	ctrl	inferred				AI: CE for 16 FFs at r2c7/r4c2/r5c1/r9c6 in four clock domains (clk_h2_adc_a_pipe n1877, clk_h2_misc_a n2019, clk_h2_spi_rd n1944, clk_h2_spi_ser_c n2198). Q outputs include n776=ebr_arm (ff_r2c7_A1), n40=reg_r2c7_q[2], n557=reg_r2c7_q[3] (EBR arm state bits), reg_r5c1_q[2], reg_r3c1_q[2]. Spans clock domains → EBR arm register enable, ensuring the arm signal propagates simultaneously into all pipeline clock domains. Inferred from ebr_arm being among the controlled FF outputs.
+# n1060: CE for 12 FFs at r3c19-r4c20 (AWG output staging, adj. to R6C20 EBR).
+# Driver = n897 | (n898 & n899) where n897=spi_efb_ctrl (EFB ghost).
+n1060	awg_reg_ce	ctrl	inferred				AI: CE for 12 FFs at r3c19-r4c20 in clk_h0_adc_b_pipe (n1928) and clk_h0_awg_wr (n1942) domains. Spatial location adjacent to AWG EBR R6C20. Driver = lut_r5c12_Bk1: n897 | (n898 & n899), n897=spi_efb_ctrl (EFB ghost). CE asserted when EFB ctrl active OR n898&n899 condition. Controls AWG output staging registers (reg_r3c19_q, reg_r3c20_q, reg_r4c20_q). Inferred from AWG-zone spatial position and EFB-controlled gate expression.
+# n1135/n1136: companion CE and LSR for the same FF cluster at r2c19-r2c20 (AWG output).
+# n1135 CE driver: n1136 | (n640 & n641 & !n642) — CE triggered by reset or data condition.
+# n1136 LSR driver: n1133 | !n1137 — reset from reg_r8c20_q[1] (DAC pipeline state) or ghost.
+n1135	awg_out_ce	ctrl	inferred				AI: CE for 12 FFs at r2c19-r2c20 (AWG output registers, adjacent to R6C20). Companion to n1136 (LSR for same FFs). Driver = lut_r5c19_Bk0: n1136 | (n640 & n641 & !n642). n640=ghost (fanin=0), n641=reg_r4c18_q[6], n642=LUT decode. CE asserted when LSR is active OR specific data gate condition met. AWG write path output staging CE. Inferred from AWG spatial position and companion LSR relationship.
+n1136	awg_out_lsr	ctrl	inferred				AI: LSR (synchronous reset) for 12 FFs at r2c19-r2c20 (AWG output staging registers). Also drives input C of lut_r5c19_Bk0 (n1135 CE). Driver = lut_r5c19_Bk1: n1133 | !n1137. n1133=reg_r8c20_q[1] (clk_h2_dac_out DAC pipeline), n1137=ghost (fanin=0). Reset asserted when DAC output pipeline state indicates completion OR when ghost net low. Companion reset to n1135 CE in the AWG output staging path. Inferred from AWG zone and companion CE relationship.
+# n612: CE for 11 FFs producing ebr_waddr_0/1, ebr_b_waddr_0/1/2, ebr_raddr_1/3,
+# ebr_arm, ebr_arm_b — the core EBR address bus and arm signals.
+# Driver: n613 | (!n614 & n615) where n613/n614/n615 are all ghost nets (fanin=0).
+n612	ebr_waddr_ce	ctrl	inferred				AI: CE for 11 FFs producing ebr_waddr_0, ebr_waddr_1, ebr_b_waddr_0/1/2, ebr_raddr_1/3, ebr_arm, ebr_arm_b — the EBR address bus + arm signals. Spans clk_h2_adc_wr_l/spi_ser_c/adc_waddr domains. Driver = lut_r3c15_Dk0: n613 | (!n614 & n615), n613/n614/n615 all ghost (fanin=0). Ghost-controlled CE = asserted by EFB hard IP. This is the "start capture / arm EBR write" enable from the SPI or JTAG controller. Inferred from the set of controlled signals (entire EBR address bus + arm).
+
+# ── n384: 2:1 mux select for ADC pipeline data path ─────────────────────────
+# Drives 17 LUTs (cols 2-16 rows 2-5) all implementing (n384&A) | (!n384&B) patterns.
+# Selects between pairs of pipeline register outputs — ADC channel or stage mux.
+# Driver = lut_r3c12_Ak1: n276 | (n567 & n274). n276=reg_r2c14_q[2], n274/n567=ghost/unnamed.
+n384	adc_mux_sel	ctrl	inferred				AI: Drives 17 LUTs in rows 2-5 cols 2-16, all implementing 2:1 mux: (n384&A)|(!n384&B). Selects between pairs including reg_r3c18/r10c18_q, reg_r8c2/r5c11_q[0], reg_r5c18/r7c10_q, reg_r5c18/r5c16_q, reg_r5c10/r5c18_q, reg_r7c9/r5c16_q. Driver = lut_r3c12_Ak1: n276 | (n567&n274) where n276=reg_r2c14_q[2], n274=ghost. Pipeline stage selector in ADC data path — likely ADC channel mux or capture-vs-replay mode switch. Inferred from pervasive 2:1 mux pattern across ADC pipeline zone.
+
+# ── n1066: 3-way mux select for SPI serialiser data path ────────────────────
+# Drives 13 LUTs at r5c13 and r7-9c14/15 in 3-way expressions: (A&n613)|(B&!n1066&!n613).
+# Controls which register group (reg_r5c3, reg_r8c3, reg_r9c5, reg_r9c6) flows to SPI output.
+# Driver = lut_r7c9_Ak1: (n1107&n776) | (n1107&n1230&n1231). n1107=ebr_arm_b, n776=ebr_arm.
+n1066	spi_ser_mux_sel	ctrl	inferred				AI: Drives 13 LUTs at r5c13 and r7-9c14/15 in 3-way mux: (A&n613)|(B&!n1066&!n613) — second select in a 3-input pipeline demux (n613 is first select). Routes register groups reg_r5c3_q/reg_r8c3_q/reg_r9c5_q/reg_r9c6_q to SPI serialiser output. Driver = lut_r7c9_Ak1: (n1107&n776)|(n1107&n1230&n1231), n1107=ebr_arm_b, n776=ebr_arm. SPI serialiser output data path mux, activated when EBR arm signals are set. Inferred from 3-way mux pattern and ebr_arm dependency.
+
+# ── n1120: state signal in AWG/SPI pipeline zone ────────────────────────────
+# Drives 15 LUTs at r5c16-19, r7c16-19 (AWG output pipeline). Appears in expressions
+# with n1121=reg_r5c19_q[4], n1128=reg_r7c19_q[6], n1133=reg_r8c20_q[1],
+# n1134=reg_r9c19_q[7] — all right-side AWG/SPI state registers. No symbolic entry found
+# for its driver (lut_r4c11_Ck0 missing from lut_symbolic).
+n1120	awg_spi_ctrl	ctrl	speculative				AI: Drives 15 LUTs at r5c16-19 and r7c16-19 (AWG/SPI output pipeline). Appears alongside n1121=reg_r5c19_q[4], n1128=reg_r7c19_q[6], n1133=reg_r8c20_q[1] in expressions like n1121&n1120&n1128, !n1121&n1120, n1120|n1119|!n1121. Likely a state machine control bit or mode flag in the AWG-to-SPI output path. Driver lut_r4c11_Ck0 has no symbolic entry — raw LUT inputs not fully resolved. Speculative on exact role.
+
+# ── ADC pipeline LSR/enable nets ─────────────────────────────────────────────
+# n525: LSR for 4 FFs + drives 5 LUTs in reset cascade. Driver = NOR(n542, n269).
+# n542=reg_r8c15_q[0] (below-EBR state), n269=reg_r3c12_q[3] (ADC pipeline counter).
+# LSR for ADC Ch A pipeline FFs (r3c9/r4c9) and SPI output FFs (r7c11/r7c7).
+n525	adc_pipe_lsr_a	ctrl	inferred				AI: LSR for ff_r3c9_A0 (clk_h2_adc_a_pipe), ff_r4c9_A0 (n1877), ff_r7c11_D0 (clk_h2_spi_ser_a), ff_r7c7_C0 (clk_h2_spi_ser_c). Also drives 5 LUTs in the local reset cascade. Driver = lut_r3c10_Bk0: NOR(n542, n269) where n542=reg_r8c15_q[0] (below-EBR SPI state) and n269=reg_r3c12_q[3] (ADC pipeline counter). Reset asserted when EITHER control register is set. Two-condition pipeline reset for ADC startup or capture completion. Inferred from NOR-reset pattern and spatial context in ADC capture path (r3c9/r4c9) and SPI output (r7c7/r7c11).
+# n547: Dual role — LSR for r3c10/r3c11 ADC ctrl FFs AND CE for r3c18/r5c11/r5c17.
+# Driver = !n546 & n55 where n546=reg_r3c10_q[4] (ADC ctrl counter), n55=pipeline tick.
+n547	adc_ctrl_en	ctrl	inferred				AI: Dual role — LSR for ff_r3c10_C0 and ff_r3c11_A0 (clk_h0_adc_ctrl n1891, producing reg_r3c10_q[4]=n546 and reg_r3c11_q[0]=n565); AND CE for 8 FFs at r3c18/r5c11/r5c17 (clk_h0_adc_b_pipe n1928). Q of CE targets = reg_r3c18_q[0/1], reg_r5c11_q[0], reg_r5c17_q[0/2/3]. Driver = lut_r3c10_Ck1: !n546 & n55. Asserted when ADC ctrl counter reset AND pipeline tick active. Reset for ADC ctrl FFs; CE launch for downstream pipeline FFs. ADC pipeline launch signal. Inferred from !counter&tick pattern and pipeline-adjacent spatial position.
+
+# ── Below-EBR SPI state machine CE nets (one-hot state decoder outputs) ──────
+# The following 9 CE nets decode a state machine whose bits include:
+#   n776=ebr_arm, n40=reg_r2c7_q[2], n559=reg_r9c11_q[1], n281=reg_r2c10_q[3],
+#   n780=NAND(n42,n43), n775/n777=ghost (fanin=0), n41/n38=ghost/LUT-decode.
+# Each CE activates a distinct register cluster in the below-EBR SPI serialiser.
+# They implement a one-hot state decode for different phases of the SPI burst read.
+n1696	spi_state_dec_0	ctrl	inferred				AI: CE for 8 FFs at r5c6 (clk_h2_adc_a_pipe n1877) and r9c3 (clk_h2_spi_ser_b n2188). Driver = lut_r9c10_Bk0 init 0x0001 (COMBO4): !n776 & !n38 & !n40 & !n41. Asserted in "idle/pre-arm" state: ebr_arm=0, n38=0, n40(reg_r2c7_q[2])=0, n41(ghost)=0. Q = reg_r5c6_q[0..5], reg_r9c3_q[4/5]. One-hot state decode for SPI burst read idle phase. Inferred from one-hot COMBO4 init and state signal composition.
+n1699	spi_state_dec_1	ctrl	inferred				AI: CE for 8 FFs at r4c8 (clk_h2_adc_a_pipe), r5c9 (n1877/n1897), r5c10 (clk_h2_adc_wr_l). Driver = lut_r9c10_Ck0 init 0x0080 (COMBO4): n805 & n776 & n559 & !n780. n805=n557&!n40 (r2c7 state), n776=ebr_arm, n559=reg_r9c11_q[1], n780=NAND(n42,n43). Q = reg_r4c8_q[4], reg_r5c9_q[2/6], reg_r5c10_q[6]. State decode for "armed, phase 1". Inferred from one-hot pattern.
+n1711	spi_state_dec_2	ctrl	inferred				AI: CE for 8 FFs at r7c1+r7c2 (clk_h2_spi_rd n1944, left-edge SPI shift register). Driver = lut_r9c11_Ck0 init 0x0010 (COMBO4): !n1712 & !n41 & n40 & !n38. n1712=NAND(n559,n1261), n41/n38=ghost/decode. Q = reg_r7c1_q[0..7], reg_r7c2_q[6/7]. Gates the SPI shift register left-edge output FFs for one serialiser phase. Inferred from one-hot state decode pattern.
+n1714	spi_state_dec_3	ctrl	inferred				AI: Dual role — CE for 6 FFs at r9c10/r9c11 (clk_h2_spi_ser_a n2206) AND LSR for 4 FFs at r7c11+r7c13 (clk_h0_spi_ctrl_a n2201 + clk_h0_spi_rd_b n2219). Driver = lut_r9c12_Dk1 init 0x0800: n1713 & n559 & !n554 & n1261. Q of CE = reg_r9c10_q[2/4], reg_r9c11_q[4]. LSR clears reg_r7c11_q[4] and reg_r7c13_q[6]. Mixed CE+LSR decode for SPI phase 3 — enables SPI ser A state FFs while resetting ctrl/rd_b phase counter FFs. Inferred from mixed CE/LSR decode and one-hot pattern.
+n1715	spi_state_dec_4	ctrl	inferred				AI: CE for 8 FFs at r4c7+r5c9 (clk_h2_adc_a_pipe n1877). Driver = lut_r9c13_Ak0 init 0x0200 (COMBO4): n776 & !n780 & !n559 & n805. Asserted when ebr_arm=1, !n780, n559=0, n805 active. Q = reg_r4c7_q[0/4], reg_r4c7_q[4..7], reg_r5c9_q[3..5]. ADC Ch A pipeline FFs in adc_a_pipe domain enabled for one burst-read phase. Inferred from one-hot LUT decode using arm/state signals.
+n1719	spi_state_dec_5	ctrl	inferred				AI: CE for 8 FFs at r7c15 (clk_h2_adc_waddr n2223), r8c17/r8c18 (n2223 + clk_h2_dac_out n2247). Driver = lut_r9c13_Ck1 init 0x8000 (COMBO4): n281 & n559 & n776 & n1259. All four inputs must be high: n281=reg_r2c10_q[3], n559=reg_r9c11_q[1], n776=ebr_arm, n1259=NOR(n40,n41). Q = reg_r7c15_q[0], reg_r8c17_q[4], reg_r8c18_q[0/3]. Involves adc_waddr + dac_out domains — likely phase where AWG/ADC data is latched for output. All-high one-hot decode. Inferred.
+n1724	spi_state_dec_6	ctrl	inferred				AI: CE for 8 FFs at r8c6/r8c7 (clk_h2_spi_ser_c n2198) and r9c3 (clk_h2_spi_ser_b n2188). Driver = lut_r9c14_Ck0 init 0x0800: n559 & n1721 & !n780 & n40. n1721=!n557&n776 (arm with r2c7_q[3] cleared). Q = reg_r8c6_q[4..7], reg_r8c7_q[0], reg_r9c3_q[0]. SPI ser B/C domain FFs for another burst phase. Inferred from one-hot decode pattern.
+n774	spi_state_dec_7	ctrl	inferred				AI: CE for 8 FFs at r7c12 (clk_h2_spi_ser_a n2206), r9c12 (n2206), r9c17 (clk_h2_adc_waddr n2223). Driver = lut_r3c7_Bk0 init 0x2000: n775 & !n776 & n777 & n778. n775/n777=ghost (fanin=0), n776=ebr_arm, n778=reg_r9c8_q[4]. Q = reg_r7c12_q[0/1/6/7], reg_r9c12_q[6/7], reg_r9c17_q[0/1]. Ghost inputs n775/n777 are static selects — this state activates only when ghost bits have specific values (may never fire in normal operation if ghosts=0). SPI ser A + adc_waddr FFs. Inferred.
+n779	spi_state_dec_8	ctrl	inferred				AI: CE for 8 FFs at r8c5 (clk_h2_spi_ser_b n2188) and r9c4 (n2188). Driver = lut_r3c7_Bk1 init 0x0010: !n775 & !n776 & n777 & !n780. n775/n777=ghost (fanin=0), n776=ebr_arm, n780=NAND(n42,n43). Q = reg_r8c5_q[2..7], reg_r9c4_q[6/7]. Companion to n774 — both use ghost nets n775/n777 as static selects. SPI ser B domain below-EBR FFs for burst read mode. Inferred.
+
+# ── Ghost nets feeding below-EBR state machine ────────────────────────────────
+# n274: fanin=0, drives 10 LUTs in ADC calibration/interleave zone (r2-4, c9-13).
+# Used as 2:1 mux select: (n274&A) | (!n274&B) paired with n272=reg_r2c13_q[0].
+n274	adc_cal_mux_sel	ctrl	speculative				AI: Ghost net (fanin=0, no pad). Drives 10 LUTs in ADC calibration zone r2-4 c9-13 as 2:1 mux select: (n274&A)|(!n274&B) paired with n272=reg_r2c13_q[0] for 4-way decode. BUF(n274) via lut_r2c9_Dk1 creates n273 (buffered copy). If EFB ghost = static config bit selecting ADC calibration path; if dynamic = calibration mode control. Speculative — ghost source ambiguous.
+# n41: fanin=0, drives 9 LUTs at r9c10-r9c12/r10c12/r7c12 in state machine decode.
+# Used alongside n40=reg_r2c7_q[2] and n38=NAND(n42,n43) in CE decode expressions.
+# n42/n43 also fanin=0 → all are EFB ghost nets (SPI or JTAG hard IP outputs).
+n41	spi_state_ghost_a	ctrl	speculative				AI: Ghost net (fanin=0, no pad, no fabric driver). Drives 9 LUTs at r9c10-c12/r10c12/r7c12 in below-EBR state machine decode alongside n40=reg_r2c7_q[2] and n38 (NAND of n42,n43 ghosts). Expressions: !n776&!n38&!n40&!n41 (n1696), !n1712&!n41&n40&!n38 (n1711), n559&n1713&!n554&n1261 (n1714). Ghost cluster n41/n42/n43 likely from EFB SPI slave controller (byte-valid, byte-done, or burst counter bits from hard IP invisible to arc extraction). Speculative.
+
+# ── Auto-named LUT outputs (auto_name_luts.py) ─────────────────────────
+n147	carry_r10c1_Ak1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=n148, b=reg_r7c4_q[0]
+n150	carry_r10c1_Bk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c4_q[1], b=n152
+n153	carry_r10c1_Bk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=n154, b=reg_r2c7_q[6]
+n156	carry_r10c1_Ck0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r2c7_q[7], b=n158
+n159	carry_r10c1_Ck1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c12_q[6], b=reg_r7c4_q[4]
+n162	carry_r10c1_Dk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c12_q[7], b=reg_r7c4_q[5]
+n165	carry_r10c1_Dk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c4_q[2], b=reg_r10c12_q[4]
+n168	carry_r10c2_Ak0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c4_q[3], b=n170
+n258	carry_r2c9_Ak0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r5c8_q[5], b=reg_r10c12_q[5]
+n63	gray_cmp_r2c13_Ak1	ctrl	inferred				AI: 2-bit equality test (init 1000010000100001). = (a==b) & (c==d) with different bit ordering. Inputs: a=reg_r3c6_q[2], b=reg_r3c6_q[3], c=n322, d=n321
+n349	gray_cmp_r2c15_Ck1	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=n52, b=ADC_D0A, c=reg_r4c15_q[2], d=n348
+n367	gray_cmp_r2c16_Dk1	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=n368, b=reg_r5c14_q[2], c=n370, d=reg_r5c15_q[5]
+n376	and4_r2c17_Bk1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=n377, b=reg_r2c19_q[3], c=reg_r2c20_q[0], d=reg_r2c20_q[1]
+n453	carry_r2c4_Ak1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r2c1_q[1], b=reg_r2c3_q[7]
+n455	carry_r2c4_Bk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=n456, b=reg_r2c1_q[2]
+n457	carry_r2c4_Bk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r10c5_q[5], b=reg_r2c1_q[3]
+n459	carry_r2c4_Ck0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r10c5_q[4], b=reg_r2c1_q[4]
+n461	carry_r2c4_Ck1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r2c1_q[5], b=reg_r4c1_q[7]
+n463	carry_r2c4_Dk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r2c1_q[6], b=reg_r4c1_q[6]
+n465	carry_r2c4_Dk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r2c3_q[3], b=n467
+n468	carry_r2c5_Ak0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=n469, b=n470
+n471	carry_r2c5_Ak1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c2_q[7], b=reg_r2c2_q[1]
+n473	carry_r2c5_Bk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=n474, b=reg_r2c2_q[2]
+n475	carry_r2c5_Bk1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=n476, b=reg_r3c2_q[3]
+n478	carry_r2c5_Ck0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=n479, b=n480
+n481	carry_r2c5_Ck1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=n482, b=reg_r2c2_q[5]
+n483	carry_r2c5_Dk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r10c6_q[4], b=reg_r2c2_q[6]
+n485	carry_r2c5_Dk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r2c6_q[3], b=reg_r2c2_q[7]
+n487	carry_r2c6_Ak0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r2c3_q[0], b=reg_r2c6_q[2]
+n505	carry_r2c8_Ak1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r8c8_q[2], b=reg_r3c1_q[6]
+n508	carry_r2c8_Bk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=n152, b=reg_r8c8_q[3]
+n510	carry_r2c8_Bk1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r2c7_q[6], b=reg_r5c7_q[0]
+n512	carry_r2c8_Ck0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r5c7_q[1], b=reg_r2c7_q[7]
+n514	carry_r2c8_Ck1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c12_q[6], b=n515
+n516	carry_r2c8_Dk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c12_q[7], b=reg_r5c8_q[3]
+n518	carry_r2c8_Dk1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c12_q[4], b=reg_r5c8_q[4]
+n362	and4_r3c10_Bk1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=n543, b=n544, c=n544, d=n525
+n598	or4_r3c14_Ak0	ctrl	inferred				AI: 4-input OR (init 1111111111111110). Output low only when all four inputs low. Inputs: a=reg_r4c11_q[7], b=reg_r2c10_q[7], c=reg_r3c11_q[6], d=n601
+n610	gray_cmp_r3c14_Dk1	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=n321, b=reg_r4c14_q[2], c=n322, d=reg_r4c20_q[0]
+n616	and4_r3c15_Dk1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=reg_r3c20_q[0], b=n618, c=reg_r3c20_q[1], d=n620
+n630	and4_r3c17_Ck1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=reg_r3c19_q[4], b=reg_r4c20_q[6], c=reg_r3c19_q[7], d=reg_r3c19_q[6]
+n643	and4_r3c19_Bk0	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=reg_r2c19_q[5], b=reg_r2c19_q[1], c=reg_r2c20_q[2], d=reg_r2c19_q[4]
+n727	carry_r3c5_Ak1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r3c7_q[6], b=reg_r4c4_q[1]
+n730	carry_r3c5_Bk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c4_q[2], b=reg_r3c7_q[7]
+n733	carry_r3c5_Bk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c4_q[3], b=reg_r3c7_q[2]
+n736	carry_r3c5_Ck0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r3c7_q[3], b=reg_r4c4_q[4]
+n739	carry_r3c5_Ck1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c4_q[5], b=reg_r3c13_q[2]
+n742	carry_r3c5_Dk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c4_q[6], b=reg_r3c13_q[3]
+n745	carry_r3c5_Dk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c4_q[7], b=reg_r3c7_q[4]
+n748	carry_r3c6_Ak0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r3c7_q[5], b=n750
+n751	carry_r3c6_Ak1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r4c6_q[2], b=reg_r4c5_q[1]
+n754	carry_r3c6_Bk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r4c6_q[3], b=n756
+n757	carry_r3c6_Bk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c5_q[3], b=reg_r3c2_q[6]
+n760	carry_r3c6_Ck0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r3c2_q[7], b=reg_r4c5_q[4]
+n763	carry_r3c6_Ck1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c5_q[5], b=reg_r3c8_q[0]
+n766	carry_r3c6_Dk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c5_q[6], b=reg_r3c8_q[1]
+n769	carry_r3c6_Dk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c5_q[7], b=n515
+n771	carry_r3c7_Ak0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r3c8_q[7], b=n773
+n844	gray_cmp_r4c12_Ak1	ctrl	inferred				AI: 2-bit equality test (init 1000010000100001). = (a==b) & (c==d) with different bit ordering. Inputs: a=reg_r5c14_q[1], b=n26, c=n25, d=reg_r5c14_q[0]
+n866	gray_cmp_r4c14_Dk1	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=reg_r5c15_q[0], b=n865, c=reg_r2c14_q[6], d=n867
+n904	gray_cmp_r4c17_Dk1	ctrl	inferred				AI: 2-bit equality test (init 1000010000100001). = (a==b) & (c==d) with different bit ordering. Inputs: a=reg_r3c16_q[2], b=reg_r5c14_q[5], c=n368, d=n370
+n1014	carry_r5c9_Ak0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r4c8_q[5], b=n773
+n1061	or4_r5c12_Ck1	ctrl	inferred				AI: 4-input OR (init 1111111111111110). Output low only when all four inputs low. Inputs: a=reg_r2c15_q[0], b=reg_r5c10_q[4], c=reg_r2c9_q[4], d=reg_r8c15_q[0]
+n601	or4_r5c13_Ck1	ctrl	inferred				AI: 4-input OR (init 1111111111111110). Output low only when all four inputs low. Inputs: a=reg_r2c10_q[2], b=n1077, c=reg_r4c10_q[2], d=reg_r4c10_q[3]
+n690	adc_ddr_r5c1_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1146, b=ADC_ENCB, c=reg_r2c12_q[7], d=reg_r4c1_q[3]
+n693	adc_ddr_r5c1_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1149, b=ADC_ENCB, c=reg_r7c3_q[1], d=reg_r4c1_q[3]
+n696	adc_ddr_r5c1_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1151, b=ADC_ENCB, c=reg_r7c3_q[2], d=reg_r4c1_q[3]
+n699	adc_ddr_r5c1_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1153, b=ADC_ENCB, c=reg_r7c3_q[3], d=reg_r4c1_q[3]
+n703	adc_ddr_r5c1_Dk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1155, b=ADC_ENCB, c=reg_r7c3_q[6], d=n1157
+n706	adc_ddr_r5c1_Dk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1158, b=ADC_ENCB, c=reg_r7c3_q[7], d=n1157
+n709	adc_ddr_r5c2_Ak0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1160, b=ADC_ENCB, c=reg_r8c10_q[1], d=reg_r4c1_q[3]
+n712	adc_ddr_r5c2_Ak1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1162, b=ADC_ENCB, c=n1163, d=reg_r4c1_q[3]
+n714	adc_ddr_r5c2_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1164, b=ADC_ENCB, c=reg_r7c7_q[1], d=reg_r4c1_q[3]
+n717	adc_ddr_r5c2_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1166, b=ADC_ENCB, c=reg_r7c4_q[7], d=reg_r4c1_q[3]
+n720	adc_ddr_r5c2_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1168, b=ADC_ENCB, c=n996, d=ADC_ENCB
+n723	lut_0111_r5c2_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1169, b=reg_r7c2_q[1], d=reg_r4c1_q[3]
+n1174	lut_0111_r5c3_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[5], b=reg_r4c4_q[0], c=reg_r2c12_q[7], d=reg_r4c6_q[1]
+n688	lut_0111_r5c3_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r2c12_q[7], b=reg_r4c4_q[0], c=reg_r7c3_q[1], d=reg_r4c6_q[1]
+n691	lut_0111_r5c3_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[1], b=reg_r4c4_q[0], c=reg_r7c3_q[2], d=reg_r4c6_q[1]
+n694	lut_0111_r5c3_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[2], b=reg_r4c4_q[0], c=reg_r7c3_q[3], d=reg_r4c6_q[1]
+n697	lut_0111_r5c3_Dk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[3], b=n926, c=reg_r7c3_q[6], d=reg_r4c6_q[1]
+n700	lut_0111_r5c3_Dk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[6], b=n926, c=reg_r7c3_q[7], d=reg_r4c6_q[1]
+n702	lut_0111_r5c4_Ak0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[7], b=reg_r4c4_q[0], c=reg_r8c10_q[1], d=reg_r4c6_q[1]
+n705	lut_0111_r5c4_Ak1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r8c10_q[1], b=reg_r4c4_q[0], c=reg_r7c5_q[2], d=reg_r4c6_q[1]
+n708	lut_0111_r5c4_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c5_q[2], b=reg_r4c4_q[0], c=reg_r7c7_q[1], d=reg_r4c6_q[1]
+n711	lut_0111_r5c4_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c7_q[1], b=reg_r4c4_q[0], c=reg_r7c4_q[7], d=reg_r4c6_q[1]
+n715	lut_0111_r5c4_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c4_q[7], b=reg_r4c4_q[0], c=n1176, d=ADC_ENCB
+n718	adc_ddr_r5c4_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n223, b=ADC_ENCB, d=reg_r4c6_q[1]
+n1180	lut_0111_r5c5_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[5], b=reg_r5c3_q[3], c=reg_r2c12_q[7], d=reg_r4c6_q[5]
+n1182	lut_0111_r5c5_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r2c12_q[7], b=reg_r5c3_q[3], c=reg_r7c3_q[1], d=reg_r4c6_q[5]
+n1183	lut_0111_r5c5_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[1], b=reg_r5c3_q[3], c=reg_r7c3_q[2], d=reg_r4c6_q[5]
+n1184	lut_0111_r5c5_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[2], b=reg_r5c3_q[3], c=reg_r7c3_q[3], d=reg_r4c6_q[5]
+n1185	lut_0111_r5c5_Dk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[3], b=reg_r5c3_q[3], c=reg_r7c3_q[6], d=reg_r4c6_q[5]
+n1186	lut_0111_r5c5_Dk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[6], b=reg_r5c3_q[3], c=reg_r7c3_q[7], d=reg_r4c6_q[5]
+n1187	lut_0111_r5c6_Ak0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[7], b=reg_r5c3_q[3], c=reg_r8c10_q[1], d=reg_r4c6_q[5]
+n1188	lut_0111_r5c6_Ak1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r8c10_q[1], b=reg_r5c3_q[3], c=reg_r7c5_q[2], d=reg_r4c6_q[5]
+n1189	lut_0111_r5c6_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c5_q[2], b=reg_r5c3_q[3], c=reg_r7c7_q[1], d=reg_r4c6_q[5]
+n1190	lut_0111_r5c6_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c7_q[1], b=reg_r5c3_q[3], c=reg_r7c4_q[7], d=reg_r4c6_q[5]
+n1191	lut_0111_r5c6_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c4_q[7], b=reg_r5c3_q[3], c=n1192, d=ADC_ENCB
+n1193	adc_ddr_r5c6_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1194, b=ADC_ENCB, d=reg_r4c6_q[5]
+n1197	carry_r5c7_Ak1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r4c7_q[4], b=reg_r4c4_q[1]
+n1199	carry_r5c7_Bk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r4c7_q[5], b=reg_r4c4_q[2]
+n1201	carry_r5c7_Bk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c4_q[3], b=reg_r4c7_q[0]
+n1203	carry_r5c7_Ck0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r4c7_q[1], b=reg_r4c4_q[4]
+n1205	carry_r5c7_Ck1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c4_q[5], b=reg_r4c7_q[6]
+n1207	carry_r5c7_Dk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c4_q[6], b=reg_r4c7_q[7]
+n1209	carry_r5c7_Dk1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r5c9_q[4], b=reg_r4c4_q[7]
+n1211	carry_r5c8_Ak0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r5c9_q[5], b=reg_r4c5_q[0]
+n1213	carry_r5c8_Ak1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c5_q[1], b=reg_r5c10_q[6]
+n1215	carry_r5c8_Bk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r5c10_q[7], b=n756
+n1217	carry_r5c8_Bk1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r5c9_q[2], b=reg_r4c5_q[3]
+n1219	carry_r5c8_Ck0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r5c9_q[3], b=reg_r4c5_q[4]
+n1221	carry_r5c8_Ck1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c5_q[5], b=reg_r5c9_q[6]
+n1223	carry_r5c8_Dk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c5_q[6], b=reg_r5c9_q[7]
+n1225	carry_r5c8_Dk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r4c5_q[7], b=reg_r4c8_q[4]
+n1246	or4_r7c10_Bk0	ctrl	inferred				AI: 4-input OR (init 1111111111111110). Output low only when all four inputs low. Inputs: a=reg_r8c10_q[7], b=reg_r7c8_q[5], c=reg_r7c10_q[1], d=reg_r2c12_q[5]
+n1230	and4_r7c10_Bk1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=ebr_raddr_0, b=ebr_raddr_1, c=reg_r2c3_q[2], d=ebr_b_waddr_2
+n1282	and4_r7c12_Dk1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=n1283, b=reg_r5c6_q[7], c=reg_r7c11_q[6], d=n969
+n1231	and4_r7c13_Ak0	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=ebr_waddr_0, b=n1285, c=ebr_raddr_3, d=reg_r5c13_q[3]
+n1285	and4_r7c13_Ak1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=ebr_b_waddr_0, b=ebr_raddr_2, c=ebr_b_waddr_1, d=ebr_waddr_1
+n1294	and4_r7c13_Dk1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=reg_r7c16_q[6], b=reg_r9c14_q[3], c=reg_r9c14_q[2], d=reg_r8c16_q[6]
+n1076	or4_r8c10_Ck1	ctrl	inferred				AI: 4-input OR (init 1111111111111110). Output low only when all four inputs low. Inputs: a=reg_r7c10_q[0], b=n790, c=reg_r8c10_q[6], d=n1246
+n1579	carry_r8c1_Ak1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=n148, b=n1580
+n1581	carry_r8c1_Bk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c2_q[5], b=n152
+n1583	carry_r8c1_Bk1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r2c7_q[6], b=reg_r7c1_q[4]
+n1585	carry_r8c1_Ck0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r2c7_q[7], b=n1586
+n1587	carry_r8c1_Ck1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c12_q[6], b=reg_r7c1_q[0]
+n1589	carry_r8c1_Dk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=n1580, b=reg_r10c12_q[7]
+n1590	carry_r8c1_Dk1	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c12_q[4], b=n1591
+n1592	carry_r8c2_Ak0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c1_q[3], b=reg_r10c12_q[5]
+n184	lut_0111_r8c3_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[5], b=reg_r8c2_q[7], c=reg_r2c12_q[7], d=reg_r8c11_q[0]
+n191	lut_0111_r8c3_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[1], b=reg_r8c2_q[7], c=reg_r7c3_q[2], d=reg_r8c11_q[0]
+n193	lut_0111_r8c3_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1607, b=reg_r8c2_q[7], c=reg_r7c3_q[3], d=reg_r8c11_q[0]
+n196	lut_0111_r8c3_Dk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[3], b=n1608, c=reg_r7c3_q[6], d=reg_r8c11_q[0]
+n200	lut_0111_r8c3_Dk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[6], b=n1608, c=reg_r7c3_q[7], d=reg_r8c11_q[0]
+n203	lut_0111_r8c4_Ak0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[7], b=reg_r8c2_q[7], c=reg_r8c10_q[1], d=reg_r8c11_q[0]
+n206	lut_0111_r8c4_Ak1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r8c10_q[1], b=reg_r8c2_q[7], c=reg_r7c5_q[2], d=reg_r8c11_q[0]
+n209	lut_0111_r8c4_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c5_q[2], b=reg_r8c2_q[7], c=reg_r7c7_q[1], d=reg_r8c11_q[0]
+n211	lut_0111_r8c4_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c7_q[1], b=reg_r8c2_q[7], c=n1609, d=reg_r8c11_q[0]
+n214	lut_0111_r8c4_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1609, b=reg_r8c2_q[7], c=n1344, d=ADC_ENCB
+n217	adc_ddr_r8c4_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1340, b=ADC_ENCB, d=reg_r8c11_q[0]
+n1656	or4_r8c7_Dk0	ctrl	inferred				AI: 4-input OR (init 1111111111111110). Output low only when all four inputs low. Inputs: a=reg_r8c5_q[1], b=reg_r8c7_q[5], c=reg_r8c5_q[0], d=reg_r8c7_q[4]
+n1674	carry_r9c9_Ak0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r9c7_q[2], b=reg_r10c8_q[0]
+n1676	carry_r9c9_Ak1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=n1677, b=reg_r10c8_q[1]
+n1678	carry_r9c9_Bk0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r10c6_q[0], b=n1680
+n1681	carry_r9c9_Bk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r10c5_q[7], b=reg_r10c8_q[3]
+n1683	carry_r9c9_Ck0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c8_q[4], b=reg_r10c5_q[6]
+n1685	carry_r9c9_Ck1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c8_q[7], b=n1687
+n1688	carry_r9c9_Dk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=n1689, b=reg_r7c8_q[6]
+n1691	carry_r9c9_Dk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c8_q[1], b=n1693
+n1694	carry_r9c10_Ak0	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r7c8_q[0], b=reg_r10c9_q[0]
+n1702	or4_r9c11_Bk1	ctrl	inferred				AI: 4-input OR (init 1111111111111110). Output low only when all four inputs low. Inputs: a=reg_r4c2_q[2], b=n41, c=reg_r2c7_q[2], d=reg_r4c2_q[3]
+n1719	and4_r9c13_Ck1	ctrl	inferred				AI: 4-input AND (init 1000000000000000). Output high only when all four inputs high. Inputs: a=reg_r2c10_q[3], b=reg_r9c11_q[1], c=ebr_arm, d=n1259
+n1737	gray_cmp_r9c15_Bk1	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=reg_r7c15_q[3], b=reg_r10c16_q[7], c=reg_r7c15_q[2], d=reg_r10c17_q[0]
+n1740	gray_cmp_r9c15_Ck0	ctrl	inferred				AI: 2-bit equality test (init 1000010000100001). = (a==b) & (c==d) with different bit ordering. Inputs: a=reg_r9c13_q[2], b=reg_r9c13_q[3], c=reg_r10c16_q[5], d=reg_r10c16_q[6]
+n1743	gray_cmp_r9c15_Ck1	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=reg_r10c16_q[4], b=reg_r10c16_q[3], c=reg_r5c13_q[4], d=reg_r5c13_q[5]
+n1746	gray_cmp_r9c15_Dk0	ctrl	inferred				AI: 2-bit equality test (init 1000010000100001). = (a==b) & (c==d) with different bit ordering. Inputs: a=reg_r10c16_q[2], b=reg_r3c13_q[0], c=reg_r3c13_q[1], d=reg_r10c16_q[1]
+n1749	gray_cmp_r9c15_Dk1	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=reg_r10c15_q[7], b=reg_r10c16_q[0], c=reg_r5c12_q[5], d=reg_r5c12_q[4]
+n1752	gray_cmp_r9c16_Ak0	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=reg_r10c15_q[5], b=reg_r9c11_q[7], c=reg_r10c15_q[6], d=reg_r9c11_q[6]
+n1755	gray_cmp_r9c16_Ak1	ctrl	inferred				AI: 2-bit equality test (init 1000010000100001). = (a==b) & (c==d) with different bit ordering. Inputs: a=reg_r9c14_q[5], b=reg_r9c14_q[4], c=n1758, d=reg_r10c15_q[3]
+n1759	gray_cmp_r9c16_Bk0	ctrl	inferred				AI: 2-bit equality test (init 1000010000100001). = (a==b) & (c==d) with different bit ordering. Inputs: a=reg_r10c15_q[2], b=n1760, c=reg_r9c13_q[5], d=reg_r9c13_q[4]
+n1767	gray_cmp_r9c16_Ck0	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=reg_r10c12_q[3], b=reg_r10c14_q[5], c=reg_r10c12_q[2], d=reg_r10c14_q[6]
+n1770	gray_cmp_r9c16_Ck1	ctrl	inferred				AI: Gray-code comparator (init 1000001001000001). = XNOR(a,b) & XNOR(c,d): true when a==b and c==d. Inputs: a=reg_r10c14_q[4], b=reg_r10c14_q[3], c=reg_r9c10_q[2], d=reg_r9c10_q[3]
+n1819	lut_0111_r9c3_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[5], b=reg_r3c4_q[7], c=reg_r2c12_q[7], d=reg_r3c3_q[0]
+n182	lut_0111_r9c3_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r2c12_q[7], b=reg_r3c4_q[7], c=reg_r7c3_q[1], d=reg_r3c3_q[0]
+n185	lut_0111_r9c3_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[1], b=reg_r3c4_q[7], c=reg_r7c3_q[2], d=reg_r3c3_q[0]
+n188	lut_0111_r9c3_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1607, b=reg_r3c4_q[7], c=reg_r7c3_q[3], d=reg_r3c3_q[0]
+n190	lut_0111_r9c3_Dk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[3], b=reg_r3c4_q[7], c=reg_r7c3_q[6], d=reg_r3c3_q[0]
+n194	lut_0111_r9c3_Dk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[6], b=reg_r3c4_q[7], c=reg_r7c3_q[7], d=reg_r3c3_q[0]
+n197	lut_0111_r9c4_Ak0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[7], b=reg_r3c4_q[7], c=reg_r8c10_q[1], d=reg_r3c3_q[0]
+n199	lut_0111_r9c4_Ak1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r8c10_q[1], b=reg_r3c4_q[7], c=n1816, d=reg_r3c3_q[0]
+n1820	lut_0111_r9c4_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c5_q[2], b=reg_r3c4_q[7], c=reg_r7c7_q[1], d=reg_r3c3_q[0]
+n205	lut_0111_r9c4_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c7_q[1], b=reg_r3c4_q[7], c=reg_r7c4_q[7], d=reg_r3c3_q[0]
+n208	lut_0111_r9c4_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c4_q[7], b=reg_r3c4_q[7], c=n1810, d=ADC_ENCB
+n212	adc_ddr_r9c4_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1808, b=ADC_ENCB, d=reg_r3c3_q[0]
+n1824	lut_0111_r9c5_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[5], b=reg_r10c5_q[1], c=reg_r2c12_q[7], d=n1825
+n1350	lut_0111_r9c5_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r2c12_q[7], b=reg_r10c5_q[1], c=reg_r7c3_q[1], d=n1825
+n1352	lut_0111_r9c5_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[1], b=reg_r10c5_q[1], c=reg_r7c3_q[2], d=reg_r9c3_q[5]
+n1354	lut_0111_r9c5_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[2], b=reg_r10c5_q[1], c=reg_r7c3_q[3], d=n1825
+n1356	lut_0111_r9c5_Dk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[3], b=reg_r10c5_q[1], c=reg_r7c3_q[6], d=reg_r9c3_q[5]
+n1358	lut_0111_r9c5_Dk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[6], b=reg_r10c5_q[1], c=reg_r7c3_q[7], d=reg_r9c3_q[5]
+n1360	lut_0111_r9c6_Ak0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c3_q[7], b=reg_r10c5_q[1], c=reg_r8c10_q[1], d=reg_r9c3_q[5]
+n1362	lut_0111_r9c6_Ak1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r8c10_q[1], b=reg_r10c5_q[1], c=reg_r7c5_q[2], d=reg_r9c3_q[5]
+n1364	lut_0111_r9c6_Bk0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c5_q[2], b=reg_r10c5_q[1], c=reg_r7c7_q[1], d=reg_r9c3_q[5]
+n1366	lut_0111_r9c6_Bk1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c7_q[1], b=reg_r10c5_q[1], c=reg_r7c4_q[7], d=reg_r9c3_q[5]
+n1368	lut_0111_r9c6_Ck0	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=reg_r7c4_q[7], b=reg_r10c5_q[1], c=n1826, d=ADC_ENCB
+n1370	adc_ddr_r9c6_Ck1	data	inferred				AI: DDR deserialiser LUT (init 0111100010001000). Computes (a&b&!c)|(b&a&!d)|(!b&c&d)|(!a&c&d). B=ADC_ENCB selects between two half-cycle data sources. Inputs: a=n1342, b=ADC_ENCB, c=ADC_ENCB, d=ADC_ENCB
+n1841	carry_r9c8_Ak1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r9c7_q[5], b=reg_r10c7_q[1]
+n1843	carry_r9c8_Bk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=reg_r10c7_q[2], b=n1844
+n1845	carry_r9c8_Bk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r10c6_q[3], b=reg_r10c7_q[3]
+n1847	carry_r9c8_Ck0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=n1848, b=reg_r10c6_q[2]
+n1850	carry_r9c8_Ck1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r10c6_q[7], b=n1852
+n1853	carry_r9c8_Dk0	ctrl	inferred				AI: Carry/adder function (init 0101100110011001). = (!a&!b)|(a&b&!c)|(!a&c&d)|(a&b&!d) — half-adder carry variant. Inputs: a=n1854, b=n1855
+n1856	carry_r9c8_Dk1	ctrl	inferred				AI: Carry/adder function (init 0011100110011001). = (!a&!b)|(a&b&!c)|(a&b&!d)|(!b&c&d) — half-adder carry variant. Inputs: a=reg_r9c7_q[3], b=reg_r10c7_q[7]
+n33	n34_n35	ctrl	inferred				AI: buffer/alias of n34 & !n35
+n54	nand_n55_n56	ctrl	inferred				AI: buffer/alias of NAND(n55,n56)
+n65	n66	ctrl	inferred				AI: buffer/alias of !n66
+n125	n35_n34	ctrl	inferred				AI: buffer/alias of n35 & !n34
+n127	buf_n128	ctrl	inferred				AI: buffer/alias of BUF(n128)
+n223	or_n224_n225	ctrl	inferred				AI: buffer/alias of OR(n224,n225)
+n228	buf_n229	ctrl	inferred				AI: buffer/alias of BUF(n229)
+n261	n262_n173_n173_n263	ctrl	inferred				AI: buffer/alias of (n262 & n173) | (!n173 & n263)
+n264	nor_n173_n265	ctrl	inferred				AI: buffer/alias of NOR(n173,n265)
+n266	n268_n267_n269	ctrl	inferred				AI: buffer/alias of n268 | (n267 & !n269)
+n270	or_n267_n269	ctrl	inferred				AI: buffer/alias of OR(n267,n269)
+n271	buf_n272	ctrl	inferred				AI: buffer/alias of BUF(n272)
+n279	nor_n280_n281	ctrl	inferred				AI: buffer/alias of NOR(n280,n281)
+n282	nor_n283_n269	ctrl	inferred				AI: buffer/alias of NOR(n283,n269)
+n288	n290_n289_n269	ctrl	inferred				AI: buffer/alias of n290 | (n289 & !n269)
+n295	n297_n173_n296_n173	ctrl	inferred				AI: buffer/alias of (n297 & n173) | (n296 & !n173)
+n305	n303_n302	ctrl	inferred				AI: buffer/alias of n303 & !n302
+n306	n302_n307	ctrl	inferred				AI: buffer/alias of !n302 | n307
+n308	n310_n309_n307	ctrl	inferred				AI: buffer/alias of n310 | (n309 & !n307)
+n311	n280_n312_n313	ctrl	inferred				AI: buffer/alias of !n280 & n312 & n313
+n334	nor_n280_n292	ctrl	inferred				AI: buffer/alias of NOR(n280,n292)
+n342	xor_inv_n2846_n344	ctrl	inferred				AI: buffer/alias of XOR(INV(n2846),n344)
+n345	xor_n346_inv_n2846	ctrl	inferred				AI: buffer/alias of XOR(n346,INV(n2846))
+n395	buf_n396	ctrl	inferred				AI: buffer/alias of BUF(n396)
+n416	xor_n417_n418	ctrl	inferred				AI: buffer/alias of XOR(n417,n418)
+n419	buf_n418	ctrl	inferred				AI: buffer/alias of BUF(n418)
+n421	buf_n422	ctrl	inferred				AI: buffer/alias of BUF(n422)
+n535	n536_n281	ctrl	inferred				AI: buffer/alias of !n536 & n281
+n537	n523_n521_n538	ctrl	inferred				AI: buffer/alias of n523 | (n521 & n538)
+n524	nor_n521_n538	ctrl	inferred				AI: buffer/alias of NOR(n521,n538)
+n525	nor_n542_n269	ctrl	inferred				AI: buffer/alias of NOR(n542,n269)
+n545	n546_n55	ctrl	inferred				AI: buffer/alias of n546 & !n55
+n547	n546_n55	ctrl	inferred				AI: buffer/alias of !n546 & n55
+n551	nor_n546_n55	ctrl	inferred				AI: buffer/alias of NOR(n546,n55)
+n552	nor_n546_n55	ctrl	inferred				AI: buffer/alias of NOR(n546,n55)
+n563	n269_n280_n312_n313	ctrl	inferred				AI: buffer/alias of n269 | (!n280 & !n312 & n313)
+n578	n6_n528_n580	ctrl	inferred				AI: buffer/alias of !n6 & !n528 & !n580
+n602	nor_n574_n594_n593_n569_n5	ctrl	inferred				AI: buffer/alias of NOR((n574 & !n594) | (!n593 & n569 & !n594) | (n574 & !n593 & n569),n603)
+n604	n600_n603_n307	ctrl	inferred				AI: buffer/alias of n600 | (n603 & !n307)
+n605	n339_n343_n339_n344_n343	ctrl	inferred				AI: buffer/alias of (n339 & !n343) | (n339 & n344) | (!n343 & n344)
+n644	n405_n398_n407	ctrl	inferred				AI: buffer/alias of n405 & n398 & n407
+n667	n668	ctrl	inferred				AI: buffer/alias of !n668
+n294	nand_n788_n789	ctrl	inferred				AI: buffer/alias of NAND(n788,n789)
+n790	nand_n309_n789	ctrl	inferred				AI: buffer/alias of NAND(n309,n789)
+n807	xor_n538_n521	ctrl	inferred				AI: buffer/alias of XOR(n538,n521)
+n818	n173_n813_n173_n819_n813	ctrl	inferred				AI: buffer/alias of (n173 & n813) | (!n173 & n819 & !n813)
+n838	n599_n269_n283	ctrl	inferred				AI: buffer/alias of n599 | (!n269 & n283)
+n857	buf_n858	ctrl	inferred				AI: buffer/alias of BUF(n858)
+n859	xor_n860_n861	ctrl	inferred				AI: buffer/alias of XOR(n860,n861)
+n862	buf_n861	ctrl	inferred				AI: buffer/alias of BUF(n861)
+n896	n897_n646_n898_n646_n899	ctrl	inferred				AI: buffer/alias of (n897 & n646) | (n898 & n646 & n899)
+n908	n55_n909_n909_n910_n911	ctrl	inferred				AI: buffer/alias of (n55 & !n909) | (n909 & n910 & !n911)
+n912	nand_n55_n913	ctrl	inferred				AI: buffer/alias of NAND(n55,n913)
+n659	buf_n617	ctrl	inferred				AI: buffer/alias of BUF(n617)
+n687	nor_n944_n945	ctrl	inferred				AI: buffer/alias of NOR(n944,n945)
+n948	n729	ctrl	inferred				AI: buffer/alias of !n729
+n972	nor_n973_n945	ctrl	inferred				AI: buffer/alias of NOR(n973,n945)
+n974	nor_n975_n945	ctrl	inferred				AI: buffer/alias of NOR(n975,n945)
+n1055	n1056_n1057_n173_n1057_n105	ctrl	inferred				AI: buffer/alias of (n1056 & n1057) | (n173 & n1057) | (n1056 & !n173)
+n1060	n897_n898_n899	ctrl	inferred				AI: buffer/alias of n897 | (n898 & n899)
+n526	n979_n269_n267	ctrl	inferred				AI: buffer/alias of n979 & n269 & n267
+n1072	buf_n1087	ctrl	inferred				AI: buffer/alias of BUF(n1087)
+n1241	n1243_n1242_n307	ctrl	inferred				AI: buffer/alias of n1243 | (n1242 & !n307)
+n1249	n1250_n1251	ctrl	inferred				AI: buffer/alias of n1250 & !n1251
+n816	n1252_n1253_n173_n1253_n17	ctrl	inferred				AI: buffer/alias of (n1252 & n1253) | (n173 & n1253) | (!n173 & n1252)
+n809	and_n173_n813	ctrl	inferred				AI: buffer/alias of AND(n173,n813)
+n1254	nor_n280_n313	ctrl	inferred				AI: buffer/alias of NOR(n280,n313)
+n293	nand_n280_n312	ctrl	inferred				AI: buffer/alias of NAND(n280,n312)
+n1255	xor_n1256_n1257	ctrl	inferred				AI: buffer/alias of XOR(n1256,n1257)
+n1268	nor_n267_n574_n594_n593_n569	ctrl	inferred				AI: buffer/alias of NOR(n267,(n574 & !n594) | (!n593 & n569 & !n594) | (n574 & !n593 & n569))
+n1286	n1287_n173_n173_n1288	ctrl	inferred				AI: buffer/alias of (n1287 & !n173) | (n173 & n1288)
+n1321	n1297_n1295_n1296_n1295_n	ctrl	inferred				AI: buffer/alias of (!n1297 & n1295) | (!n1296 & n1295) | (n1296 & n1297 & !n1295)
+n1328	n1121_n1324_n1128	ctrl	inferred				AI: buffer/alias of !n1121 & !n1324 & !n1128
+n1151	or_n1170_n1150	ctrl	inferred				AI: buffer/alias of OR(n1170,n1150)
+n1168	or_n1167_n1170	ctrl	inferred				AI: buffer/alias of OR(n1167,n1170)
+n1158	or_n1170_n1156	ctrl	inferred				AI: buffer/alias of OR(n1170,n1156)
+n1166	or_n1170_n1165	ctrl	inferred				AI: buffer/alias of OR(n1170,n1165)
+n1146	or_n945_n1170	ctrl	inferred				AI: buffer/alias of OR(n945,n1170)
+n1149	or_n1148_n1170	ctrl	inferred				AI: buffer/alias of OR(n1148,n1170)
+n1334	n1335_n173_n173_n1336	ctrl	inferred				AI: buffer/alias of (n1335 & n173) | (!n173 & n1336)
+n1155	or_n1154_n1170	ctrl	inferred				AI: buffer/alias of OR(n1154,n1170)
+n1160	or_n1170_n1159	ctrl	inferred				AI: buffer/alias of OR(n1170,n1159)
+n1340	or_n1341_n225	ctrl	inferred				AI: buffer/alias of OR(n1341,n225)
+n1192	or_n225_n975	ctrl	inferred				AI: buffer/alias of OR(n225,n975)
+n1176	or_n225_n973	ctrl	inferred				AI: buffer/alias of OR(n225,n973)
+n1194	or_n1181_n225	ctrl	inferred				AI: buffer/alias of OR(n1181,n225)
+n1344	or_n225_n1345	ctrl	inferred				AI: buffer/alias of OR(n225,n1345)
+n1346	nor_n945_n1347	ctrl	inferred				AI: buffer/alias of NOR(n945,n1347)
+n181	nor_n945_n1345	ctrl	inferred				AI: buffer/alias of NOR(n945,n1345)
+n1381	n1383_n1384_n1382_n1383_n1	ctrl	inferred				AI: buffer/alias of (n1383 & n1384) | (!n1382 & n1383) | (n1382 & n1384)
+n1385	n523_n521_n523_n538_n523	ctrl	inferred				AI: buffer/alias of (n523 & !n521) | (n523 & !n538) | (!n523 & n538 & n521)
+n1234	nand_n173_n1388	ctrl	inferred				AI: buffer/alias of NAND(n173,n1388)
+n1389	n1248_n789_n307	ctrl	inferred				AI: buffer/alias of n1248 | (n789 & !n307)
+n1390	nor_n1039_n574_n594_n593_n569	ctrl	inferred				AI: buffer/alias of NOR(n1039,(n574 & !n594) | (!n593 & n569 & !n594) | (n574 & !n593 & n569))
+n1412	n1413_n1414_n1413_n1414	ctrl	inferred				AI: buffer/alias of (n1413 & !n1414) | (!n1413 & n1414)
+n1415	n1416_n1417_n1416_n1417	ctrl	inferred				AI: buffer/alias of (n1416 & !n1417) | (!n1416 & n1417)
+n1423	n1247_n307_n788	ctrl	inferred				AI: buffer/alias of n1247 | (!n307 & n788)
+n1429	n1430_n1431_n1430_n1431	ctrl	inferred				AI: buffer/alias of (n1430 & !n1431) | (!n1430 & n1431)
+n1432	n1433_n1434_n1433_n1434	ctrl	inferred				AI: buffer/alias of (n1433 & !n1434) | (!n1433 & n1434)
+n1435	n1436_n1437_n1436_n1437	ctrl	inferred				AI: buffer/alias of (n1436 & !n1437) | (!n1436 & n1437)
+n1438	n1439_n1440_n1439_n1440	ctrl	inferred				AI: buffer/alias of (n1439 & !n1440) | (!n1439 & n1440)
+n1441	n1442_n1443_n1442_n1443	ctrl	inferred				AI: buffer/alias of (n1442 & !n1443) | (!n1442 & n1443)
+n1444	n1445_n1446_n1445_n1446	ctrl	inferred				AI: buffer/alias of (n1445 & !n1446) | (!n1445 & n1446)
+n1447	n1448_n1449_n1448_n1449	ctrl	inferred				AI: buffer/alias of (n1448 & !n1449) | (!n1448 & n1449)
+n1450	n1451_n1452_n1451_n1452	ctrl	inferred				AI: buffer/alias of (n1451 & !n1452) | (!n1451 & n1452)
+n1453	n1454_n1455_n1454_n1455	ctrl	inferred				AI: buffer/alias of (n1454 & !n1455) | (!n1454 & n1455)
+n1456	n1457_n1458_n1457_n1458	ctrl	inferred				AI: buffer/alias of (n1457 & !n1458) | (!n1457 & n1458)
+n1459	n1460_n1461_n1460_n1461	ctrl	inferred				AI: buffer/alias of (n1460 & !n1461) | (!n1460 & n1461)
+n1462	n1463_n1464_n1463_n1464	ctrl	inferred				AI: buffer/alias of (n1463 & !n1464) | (!n1463 & n1464)
+n1465	n1466_n1467_n1466_n1467	ctrl	inferred				AI: buffer/alias of (n1466 & !n1467) | (!n1466 & n1467)
+n1468	n1469_n1470_n1469_n1470	ctrl	inferred				AI: buffer/alias of (n1469 & !n1470) | (!n1469 & n1470)
+n1477	n1478_n1479_n1478_n1479	ctrl	inferred				AI: buffer/alias of (n1478 & !n1479) | (!n1478 & n1479)
+n1480	n1481_n1482_n1481_n1482	ctrl	inferred				AI: buffer/alias of (n1481 & !n1482) | (!n1481 & n1482)
+n1483	n1484_n1485_n1484_n1485	ctrl	inferred				AI: buffer/alias of (n1484 & !n1485) | (!n1484 & n1485)
+n1486	n1487_n1488_n1487_n1488	ctrl	inferred				AI: buffer/alias of (n1487 & !n1488) | (!n1487 & n1488)
+n1495	n1496_n1497_n1496_n1497	ctrl	inferred				AI: buffer/alias of (n1496 & !n1497) | (!n1496 & n1497)
+n1498	n1499_n1500_n1499_n1500	ctrl	inferred				AI: buffer/alias of (n1499 & !n1500) | (!n1499 & n1500)
+n1501	n1502_n1503_n1502_n1503	ctrl	inferred				AI: buffer/alias of (n1502 & !n1503) | (!n1502 & n1503)
+n1510	n1511_n1512_n1511_n1512	ctrl	inferred				AI: buffer/alias of (n1511 & !n1512) | (!n1511 & n1512)
+n1513	n1514_n1515_n1514_n1515	ctrl	inferred				AI: buffer/alias of (n1514 & !n1515) | (!n1514 & n1515)
+n1522	n1079_n542_n307	ctrl	inferred				AI: buffer/alias of n1079 | (n542 & !n307)
+n1523	n542_n307_n794	ctrl	inferred				AI: buffer/alias of n542 & n307 & n794
+n1529	nor_n1297_n1296	ctrl	inferred				AI: buffer/alias of NOR(n1297,n1296)
+n1535	n1296_n1298_n1297_n1298_n	ctrl	inferred				AI: buffer/alias of (!n1296 & n1298) | (!n1297 & n1298) | (n1298 & !n1295) | (n1297 & n1296 & !n1298 & n1295)
+n1575	xor_n1576_n1577	ctrl	inferred				AI: buffer/alias of XOR(n1576,n1577)
+n1578	buf_n1577	ctrl	inferred				AI: buffer/alias of BUF(n1577)
+n1597	n173_n1599_n1598_n173	ctrl	inferred				AI: buffer/alias of (n173 & n1599) | (n1598 & !n173)
+n1162	or_n1161_n1170	ctrl	inferred				AI: buffer/alias of OR(n1161,n1170)
+n1603	xor_n1427_n1428	ctrl	inferred				AI: buffer/alias of XOR(n1427,n1428)
+n1612	n1613_n1614_n1613_n1614	ctrl	inferred				AI: buffer/alias of (n1613 & !n1614) | (!n1613 & n1614)
+n1615	n1616_n1617_n1616_n1617	ctrl	inferred				AI: buffer/alias of (n1616 & !n1617) | (!n1616 & n1617)
+n1618	n1619_n1620_n1619_n1620	ctrl	inferred				AI: buffer/alias of (n1619 & !n1620) | (!n1619 & n1620)
+n1624	n1625_n1626_n1625_n1626	ctrl	inferred				AI: buffer/alias of (n1625 & !n1626) | (!n1625 & n1626)
+n1627	n1628_n1629_n1628_n1629	ctrl	inferred				AI: buffer/alias of (n1628 & !n1629) | (!n1628 & n1629)
+n1630	n1631_n1632_n1631_n1632	ctrl	inferred				AI: buffer/alias of (n1631 & !n1632) | (!n1631 & n1632)
+n1633	n1634_n1635_n1634_n1635	ctrl	inferred				AI: buffer/alias of (n1634 & !n1635) | (!n1634 & n1635)
+n1636	n1637_n1638_n1637_n1638	ctrl	inferred				AI: buffer/alias of (n1637 & !n1638) | (!n1637 & n1638)
+n1639	n1640_n1641_n1640_n1641	ctrl	inferred				AI: buffer/alias of (n1640 & !n1641) | (!n1640 & n1641)
+n1395	n1647_n1648_n1647_n1648	ctrl	inferred				AI: buffer/alias of (n1647 & !n1648) | (!n1647 & n1648)
+n1399	n1649_n1650_n1649_n1650	ctrl	inferred				AI: buffer/alias of (n1649 & !n1650) | (!n1649 & n1650)
+n1405	inv_n1652	ctrl	inferred				AI: buffer/alias of INV(n1652)
+n1658	nand_n1657_n1382	ctrl	inferred				AI: buffer/alias of NAND(n1657,n1382)
+n39	n559_n776	ctrl	inferred				AI: buffer/alias of !n559 | n776
+n805	n557_n40	ctrl	inferred				AI: buffer/alias of n557 & !n40
+n1717	n776_n559	ctrl	inferred				AI: buffer/alias of !n776 | n559
+n1721	n557_n776	ctrl	inferred				AI: buffer/alias of !n557 & n776
+n1722	buf_n1297	ctrl	inferred				AI: buffer/alias of BUF(n1297)
+n1723	xor_n1296_n1297	ctrl	inferred				AI: buffer/alias of XOR(n1296,n1297)
+n1731	n120_n1732_n1733_n118_n120	ctrl	inferred				AI: buffer/alias of (!n120 & !n1732 & n1733 & n118) | (n120 & n1732 & !n1733 & !n118) | (n120 & n1732 & n1733 & n118) | (!n120 & !n1732 & !n1733 & !n118)
+n1734	n1735_n114_n1736_n116_n1735	ctrl	inferred				AI: buffer/alias of (!n1735 & !n114 & n1736 & n116) | (n1735 & n114 & !n1736 & !n116) | (n1735 & n114 & n1736 & n116) | (!n1735 & !n114 & !n1736 & !n116)
+n1776	xor_n1777_n1778	ctrl	inferred				AI: buffer/alias of XOR(n1777,n1778)
+n1779	buf_n1777	ctrl	inferred				AI: buffer/alias of BUF(n1777)
+n1805	n173_n1807_n173_n1806	ctrl	inferred				AI: buffer/alias of (n173 & n1807) | (!n173 & n1806)
+n1808	or_n225_n1809	ctrl	inferred				AI: buffer/alias of OR(n225,n1809)
+n1810	or_n225_n1347	ctrl	inferred				AI: buffer/alias of OR(n225,n1347)
+n1828	n1830_n1831_n1829_n1830_n1	ctrl	inferred				AI: buffer/alias of (n1830 & n1831) | (n1829 & n1830) | (!n1829 & n1831)
+n2994	inv_n1002	ctrl	inferred				AI: buffer/alias of INV(n1002)
+n2995	inv_n1002	ctrl	inferred				AI: buffer/alias of INV(n1002)
+n2996	inv_n492	ctrl	inferred				AI: buffer/alias of INV(n492)
+n2997	inv_n492	ctrl	inferred				AI: buffer/alias of INV(n492)
+n502	inv_n173	ctrl	inferred				AI: buffer/alias of INV(n173)
+n504	inv_n173	ctrl	inferred				AI: buffer/alias of INV(n173)
+n569	inv_n2540	ctrl	inferred				AI: buffer/alias of INV(n2540)
+n574	inv_n2540	ctrl	inferred				AI: buffer/alias of INV(n2540)
+n3000	inv_n2531	ctrl	inferred				AI: buffer/alias of INV(n2531)
+n3001	inv_n2531	ctrl	inferred				AI: buffer/alias of INV(n2531)
+n621	inv_n2541	ctrl	inferred				AI: buffer/alias of INV(n2541)
+n622	inv_n2541	ctrl	inferred				AI: buffer/alias of INV(n2541)
+n16	inv_n2534	ctrl	inferred				AI: buffer/alias of INV(n2534)
+n26	inv_n2534	ctrl	inferred				AI: buffer/alias of INV(n2534)
+n25	inv_n2783	ctrl	inferred				AI: buffer/alias of INV(n2783)
+n48	inv_n2783	ctrl	inferred				AI: buffer/alias of INV(n2783)
+n3004	inv_n2780	ctrl	inferred				AI: buffer/alias of INV(n2780)
+n3005	inv_n2780	ctrl	inferred				AI: buffer/alias of INV(n2780)
+n1273	inv_n2775	ctrl	inferred				AI: buffer/alias of INV(n2775)
+n573	inv_n2775	ctrl	inferred				AI: buffer/alias of INV(n2775)
+n322	inv_n2779	ctrl	inferred				AI: buffer/alias of INV(n2779)
+n321	inv_n2779	ctrl	inferred				AI: buffer/alias of INV(n2779)
+n50	inv_n2532	ctrl	inferred				AI: buffer/alias of INV(n2532)
+n52	inv_n2532	ctrl	inferred				AI: buffer/alias of INV(n2532)
+n3008	inv_n2525	ctrl	inferred				AI: buffer/alias of INV(n2525)
+n3009	inv_n2525	ctrl	inferred				AI: buffer/alias of INV(n2525)
+n868	inv_n2536	ctrl	inferred				AI: buffer/alias of INV(n2536)
+n871	inv_n2536	ctrl	inferred				AI: buffer/alias of INV(n2536)
+n3010	inv_n2355	ctrl	inferred				AI: buffer/alias of INV(n2355)
+n3011	inv_n2355	ctrl	inferred				AI: buffer/alias of INV(n2355)
+n3012	inv_n2356	ctrl	inferred				AI: buffer/alias of INV(n2356)
+n3013	inv_n2356	ctrl	inferred				AI: buffer/alias of INV(n2356)
+n3014	inv_n1799	ctrl	inferred				AI: buffer/alias of INV(n1799)
+n3015	inv_n1799	ctrl	inferred				AI: buffer/alias of INV(n1799)
+n3025	inv_n146	ctrl	inferred				AI: buffer/alias of INV(n146)
+n3026	inv_n146	ctrl	inferred				AI: buffer/alias of INV(n146)
+n1551	inv_n2311	ctrl	inferred				AI: buffer/alias of INV(n2311)
+n1554	inv_n2311	ctrl	inferred				AI: buffer/alias of INV(n2311)
+n1556	inv_n2313	ctrl	inferred				AI: buffer/alias of INV(n2313)
+n1560	inv_n2313	ctrl	inferred				AI: buffer/alias of INV(n2313)
+n3027	inv_n2312	ctrl	inferred				AI: buffer/alias of INV(n2312)
+n3028	inv_n2312	ctrl	inferred				AI: buffer/alias of INV(n2312)
+n1322	inv_n2309	ctrl	inferred				AI: buffer/alias of INV(n2309)
+n3029	inv_n2309	ctrl	inferred				AI: buffer/alias of INV(n2309)
+n3036	inv_n140	ctrl	inferred				AI: buffer/alias of INV(n140)
+n3037	inv_n140	ctrl	inferred				AI: buffer/alias of INV(n140)
+n3038	inv_n144	ctrl	inferred				AI: buffer/alias of INV(n144)
+n3039	inv_n144	ctrl	inferred				AI: buffer/alias of INV(n144)
+n3040	inv_n142	ctrl	inferred				AI: buffer/alias of INV(n142)
+n3041	inv_n142	ctrl	inferred				AI: buffer/alias of INV(n142)
+n1539	inv_n2306	ctrl	inferred				AI: buffer/alias of INV(n2306)
+n1542	inv_n2306	ctrl	inferred				AI: buffer/alias of INV(n2306)
+n1545	inv_n2308	ctrl	inferred				AI: buffer/alias of INV(n2308)
+n1548	inv_n2308	ctrl	inferred				AI: buffer/alias of INV(n2308)
+n3061	inv_n2307	ctrl	inferred				AI: buffer/alias of INV(n2307)
+n3062	inv_n2307	ctrl	inferred				AI: buffer/alias of INV(n2307)
+n1563	inv_n2315	ctrl	inferred				AI: buffer/alias of INV(n2315)
+n1566	inv_n2315	ctrl	inferred				AI: buffer/alias of INV(n2315)
+n3063	inv_n2316	ctrl	inferred				AI: buffer/alias of INV(n2316)
+n3064	inv_n2316	ctrl	inferred				AI: buffer/alias of INV(n2316)
+n3067	inv_n2318	ctrl	inferred				AI: buffer/alias of INV(n2318)
+n3068	inv_n2318	ctrl	inferred				AI: buffer/alias of INV(n2318)
+n3069	inv_n132	ctrl	inferred				AI: buffer/alias of INV(n132)
+n3070	inv_n132	ctrl	inferred				AI: buffer/alias of INV(n132)
+n3071	inv_n136	ctrl	inferred				AI: buffer/alias of INV(n136)
+n3072	inv_n136	ctrl	inferred				AI: buffer/alias of INV(n136)
+n3073	inv_n134	ctrl	inferred				AI: buffer/alias of INV(n134)
+n3074	inv_n134	ctrl	inferred				AI: buffer/alias of INV(n134)
+n3075	inv_n130	ctrl	inferred				AI: buffer/alias of INV(n130)
+n3076	inv_n130	ctrl	inferred				AI: buffer/alias of INV(n130)

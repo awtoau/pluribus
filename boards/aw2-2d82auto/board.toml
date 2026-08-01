@@ -39,9 +39,12 @@ nets_tsv = "nets.tsv"
 # silently skips native decode, and any .config produced before the native
 # decoder is TRUNCATED at bitstream cmd 0x72: it drops the EBR .bram_init and
 # EFB .efb_block sections (#54).  Always pair a `bin` with a tmp `config`.
-# Paths are relative to this board.toml.  As with pins.tsv/nets.tsv, they
-# point into the RE project that owns the artefacts — pluribus itself
-# stores no board data.  Run them all with:
+# Paths are relative to this board.toml.  `bin` points OUT of the repo on
+# purpose and must keep doing so: the vendor bitstreams are third-party binaries
+# and are never redistributed here.  The RE annotations beside this file
+# (pins.tsv, nets.tsv, spi_registers.tsv, verilog_header.txt) are our own work
+# and ARE in the repo — see boards/README.md for the shareable-vs-not rule.
+# Run them all with:
 #   python3 scripts/run_pipeline.py --board boards/aw2-2d82auto --all
 [bitstreams.V02]
 bin    = "../../../awto-2000/fpga/hantek/v2/DS1302_impl1(8)_V02.bin"

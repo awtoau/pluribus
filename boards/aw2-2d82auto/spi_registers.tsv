@@ -1,1 +1,23 @@
-../../../awto-2000/fpga/hantek/aw2/aw2-spi-registers.tsv
+# Hantek 2D82AUTO FPGA SPI register map — source for pluribus annotate.py -> spi_registers.
+# Derived from fpga/docs/fpga-spi.md (firmware-confirmed). Tab-separated.
+# bank	address	name	description	bit_fields (JSON list)
+bank	address	name	description	bit_fields
+WRITE	0x00	CH1_FRONTEND	CH1 front-end control (range/coupling); drives U1 74HC595 (pins 62/63/64)	[]
+WRITE	0x01	CH2_FRONTEND	CH2 front-end control; drives U7 74HC595 (pins 8/9/10)	[]
+WRITE	0x02	TRIG_MODE_AWG	Trigger mode + AWG enable	[{"bit":6,"name":"AWG_ENABLE"},{"bit":5,"name":"FREQ_GATE"},{"bits":"4:3","name":"TRIG_TYPE"}]
+WRITE	0x03	TRIG_HYST	Trigger hysteresis band (lo/ctr/hi, 3 bytes)	[]
+WRITE	0x06	TRIG_LEVEL_CH1	CH1 trigger level (16-bit)	[]
+WRITE	0x08	TRIG_LEVEL_CH2	CH2 trigger level (16-bit)	[]
+WRITE	0x0a	CH1_VOFFSET	CH1 vertical offset DAC (2 bytes LE, 0x8000 = 0 V)	[]
+WRITE	0x0c	CH2_VOFFSET	CH2 vertical offset DAC (2 bytes LE)	[]
+WRITE	0x0e	TIMEBASE_MODE	Timebase mode flags	[{"bits":"5:4","name":"FAST_CH_SELECT"},{"bits":"3:2","name":"ACTIVE_CH"},{"bit":1,"name":"FAST_DUAL"},{"bit":0,"name":"FAST_RATE"}]
+WRITE	0x0f	TIMEBASE_DIV	Timebase divisor (4 bytes LE); sample_rate = 250 MHz / (div+1)	[]
+WRITE	0x17	TRIG_EDGE	Trigger edge / slope	[{"bit":0,"name":"EDGE_POL","desc":"1=rising"},{"bit":1,"name":"SLOPE"}]
+WRITE	0x18	AWG_FREQ	AWG DDS frequency word (4 bytes LE); DDS clock 250 MHz	[]
+WRITE	0x1c	AWG_AMPLITUDE	AWG amplitude (2 bytes LE, 0x0000=off, 0xFFFF=full scale)	[]
+WRITE	0x1e	AWG_DUTY	AWG duty cycle / symmetry (2 bytes LE, firmware writes ~value)	[]
+CTRL	0x00	ARM_CAPTURE	Capture arm (always 0x07 = ENABLE_ACQ | ARM_TRIGGER | RUN)	[]
+READ	0x00	STATUS	Capture status (bit1 = data ready / capturing)	[{"bit":1,"name":"DATA_READY"}]
+READ	0x01	WRITE_PTR	Capture ring write pointer (2 bytes LE)	[]
+READ	0x03	END_ADDR	Capture ring end address (2 bytes LE)	[]
+READ	0x05	IDENT	FPGA ident (8 bytes; byte[6] = bitstream version)	[]

@@ -1,1 +1,33 @@
-../../../awto-2000/fpga/hantek/aw2/verilog_header.txt
+Board: Hantek 2D82AUTO — LCMXO2-1200 (see the RE project for full context).
+
+CONFIG-FLASH CALIBRATION NOTE
+On a live device the first pages of the FPGA config flash hold a
+calibration block (scope/DAC coefficients), NOT bitstream logic — do not
+disassemble those bytes as bitstream.  A factory-clean bitstream carries no
+calibration data; whether THIS capture does depends on the source.  Confirm
+against the device before treating early config-flash bytes as either.
+
+MCU↔FPGA SPI INTERFACE
+The FPGA is a SPI slave to the STM32 host (chip-select on FPGA_nCS / CSSPIN).
+Full protocol and register map — command banks 0xa8 WRITE (front-end / trigger
+/ timebase / AWG regs), 0xa0 READ (status / ident, byte[6] = bitstream
+version), 0xa4 BURST_READ (6144-byte capture), 0xc8 WRITE_CTRL (capture arm),
+0x50 (1024-byte AWG waveform upload) — is documented in fpga/docs/fpga-spi.md
+(traced from the Ghidra decompile; function/register names in
+vendors/hantek/2d82/ghidra/ghidra_names_2d82.tsv).  Related: fpga/docs/fpga.md (FPGA / PLL clocks /
+versions V02–V07), vendors/hantek/2d82/docs/hardware/waveform-readback.md, fpga/docs/fpga-spy.md
+(SPI sniffing + Renode stub).
+
+The EFB is configured as SPI (efb_config sel 0x54), which grounds the recovered
+spi_efb_ctrl / spi_efb_addr / spi_efb_byte_valid ghost nets as EFB-SPI-slave
+outputs.  R6C20 (AWG EBR) carries no bitstream init — it is runtime-loaded via
+SPI cmd 0x50, exactly as fpga-spi.md describes; the other six EBRs hold
+preloaded init recovered from the bitstream.
+
+KNOWN GAPS (flagged in fpga/docs/fpga-spi.md — treat recovered nets in these
+areas as UNCONFIRMED):
+  - REG 0x0e FAST_CH_SELECT bits: three-way documentation conflict, unresolved.
+  - REG 0x17 TRIG_SRC bits [7:2]: undecoded.
+  - REG 0x0a / 0x0c DAC output pins: blocked by the CIB arc bug (#57).
+  - ident bytes [0..5] and [7]: observed but semantically unconfirmed
+    (byte[6] = bitstream version is confirmed).
