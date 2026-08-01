@@ -15,10 +15,28 @@ that sets the count.  ~24 configurations reach 97% of ECP5 routing arcs and
 99.3% on MachXO2, because coverage is bounded by mux fan-in (p95 = 24 on both
 families) and everything else rides along in parallel.
 
-WHY JTAG AND NOT PINS
----------------------
+READOUT: THIS GENERATOR DOES NOT PROVIDE ONE
+--------------------------------------------
+Read this before planning a hardware run.  These designs expose the signature
+and status as ORDINARY PORTS.  There is no JTAG interface here -- no JTAGG
+primitive, no ER1 user register.  Getting the result off a real board needs a
+readout this file does not build.
+
+Use the proven path instead.  #98 already ran this class of test on hardware
+using Amaranth gateware over LUNA's `JTAGRegisterInterface`
+(`ecp5-test/fabric/fabric_gateware.py` in the cynthion workspace, with
+fabric_build / fabric_run / fabric_control).  That channel has been exercised on
+a real part; a second, unproven one written here would be a liability, not an
+alternative.  scripts/fabric_test_bridge.py hands this generator's plan to it.
+
+What this file IS for: the plan and the golden.  Which fabric to target, how
+many configurations, what signature each must produce, and a design that is
+verifiable in simulation before anyone reaches for a board.
+
+WHY JTAG IS STILL THE RIGHT CHANNEL
+-----------------------------------
 Every device in these families has the TAP -- it is how the bitstream arrives,
-so the channel exists before the design does.  The signature register is fabric
+so the channel exists before the design does.  A signature register is fabric
 logic needing no bonded I/O, so one design fits a small part and a large one
 alike.  Bonded pin counts vary 98-197 across packages of a SINGLE ECP5 part, so
 any pad-based readout would need a per-package variant; a JTAG one does not.
@@ -129,9 +147,9 @@ def emit_design(idx, blocks, cycles, seed_base, expect, family):
         f"// blocks={blocks} cycles={cycles} seed_base=0x{seed_base:08x}",
         f"// expected signature = 0x{expect:08x}",
         "//",
-        "// Read the result over JTAG: the signature and status are presented on",
-        "// the ER1 user register, so no bonded I/O is required and the design is",
-        "// package- and board-independent.",
+        "// NOTE: signature/pass/done are plain PORTS.  This file builds no JTAG",
+        "// interface -- see scripts/fabric_test_bridge.py for the readout that has",
+        "// actually been exercised on hardware (#98).",
         "`default_nettype none",
         "",
         f"module fabric_test_{idx:02d} (",

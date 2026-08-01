@@ -101,8 +101,29 @@ the board.
 
 ### 5. Read the result
 
-Over **JTAG**, via the `ER1` user register. Per test: `done` and a sticky
-`mismatch` flag plus the 32-bit signature. Compare against `manifest.tsv`.
+**The generator does not build a JTAG readout.** Its designs expose the
+signature and status as ordinary ports. Use the path that has already run on
+silicon — #98's Amaranth gateware over LUNA's `JTAGRegisterInterface`, which
+managed 2,002 clean rounds on a Cynthion r1.4 with a control reporting
+1,575/1,575 mismatches.
+
+```
+python3 scripts/fabric_test_bridge.py --manifest tmp/fabric-tests/<dev>/manifest.tsv
+```
+
+That prints the `fabric_build.py` invocations realising the plan. It prints
+rather than runs them: the build tooling lives in another repo with its own
+toolchain, and a script that silently shells into a sibling checkout is harder
+to audit.
+
+> **Golden values are not portable between recurrences.** This generator uses a
+> plain Galois LFSR; #98's gateware adds a nonlinear mix
+> (`rotl(3)&rotl(17)`, `rotl(11)|rotl(29)`) and so produces *different*
+> signatures from the same seeds. Handing a golden computed here to that
+> gateware makes every round mismatch — which looks exactly like a dead fabric.
+> The bridge therefore does **not** pass `--golden` unless you ask; let the
+> build compute its own, and take only the count, blocks and round size from the
+> plan.
 
 Report cumulatively, e.g. `18/24 passed — 91% of routing arcs exercised`. A user
 who runs 6 of 24 has ~40%, not an unqualified "pass".

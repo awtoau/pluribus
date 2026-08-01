@@ -1,0 +1,23 @@
+# Pluribus pin annotation file — Great Scott Gadgets Cynthion r1.4
+#
+# DEVICE METADATA — parsed by load.py
+# device:   LFE5U-12F
+# package:  BG256
+#
+# SOURCE, and why this is safe to keep in-repo: Cynthion is open hardware.
+# Extracted from the Amaranth platform definition, which is BSD-3-Clause:
+#   cynthion/python/src/gateware/platform/cynthion_r1_4.py
+#   https://github.com/greatscottgadgets/cynthion
+# Per boards/README.md the rule is shareable-vs-not: this is a published pinout
+# for open hardware, the same class of asset as a Ghidra processor definition.
+#
+# Deliberately PARTIAL.  This covers the pins a fabric self-test needs (#101) —
+# a clock, a user button, LEDs for local convenience — not the full USB/PHY
+# resource list.  A pinout claiming completeness it does not have is worse than
+# one that states its scope.  Extend from the platform file as needed.
+#
+# pin	name	direction	note
+A8	clk_60MHz	in	60 MHz oscillator — the fabric test clock
+M14	button_user	in	active-low (PinsN) user button
+T13	self_program	in	active-low; asserting re-enters the bootloader
+T6	int	in	interrupt to the microcontroller
