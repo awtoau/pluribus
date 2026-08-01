@@ -42,14 +42,37 @@ bin    = "../../../<re-project>/fpga/<ver>/<name>.bin"   # optional
 config = "../../../<re-project>/fpga/<ver>/<name>.bin.config"
 ```
 
-## Pluribus stores no board data
+## What lives here, and what points out
 
-Every path above points *out* of pluribus, into the RE project that owns
-the artefacts (`pins.tsv` and `nets.tsv` are symlinks; the rest are
-relative paths).  Pluribus is the generic engine: board pinouts, vendor
-bitstreams, toolchain locations and RE findings all belong to the
-project, not here.  A board directory is the one place where the two
-meet.
+The rule is **not** "pluribus stores no board data" — it plainly does, and
+should. Four of the five boards below keep their pinouts in this repo, tracked
+in git. The distinction that matters is not *board vs engine*, it is
+**shareable vs not**:
+
+| | where it goes | why |
+|---|---|---|
+| **Open hardware** — Cynthion, Tang Nano, a dev board with a published schematic | **in this repo**, tracked | Ghidra ships processor definitions; a pinout for an open board is the same kind of asset. Nobody benefits from every user re-deriving it. |
+| **Third-party binaries** — vendor bitstreams, firmware images | **never here** | Not ours to redistribute. `corpus/` is gitignored; the SHA-256 manifest is what is committed. |
+| **Private RE work** — commercial products, anything under NDA or embargo | **out of tree**, symlinked in | The board directory is the seam. `boards/aw2-2d82auto/` does exactly this: `board.toml` is here, every artefact it names is a symlink or relative path into the owning project. |
+
+A board directory is therefore a *config*, and whether its files are real or
+symlinks is a per-board decision about disclosure — not a rule about pluribus.
+
+### The database does not make this distinction
+
+Any board's data can be loaded into the same database, and normally should be:
+cross-board queries and shared reachability work are the point of having one.
+Loading a private board's bitstream into `pluribus.db` is fine. What must not
+happen is that data reaching a *public* artefact — a commit, an issue, a
+released report. Keep the database local and the repo clean; they are separate
+questions and only the second one is about git.
+
+### Adding a closed board without leaking it
+
+Put `boards/<name>/board.toml` in the repo with every path pointing out of tree,
+or keep the whole directory out of tree and pass an absolute `--board` path.
+Both work. Prefer the first when the *existence* of the board is not sensitive
+and only its contents are, since it documents that the config exists.
 
 ## Boards
 
