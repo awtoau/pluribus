@@ -1001,15 +1001,47 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             # from the stream.)  Raw physical words are 9-bit; the logical word
             # width (EBR.MODE / *DATA_WIDTH* / REGMODE) is recorded per block so a
             # consumer can regroup them.
+            # MachXO2 names the tile EBR1 and the word EBR.WID, read MSB-first,
+            # 1024 words of 9 bits.  ECP5 names the tile MIB_EBR<slot>, carries the
+            # word as EBR<bel>.WID read LSB-FIRST, and holds 2048 words (DP16KD is
+            # 16 Kb where MachXO2's DP8KC is 8 Kb).
+            #
+            # The EBR3 exclusion is measured, not assumed.  Across five corpus ECP5
+            # bitstreams from unrelated projects, EBR0/1/2 WIDs decode to a live
+            # .bram_init index 70 times out of 70, while EBR3 does so 0 times out of
+            # 24 -- it yields values like 497 and 509 that index nothing.  Whatever
+            # those bits are, they are not a write index.  Taking every EBR*.WID at
+            # face value adds four to seven bogus blocks per bitstream, and 497 is
+            # not wrong enough to trip a sanity check.
+            is_ecp5 = any(t.startswith("MIB_EBR") for t in pc.tile_type.values())
+            _EBR_TILE = "MIB_EBR" if is_ecp5 else "EBR1"
+            _EBR_WORDS = 2048 if is_ecp5 else 1024
+
+            def _decode_wid(wd, en_keys):
+                """(wid, ok) from a tile's config words, per family."""
+                if not is_ecp5:
+                    b = wd.get("EBR.WID")
+                    return (int(b, 2) if b else 0), True
+                for k, b in wd.items():
+                    m = re.match(r"^EBR(\d+)\.WID$", k)
+                    if not m:
+                        continue
+                    if m.group(1) == "3":
+                        return None, False          # see the EBR3 note above
+                    return int(b[::-1], 2), True    # LSB-first
+                return None, False
+
             wid_to_block = {}   # write-index (int) -> "R{er}C{ec}"
             block_geom   = {}   # block -> geometry dict
             for (er, ec), ttype in pc.tile_type.items():
-                if ttype != "EBR1":
+                if not (ttype == _EBR_TILE if not is_ecp5
+                        else ttype.startswith(_EBR_TILE)):
                     continue
                 en = pc.enums.get((er, ec), {})
                 wd = pc.words.get((er, ec), {})
-                wid_bits = wd.get("EBR.WID")
-                wid = int(wid_bits, 2) if wid_bits else 0   # WID omitted ⇒ default 0
+                wid, ok = _decode_wid(wd, en)
+                if not ok:
+                    continue
                 block = f"R{er}C{ec}"
                 if wid in wid_to_block and wid_to_block[wid] != block:
                     die(f"EBR.WID collision: index {wid} claimed by both "
@@ -1026,24 +1058,43 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
 
             ebr_init_rows   = []
             ebr_block_rows  = []
+            # A .bram_init section with no tile claiming it.  On MachXO2 that is a
+            # hard error -- the WID lookup is total there.  On ECP5 it is not yet:
+            # EBR3 bels carry something that is NOT a write index (see above), so
+            # blocks placed on them are unmatched, and an all-zero unmatched
+            # section is simply an unused block the packer still emitted.
+            #
+            # Recording them with block=NULL rather than dying keeps the CONTENTS,
+            # which is the point of #102 -- losing 168 words of live firmware to a
+            # mapping gap would be worse than admitting the gap.  A consumer can
+            # see block IS NULL and know the location is unresolved rather than
+            # being handed a wrong one.
+            unmatched_live = []
             for idx, words in sorted(pc.bram_init.items()):
                 block = wid_to_block.get(idx)
                 if block is None:
-                    die(f".bram_init {idx} has no EBR1 tile with EBR.WID={idx} "
-                        f"(known WIDs: {sorted(wid_to_block)})")
-                if len(words) != 1024:
+                    nz = sum(1 for w in words if w)
+                    if not is_ecp5:
+                        die(f".bram_init {idx} has no EBR1 tile with EBR.WID={idx} "
+                            f"(known WIDs: {sorted(wid_to_block)})")
+                    if nz:
+                        unmatched_live.append((idx, nz))
+                    block = None
+                if len(words) != _EBR_WORDS:
                     die(f".bram_init {idx} ({block}) has {len(words)} words, "
-                        f"expected 1024 (one 9Kb EBR block)")
-                geom = block_geom[block]
+                        f"expected {_EBR_WORDS}")
+                geom = block_geom.get(block, {"mode": None, "data_width": None,
+                                              "regmode_a": None, "regmode_b": None})
+                blk_key = block if block is not None else f"UNMAPPED_WID{idx}"
                 ebr_block_rows.append({
-                    "bitstream": bs_id, "block": block, "wid": idx,
+                    "bitstream": bs_id, "block": blk_key, "wid": idx,
                     "mode": geom["mode"], "data_width": geom["data_width"],
                     "regmode_a": geom["regmode_a"], "regmode_b": geom["regmode_b"],
                     "n_words": len(words),
                     "n_nonzero": sum(1 for w in words if w),
                 })
                 for addr, w in enumerate(words):
-                    ebr_init_rows.append({"bitstream": bs_id, "block": block,
+                    ebr_init_rows.append({"bitstream": bs_id, "block": blk_key,
                                           "wid": idx, "addr": addr, "word9": w})
 
             if ebr_block_rows:
@@ -1058,6 +1109,12 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             assert_eq("ebr_init word count in DB", ebr_init_count, len(ebr_init_rows))
             print(f"  {len(ebr_block_rows)} EBR init blocks  {len(ebr_init_rows)} "
                   f"init words  (write indices {sorted(pc.bram_init)})")
+            if unmatched_live:
+                # Loud, because these carry real contents at an unknown location.
+                print(f"  WARNING: {len(unmatched_live)} .bram_init section(s) with "
+                      f"NONZERO contents have no tile mapping and are stored with "
+                      f"block=UNMAPPED_WID<n>: "
+                      + ", ".join(f"wid {i} ({n} words)" for i, n in unmatched_live))
 
             # ── efb_config (0x72 EFB peripheral config-register preloads) ─────────
             # docs/cmd-0x72.md: sel 0x54 = SPI EFB config, 0x5e = TC (timer/counter).
