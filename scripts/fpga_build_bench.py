@@ -70,6 +70,9 @@ class SeedResult:
     fmax: dict[str, float] = field(default_factory=dict)
     verdict: dict[str, str] = field(default_factory=dict)
     util: dict[str, int] = field(default_factory=dict)
+    # nextpnr ERROR line when the run was rejected outright (e.g. unroutable edge
+    # clock).  Distinct from a timing FAIL: the build produced no bitstream at all.
+    error: str = ""
 
 
 def parse_nextpnr_log(text: str) -> tuple[dict, dict, dict]:
@@ -103,7 +106,7 @@ def run_stage(name: str, cmd: list[str], cwd: Path) -> float:
 
 
 def nextpnr_cmd(pkg: Path, seed: int | None, threads: int, out_prefix: str,
-                json_in: str = "top.json") -> list[str]:
+                json_in: str = "top.json", extra: list[str] | None = None) -> list[str]:
     cmd = [
         "nextpnr-ecp5", "--quiet", "--parallel-refine", "--threads", str(threads),
         "--router", "router2", "--12k", "--package", "CABGA256", "--speed", "8",
@@ -112,7 +115,10 @@ def nextpnr_cmd(pkg: Path, seed: int | None, threads: int, out_prefix: str,
     ]
     if seed is not None:
         cmd += ["--seed", str(seed)]
-    return cmd
+    # nextpnr >= 0.10-122 makes a fabric-routed edge clock a hard error where older
+    # builds routed it silently with indeterminate skew.  --allow-fabric-eclk restores
+    # the old behaviour for comparison runs; it is NOT a fix (see docs/build-speed.md).
+    return cmd + list(extra or [])
 
 
 def stage_bench(pkg: Path, yosys: str, threads: int) -> dict[str, float]:
@@ -130,7 +136,8 @@ def stage_bench(pkg: Path, yosys: str, threads: int) -> dict[str, float]:
     return times
 
 
-def one_seed(pkg: Path, seed: int, threads: int, workdir: Path) -> SeedResult:
+def one_seed(pkg: Path, seed: int, threads: int, workdir: Path,
+             extra: list[str] | None = None) -> SeedResult:
     """One nextpnr run in its own directory so concurrent seeds cannot collide."""
     d = workdir / f"seed{seed}"
     d.mkdir(parents=True, exist_ok=True)
@@ -141,24 +148,37 @@ def one_seed(pkg: Path, seed: int, threads: int, workdir: Path) -> SeedResult:
         shutil.copy2(src, d / f)
 
     t0 = time.monotonic()
-    proc = subprocess.run(nextpnr_cmd(d, seed, threads, "out"),
+    proc = subprocess.run(nextpnr_cmd(d, seed, threads, "out", extra=extra),
                           cwd=d, capture_output=True, text=True)
     dt = time.monotonic() - t0
     log_text = (d / "out.tim").read_text() if (d / "out.tim").exists() else ""
     log_text += proc.stderr
     fmax, verdict, util = parse_nextpnr_log(log_text)
     ok = proc.returncode == 0
-    LOG.info("seed %-3d %6.1f s  rc=%d  %s", seed, dt, proc.returncode,
-             " ".join(f"{k}={v:.2f}MHz/{verdict.get(k, '?')}" for k, v in sorted(fmax.items())))
-    return SeedResult(seed=seed, seconds=dt, ok=ok, fmax=fmax, verdict=verdict, util=util)
+    # A non-timing rejection (unroutable ECLK, placement failure) must not be
+    # reported as a slow build -- it produced nothing.
+    err = ""
+    if not ok and not fmax:
+        for line in reversed(log_text.splitlines()):
+            if line.startswith("ERROR:"):
+                err = line[len("ERROR:"):].strip()
+                break
+        LOG.error("seed %-3d REJECTED after %.1f s: %s", seed, dt, err or f"rc={proc.returncode}")
+    else:
+        LOG.info("seed %-3d %6.1f s  rc=%d  %s", seed, dt, proc.returncode,
+                 " ".join(f"{k}={v:.2f}MHz/{verdict.get(k, '?')}" for k, v in sorted(fmax.items())))
+    return SeedResult(seed=seed, seconds=dt, ok=ok, fmax=fmax, verdict=verdict,
+                      util=util, error=err)
 
 
-def seed_sweep(pkg: Path, seeds: int, workers: int, threads: int, workdir: Path) -> list[SeedResult]:
+def seed_sweep(pkg: Path, seeds: int, workers: int, threads: int, workdir: Path,
+               extra: list[str] | None = None) -> list[SeedResult]:
     LOG.info("seed sweep: %d seeds, %d concurrent, %d threads each", seeds, workers, threads)
     results: list[SeedResult] = []
     t0 = time.monotonic()
     with cf.ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(one_seed, pkg, s, threads, workdir): s for s in range(1, seeds + 1)}
+        futs = {ex.submit(one_seed, pkg, s, threads, workdir, extra): s
+                for s in range(1, seeds + 1)}
         for fut in cf.as_completed(futs):
             results.append(fut.result())
     LOG.info("sweep wall clock %.1f s for %d seeds", time.monotonic() - t0, seeds)
@@ -171,8 +191,14 @@ def report(results: list[SeedResult]) -> dict:
         for clk, f in r.fmax.items():
             clocks.setdefault(clk, []).append(f)
 
-    summary: dict = {"seeds": len(results), "clocks": {}}
+    rejected = [r for r in results if r.error]
+    summary: dict = {"seeds": len(results), "clocks": {}, "rejected": len(rejected)}
     LOG.info("=" * 68)
+    if rejected:
+        summary["reject_reasons"] = sorted({r.error for r in rejected})
+        LOG.error("%d/%d seeds REJECTED (no bitstream):", len(rejected), len(results))
+        for reason in summary["reject_reasons"]:
+            LOG.error("  %s", reason)
     for clk, vals in sorted(clocks.items()):
         if not vals:
             continue
@@ -201,6 +227,8 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=8, help="concurrent seeds")
     ap.add_argument("--threads", type=int, default=4, help="--threads per nextpnr process")
     ap.add_argument("--workdir", type=Path, default=REPO / "tmp" / "buildperf" / "sweep")
+    ap.add_argument("--nextpnr-arg", action="append", default=[], metavar="ARG",
+                    help="extra nextpnr flag, repeatable (e.g. --nextpnr-arg=--allow-fabric-eclk)")
     ap.add_argument("--json", type=Path, help="write results as JSON")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
@@ -215,7 +243,8 @@ def main() -> int:
         out["stage_seconds"] = stage_bench(pkg, args.yosys, max(args.threads, 31))
         LOG.info("stage totals: %s", json.dumps(out["stage_seconds"], indent=2))
     if args.seeds:
-        res = seed_sweep(pkg, args.seeds, args.workers, args.threads, args.workdir.resolve())
+        res = seed_sweep(pkg, args.seeds, args.workers, args.threads,
+                         args.workdir.resolve(), extra=args.nextpnr_arg)
         out["variance"] = report(res)
         out["seed_seconds"] = {r.seed: round(r.seconds, 2) for r in res}
     if not args.stages and not args.seeds:
