@@ -75,7 +75,16 @@ def build(worktree: Path, jobs: int) -> bool:
     bd = worktree / "build"
     # cmake configure is ~5 s; 300 s is 60x -- generous because a cold ccache
     # and submodule checkout land here. Expiry means the tree is broken.
-    p = run(["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release"], worktree, 300, "cmake")
+    # Historical commits trip warnings today's compiler promotes to errors (GCC 16
+    # rejects symfpu.cc). They are fine to MEASURE -- only the warning gate stops
+    # them -- and dropping them leaves holes in the search.
+    # -Wno-unused-function specifically: CMakeLists.txt:106 hardcodes
+    # -Werror=unused as a target property, which a bare -Wno-error cannot override
+    # (verified: -Wno-error alone still fails).
+    p = run(["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release",
+             "-DCMAKE_CXX_FLAGS=-Wno-error -Wno-unused-function",
+             "-DCMAKE_C_FLAGS=-Wno-error -Wno-unused-function"],
+            worktree, 300, "cmake")
     if p.returncode != 0:
         LOG.error("cmake configure failed:\n%s", p.stderr[-2000:])
         return False
