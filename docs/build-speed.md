@@ -118,6 +118,58 @@ is actually good for):
 A single build cannot distinguish a real improvement from placement luck — one
 seed landed at **59.94 MHz**, missing the constraint by 0.06 MHz.
 
+### The 60 MHz constraint sits in the middle of the distribution
+
+`clk` is not near 60 MHz for any physical reason.  Two independent facts collide:
+the ULPI/USB 60 MHz is externally fixed, and the CPU's own ceiling happens to land
+at ~55-65 MHz.  `SYNC_MHZ = 60` (`top.py:591`) was set to the oscillator value, so
+the constraint sits at the **midpoint of the achievable spread** (sd 2.0-3.1 MHz in
+every sweep, all four toolchains) — which fails about half the time by construction.
+
+The CPU and USB are already separate PLL outputs (`car.clk_sync` and
+`clk_60MHz_0__io` are distinct nets in `top.lpf`), so nothing requires the CPU to
+run at the USB rate.  Measured, 8 seeds each:
+
+| case | min | median | max | FAIL | worst-case margin |
+|---|---|---|---|---|---|
+| old netlist @60 | 60.55 | 64.70 | 69.35 | 0/8 | +0.55 MHz |
+| old netlist @50 | 59.52 | 63.27 | 69.31 | 0/8 | **+9.52 MHz** |
+| nightly @60 | 56.45 | 59.95 | 62.59 | **5/8** | −3.55 MHz |
+| nightly @50 | 57.96 | 59.64 | 60.79 | **0/8** | **+7.96 MHz** |
+
+**Dropping the constraint to 50 MHz turns 5/8 failures into 0/8** on the very
+netlist that fails today, with ~8 MHz of margin.  Relaxing it does not degrade
+placement — the achieved median is within 1 MHz of the 60 MHz runs, because
+nextpnr stops optimising once the constraint is met.
+
+### Why the path is slow: span, not logic
+
+Critical path, nightly build, `clk`:
+
+| | time | share |
+|---|---|---|
+| logic (9 LUTs) | 1.76 ns | 10% |
+| **routing (10 nets)** | **16.14 ns** | **90%** |
+| total | 18.28 ns | → 54.70 MHz |
+
+The path crosses the die four times: `(2,26) → (4,27) → (30,28) → (33,27) →
+(56,7) → (26,34)`.  Two hops alone cost 10.84 ns.
+
+Five of the nine cells belong to `PcPlugin_logic_harts_0_aggregator_target`
+(`VexiiRiscv.v:11345`) — a single combinational AND-OR priority mux merging four
+32-bit next-PC sources: trap vector, branch target, BTB prediction, and
+sequential PC.  Those four are produced by four plugins the placer scatters
+across the die, and they must converge in one cycle.  The BTB hop alone
+(`(56,7) → (26,34)`, BRAM to mux) is 6.57 ns — 36% of the period.
+
+LUT4 count does **not** predict Fmax here: 14,395 LUTs gave 64.70 MHz while
+14,219 gave 59.95.  Size is not the problem; span is.
+
+**Floorplanning is not available as a workaround.**  nextpnr's ECP5 LPF parser
+(`ecp5/lpf.cc:126`) accepts only `LOCATE COMP ... SITE` — there is no `REGION` or
+`UGROUP`.  The real fix is to pipeline the aggregator so the far sources
+(especially the BTB) register before the merge, splitting one 18 ns path into two.
+
 ```
 python3.15t scripts/fpga_build_bench.py --pkg <dir> --seeds 8 --workers 8
 ```
