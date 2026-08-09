@@ -185,12 +185,54 @@ full region support (`Region`, `CellInfo::region`, `testRegion`) and exposes
   netlist**: it warns "No cell matched" and silently does nothing.  Match on the
   name prefix over `ctx.cells` instead.
 
-Region sizing is a real constraint: `x0..40/y0..30` fails placement after 93M
-attempts.  Whether a workable region buys Fmax is **unmeasured** — judge it by
-seed sweep, never a single build.
+Region sizing is a real constraint, and the measured answer so far is **negative**:
+
+| region | outcome |
+|---|---|
+| `x0..40 / y0..30` | placement fails after 93M attempts — too tight for 10,966 cells |
+| `x0..55 / y0..40` | places, but the router **diverges**: 79 iterations with overuse still climbing (13,176 → 13,353), abandoned |
+
+Constraining the CPU trades a routing-length problem for a routing-congestion
+one.  Not pursued further; the knob is wired up and documented if someone wants
+to sweep sizes, but judge any result by seed sweep, never a single build.
+
+**Placer tuning helps a little, and demonstrates why 4 seeds is not enough.**
+`--placer-heap-critexp` (default **2**) weights how hard the placer chases
+timing-critical paths.  On the failing nightly netlist:
+
+| config | n | min | median | sd | FAIL |
+|---|---|---|---|---|---|
+| default (critexp 2) | 8 | 56.45 | 59.95 | 2.02 | 5/8 |
+| **critexp 4** | **4** | **62.25** | **62.61** | **0.51** | **0/4** |
+| **critexp 4** | **8** | **57.89** | **61.16** | **1.92** | **3/8** |
+| critexp 6 | 4 | 55.91 | 60.30 | 2.63 | 2/4 |
+
+At n=4, critexp 4 looked like a clean fix — 0/4, sd 0.51.  At n=8 the same
+setting gives 3/8.  **The first four seeds were simply lucky**, and a 4-seed
+sweep is exactly as capable of lying as a single build.  Use 8+.
+
+critexp 4 is a real improvement (median 59.95 → 61.16, failures 5/8 → 3/8) but it
+does not close the design at 60 MHz.  Nothing that leaves the constraint at 60
+does.
 
 The RTL-level fix remains pipelining the aggregator so the far sources
 (especially the BTB) register before the merge, splitting one 18 ns path into two.
+
+## Bottom line for the BIST variant
+
+Everything that is only a build knob has now been measured:
+
+| lever | result |
+|---|---|
+| `--relaxed-btb` / `--relaxed-branch` | already enabled; not the remaining limit |
+| floorplan region | works mechanically, router diverges — congestion for length |
+| `--placer-heap-critexp 4` | 5/8 → 3/8 failures; helps, does not close |
+| **`SYNC_MHZ = 50`** | **0/8, ~8 MHz margin** |
+
+`top.py:601` already makes the case: *"A measurement bitstream's CPU clock is not
+a product decision: nothing in the rig is timed against it, because the engine
+runs in `hr` off its own PLL."*  The shipping SoC stays at 60; the measurement
+build does not have to.
 
 ```
 python3.15t scripts/fpga_build_bench.py --pkg <dir> --seeds 8 --workers 8
