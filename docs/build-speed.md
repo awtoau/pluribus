@@ -16,7 +16,7 @@ Harnesses: `scripts/fpga_build_bench.py` (stage timing + seed sweep),
 | 32 cores do not speed up yosys | **by design**, 6 of 201 passes threaded |
 | GPU cannot help | inherent — pointer-chasing graph algorithms |
 | Seeds decide pass/fail, not the mean | **use the sweep**, 8 seeds ≈ 1 build |
-| `hr_fast_clk` runs on fabric routing with indeterminate skew | **design bug**, fix known |
+| `hr_fast_clk` ran on fabric routing with indeterminate skew | **fixed** in cynthion `592c02b` (#314) |
 | Newer yosys regresses timing on this design | **open**, bisect running |
 
 ## Baseline (2026-08-09)
@@ -154,13 +154,20 @@ Geometry, from the routed logs and `device-db/ECP5/LFE5U-25F/tilegrid.json`:
 no alternative.  This is device geometry, not a tool bug, so Diamond would hit
 the same wall — no vendor oracle needed.
 
-**Impact:** every HYPERRAM_BIST bitstream built to date routes a 100 MHz edge
-clock through general fabric with indeterminate skew, silently.  On a BIST where
-skew is the measurement, prior results are suspect.
+**Impact:** every HYPERRAM_BIST bitstream built *before the fix* routed a 100 MHz
+edge clock through general fabric with indeterminate skew, silently.  On a BIST
+where skew is the measurement, those results are suspect.
 
-**Fix:** instantiate an **`ECLKBRIDGECS`**.  Confirmed available — `ECLKBRIDGECS0`
-and `ECLKBRIDGECS1` are in the 25F tilegrid, nextpnr supports the primitive
-(`ecp5/pack.cc:2488`), and `docs/ecp5-gap-matrix.md` lists it as *covered*.
+**Fixed** in cynthion-workspace `592c02b` (#314) — `hyperram_clocks.py`
+instantiates an `ECLKBRIDGECS` (`CLK0`=`clk_hr_fast`, `CLK1`/`SEL` tied off; a
+die-crossing bridge, not a mux).  Confirmed available: `ECLKBRIDGECS0`/`1` are in
+the 25F tilegrid, nextpnr supports the primitive (`ecp5/pack.cc:2488`), and
+`docs/ecp5-gap-matrix.md` lists it as *covered*.
+
+The handover package (`b71655b`, cut 2026-08-09 23:32) **predates the fix** —
+its `top.il` contains zero `ECLKBRIDGECS` instances, which is why every
+measurement in this document trips the error.  Re-cut the package to benchmark
+the fixed design.
 
 `--allow-fabric-eclk` only restores the old silence — it changes nothing
 physically.  Comparison runs only.
