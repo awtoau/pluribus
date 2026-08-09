@@ -138,6 +138,10 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, default=31)
     ap.add_argument("--workroot", type=Path, default=REPO / "tmp" / "buildperf" / "bisect")
     ap.add_argument("--limit", type=int, default=0, help="only try the newest N commits")
+    ap.add_argument("--linear", action="store_true",
+                    help="measure every commit instead of binary-searching the metric")
+    ap.add_argument("--metric", default="LUT4",
+                    help="field to bisect on (LUT4, total_cells, ...)")
     args = ap.parse_args()
 
     setup_logging()
@@ -153,38 +157,81 @@ def main() -> int:
     todo = commits(repo, args.good, args.bad)
     if args.limit:
         todo = todo[: args.limit]
-    LOG.info("bisect range: %d non-merge commits", len(todo))
+    LOG.info("range: %d non-merge commits (newest first)", len(todo))
 
-    for i, (sha, subj) in enumerate(todo, 1):
+    def measure(sha: str, subj: str, tag: str) -> dict:
+        """Build + synthesise one commit, caching into `results`."""
         if sha in results:
-            LOG.info("[%d/%d] %s SKIP (cached)", i, len(todo), sha[:9])
-            continue
-        LOG.info("[%d/%d] %s %s", i, len(todo), sha[:9], subj[:70])
+            LOG.info("%s %s CACHED LUT4=%s", tag, sha[:9], results[sha].get("LUT4", "ERR"))
+            return results[sha]
+        LOG.info("%s %s %s", tag, sha[:9], subj[:66])
         wt = args.workroot / sha[:9]
+        rec: dict = {"subject": subj}
         if not wt.exists():
             p = run(["git", "worktree", "add", "--detach", str(wt), sha], repo, 180, "worktree")
             if p.returncode != 0:
                 LOG.error("worktree failed: %s", p.stderr[-500:])
-                results[sha] = {"subject": subj, "error": "worktree"}
-                args.out.write_text(json.dumps(results, indent=2))
-                continue
-        run(["git", "submodule", "update", "--init", "--recursive"], wt, 600, "submodules")
-
-        rec: dict = {"subject": subj}
-        if not build(wt, args.jobs):
-            rec["error"] = "build"
-        else:
-            counts = synth_counts(wt / "build" / "yosys", pkg, wt / "synth")
-            if counts is None:
-                rec["error"] = "synth"
+                rec["error"] = "worktree"
+        if "error" not in rec:
+            run(["git", "submodule", "update", "--init", "--recursive"], wt, 600, "submodules")
+            if not build(wt, args.jobs):
+                rec["error"] = "build"
             else:
-                rec.update(counts)
-                LOG.info("    LUT4=%-6d total=%-6d %.1f s",
-                         counts["LUT4"], counts["total_cells"], counts["seconds"])
+                counts = synth_counts(wt / "build" / "yosys", pkg, wt / "synth")
+                if counts is None:
+                    rec["error"] = "synth"
+                else:
+                    rec.update(counts)
+                    LOG.info("    LUT4=%-6d total=%-6d %.1f s",
+                             counts["LUT4"], counts["total_cells"], counts["seconds"])
         results[sha] = rec
         args.out.write_text(json.dumps(results, indent=2))
         # Build trees are ~2 GB each; drop the object dir once measured.
         shutil.rmtree(wt / "build", ignore_errors=True)
+        return rec
+
+    if args.linear:
+        for i, (sha, subj) in enumerate(todo, 1):
+            measure(sha, subj, f"[{i}/{len(todo)}]")
+    else:
+        # Binary search on the metric. `todo` is newest-first, so index 0 is `bad`
+        # and index len-1 is the oldest commit in the range. We look for the
+        # boundary where LUT4 stops matching the bad value: the FIRST commit
+        # (walking back in time) whose metric differs is the one that introduced it.
+        # ~log2(341) = 9 builds instead of 341.
+        bad_rec = measure(todo[0][0], todo[0][1], "[bad]")
+        if args.metric not in bad_rec:
+            raise SystemExit(f"bad commit did not yield {args.metric}; cannot bisect")
+        bad_val = bad_rec[args.metric]
+        LOG.info("bisecting on %s: bad value = %s", args.metric, bad_val)
+
+        lo, hi = 0, len(todo) - 1  # lo: known bad-valued, hi: unmeasured/older
+        culprit_idx = None
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            rec = measure(todo[mid][0], todo[mid][1], f"[bisect {mid}]")
+            if args.metric not in rec:
+                # Unbuildable commit: exclude it and retry the next older one.
+                LOG.warning("commit %s unusable (%s); shifting",
+                            todo[mid][0][:9], rec.get("error"))
+                hi = mid - 1
+                continue
+            if rec[args.metric] == bad_val:
+                lo = mid            # still bad this far back
+            else:
+                culprit_idx = mid   # differs here, so the change is newer than mid
+                hi = mid - 1
+        if culprit_idx is None and lo == len(todo) - 1:
+            LOG.info("metric never changes across the range -- regression predates %s",
+                     args.good[:9])
+        else:
+            sha, subj = todo[lo]
+            LOG.info("=" * 70)
+            LOG.info("FIRST commit with %s=%s: %s %s", args.metric, bad_val, sha[:9], subj)
+            if lo + 1 < len(todo):
+                psha, psubj = todo[lo + 1]
+                LOG.info("its parent in range:      %s %s (%s=%s)", psha[:9], psubj[:50],
+                         args.metric, results.get(psha, {}).get(args.metric, "?"))
 
     LOG.info("=" * 70)
     for sha, r in results.items():
