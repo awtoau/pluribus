@@ -165,9 +165,31 @@ across the die, and they must converge in one cycle.  The BTB hop alone
 LUT4 count does **not** predict Fmax here: 14,395 LUTs gave 64.70 MHz while
 14,219 gave 59.95.  Size is not the problem; span is.
 
-**Floorplanning is not available as a workaround.**  nextpnr's ECP5 LPF parser
-(`ecp5/lpf.cc:126`) accepts only `LOCATE COMP ... SITE` — there is no `REGION` or
-`UGROUP`.  The real fix is to pipeline the aggregator so the far sources
+**CPU pipeline relaxations are already exhausted.**  `--relaxed-btb` (`jumpAt=2`)
+and `--relaxed-branch` are both already on in `gateware/soc/cpu/cpu.py`;
+`top.py:605` records that `--relaxed-btb` was added for this exact symptom at
+57.55 MHz and is NOT the remaining limit.  Those flags add pipeline stages; they
+do not shorten wires, and what remains is 90% wire.
+
+**Floorplanning IS available — via `--pre-place`, not LPF.**  The ECP5 LPF parser
+(`ecp5/lpf.cc:126`) accepts only `LOCATE COMP ... SITE`, but nextpnr's core has
+full region support (`Region`, `CellInfo::region`, `testRegion`) and exposes
+`createRectangularRegion` / `constrainCellToRegion` to Python.
+`scripts/ecp5_floorplan_cpu.py` uses it; verified constraining 10,966 cells under
+`cpu.cpu` (37% of the design).  Two traps, both recorded in that script:
+
+- `addBelToRegion` on a region that was never created **segfaults**
+  (`basectx.cc:129` dereferences a null `unique_ptr`) — use
+  `createRectangularRegion`, which creates and fills.
+- `constrainCellToRegion` walks `ctx.hierarchy`, which is **empty for a flattened
+  netlist**: it warns "No cell matched" and silently does nothing.  Match on the
+  name prefix over `ctx.cells` instead.
+
+Region sizing is a real constraint: `x0..40/y0..30` fails placement after 93M
+attempts.  Whether a workable region buys Fmax is **unmeasured** — judge it by
+seed sweep, never a single build.
+
+The RTL-level fix remains pipelining the aggregator so the far sources
 (especially the BTB) register before the merge, splitting one 18 ns path into two.
 
 ```
