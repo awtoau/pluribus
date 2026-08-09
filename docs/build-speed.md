@@ -186,11 +186,32 @@ Cell counts on identical `top.il` — three yosys builds, three netlists:
 | 0.67+153 (local) | 13,124 | 2,128 | 446 | 26,454 |
 | 0.68+40 (suite 20260809) | 14,219 | 2,765 | 940 | 28,683 |
 
-Suspect: **PR #6030 `opt_dff: add SAT effort limits`** — capping solver effort
-makes `opt_dff` give up earlier, leaving more logic.  Direction matches;
-**not confirmed**.  `scripts/yosys_qor_bisect.py` is walking the 341-commit range.
+**Bisected to `2ee7dc5a1` "Implement constbit gather"** (nella, 2026-07-11, in
+PR #6030), by binary search over the 341-commit range:
 
-Do not report upstream until the bisect names a commit.
+| commit | LUT4 | total cells |
+|---|---|---|
+| `c57f66cee` eqbits drop_all (parent) | 13,124 | 26,454 |
+| **`2ee7dc5a1` Implement constbit gather** | **14,219** | **28,683** |
+
+**+1,095 LUT4 (+8.3%) in one commit**, and it is the value every later commit
+carries through to the 0.68+40 nightly.
+
+The SAT effort limit added by the same PR is **NOT** the cause — disproved twice:
+
+- `scratchpad -set opt_dff.sat_effort 0` (limit disabled) still gives 14,219;
+- the commit's own `log_warning("solver effort budget ... exhausted")` never
+  fires on this design.
+
+Mechanism, from `passes/opt/opt_dff.cc`: the commit replaces immediate per-bit
+const removal with a batched `ConstObligation` list checked later by SAT.  The
+old path's `removed_sigbits` is left declared and never populated — which is why
+the commit does not build on GCC 16 (`-Werror=unused-variable`, `opt_dff.cc:1021`).
+That dead variable is a signal the rewrite dropped a result the old path applied.
+
+**Before reporting upstream**, decide whether the QoR loss is a known trade for
+bounded runtime — a SAT effort limit is usually added to stop pathological
+solves.  The report is "this design regressed 8.3%", not "you broke it".
 
 ## Recommendation
 
