@@ -1,0 +1,199 @@
+# ECP5 open-flow build speed and variance
+
+Measured on the Cynthion SoC **HYPERRAM_BIST** variant (~18k cells, `LFE5U-25F`
+die marked 12F, CABGA256), commit `b71655b9`, on an i9-14900K (24C/31 usable
+threads) with 62 GB RAM.  Every number below is dated; re-measure rather than
+trust a stale one.
+
+Harnesses: `scripts/fpga_build_bench.py` (stage timing + seed sweep),
+`scripts/yosys_qor_bisect.py` (commit → LUT4 walk).
+
+## Summary
+
+| finding | status |
+|---|---|
+| `autoname` was 46% of synthesis; fixed upstream | **fixed** — yosys PR #6050 |
+| 32 cores do not speed up yosys | **by design**, 6 of 201 passes threaded |
+| GPU cannot help | inherent — pointer-chasing graph algorithms |
+| Seeds decide pass/fail, not the mean | **use the sweep**, 8 seeds ≈ 1 build |
+| `hr_fast_clk` runs on fabric routing with indeterminate skew | **design bug**, fix known |
+| Newer yosys regresses timing on this design | **open**, bisect running |
+
+## Baseline (2026-08-09)
+
+Suite `oss-cad-suite 20260522` — yosys 0.65+57, nextpnr 0.10-74, ecppack 1.4-79.
+
+| stage | wall | CPU |
+|---|---|---|
+| yosys | 75 s | 106% |
+| nextpnr | 47 s | 213% |
+| ecppack | 0.33 s | 99% |
+| **total** | **~122 s** | — |
+
+Matches the ~130 s in the handover README (that figure was never captured — the
+log had rotated — so this is the first recorded measurement).
+
+## Why synthesis was slow: `autoname`
+
+`top.rpt` named it outright:
+
+```
+Time spent: 46% 1x autoname (37 sec), 9% 47x opt_clean (7 sec), ...
+Renamed 43183 objects in module top (3164 iterations).
+```
+
+- 3,164 iterations to rename 43,183 objects — ~13 objects per full scan.
+- A degenerating fixpoint loop, not a parallelism problem.
+- Upstream: issue **#5394**, fixed by PR **#6050** "autoname: rewrite"
+  (merged 2026-07-19) — priority-queue traversal, *"No more fixpoint outer
+  loop"*.  Our binary predated it by two months.
+
+**It cannot be parallelised with the rest of synthesis.** `autoname` runs after
+`map_cells`, mutates the names `write_json` serialises, and nextpnr consumes that
+JSON.  Strict serial dependency.
+
+Result: **75 s → 31 s** on the same input.
+
+## Why 32 cores don't help
+
+Yosys is C++20 (399 core files); ABC is C (1,440 `.c`); nextpnr is C++17.  No
+interpreted layer — slowness is never a runtime issue here.
+
+Thread scaling, measured on an idle box:
+
+```
+YOSYS_MAX_THREADS=1  → 33.91 s wall,  99% cpu
+YOSYS_MAX_THREADS=31 → 34.38 s wall, 116% cpu
+```
+
+- Threading **is** compiled in (`have_threads` in the build feature list) and
+  present in both old and new builds.
+- But only **6 of 201 pass files** use the pool — all `opt_clean`/`opt_merge`.
+- Cause is architectural: passes mutate one shared RTLIL netlist plus an interned
+  `IdString` table.  Locking it costs more than it saves; sharding is a large
+  upstream redesign, landing incrementally.
+- Passes also form a dependency chain (`abc9` needs techmap's output).  You can
+  parallelise *within* a pass, never *across* the sequence.
+
+**GPU is out.** No GPU backend exists in either tool, and ABC/the SA placer are
+pointer-chasing graph algorithms — the opposite of what a GPU wants.
+
+### Profile after the autoname fix (nightly, 31 s total)
+
+| pass | time |
+|---|---|
+| OPT_CLEAN | 7.79 s |
+| OPT_EXPR | 6.34 s |
+| ABC9_EXE | 5.51 s |
+| TECHMAP | 5.49 s |
+| OPT_DFF | 2.73 s |
+| MEMORY_LIBMAP | 2.24 s |
+
+Flat — no dominator left.  ABC is 4 sequential calls to an external
+single-threaded C program (`passes/techmap/abc9_exe.cc`, temp-dir file I/O);
+parallelising them would save ~3 s of a ~78 s build and is upstream's change to
+make.
+
+### Why caching / precompiling the CPU doesn't work
+
+`synth_ecp5` runs `flatten` early — 480 modules in, 107 out — then optimises
+across the wreckage, propagating constants *into* VexiiRiscv from the SoC.  A
+separately-synthesised CPU would be a different, larger netlist.  Keeping
+hierarchy (`-noflatten`, or blackboxing) costs area and timing, and this design
+is already at **DP16KD 52/56 (92%)** and **EHXPLLL 2/2 (100%)**.
+
+## Variance is the bigger prize
+
+Identical netlist and flags; only `--seed` differs.  8 seeds, `clk` constrained
+60 MHz, run concurrently (**~85 s wall for all 8** — this is what the core count
+is actually good for):
+
+| toolchain combination | median | min | max | FAIL |
+|---|---|---|---|---|
+| old yosys + old nextpnr | 64.70 | 60.55 | 69.35 | **0/8** |
+| old yosys + NEW nextpnr | 65.00 | 62.44 | 68.62 | **0/8** |
+| local yosys 0.67+153 + new | 62.83 | 58.63 | 66.45 | 2/8 |
+| nightly yosys 0.68+40 + new | 59.95 | 56.45 | 62.59 | **5/8** |
+
+A single build cannot distinguish a real improvement from placement luck — one
+seed landed at **59.94 MHz**, missing the constraint by 0.06 MHz.
+
+```
+python3.15t scripts/fpga_build_bench.py --pkg <dir> --seeds 8 --workers 8
+```
+
+Seeds are independent processes, so they scale across cores.  The free-threaded
+`libtrellis` work (pybind11 2.13.6 + `mod_gil_not_used()`) is what lets one
+python3.15t process drive them GIL-free; it does not speed up yosys or nextpnr
+themselves, which are separate C++ binaries.
+
+**Seeds are a nextpnr parameter, not a yosys one** — yosys is deterministic, so
+there is nothing for it to sweep.  Synthesise once, fan seeds across P&R.
+
+## Correctness: `hr_fast_clk` runs on fabric routing
+
+nextpnr ≥ `0.10-122` (commit `8624a48b`, 2026-07-17) makes this an error;
+older builds emitted `log_info("no route found, general routing will be used")`
+— **not even a warning**.
+
+```
+ERROR: Unable to route edge clock source 'hr_fast_clk' to pin
+       'hr_fast_clk$eclk7_0$buffer.ECLKI' using dedicated routing.
+```
+
+Geometry, from the routed logs and `device-db/ECP5/LFE5U-25F/tilegrid.json`:
+
+- ECP5-25F has **exactly two PLL sites, both at Y49** — `EHXPLL_LL` (X2) and
+  `EHXPLL_LR` (X70), top corners.
+- Every HyperRAM ECLK consumer (`IOLOGIC`/`DQSBUFM`) sits at **X0/Y2–Y11**,
+  bottom-left.
+- ~38 tiles apart — beyond the bank's dedicated edge-clock spine.
+- `ECLKBRIDGECS: 0/2` — the device-crossing bridge is unused.
+
+**No PLL placement can reach it**; both toolchains chose X2/Y49 because there is
+no alternative.  This is device geometry, not a tool bug, so Diamond would hit
+the same wall — no vendor oracle needed.
+
+**Impact:** every HYPERRAM_BIST bitstream built to date routes a 100 MHz edge
+clock through general fabric with indeterminate skew, silently.  On a BIST where
+skew is the measurement, prior results are suspect.
+
+**Fix:** instantiate an **`ECLKBRIDGECS`**.  Confirmed available — `ECLKBRIDGECS0`
+and `ECLKBRIDGECS1` are in the 25F tilegrid, nextpnr supports the primitive
+(`ecp5/pack.cc:2488`), and `docs/ecp5-gap-matrix.md` lists it as *covered*.
+
+`--allow-fabric-eclk` only restores the old silence — it changes nothing
+physically.  Comparison runs only.
+
+## Open: newer yosys regresses timing
+
+The cross-run **exonerates nextpnr**: the old netlist through the new placer is
+unchanged (65.00 MHz, 0/8).  The regression tracks the *yosys netlist* and
+worsens with newer yosys.
+
+Cell counts on identical `top.il` — three yosys builds, three netlists:
+
+| build | LUT4 | PFUMX | L6MUX21 | total |
+|---|---|---|---|---|
+| 0.65+57 (suite 20260522) | 14,395 | 2,944 | 909 | 29,007 |
+| 0.67+153 (local) | 13,124 | 2,128 | 446 | 26,454 |
+| 0.68+40 (suite 20260809) | 14,219 | 2,765 | 940 | 28,683 |
+
+Suspect: **PR #6030 `opt_dff: add SAT effort limits`** — capping solver effort
+makes `opt_dff` give up earlier, leaving more logic.  Direction matches;
+**not confirmed**.  `scripts/yosys_qor_bisect.py` is walking the 341-commit range.
+
+Do not report upstream until the bisect names a commit.
+
+## Recommendation
+
+**Do not upgrade the toolchain yet.**  The nightly buys ~43 s and costs a 5-in-8
+timing failure rate against 0-in-8 today — a bad trade on a design at 92% BRAM.
+
+Upgrade order once the regression is understood:
+
+1. Fix the ECLK (`ECLKBRIDGECS`) — correctness, independent of toolchain.
+2. Land the bisect result; report upstream if it is a genuine regression.
+3. Move the whole suite together — `~/.local/bin` wrappers deliberately pin all
+   three tools to one release (*"Keep the whole chain on one release"*).
+   Upgrading yosys alone recreates the split those wrappers exist to prevent.
