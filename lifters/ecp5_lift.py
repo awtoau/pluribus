@@ -72,7 +72,23 @@ if _REPO not in sys.path:
 
 DEF_BUILD_DIR = os.environ.get("TRELLIS_BUILD",
                                "tmp/prjtrellis/libtrellis/build")
-DEF_DBROOT = os.environ.get("TRELLIS_DBROOT", "tmp/prjtrellis/database")
+def _default_dbroot():
+    """Resolve the trellis database through the single toolchain resolver.
+
+    Same fix machxo2_lift.py already carries (#90); this lifter never got it and
+    kept the literal path a since-removed in-tree prjtrellis checkout occupied.
+    A caller that did not export TRELLIS_DBROOT therefore died on a missing
+    devices.json -- after the pin file had loaded and the config had been read,
+    so it read as a data problem rather than a stale constant.
+    """
+    _scripts = os.path.join(_REPO, "scripts")
+    if _scripts not in sys.path:
+        sys.path.insert(0, _scripts)
+    import toolchain
+    return toolchain.trellis_dbroot()
+
+
+DEF_DBROOT = os.environ.get("TRELLIS_DBROOT") or _default_dbroot()
 
 # `.config` line format is identical across Trellis families — and so, as it
 # turns out, are the ECP5 slice key names.  These are the MachXO2 regexes.
