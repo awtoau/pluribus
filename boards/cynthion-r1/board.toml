@@ -16,7 +16,11 @@
 [board]
 name    = "Great Scott Gadgets Cynthion r1.x"
 device  = "LFE5U-12F"
-package = "BG256"
+# CABGA256, not BG256: "BG256" is the Lattice order-code marking, while nextpnr
+# (--package CABGA256), the Trellis database and device-db/*/iodb.json all use
+# CABGA256. load.py checks this string against the pin file's header, so the two
+# spellings met and it aborted.
+package = "CABGA256"
 lifter  = "ecp5"
 
 # pins.tsv is PARTIAL by design — the pins a fabric self-test needs (#101),
