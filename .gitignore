@@ -23,8 +23,11 @@ CLAUDE.md
 # recovered-netlist deliverables (regenerable from the DB)
 out/
 
-# Vendor tool installers / downloaded sources (large, not part of the repo)
-sources/
+# Vendor tool installers / downloaded sources (large, not part of the repo).
+# sources/README.md IS committed — manifest of what's there and how to re-fetch it,
+# same pattern as corpus/manifest.json below.
+sources/*
+!sources/README.md
 
 # Anlogic eagle_s20 fuse DB — DERIVED from proprietary Tang Dynasty; regenerable
 # via scripts/anlogic_dbdecode.py (see boards/fnirsi-eg4s20/README.md).  Never commit.
