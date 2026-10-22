@@ -1080,7 +1080,15 @@ def _evaluate_lut_init(init_bits, input_values):
     None entries (unconnected port) are treated as '0'.
 
     Returns '0' or '1'.
+
+    4-input (a-d) only: a 5-input LUT5 init needs 'e' folded into the index
+    too, or the result is silently WRONG, not under-connected. Guarded below
+    against a future caller — no lifter feeds a 32-char init here today.
     """
+    if len(init_bits) != 16:
+        die(f"_evaluate_lut_init: only 4-input (16-char) LUTs are supported, "
+            f"got a {len(init_bits)}-char init — a 5-input LUT5 needs 'e' "
+            f"folded into the index too, not silently dropped")
     bit_a = int(input_values.get('a') or '0')
     bit_b = int(input_values.get('b') or '0')
     bit_c = int(input_values.get('c') or '0')

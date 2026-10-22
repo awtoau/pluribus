@@ -65,24 +65,16 @@ OUT OF SCOPE (explicitly, not a gap to silently fill):
     table for any real Cyclone V board in this repo (CLAUDE.md: pluribus
     stores no board data) — this is engine-only.
 
-SCHEMA FIT — LUT5, NOT LUT4
----------------------------
-schema.py's `luts` table is LUT4-shaped by construction: exactly four named
-input columns (a/b/c/d) and `init` is `String(16)` (a 16-char binary string,
-2**4 bits). A Cyclone V ALM half is a 5-input function (2**5 = 32-bit truth
-table) sharing A/B/C/D plus its own E0 or E1. Two options were considered:
-  1. Force it into the 4-column shape by dropping the 5th input — WRONG, this
-     mis-connects (silently drops a real input) rather than under-connecting.
-  2. Carry the full 5-input truth table and a 5th input column outside the
-     existing `luts` table.
-This lifter takes option 2: `recover_netlist()` returns ALM-half records on
-`Design.alm_luts` (name/init32/a/b/c/d/e/z) SEPARATELY from `Design.luts`
-(kept empty for this family). Loading this into the database needs either a
-LUT5-capable sibling table or a widened `luts` table — NOT done here, since
-that is a schema.py decision (CLAUDE.md: schema.py owns all DDL) outside a
-lifter's job. scripts/cyclonev_lift_selftest.py reports alm_lut count
-directly from the Design object rather than going through schema.py/load.py,
-exactly because there is nowhere correct to put a LUT5 today.
+SCHEMA FIT — LUT5, UNIFIED INTO `luts`
+---------------------------------------
+schema.py's `luts` table is now width-generic: `init` is `String(32)` and a
+5th input column `e` (NULL for every 4-input family) carries a Cyclone V ALM
+half's E0/E1 pin. `recover_netlist()` appends ALM-half LUT5 cells directly to
+`Design.luts` (same row shape every other family uses: name/init/a/b/c/d/e/z),
+with `init` as the 32-char MSB-first binary string `load.py`'s classify_lut()
+expects (converted from the raw `init32` hex here, once, in the lifter — the
+fn classification itself stays in load.py, not duplicated). There is no more
+separate `Design.alm_luts` list.
 """
 
 import re
@@ -186,16 +178,14 @@ class ParsedConfig:
 class Design:
     """Recovered structural netlist.
 
-    `luts`/`ffs`/`nets`/`net_fanout` match every other lifter's shape exactly
-    (LUT4 schema) and are populated empty-of-LUT4s for this family — Cyclone V
-    has none. `alm_luts` carries the real LUT5-pair recovery; see the module
-    docstring's SCHEMA FIT section for why it is a separate list rather than
-    forced into `luts`.
+    `luts`/`ffs`/`nets`/`net_fanout` match every other lifter's shape exactly.
+    `luts` entries carry a 5th input `e` (ALM-half E0/E1) and a 32-char init
+    string — the row shape schema.py's widened `luts` table now accepts
+    directly; see the module docstring's SCHEMA FIT section.
     """
 
     def __init__(self):
-        self.luts = []          # always empty for cyclonev (no LUT4s exist)
-        self.alm_luts = []      # [{name, init32, a,b,c,d,e, z, z_used}]
+        self.luts = []          # [{name, init, a,b,c,d,e, z, z_used}]
         self.ffs = []
         self.net_name = {}
         self.all_nets = []
@@ -432,9 +422,14 @@ class CycloneVLift:
                     pins = {p: bel_pin(tile_key, alm_idx, p) for p in inputs}
                     z = bel_pin(tile_key, alm_idx, _ALM_HALF_COMB_OUT[half])
                     cell = f"alm_{block.lower()}_r{tile_key[1]}c{tile_key[2]}_a{alm_idx}_{half}"
-                    d.alm_luts.append({
+                    # init32 bit p already = f(p) (straight extraction above,
+                    # no reversal) -- format(..., '032b') is MSB-first text
+                    # whose int(_, 2) round-trips to the same integer, which
+                    # is exactly the convention load.py's classify_lut() /
+                    # lut_dependence() require (#63).
+                    d.luts.append({
                         "name": cell,
-                        "init32": f"{init32:08x}",
+                        "init": format(init32, "032b"),
                         "a": pins["A"], "b": pins["B"], "c": pins["C"], "d": pins["D"],
                         "e": pins["E0"] if half == "bottom" else pins["E1"],
                         "z": z,

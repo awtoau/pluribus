@@ -54,12 +54,21 @@ ffs = Table("ffs", metadata,
     UniqueConstraint("bitstream", "cell"),
 )
 
+# init is a binary truth-table string, MSB-first (#63): 16 chars (2**4) for
+# every LUT4 family (MachXO2/ECP5/Gowin/Anlogic), 32 chars (2**5) for Cyclone
+# V's ALM-half LUT5. String(32) bounds the widest case; SQLite ignores the
+# VARCHAR(N) length entirely (type affinity only, verified: no truncation/
+# error inserting a 32-char value into a declared VARCHAR(16)) but Postgres
+# enforces it strictly, so this bound is load-bearing on that backend.
 luts = Table("luts", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
     Column("cell",  Text,      nullable=False),
-    Column("init",  String(16), nullable=False),
+    Column("init",  String(32), nullable=False),
     Column("a",     Text), Column("b", Text), Column("c", Text), Column("d", Text),
+    # 5th input: Cyclone V ALM-half LUT5 only (E0/E1). NULL/absent for every
+    # 4-input family, exactly like a/b/c/d when a pin is unused.
+    Column("e",     Text),
     Column("z",     Text),
     Column("deps",  JSON),   # TEXT[] → JSON list
     Column("fn",    Text),

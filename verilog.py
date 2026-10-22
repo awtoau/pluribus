@@ -983,7 +983,16 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                but it removes the false STRUCTURAL dependency that otherwise makes
                yosys report a combinational loop through a routed-but-unused LUT
                input.  Gated to GOWIN so MachXO2 emission stays byte-identical.
+
+    4-input (a-d) only. A 32-char LUT5 init (Cyclone V) would be silently
+    truncated by the `16'b` localparam below — guarded, not handled; no
+    lifter drives a LUT5 through this emitter yet (load.py has no
+    load_cyclonev() path, and the DB query above never selects `e`).
     """
+    if len(init) != 16:
+        raise ValueError(f"_lut_init_to_case: only 4-input (16-char) LUTs "
+                          f"are supported, got a {len(init)}-char init for "
+                          f"cell {cell_name or z_name!r}")
     # _simplify_lut expects LSB-first; the stored INIT is MSB-first, so reverse.
     expr = _simplify_lut(init[::-1], a, b, c, d)
     if expr is not None:

@@ -22,8 +22,9 @@ against Mistral, not assumed from e50f.
   `mistral-cv/main.cc:decompile` rather than guessed.
 - `recover_netlist(pc)` — unions all `r` arcs via DSU, then for every
   LAB/MLAB tile with a non-default `LUT_MASK.<alm>` setting, recovers
-  both ALM halves as LUT5 cells (`Design.alm_luts`) plus any register
-  (FFT0/FFT1/FFT1L/FFB0/FFB1/FFB1L) whose Q output is actually routed.
+  both ALM halves as LUT5 cells (`Design.luts`, unified — see "Schema fit"
+  below) plus any register (FFT0/FFT1/FFT1L/FFB0/FFB1/FFB1L) whose Q
+  output is actually routed.
 - `arc_endpoint_sets`, `pad_fabric_node` (GPIO DATAIN/DATAOUT),
   `load_efb_fixed_conns`/`apply_efb_fixed_conns` (no-ops — no EFB on this
   vendor), `bels_of` (returns `{}` — not needed by this lifter's own
@@ -65,26 +66,43 @@ committed to this repo):
   there is no board.toml for any real Cyclone V board — see "No board"
   below.
 
-## Schema fit: LUT5, not LUT4 — not yet wired into `schema.py`
+## Schema fit: LUT5, unified into `schema.py`'s `luts` table — DONE
 
-`schema.py`'s `luts` table is LUT4-shaped by construction: exactly four
-named input columns (`a`/`b`/`c`/`d`) and `init` is `String(16)` (16 hex
-chars = 2**4-bit truth table). A Cyclone V ALM half is a genuine 5-input
-function (32-bit truth table, inputs A/B/C/D + one of E0/E1).
+Previously flagged as deliberate follow-on work; done this session.
 
-Forcing a 5th input into the existing 4-column table would silently drop
-a real input — a mis-connection, not an under-connection. This lifter
-instead returns ALM-half cells on a **separate** `Design.alm_luts` list
-(`name`/`init32`/`a`/`b`/`c`/`d`/`e`/`z`/`z_used`), kept out of
-`Design.luts` entirely (which stays empty for this family).
-
-**Not resolved by this slice:** loading `alm_luts` into the database
-needs either a LUT5-capable sibling table or a widened `luts` table —
-a `schema.py` DDL decision (CLAUDE.md: schema.py owns all DDL), not a
-lifter's call to make unilaterally. The selftest script reports
-`alm_luts` counts directly from the `Design` object rather than via
-`schema.py`/`load.py`, because there is nowhere correct to persist a
-LUT5 today.
+- `schema.py`'s `luts`: `init` widened to `String(32)` (2**5 bits; SQLite
+  doesn't enforce `String(N)` length at all — verified directly — Postgres
+  does, so this bound is load-bearing there), plus a new `e` column
+  (NULL for every 4-input family) for the ALM-half's E0/E1 pin.
+- `recover_netlist()` appends ALM-half LUT5 cells straight onto
+  `Design.luts` (same row shape as every other family:
+  `name`/`init`/`a`/`b`/`c`/`d`/`e`/`z`/`z_used`), `init` as the 32-char
+  MSB-first binary string (`format(init32, "032b")`) `classify_lut()`
+  expects. `Design.alm_luts` is gone.
+- `load.py`'s `classify_lut()` and `machxo2_lift.lut_dependence()` derive
+  input count from `len(init_str)` (16→a-d, 32→a-e) instead of a
+  hardcoded 16/4. One new pattern at nd==5 (LUT5 only): cascaded 2-select
+  mux tree `MUX(sel0,i0,MUX(sel1,i1,i2))`. nd==4 stays a pure `COMBO4`
+  fallback, deliberately not pattern-matched — a wire mux is inherently
+  odd-width (2k+1 for k selects), so no clean nd==4 mux shape exists
+  without also reclassifying some already-correct 4-input Lattice/Gowin/
+  Anlogic LUTs, which is out of scope.
+- Verified zero behavior change for existing families: exhaustive
+  differential test over all 65,536 possible 16-bit truth tables (0
+  mismatches vs pre-change logic); full Hantek/MachXO2 pipeline
+  regression — identical `2611/1280 (203%) LUTs, 1108 FFs, 4341 nets`,
+  passing LEC against the pre-change Verilog output.
+- Still NOT wired into `load.py`'s DB-writing pipeline (no
+  `load_cyclonev()`) or `verilog.py`'s emitter (its DB query never
+  selects `e`) — flagged follow-on scope. `_lut_init_to_case`
+  (verilog.py) and `_evaluate_lut_init` (reach3.py) now raise loudly on
+  anything but a 16-char init instead of silently truncating/misreading
+  one, closing the one correctness gap those paths had for a future
+  5-input caller.
+- `scripts/cyclonev_lift_selftest.py` now calls `classify_lut()` /
+  `lut_dependence()` directly on the 33,336 real ALM-half LUT5 cells
+  recovered from the DJI m2001 firmware, confirming the unified path
+  end-to-end without touching the database.
 
 ## Input-format dependency: Mistral `.bt` now, Rust decoder later
 
@@ -104,10 +122,10 @@ lifter interface.
 `load.py`'s generic pipeline core (tile loops, pin TSV handling, EFB
 board semantics) is still Trellis/Lattice-shaped. This lifter is not
 driven through `load.py` — the selftest script calls `parse_config()` /
-`recover_netlist()` directly. Wiring a `load_cyclonev()` path into
-`load.py` is future work, gated on the LUT5 schema question above being
-settled first (there is no point writing a load path for a table shape
-that doesn't exist yet).
+`recover_netlist()` directly. The LUT5 schema question above is now
+settled (`luts` accepts a 5th input and a 32-char init), so writing a
+`load_cyclonev()` path is no longer blocked on that — still future work,
+just no longer gated on it.
 
 ## No board
 

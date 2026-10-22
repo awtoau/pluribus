@@ -241,27 +241,65 @@ def parse_fpga_nets_tsv(path):
 
 # ── LUT classify ─────────────────────────────────────────────────────────────
 
+# Bit-weight map, LUT4 (a-d) and LUT5 (a-e, Cyclone V ALM-half) alike.
+# p = a + 2b + 4c + 8d (+16e); shared by every nd branch below.
+_LUT_WEIGHTS = {"a": 1, "b": 2, "c": 4, "d": 8, "e": 16}
+
+
+def _mux5_tree(v, deps):
+    """nd==5 (Cyclone V LUT5 only): y = i0 if sel0 else (i1 if sel1 else i2).
+    Cascaded 2-select tree, the wide-mux shape one level past nd==3's 2:1
+    mux (odd total width: 2k+1 for k selects). Exhaustive over roles."""
+    for sel0 in deps:
+        rest = [p for p in deps if p != sel0]
+        for i0 in rest:
+            inner = [p for p in rest if p != i0]
+            for sel1 in inner:
+                leaves = [p for p in inner if p != sel1]
+                for i1, i2 in (leaves, leaves[::-1]):
+                    ws0 = _LUT_WEIGHTS[sel0]; ws1 = _LUT_WEIGHTS[sel1]
+                    w0 = _LUT_WEIGHTS[i0]; w1 = _LUT_WEIGHTS[i1]; w2 = _LUT_WEIGHTS[i2]
+                    ok = all(
+                        ((v >> (bs0*ws0 + bs1*ws1 + b0*w0 + b1*w1 + b2*w2)) & 1) ==
+                        (b0 if bs0 else (b2 if bs1 else b1))
+                        for bs0 in range(2) for bs1 in range(2)
+                        for b0 in range(2) for b1 in range(2) for b2 in range(2)
+                    )
+                    if ok:
+                        return f"MUX({sel0},{i0},MUX({sel1},{i1},{i2}))"
+    return None
+
+
 def classify_lut(init_str):
     # INIT is MSB-first (string[k] = f(15-k), the prjtrellis .config convention),
     # so the truth-table integer is int(init_str, 2) directly — bit p = f(p).
     # The old int(init_str[::-1], 2) evaluated f(~x) (every input complemented),
     # silently swapping INV<->BUF, AND<->NOR, OR<->NAND (XOR/XNOR invariant). See #63.
+    #
+    # Width is derived from len(init_str) throughout, never assumed: 16 chars
+    # (2**4) for every Lattice/Gowin/Anlogic LUT4, 32 chars (2**5) for Cyclone
+    # V's ALM-half LUT5 (a,b,c,d,e). Any other length is a caller bug.
+    n = len(init_str)
+    nbits = n.bit_length() - 1
+    if n != (1 << nbits):
+        raise ValueError(f"classify_lut: init string length {n} is not a power of 2")
     v = int(init_str, 2)
-    if v == 0:      return "CONST0"
-    if v == 0xFFFF: return "CONST1"
+    full_mask = (1 << n) - 1
+    if v == 0:         return "CONST0"
+    if v == full_mask: return "CONST1"
     deps = sorted(mx.lut_dependence(init_str))
     nd   = len(deps)
     if nd == 0:
         return "CONST0" if v == 0 else "CONST1"
     if nd == 1:
-        p = deps[0]; w = {"a":1,"b":2,"c":4,"d":8}[p]
+        p = deps[0]; w = _LUT_WEIGHTS[p]
         b0 = (v>>0)&1; b1 = (v>>w)&1
         if b0 == 0 and b1 == 1: return f"BUF({p})"
         if b0 == 1 and b1 == 0: return f"INV({p})"
         raise AssertionError(f"unreachable: nd==1 but b0={b0} b1={b1} for {p}")
     if nd == 2:
         a,b = deps
-        wa = {"a":1,"b":2,"c":4,"d":8}[a]; wb = {"a":1,"b":2,"c":4,"d":8}[b]
+        wa = _LUT_WEIGHTS[a]; wb = _LUT_WEIGHTS[b]
         out = tuple((v>>i)&1 for i in [0,wb,wa,wa|wb])
         pats = {
             (0,0,0,1): f"AND({a},{b})",  (1,1,1,0): f"NAND({a},{b})",
@@ -271,7 +309,7 @@ def classify_lut(init_str):
         return pats.get(out, f"COMBO2({a},{b})")
     if nd == 3:
         a,b,c = deps
-        wi = {"a":1,"b":2,"c":4,"d":8}
+        wi = _LUT_WEIGHTS
         for sel,i0,i1 in [(a,b,c),(b,a,c),(c,a,b)]:
             ws=wi[sel]; w0=wi[i0]; w1=wi[i1]
             ok = all(((v>>(b0*w0+b1*w1))&1)==b0 and
@@ -279,7 +317,17 @@ def classify_lut(init_str):
                      for b0 in range(2) for b1 in range(2))
             if ok: return f"MUX({sel},{i0},{i1})"
         return f"COMBO3({a},{b},{c})"
-    return "COMBO4"
+    if nd == 4:
+        # No dedicated pattern: a wire mux is inherently odd-width (nd==3 or
+        # nd==5, see _mux5_tree). Fallback only — unchanged from pre-LUT5
+        # behavior (verified: 0 mismatches over all 65536 16-bit inits).
+        return "COMBO4"
+    if nd == 5:
+        # LUT5 only (Cyclone V ALM-half) — no 4-input family ever reaches here.
+        found = _mux5_tree(v, deps)
+        if found: return found
+        return "COMBO5"
+    raise AssertionError(f"unreachable: nd={nd} for init length {n} (max supported is 5 inputs)")
 
 
 def resolve_net(design, lift, row, col, wire):

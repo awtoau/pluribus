@@ -33,10 +33,10 @@ Supported families:
               completely different fabric (ALM/LAB, not PFU/slice) sharing
               only the lifter interface.  M10K/DSP content decode, HPS, and
               ALM arithmetic/carry mode are out of scope (upstream-Mistral
-              unknowns or deferred, not pluribus gaps); see the module
-              docstring for the LUT5-vs-LUT4 schema-fit note (recovered ALM
-              halves land on Design.alm_luts, not the LUT4-shaped `luts`
-              table).
+              unknowns or deferred, not pluribus gaps).  ALM-half cells are
+              genuine LUT5s (5 inputs, 32-bit truth table) recovered onto
+              the shared `Design.luts`/`luts` table, which carries a 5th
+              input column `e` and a 32-char init for this family.
 """
 
 

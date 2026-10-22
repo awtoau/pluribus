@@ -1812,17 +1812,32 @@ def resource_summary(design, device=None):
 
 
 # ---- liveness / cone-of-influence (device-generic) -------------------------
-_LUT_WEIGHTS = {"a": 1, "b": 2, "c": 4, "d": 8}
+# Covers LUT4 (16-char init: a,b,c,d) and Cyclone V's LUT5 (32-char init:
+# a,b,c,d,e) through one weight table — width is derived from the init
+# string's own length, never assumed. _LUT_INPUT_NAMES order matches the
+# a=1,b=2,c=4,d=8,e=16 bit-weight convention every lifter already uses.
+_LUT_INPUT_NAMES = ("a", "b", "c", "d", "e")
 
 
 def lut_dependence(init_str):
-    """Which of A,B,C,D a LUT4 truth table FUNCTIONALLY depends on. A routed
+    """Which named inputs a LUT truth table FUNCTIONALLY depends on. A routed
     input the INIT ignores is vacuous (the cell would compute the same logic
-    without it). init bits are MSB-first; value bit p = f(p), p = A+2B+4C+8D."""
+    without it). init bits are MSB-first; value bit p = f(p), p = a+2b+4c+8d(+16e).
+
+    Width is derived from len(init_str): 16 chars -> 4 inputs (a-d, every
+    Lattice/Gowin/Anlogic family), 32 chars -> 5 inputs (a-e, Cyclone V
+    ALM-half LUT5). Any other length is a caller bug, not a silent guess.
+    """
+    n = len(init_str)
+    nbits = n.bit_length() - 1
+    if n != (1 << nbits):
+        raise ValueError(f"lut_dependence: init string length {n} is not a power of 2")
     v = int(init_str, 2)   # MSB-first string -> bit p = f(p); no reversal (#63)
     dep = set()
-    for name, w in _LUT_WEIGHTS.items():
-        for p in range(16):
+    for i in range(nbits):
+        w = 1 << i
+        name = _LUT_INPUT_NAMES[i]
+        for p in range(n):
             if (p & w) == 0 and ((v >> p) & 1) != ((v >> (p ^ w)) & 1):
                 dep.add(name)
                 break
