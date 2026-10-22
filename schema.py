@@ -537,6 +537,64 @@ device_fingerprints = Table("device_fingerprints", metadata,
     UniqueConstraint("vendor", "part", "toolchain", "probe_design", "rbf_mode"),
 )
 
+# ── Cyclone V device data (vendored, Mistral-derived) ────────────────────────
+# Altera/Intel Cyclone V tile/routing database, same role for this family as
+# device-db/ is for Lattice: engine data, not board data, PRISTINE once
+# imported. Source is Project Mistral's (Ravenslofty/mistral) plain-text
+# generator inputs under mistral/data/*.txt(.xz) -- NOT the compiled cvd-*.cc
+# C++ structs, which are mistral's own codegen output from that same text.
+# Imported by scripts/cyclonev_db_import.py. Never hand-edit these tables --
+# corrections go in a cyclonev db_overrides equivalent if one is ever needed,
+# following the same pattern as device-db/'s scripts/db_overrides.py.
+#
+# Scope (2026-10-23 session): die-level geometry + the per-die scalar/array
+# fields die_info carries in cyclonev.h (cram size, frame size, pram sizes,
+# noedcrc zones, postambles, column types, x_to_bx) -- everything
+# cv-files.cc's rbf_load/rbf_save (the compression codec) needs. The larger
+# per-node/per-mux tables (cv-bmux.cc/cv-rmux.cc scope, e50f-r.txt.xz /
+# e50f-l.txt.xz / e50f-p2r.txt etc.) are out of scope this session -- see
+# docs/cyclonev-rust-port.md.
+
+cv_dies = Table("cv_dies", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("name",          Text,    nullable=False, unique=True),  # e.g. "e50f"
+    Column("cram_sx",       Integer, nullable=False),
+    Column("cram_sy",       Integer, nullable=False),
+    Column("tile_sx",       Integer, nullable=False),
+    Column("tile_sy",       Integer, nullable=False),
+    Column("hps_x",         Integer, nullable=False),
+    Column("hps_y",         Integer, nullable=False),
+    Column("ctrl_x",        Integer, nullable=False),
+    Column("ctrl_y",        Integer, nullable=False),
+    Column("frame_size",    Integer, nullable=False),
+    Column("postamble_1",   Integer, nullable=False),
+    Column("postamble_2",   Integer, nullable=False),
+    Column("default_oram",    JSON, nullable=False),  # 12 x uint64, as decimal strings (exceed JS/JSON safe int)
+    Column("pram_sizes",      JSON, nullable=False),  # 32 x uint16
+    Column("noedcrc_zones",   JSON, nullable=False),  # 12 x uint16 (die's own count may be < 12; padded with trailing cram_sx)
+    Column("x_to_bx",         JSON, nullable=False),  # tile_sx x uint16, column -> bit-x
+    Column("column_types",    JSON, nullable=False),  # tile_sx x tile_type_t name (text, e.g. "T_LAB")
+    Column("source_file",   Text,    nullable=False),  # mistral path this was imported from, e.g. "libmistral/cvd-e50f.cc"
+    Column("imported_at",   DateTime(timezone=True)),
+)
+
+# PRAM (peripheral RAM / fixed-block-position) strips: parsed directly from
+# data/<die>-pram.txt, the generator/pram.cc input -- not from cvd-*.cc.
+# One row per "strip.start-end block x.y [instance [var]]" line.
+cv_pram_strips = Table("cv_pram_strips", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("die",        Integer, ForeignKey("cv_dies.id", ondelete="CASCADE"), nullable=False),
+    Column("strip",      Integer, nullable=False),
+    Column("start",      Integer, nullable=False),
+    Column("end",        Integer, nullable=False),
+    Column("block",      Text,    nullable=False),  # e.g. "fpll", "cmuxc", "dqs16"
+    Column("pos_x",      Integer, nullable=False),
+    Column("pos_y",      Integer, nullable=False),
+    Column("instance",   Integer, nullable=False, server_default="0"),
+    Column("var",        Integer, nullable=False, server_default="0"),
+)
+Index("idx_cv_pram_die_block", cv_pram_strips.c.die, cv_pram_strips.c.block)
+
 # ── Schema management ─────────────────────────────────────────────────────────
 
 def init(eng=None):

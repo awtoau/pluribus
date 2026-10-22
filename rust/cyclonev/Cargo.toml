@@ -1,0 +1,19 @@
+[package]
+name = "cyclonev"
+version = "0.1.0"
+edition = "2021"
+description = "Cyclone V bitstream engine for pluribus -- Rust port of Project Mistral's mechanical decode logic, data-driven from pluribus's SQLite device-db."
+
+# rusqlite, not sqlx: this crate is a synchronous batch/CLI tool (no async
+# runtime needed anywhere else in its call graph), and `bundled` links SQLite
+# statically so it matches whatever SQLite wrote pluribus.db without needing
+# a system libsqlite3 version match. sqlx's compile-time query checking and
+# async pool buy nothing here and add a tokio dependency for no reason.
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+
+[[bin]]
+name = "cyclonev"
+path = "src/main.rs"
