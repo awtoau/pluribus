@@ -50,8 +50,14 @@ committed to this repo):
 
 ## Explicitly out of scope (upstream-Mistral unknowns or deferred — not pluribus gaps)
 
-- **M10K block-RAM contents, DSP block config** — Mistral itself does not
-  decode these; confirmed this session. Not attempted here.
+- **M10K block-RAM contents** — Mistral itself does not decode this;
+  confirmed this session. Not attempted here.
+- **DSP block config** — Mistral decompiles DSP tiles to named `s DSP.*`
+  settings (MODE etc) but does not itself say what they mean operationally.
+  A separate fuzz campaign maps Quartus-known DSP operations to those
+  settings as ground truth — see `docs/cyclonev-dsp-fuzz-status.md`
+  (multiplier modes M9X9/M18X18/M27X27 confirmed; accumulate/systolic modes
+  still open). Not wired into this lifter yet.
 - **HPS** (hard processor system), **PLLs/FPLL**, **HMC/DQS16** (hard
   memory controller / IO), **CMUX\*** clock muxes, **SERPAR**
   (serial/deserial) — all have `s`-line settings in the `.bt`; none
