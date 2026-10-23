@@ -199,6 +199,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
+import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402
 
 QUARTUS_BIN = Path(toolchain.quartus_bin())
@@ -425,6 +426,7 @@ def compile_variant(name: str, spec: dict, logger) -> dict:
     verilog = MEDIUM_VERILOG if is_medium else PROBE_VERILOG
     d = WORK_DIR / name
     write_design(d, top, spec["qsf"], verilog)
+    heavy_guard.wait_available(logger, name)
     logger.info("=== variant %s: qsf=%s cpf=%s ===", name, spec["qsf"], spec["cpf"])
 
     ok, txt = run([str(QUARTUS_BIN / "quartus_map"), top, "--family=Cyclone V",
@@ -483,6 +485,11 @@ def compare_to_real(opt: dict) -> dict:
 
 
 def main():
+    with heavy_guard.heavy_lock("cyclonev_option_ram_probe", heavy_guard.stdout_log()):
+        _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sanity-check-dies", action="store_true",
                      help="decode real samples against both 5CEFA4U19I7 and 5CEBA4U19C8, confirm byte-identical")

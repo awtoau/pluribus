@@ -39,6 +39,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
+import heavy_guard
 import toolchain
 
 # Resolved via the shared toolchain module (env var, then conventional
@@ -162,6 +163,7 @@ def quartus_compile_design(name, spec, work_dir: Path, logger):
         # or disable the DSP block -- that's the point of this experiment.
     )
 
+    heavy_guard.wait_available(logger, name)
     logger.info("=== %s: %s ===", name, spec["desc"])
 
     if run([str(QUARTUS_BIN / "quartus_map"), name,
@@ -269,6 +271,11 @@ def mode_values(dsp_settings: dict) -> list:
 
 
 def main():
+    with heavy_guard.heavy_lock("cyclonev_dsp_fuzz", heavy_guard.stdout_log()):
+        _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--only", nargs="*", default=None,
                      help="subset of design names to run (default: all)")

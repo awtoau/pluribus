@@ -57,6 +57,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
+import heavy_guard
 import toolchain
 
 QUARTUS_BIN = Path(toolchain.quartus_bin())
@@ -196,6 +197,7 @@ def compile_design(name, spec, work_dir: Path, logger, template=ALTPLL_WRAPPER):
         f'set_global_assignment -name VERILOG_FILE {name}.v\n'
     )
 
+    heavy_guard.wait_available(logger, name)
     logger.info("=== %s: %s ===", name, spec["desc"])
     logger.debug("verilog:\n%s", verilog)
 
@@ -366,6 +368,11 @@ def mult_from_m_counter(m_counter: dict) -> int | None:
 
 
 def main():
+    with heavy_guard.heavy_lock("cyclonev_fpll_fuzz", heavy_guard.stdout_log()):
+        _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--apply-real", type=Path, default=None,

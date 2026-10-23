@@ -87,6 +87,7 @@ sys.path.insert(0, str(REPO))
 # Resolve the SQLite file against the repo, not the launch directory.
 os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(REPO / "pluribus.db"))
 
+import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402
 
 QUARTUS_BIN = Path(toolchain.quartus_bin())
@@ -305,6 +306,7 @@ def write_design_ram(d: Path, top: str, verilog: str):
 
 def quartus_chain(top: str, d: Path, logger, fit_timeout: int = TIMEOUT_QUARTUS_FIT):
     """map -> fit -> asm -> cpf.  Returns error reason, or None on success."""
+    heavy_guard.wait_available(logger, top)
     ok, txt = run([str(QUARTUS_BIN / "quartus_map"), top, "--family=Cyclone V",
                    f"--part={DEVICE}"], d, logger, TIMEOUT_QUARTUS_FAST)
     if not ok:
@@ -1956,6 +1958,11 @@ def print_gpio_list(rows):
 
 
 def main():
+    with heavy_guard.heavy_lock("cyclonev_blockmux_fuzz", setup_logging()):
+        _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dump-target", default="gpio",
