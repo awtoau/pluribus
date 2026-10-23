@@ -49,7 +49,6 @@ def parse(path):
     branch = -1
     cur = []          # rows of the open branch
     parent = (None, None)
-    last_parent = (None, None)
     skip = False      # inside a non-route `section <name> { ... }` (e.g. ram_sublocations)
     for i, ln in enumerate(Path(path).read_text().split("\n"), 1):
         s = ln.strip()
@@ -69,7 +68,7 @@ def parse(path):
             continue
         m = _NET.match(s)
         if m:
-            net, branch, cur, parent, last_parent = m.group(1), -1, [], (None, None), (None, None)
+            net, branch, cur, parent = m.group(1), -1, [], (None, None)
             continue
         if net is None:
             db.die(f"{path}:{i}: statement outside a signal_name block: {s!r}")
@@ -87,8 +86,7 @@ def parse(path):
         m = _DEST.match(s)
         if m:
             branch += 1
-            if parent == (None, None) and branch > 0:
-                parent = last_parent
+            # no branch_point = branch leaves from the net's driver (root)
             for h, r in enumerate(cur):
                 rows.append(dict(r, net=net, branch=branch, hop=h,
                                  parent_branch=None, parent_label=parent[1],
@@ -100,7 +98,6 @@ def parse(path):
                                  hop=0, parent_branch=None, parent_label=parent[1],
                                  dest_atom=m.group(1), dest_port=m.group(2),
                                  route_port=m.group(3)))
-            last_parent = parent
             cur, parent = [], (None, None)
             continue
         if s.endswith(";"):

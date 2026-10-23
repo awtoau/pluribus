@@ -975,10 +975,15 @@ rcf_fuzz_bits = Table("rcf_fuzz_bits", metadata,
     Column("x",        Integer),
     Column("y",        Integer),
     Column("orig_idx", Integer),
-    Column("alt_idx",  Integer),                    # NULL for the control (unedited) variant
-    Column("status",   Text,    nullable=False),    # ok | fit_fail | route_changed | ...
+    Column("alt_idx",  Integer),                    # edit mode: idx tried; exclude mode: depth (1..); NULL = control
+    Column("mode",     Text),                       # edit | exclude
+    Column("status",   Text,    nullable=False),    # control | accepted | rerouted | fail:<step> | no_alternative
+    Column("excluded", JSON),                       # exclude mode: ["TYPE:XxYyS0Ik", ...] listed in the exclusion section
+    Column("new_route", JSON),                      # exported route of the target branch after the fit
+    Column("replay",   Text),                       # exported RCF re-imported alone: accepted | rejected | fail:<step>
     Column("n_changed", Integer),
-    Column("changed_bits", JSON),                   # [[frame_or_addr, bit], ...]
+    Column("changed_bits", JSON),                   # [[rbf byte offset, bit 0-7], ...] vs the control variant
+    Column("bt_diff", JSON),                        # mistral-cv decomp lines added/removed vs the control
     Column("note",     Text),
 )
 Index("idx_rcf_fuzz_build", rcf_fuzz_bits.c.build, rcf_fuzz_bits.c.net)

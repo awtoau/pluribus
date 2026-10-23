@@ -109,7 +109,8 @@ LAB input pins per lcell port (from connectivity: `conn.*` MATCH counts):
 
 - `quartus/route.tcl`: `derive_clocks -period 10` (every clock), virtual clock `vio` with zero input/output delay on all I/O, then `report_timing -setup` and `-recovery`, `-npaths 100000 -nworst 10 -detail full_path -show_routing`.
 - Reachable: reg->reg in each domain, pad->reg, reg->pad, pad->pad (comparator8, lut_random), clock-tree hops (`clock path` section), async clear (`-recovery`: 4 paths in counter_en_aclr).
-- Not reachable: nets on no timing path (constants, unused outputs). `-nworst 10` caps the paths reported per endpoint, so a high-fanout source is covered per endpoint, not for every pair.
+- Full per-net routing (all fan-out, clock network) from the RCF: `docs/cyclonev-rcf-oracle.md`, table `rcf_routes`; 34% of nets are on no timing path.
+- Not reachable via `route_hops`: nets on no timing path (constants, unused outputs). `-nworst 10` caps the paths reported per endpoint, so a high-fanout source is covered per endpoint, not for every pair.
 - 1657 paths, 110,085 hops, 73,329 of them RE rows (5,601 distinct per build+location). No dedupe; `driver` (last cell output) names the net each hop routes.
 - Quartus names map onto Mistral's: e.g. `R3_X1_Y19_N0_I1 (H_SEG3)` ~ Mistral `H3`, `C2_... (V_SEG2)` ~ `V2`. Not yet cross-checked against the `.bt` routes.
 

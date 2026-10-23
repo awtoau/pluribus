@@ -4,7 +4,7 @@
 Per build (design):
   forward : every distinct RE hop in route_hops (net = driver atom) must be in the RCF of that net.
             I-form elements (TYPE:XxYySnIk) match on (type,x,y,n,idx); block-port elements (the
-            RCF `B:` form) have no comparable n/idx in route_hops, so match on (type,x,y).
+            RCF `B:` form) carry no comparable idx in route_hops (it is a port id), so (type,x,y,n).
   backward: RCF nets with no route_hops hop at all (RCF-only) and RCF elements, on nets that do
             have timing hops, that no timing path touches.
 Usage: python3.15t scripts/cyclonev_rcf_crosscheck.py [design ...]
@@ -44,7 +44,7 @@ def check(conn, build, design):
             continue
         if pp is not None:
             bform.add(el)
-            rcf[net].add((el, x, y))
+            rcf[net].add((el, x, y, n))
         else:
             rcf[net].add((el, x, y, n, idx))
     hops = set()
@@ -68,7 +68,7 @@ def check(conn, build, design):
     for net, el, x, y, n, idx in hops:
         if net is None or net not in rcf:   # pad hops (driver None), DSP/M10K-driven nets: match on any net
             unmapped[el] += 1
-            key = (el, x, y) if el in bform else (el, x, y, n, idx)
+            key = (el, x, y, n) if el in bform else (el, x, y, n, idx)
             tot[el] += 1
             if key not in anynet:
                 miss[el] += 1
@@ -78,7 +78,7 @@ def check(conn, build, design):
                 seen_in_rcf[nm].add(key)
             continue
         nets_with_hops.add(net)
-        key = (el, x, y) if el in bform else (el, x, y, n, idx)
+        key = (el, x, y, n) if el in bform else (el, x, y, n, idx)
         tot[el] += 1
         if net in rcf and key in rcf[net]:
             seen_in_rcf[net].add(key)
