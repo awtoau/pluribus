@@ -25,7 +25,6 @@ Stages: `scripts/cyclonev_native_verify.py {diff,account,routes,logic,lutmap,rou
 - Frame header bits beyond sync: 0 set. Frame gap bytes: 0 set. Rows 24-31 frame slots (never loaded by libmistral): 0 set across 236 designs.
 - Compressed vs uncompressed Quartus images of the same design (236 pairs): CRAM and PRAM planes identical; ORAM identical except COMPRESSION_DIS, usercode (JTAG_ID) and ~10 compression-linked bits in strip 5 (set varies per design, unclaimed).
 - Nibble codec: re-encoding the decoded CRAM reproduces Quartus's compressed stream byte-for-byte (232/236; 4 = MLAB-RAM EDCRC case). Compressed image trailer after the stream is not regenerated (design-dependent field).
-- Rust Bluebird codec: DJI payload forced through the nibble path gives 1,152,281 set CRAM bits in Python, the figure recorded in `docs/bluebird.md` for the Rust codec.
 
 ### 2. Identical to oracle (independent of Mistral)
 
@@ -106,14 +105,6 @@ Oracle = Quartus post-fit `.vo` atoms/conns and RCF routes (`corpus.db`, read-on
 - One-feature edit on every design: flip 1 LUT_MASK bit, encode, decode: exactly one `s` line changes (192 replaced, 44 created from default); all frame CRC-16/EDCRC valid after the edit; Mistral decode of the edited file shows the identical single-line change (236/236).
 - Not checkable here: acceptance by a device (no hardware), Quartus has no `.rbf` reader.
 - Not done: Quartus rebuild of a one-LUT-bit Verilog change compared to the edited bitstream.
-
-## DJI m2001 smoke test
-
-- `C1_FW_V01.06.0000_m2001.bin`: 32 bytes 0xFF then a 2,119,888-byte payload (not 0x20 + payload offset-parsed; same strip).
-- It is not a Quartus `.rbf` of this layout: no 0xFF*0x80 + `jjjj` header, option checksum and PRAM page CRC fail, frame 0 lacks the sync bytes, CRC-16 valid on 0/4,958 frames read as compressed and 1/3,980 read raw, option frame all-ones.
-- Mistral decodes it without error: its `COMPRESSION_DIS` reads 1 from the all-ones option frame, it reads 2.6 MB from a 2.09 MB buffer (heap beyond EOF), and prints 386,648 "Source unknown on rnode" messages. Earlier DJI lift counts rest on that decode.
-- Native refuses the image with the reasons. Forced (`--force`, zero-filled past EOF): r 53,063 vs Mistral 70,007; disagreements 17k r / 80k s lines, mostly in columns beyond the file; class: neither provable (input is not a valid container, no oracle).
-- Brief named m2001; the later message named m1900: no m1900 file exists under `firmware/unpacked/C1_FW_V01.06.0000/`.
 
 ## Known gaps
 
