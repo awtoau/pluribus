@@ -562,7 +562,7 @@ device_fingerprints = Table("device_fingerprints", metadata,
 # cv-files.cc's rbf_load/rbf_save (the compression codec) needs. The larger
 # per-node/per-mux tables (cv-bmux.cc/cv-rmux.cc scope, e50f-r.txt.xz /
 # e50f-l.txt.xz / e50f-p2r.txt etc.) are out of scope this session -- see
-# docs/cyclonev-rust-port.md.
+# docs/bluebird.md.
 
 cv_dies = Table("cv_dies", metadata,
     Column("id",            Integer, primary_key=True, autoincrement=True),

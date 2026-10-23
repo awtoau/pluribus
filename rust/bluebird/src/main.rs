@@ -1,9 +1,8 @@
-//! Cyclone V engine CLI (pluribus) -- proof-of-concept scope: the
-//! compression codec only (cv-files.cc rbf_load/rbf_save CRAM path), ported
-//! from Project Mistral and backed by pluribus's SQLite device-db instead of
-//! Mistral's compiled cvd-*.cc constants.
+//! Bluebird: pluribus's Cyclone V bitstream engine CLI, replacing Project
+//! Mistral. Backed by pluribus's SQLite device-db, not Mistral's compiled
+//! cvd-*.cc constants.
 //!
-//! See docs/cyclonev-rust-port.md for what is and isn't implemented.
+//! See docs/bluebird.md for what is and isn't implemented.
 
 mod codec;
 mod db;
@@ -14,7 +13,7 @@ use clap::{Parser, Subcommand};
 use std::fs;
 
 #[derive(Parser)]
-#[command(name = "cyclonev", about = "Cyclone V bitstream engine (pluribus)")]
+#[command(name = "bluebird", about = "Bluebird: Cyclone V bitstream engine (pluribus)")]
 struct Cli {
     /// Path to the pluribus SQLite DB (default: ./pluribus.db, matching
     /// PLURIBUS_SQLITE_PATH's own default in db.py)

@@ -1,8 +1,8 @@
 [package]
-name = "cyclonev"
+name = "bluebird"
 version = "0.1.0"
 edition = "2021"
-description = "Cyclone V bitstream engine for pluribus -- Rust port of Project Mistral's mechanical decode logic, data-driven from pluribus's SQLite device-db."
+description = "Bluebird: pluribus's Cyclone V bitstream engine. Replaces Project Mistral; Mistral's data is bootstrap only, verified by Quartus fuzzing (#103)."
 
 # rusqlite, not sqlx: this crate is a synchronous batch/CLI tool (no async
 # runtime needed anywhere else in its call graph), and `bundled` links SQLite
@@ -15,5 +15,5 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 
 [[bin]]
-name = "cyclonev"
+name = "bluebird"
 path = "src/main.rs"

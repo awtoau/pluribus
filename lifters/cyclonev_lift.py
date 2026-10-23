@@ -12,10 +12,10 @@ INPUT FORMAT — DECISION, NOT A PERMANENT DEPENDENCY
 ----------------------------------------------------
 parse_config() reads Mistral's `.bt` text decompile format (mistral-cv's
 `decomp` command) for now. A separate effort has since landed a native Rust
-codec (`rust/cyclonev/`) + `cv_dies`/`cv_pram_strips` schema tables + importer
+codec (`rust/bluebird/`) + `cv_dies`/`cv_pram_strips` schema tables + importer
 (`scripts/cyclonev_db_import.py`) for Cyclone V's bitstream CRAM framing — but
 NOT yet the package/pinout table or routing-node tables (see
-docs/cyclonev-rust-port.md "Known gaps": "Package/pinout tables (e50f-pkg.txt):
+docs/bluebird.md "Known gaps": "Package/pinout tables (e50f-pkg.txt):
 not imported"). So `.bt` text remains the only source of real package-pin
 names in this project; swap it for the Rust decoder's own pin data once that
 lands — same parse_config() contract, same Design.pads output. Keeping the

@@ -7,7 +7,7 @@
 //!
 //! SCOPE: this is a query layer over the imported node/mux data, not the
 //! cv-bmux.cc/cv-rmux.cc port itself. That port needs real design work this
-//! session doesn't attempt (see docs/cyclonev-rust-port.md) -- what it would
+//! session doesn't attempt (see docs/bluebird.md) -- what it would
 //! actually DO with this data (resolve a mux's selected source bit against
 //! decoded CRAM bits, walk the net graph) isn't implemented here. This
 //! module proves the data is queryable from Rust and sized sanely; it is

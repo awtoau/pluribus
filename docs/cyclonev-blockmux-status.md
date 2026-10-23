@@ -5,7 +5,7 @@ Imports Mistral's block-mux ground truth (21 `data/*-mux.txt` files) into
 mux usage, GPIO/PLL/HSSI mux selection — real documented gaps in the
 Cyclone V corpus, all previously absent from the DB. Companion to the
 routing-node import (`cv_route_muxes`/`cv_route_lines`/`cv_route_drivers`/
-`cv_p2r`/`cv_p2p`, `docs/cyclonev-rust-port.md`), which covers the general
+`cv_p2r`/`cv_p2p`, `docs/bluebird.md`), which covers the general
 interconnect fabric, not the muxes inside a block.
 
 Script: `scripts/cyclonev_db_import_blockmux.py`. Logs to
@@ -123,7 +123,7 @@ transliteration before trusting the bulk diff.
 - No `cv-bmux.cc`/`cv-rmux.cc` runtime CRAM-bit decode logic — this
   imports the mux *definitions* only, not a bitstream-to-mux-setting
   decoder. Real future work, same status as the Rust routing port
-  (`docs/cyclonev-rust-port.md`).
+  (`docs/bluebird.md`).
 - No Quartus-fuzzing campaign to make this pluribus's own independent
   ground truth (same bootstrap/verification-source caveat as
   `cv_route_muxes`) — LAB/M10K/DSP/GPIO/PLL/HSSI muxes remain un-fuzzed by

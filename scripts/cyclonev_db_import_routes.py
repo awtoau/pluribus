@@ -3,7 +3,7 @@
 
 WHY THIS EXISTS
 ----------------
-docs/cyclonev-rust-port.md's "Next-session scope" item 1: the die-geometry +
+docs/bluebird.md's "Next-session scope" item 1: the die-geometry +
 PRAM-strip import (scripts/cyclonev_db_import.py) landed cv_dies/cv_pram_strips
 but explicitly left the routing/mux layer unimported. cv-bmux.cc/cv-rmux.cc
 (the actual Rust-port target) consume exactly this data, so it has to be in
@@ -87,7 +87,7 @@ reused here, but the real fix for THIS script is structural, not just a gate:
      parsers) and parsing each range in its own thread. Measured on e50f
      whole-file (pre-redesign baseline, since the batch size exceeded
      e50f's whole file anyway): routes parse 17s->5.2s on 8 threads, lines
-     parse 17s->8.0s -- see docs/cyclonev-rust-port.md for the full numbers.
+     parse 17s->8.0s -- see docs/bluebird.md for the full numbers.
   4. A psutil.virtual_memory().percent gate (--max-ram-pct, default 50%,
      same default and polling cadence as cyclonev_verify_all.py's gate)
      blocks before claiming the next batch -- or the next die -- whenever

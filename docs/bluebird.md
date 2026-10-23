@@ -1,8 +1,9 @@
-# Cyclone V Rust port — status
+# Bluebird — Cyclone V bitstream engine
 
-Altera/Intel Cyclone V support for pluribus, ported from Project Mistral
-(Ravenslofty/mistral, `/mnt/2tb/git/mistral`). Scoped across two research
-passes + two implementation sessions (2026-10-23).
+- Bluebird is pluribus's own Cyclone V engine (`rust/bluebird/`, binary `bluebird`), replacing Project Mistral (Ravenslofty/mistral).
+- Mistral is the starting point only: its data seeds the tables, and each part is replaced once Quartus fuzzing (#103) has verified or corrected it.
+- Acceptance test: full loop — Verilog -> Quartus -> bitstream -> lift -> Verilog -> compare with Quartus's post-fit netlist.
+- Renamed from `rust/cyclonev/` on 2026-10-23.
 
 ## Mistral's data/*.txt(.xz) is a BOOTSTRAP/VERIFICATION source, not permanent
 
@@ -63,7 +64,7 @@ never hand-edited.
   (cram 4958×3928, tiles 55×46, frame_size 129, postambles 102/388) —
   match.
 
-**Rust crate** (`rust/cyclonev/`, binary `cyclonev`):
+**Rust crate** (`rust/bluebird/`, binary `bluebird`):
 - `rusqlite` (bundled SQLite) chosen over `sqlx` — synchronous CLI/batch
   tool, no async runtime used anywhere else in the call graph.
 - `src/db.rs` — reads `cv_dies` into a `DieInfo` struct.
@@ -78,7 +79,7 @@ never hand-edited.
     e50f scale (cram_sy=3928, frame_size=129 — a synthetic small
     `cram_sy` broke the `ya`/`yb` split out of bounds; the geometry only
     stays in range at real die scale).
-- `src/main.rs` — `cyclonev roundtrip <die> <path>` CLI, plus an integration
+- `src/main.rs` — `bluebird roundtrip <die> <path>` CLI, plus an integration
   test (`real_dji_bitstream_roundtrip`) that runs the same check as part of
   `cargo test`.
 
@@ -264,7 +265,7 @@ change the per-batch parse speedup, only the memory profile):
   speedup because DB insert is serialized by SQLite regardless of thread
   count — expected, not a bug).
 
-**Rust side**: `rust/cyclonev/src/rnodes.rs` — a read-only query layer
+**Rust side**: `rust/bluebird/src/rnodes.rs` — a read-only query layer
 (`route_counts`, `lookup_mux`) over the 5 new tables, plus a `cyclonev
 route-counts <die>` CLI command and a real-data test
 (`e50f_route_counts_are_plausible`) asserting the exact e50f row counts

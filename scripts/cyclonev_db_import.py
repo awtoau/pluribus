@@ -34,7 +34,7 @@ Two sources are read here, for different reasons:
 Scope (2026-10-23 session): die geometry + PRAM strips only. The larger
 per-node routing tables (data/<die>-r.txt.xz, -l.txt.xz, -p2r.txt, etc. —
 cv-bmux.cc/cv-rmux.cc territory) are NOT imported here. See
-docs/cyclonev-rust-port.md for what is scoped next.
+docs/bluebird.md for what is scoped next.
 
 Usage:
     python3.15t scripts/cyclonev_db_import.py

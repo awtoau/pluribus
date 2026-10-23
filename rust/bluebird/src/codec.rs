@@ -11,7 +11,7 @@
 //!
 //! Scope this session: the CRAM compression/decompression core only --
 //! ORAM header and PRAM (fixed-block) framing are NOT implemented here (see
-//! docs/cyclonev-rust-port.md). Operates on a CRAM "frame" byte buffer
+//! docs/bluebird.md). Operates on a CRAM "frame" byte buffer
 //! (the `framed`/`framed_cram` buffer in cv-files.cc), not a full .rbf file.
 
 use anyhow::{bail, Result};

@@ -145,7 +145,7 @@ raw values (their project, not this one), or a pluribus-run Quartus fuzzing
 campaign exercising these specific `(pattern, rnode-type)` combinations
 directly against known designs — the same approach already used for DSP
 mode decode (`scripts/cyclonev_dsp_fuzz.py`) and flagged as real future work
-in `docs/cyclonev-rust-port.md`. That campaign is NOT attempted here (out of
+in `docs/bluebird.md`. That campaign is NOT attempted here (out of
 scope per the task) and is unrelated to the already-attempted FPLL fuzz
 work (`scripts/cyclonev_fpll_fuzz.py`, issue #104).
 

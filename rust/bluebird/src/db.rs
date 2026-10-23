@@ -12,7 +12,7 @@ use rusqlite::Connection;
 ///
 /// postamble_1/postamble_2/noedcrc_zones are not yet read by this crate's
 /// codec path (CRC/postamble framing is out of scope this session -- see
-/// docs/cyclonev-rust-port.md) but are pulled from the DB now so callers
+/// docs/bluebird.md) but are pulled from the DB now so callers
 /// outside this crate (or a future session) don't need a second DieInfo type.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
