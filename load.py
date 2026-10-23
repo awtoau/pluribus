@@ -426,6 +426,170 @@ def load_anlogic(label, config_path, device, package):
     return bs_id
 
 
+# ── Cyclone V load (ALM/LAB, not Trellis) ─────────────────────────────────────
+
+_CYCLONEV_SUPPORTED_DEVICES = {"5CEBA4U19C8"}
+
+
+def load_cyclonev(label, config_path, device):
+    """Dedicated load path for the Cyclone V (e50f / 5CEBA4U19C8) family.
+
+    Same shape as load_anlogic(): the cyclonev backend recovers LUT5 cells,
+    registers (Q net only — D/CLK/CE/LSR unresolved, see
+    docs/cyclonev-lifter-status.md), and real routing arcs/nets via DSU, but
+    has no pin/pad/EFB layer (no board.toml exists for any Cyclone V board —
+    CLAUDE.md: pluribus stores no board data without one).  So this inserts
+    exactly what is recovered — bitstream row, nets, LUTs, FFs, net_fanout,
+    arcs — rather than driving load()'s Trellis/pin-TSV-shaped generic core.
+
+    config_path is a Mistral `.bt` text decompile (the operator runs
+    `mistral-cv decomp` themselves first), not a raw bitstream.
+
+    Always-rebuild per label (project rule): every dependent row for the
+    label is deleted and re-inserted from scratch.
+    """
+    if device not in _CYCLONEV_SUPPORTED_DEVICES:
+        die(f"load_cyclonev: device {device!r} not supported. "
+            f"CycloneVLift covers only {sorted(_CYCLONEV_SUPPORTED_DEVICES)} "
+            f"(die e50f) for now — see lifters/cyclonev_lift.py.")
+    if not os.path.exists(config_path):
+        die(f"Config file not found: {config_path}")
+
+    t0 = time.time()
+    lift = make_lift("cyclonev", device)
+    pc = lift.parse_config(config_path)
+    design = lift.recover_netlist(pc)
+
+    n_ffs  = len(design.ffs)
+    n_luts = len(design.luts)
+    n_nets = len(design.all_nets)
+    print(f"  device={device} luts={n_luts} ffs={n_ffs} nets={n_nets} "
+          f"arcs={len(pc.arcs)} ({time.time()-t0:.1f}s)")
+
+    schema.init()
+    with engine().begin() as conn:
+        _now = datetime.now(timezone.utc)
+        # No package/pinout data exists for any Cyclone V board (CLAUDE.md:
+        # no board data without a real board.toml) — "UNKNOWN" is an explicit
+        # sentinel, not a guess, satisfying bitstreams.package's NOT NULL.
+        if BACKEND == "sqlite":
+            conn.execute(insert(schema.bitstreams).prefix_with("OR REPLACE").values(
+                label=label, filename=os.path.basename(config_path),
+                device=device, package="UNKNOWN", diamond_version=None,
+                loaded_at=_now))
+            bs_id = conn.execute(select(schema.bitstreams.c.id)
+                                 .where(schema.bitstreams.c.label == label)).scalar()
+        else:
+            bs_id = conn.execute(
+                _pg_insert(schema.bitstreams)
+                .values(label=label, filename=os.path.basename(config_path),
+                        device=device, package="UNKNOWN", diamond_version=None,
+                        loaded_at=_now)
+                .on_conflict_do_update(
+                    index_elements=["label"],
+                    set_=dict(filename=os.path.basename(config_path),
+                              device=device, package="UNKNOWN", diamond_version=None,
+                              loaded_at=_now))
+                .returning(schema.bitstreams.c.id)).scalar()
+        if bs_id is None:
+            die("INSERT INTO bitstreams returned NULL id")
+        print(f"  bitstream id={bs_id}")
+
+        # always-rebuild: drop this label's rows before re-inserting
+        for tbl in (schema.net_fanout, schema.arcs, schema.ffs, schema.luts,
+                    schema.nets):
+            conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
+
+        # ── nets ──────────────────────────────────────────────────────────
+        net_list = sorted(design.all_nets, key=lambda s: int(s[1:]))
+        net_rows = [{"bitstream": bs_id, "name": n} for n in net_list]
+        if net_rows:
+            conn.execute(insert(schema.nets), net_rows)
+        net_count = conn.execute(
+            select(func.count()).select_from(schema.nets)
+            .where(schema.nets.c.bitstream == bs_id)
+        ).scalar()
+        assert_eq("net count in DB", net_count, n_nets)
+
+        # ── LUTs (LUT5: a,b,c,d,e) ───────────────────────────────────────
+        lut_rows = [{"bitstream": bs_id, "cell": lt["name"], "init": lt["init"],
+                     "a": lt.get("a"), "b": lt.get("b"), "c": lt.get("c"),
+                     "d": lt.get("d"), "e": lt.get("e"), "z": lt.get("z"),
+                     "deps": sorted(mx.lut_dependence(lt["init"])),
+                     "fn": classify_lut(lt["init"])}
+                    for lt in design.luts]
+        if lut_rows:
+            conn.execute(insert(schema.luts), lut_rows)
+        lut_count = conn.execute(
+            select(func.count()).select_from(schema.luts)
+            .where(schema.luts.c.bitstream == bs_id)
+        ).scalar()
+        assert_eq("LUT count in DB", lut_count, n_luts)
+
+        # ── FFs (Q net only — D/CLK/CE/LSR unresolved, see status doc) ────
+        bad_ffs = [ff for ff in design.ffs if not ff.get("name") or not ff.get("q")]
+        if bad_ffs:
+            die(f"{len(bad_ffs)} FFs have missing name or Q: {[f['name'] for f in bad_ffs[:5]]}")
+        ff_rows = [{"bitstream": bs_id, "cell": ff["name"], "clk": ff["clk"],
+                    "ce": ff["ce"], "d": ff["d"], "q": ff["q"], "lsr": ff["lsr"],
+                    "dtype": ff.get("dtype")}
+                   for ff in design.ffs]
+        if ff_rows:
+            conn.execute(insert(schema.ffs), ff_rows)
+        ff_count = conn.execute(
+            select(func.count()).select_from(schema.ffs)
+            .where(schema.ffs.c.bitstream == bs_id)
+        ).scalar()
+        assert_eq("FF count in DB", ff_count, n_ffs)
+
+        # ── net_fanout (LUT inputs only — FF d/clk/ce/lsr are all None) ───
+        fanout_rows = []
+        for ff in design.ffs:
+            q = ff["q"]
+            for pin, net in (("D", ff["d"]), ("CLK", ff["clk"]),
+                             ("CE", ff["ce"]), ("LSR", ff["lsr"])):
+                if net:
+                    fanout_rows.append({"bitstream": bs_id, "net": net, "cell_type": "FF",
+                                        "cell": ff["name"], "pin": pin, "out_net": q})
+        for lt in design.luts:
+            z = lt.get("z")
+            for pin in ("a", "b", "c", "d", "e"):
+                net = lt.get(pin)
+                if net:
+                    fanout_rows.append({"bitstream": bs_id, "net": net, "cell_type": "LUT",
+                                        "cell": lt["name"], "pin": pin.upper(), "out_net": z})
+        if fanout_rows:
+            conn.execute(insert(schema.net_fanout), fanout_rows)
+        fanout_count = conn.execute(
+            select(func.count()).select_from(schema.net_fanout)
+            .where(schema.net_fanout.c.bitstream == bs_id)
+        ).scalar()
+        assert_eq("fanout count in DB", fanout_count, len(fanout_rows))
+        print(f"  {len(fanout_rows)} fanout entries")
+
+        # ── arcs (raw routing arcs; CVNode .x/.y stand in for tile_row/col) ─
+        arc_rows = []
+        for (src, dst) in pc.arcs:
+            sink_net   = design.net_name.get(design.dsu.find(dst))
+            source_net = design.net_name.get(design.dsu.find(src))
+            arc_rows.append({
+                "bitstream": bs_id,
+                "tile_row": dst.x, "tile_col": dst.y,
+                "sink_wire": dst.to_string(), "source_wire": src.to_string(),
+                "sink_net": sink_net, "source_net": source_net,
+                "sink_gx": dst.x, "sink_gy": dst.y, "sink_gid": None,
+                "source_gx": src.x, "source_gy": src.y, "source_gid": None,
+            })
+        CHUNK = 5000
+        for i in range(0, len(arc_rows), CHUNK):
+            conn.execute(insert(schema.arcs), arc_rows[i:i+CHUNK])
+        print(f"  {len(arc_rows)} routing arcs")
+
+    print(f"  loaded: {n_luts} LUTs, {n_ffs} FFs, {len(net_rows)} nets, "
+          f"{len(arc_rows)} arcs ({time.time()-t0:.1f}s)")
+    return bs_id
+
+
 # ── Main load ─────────────────────────────────────────────────────────────────
 
 def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=False,
@@ -1791,7 +1955,7 @@ def main():
     ap.add_argument("--nets",    help="path to nets annotation TSV (overrides --board)")
     ap.add_argument("--device",  help="device string e.g. LCMXO2-1200 (overrides --board)")
     ap.add_argument("--package", help="package string e.g. TQFP100 (overrides --board)")
-    ap.add_argument("--lifter",  help="lifter name: machxo2 or ecp5 (overrides --board)")
+    ap.add_argument("--lifter",  help="lifter name: machxo2, ecp5, gowin, anlogic, or cyclonev (overrides --board)")
     ap.add_argument("--dump-pins", metavar="OUT_TSV",
                     help="scan bitstream+iomap, merge pin_annotations.json, write template TSV and exit")
     ap.add_argument("--annotations", default=None,
@@ -1815,6 +1979,12 @@ def main():
 
     if not args.label:
         ap.error("--label is required when not using --dump-pins")
+    # Cyclone V has its own dedicated load path (no board.toml, no pin/pad
+    # layer yet — see load_cyclonev()); dispatch before the pins check below,
+    # same way anlogic's dedicated path is exempted from it.
+    if lifter == "cyclonev":
+        load_cyclonev(args.label, args.config, device)
+        return
     # Anlogic has no pad-map layer yet, so its dedicated load path ignores pins.
     if not pins and lifter != "anlogic":
         ap.error("--pins is required (or provide --board with pins_tsv in board.toml)")

@@ -152,8 +152,9 @@ def load_data(conn, bs_id: int) -> dict:
         ffs = [(cell, clk_unify.get(clk, clk), ce, d, qn, lsr)
                for (cell, clk, ce, d, qn, lsr) in ffs]
 
-    # LUTs: (cell, init, a, b, c, d, z, fn)
-    luts = q("SELECT cell, init, a, b, c, d, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
+    # LUTs: (cell, init, a, b, c, d, e, z, fn) — e is NULL for every 4-input
+    # family, populated only for Cyclone V's ALM-half LUT5 (#63).
+    luts = q("SELECT cell, init, a, b, c, d, e, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
 
     # ALU cells (GOWIN carry/adder) — empty for MachXO2.
     alus = q("SELECT cell, mode, sum_net, cout_net, cin, i0, i1, i3 "
@@ -259,7 +260,7 @@ def load_data(conn, bs_id: int) -> dict:
     # extracted as BOTH a dpram_* and a lut_* cell sharing one output net; the
     # query is ORDER BY cell so dpram_* is seen first and wins.
     _existing_net_names = set(net_name_map.values())
-    for _cell, _i, _a, _b, _c, _d, _outz, _fn in luts:
+    for _cell, _i, _a, _b, _c, _d, _e, _outz, _fn in luts:
         if _outz is None or _outz in net_name_map or _outz in const_net_map:
             continue
         _cname = resolve_cell(_cell, cell_name_map)   # human name, else the cell id
@@ -392,7 +393,7 @@ def load_data(conn, bs_id: int) -> dict:
     # Q wire names that are ALSO driven by a LUT continuous assign.
     # Adding `assign q_wire = reg;` for these would create a multi-driver conflict,
     # so emit_ffs must skip connect assigns for them.
-    lut_z_nets: set[str] = {z for _cell, _init, _a, _b, _c, _d, z, _fn in luts if z}
+    lut_z_nets: set[str] = {z for _cell, _init, _a, _b, _c, _d, _e, z, _fn in luts if z}
     # Resolved LUT output identifiers: used by emit_ebr to avoid double-assigning
     # nets that already have a LUT driver (EBR dout bits routed through buffering LUTs).
     lut_driven_net_ids: set[str] = {resolve_net(z, net_name_map, const_net_map)
@@ -891,21 +892,24 @@ def emit_efb_module(data: dict) -> list[str]:
     return lines
 
 
-def _simplify_lut(init: str, a: str, b: str, c: str, d: str) -> str | None:
-    """Reduce a 4-input LUT to a direct Verilog operator expression where possible.
+def _simplify_lut(init: str, a: str, b: str, c: str, d: str, e: str | None = None) -> str | None:
+    """Reduce a 4- or 5-input LUT to a direct Verilog operator expression where possible.
 
     NC and 1'b0 inputs are treated as constant 0; 1'b1 inputs as constant 1.
     Returns a Verilog expression string for the output, or None when the
     function needs 3+ live inputs (too complex to name in a single expression).
 
-    init: 16-char LSB-first truth table (init[idx] = f(idx), idx = a+2b+4c+8d).
-    NOTE: the stored .config INIT is MSB-first (string[k] = f(15-k)); callers
+    init: LSB-first truth table (init[idx] = f(idx), idx = a+2b+4c+8d[+16e]),
+    16 chars for a 4-input LUT, 32 for Cyclone V's ALM-half LUT5 (e passed).
+    NOTE: the stored .config INIT is MSB-first (string[k] = f(n-1-k)); callers
     must reverse it before calling this helper — see _lut_init_to_case. (#63)
     """
     ZERO = {"NC", "1'b0"}
     ONE  = {"1'b1"}
 
     ports  = [(0, a), (1, b), (2, c), (3, d)]
+    if e is not None:
+        ports.append((4, e))
     live   = [(pos, sig) for pos, sig in ports if sig not in ZERO and sig not in ONE]
     fixed1 = [pos for pos, sig in ports if sig in ONE]
 
@@ -951,30 +955,37 @@ def _simplify_lut(init: str, a: str, b: str, c: str, d: str) -> str | None:
 
 
 def _lut_active_positions(init: str) -> set[int]:
-    """Index positions (0=a,1=b,2=c,3=d) the truth table actually depends on.
+    """Index positions (0=a,1=b,2=c,3=d[,4=e]) the truth table actually depends on.
 
     A position is active iff flipping that input bit changes the output for some
     input combination.  A routed-but-inactive input (e.g. a COMBO3(a,b,c) whose
     D pin is still physically wired) is functionally ignored by the INIT.
+
+    Width (4 or 5 inputs) is derived from len(init) — 16 chars or 32 (#63/LUT5).
     """
+    n = len(init)
+    nbits = n.bit_length() - 1
     v = int(init, 2)  # MSB-first string → f(p) = (v>>p)&1 (#63)
     active = set()
-    for pos in range(4):
+    for pos in range(nbits):
         m = 1 << pos
-        if any(((v >> p) & 1) != ((v >> (p ^ m)) & 1) for p in range(16)):
+        if any(((v >> p) & 1) != ((v >> (p ^ m)) & 1) for p in range(n)):
             active.add(pos)
     return active
 
 
 def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
-                      cell_name: str = "", tie_unused: bool = False) -> list[str]:
+                      cell_name: str = "", tie_unused: bool = False,
+                      e: str | None = None) -> list[str]:
     """Emit an assign for a LUT with no structured fn tag.
 
     First tries _simplify_lut() — for LUTs with ≤2 live inputs this emits a
     direct operator expression (x ^ y, x & y, etc.) instead of a localparam.
     Falls back to a localparam bit-select for more complex truth tables.
 
-    init: 16-char MSB-first truth-table string (string[k] = f(15-k)).  (#63)
+    init: MSB-first truth-table string (string[k] = f(n-1-k)) — 16 chars for
+    a 4-input LUT (a-d), 32 for Cyclone V's ALM-half LUT5 (a-e, e required).
+    Width is derived from len(init), never assumed (#63).
     cell_name: human cell name to use for the localparam identifier; empty
                string tells us to use z_name instead (avoids _lut_lut_lut_…).
     tie_unused: when True, index positions the INIT does not actually depend on
@@ -983,38 +994,46 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                but it removes the false STRUCTURAL dependency that otherwise makes
                yosys report a combinational loop through a routed-but-unused LUT
                input.  Gated to GOWIN so MachXO2 emission stays byte-identical.
-
-    4-input (a-d) only. A 32-char LUT5 init (Cyclone V) would be silently
-    truncated by the `16'b` localparam below — guarded, not handled; no
-    lifter drives a LUT5 through this emitter yet (load.py has no
-    load_cyclonev() path, and the DB query above never selects `e`).
     """
-    if len(init) != 16:
-        raise ValueError(f"_lut_init_to_case: only 4-input (16-char) LUTs "
-                          f"are supported, got a {len(init)}-char init for "
-                          f"cell {cell_name or z_name!r}")
+    n = len(init)
+    if n == 16:
+        if e is not None:
+            raise ValueError(f"_lut_init_to_case: got a 5th input `e` for a "
+                              f"16-char (4-input) init, cell {cell_name or z_name!r}")
+        ports = [d, c, b, a]           # index bits {d,c,b,a}, positions 3,2,1,0
+        positions = (3, 2, 1, 0)
+    elif n == 32:
+        if e is None:
+            raise ValueError(f"_lut_init_to_case: a 32-char (5-input) init "
+                              f"needs the `e` port, cell {cell_name or z_name!r}")
+        ports = [e, d, c, b, a]        # index bits {e,d,c,b,a}, positions 4,3,2,1,0
+        positions = (4, 3, 2, 1, 0)
+    else:
+        raise ValueError(f"_lut_init_to_case: only 4-input (16-char) or "
+                          f"5-input (32-char) LUTs are supported, got a "
+                          f"{n}-char init for cell {cell_name or z_name!r}")
+
     # _simplify_lut expects LSB-first; the stored INIT is MSB-first, so reverse.
-    expr = _simplify_lut(init[::-1], a, b, c, d)
+    expr = _simplify_lut(init[::-1], a, b, c, d, e)
     if expr is not None:
         return [f"    assign {z_name} = {expr};"]
 
-    # Localparam bit-select fallback. init is MSB-first and a Verilog [15:0]
+    # Localparam bit-select fallback. init is MSB-first and a Verilog [n-1:0]
     # localparam literal is written MSB-first, so LP[idx] = f(idx) directly (#63).
-    init_msb_first = init
     lp_base = cell_name if cell_name else z_name
     sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', lp_base)
     # Strip any leading lut_ repetitions to prevent _lut_lut_lut_… prefixes
     sanitized = re.sub(r'^(lut_)+', '', sanitized) or sanitized
     lp_name = f"_lut_{sanitized}"
-    sel = [d, c, b, a]  # index bits {d,c,b,a}, positions 3,2,1,0
+    sel = ports
     if tie_unused:
         active = _lut_active_positions(init)
         sel = [s if pos in active else "1'b0"
-               for s, pos in zip(sel, (3, 2, 1, 0))]
+               for s, pos in zip(sel, positions)]
     sel_expr = "{" + ", ".join(sel) + "}"
 
     return [
-        f"    localparam [15:0] {lp_name} = 16'b{init_msb_first};",
+        f"    localparam [{n-1}:0] {lp_name} = {n}'b{init};",
         f"    assign {z_name} = {lp_name}[{sel_expr}];",
     ]
 
@@ -1046,18 +1065,28 @@ def emit_luts(data: dict) -> list[str]:
 
     # Convert symbolic function-call fn tags to Verilog operator templates.
     # Applied BEFORE port-letter substitution so arguments are still single chars.
+    # [abcde]: e only ever appears for Cyclone V's ALM-half LUT5 (#63); every
+    # 4-input family's fn tags simply never use the letter.
     _FN_RULES = [
-        (re.compile(r"^(INV|NOT)\(([abcd])\)$"),     lambda m: f"~{m.group(2)}"),
-        (re.compile(r"^BUF\(([abcd])\)$"),            lambda m: m.group(1)),
-        (re.compile(r"^AND\(([abcd]),([abcd])\)$"),   lambda m: f"{m.group(1)} & {m.group(2)}"),
-        (re.compile(r"^OR\(([abcd]),([abcd])\)$"),    lambda m: f"{m.group(1)} | {m.group(2)}"),
-        (re.compile(r"^XOR\(([abcd]),([abcd])\)$"),   lambda m: f"{m.group(1)} ^ {m.group(2)}"),
-        (re.compile(r"^NAND\(([abcd]),([abcd])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
-        (re.compile(r"^NOR\(([abcd]),([abcd])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
-        (re.compile(r"^XNOR\(([abcd]),([abcd])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
+        (re.compile(r"^(INV|NOT)\(([abcde])\)$"),     lambda m: f"~{m.group(2)}"),
+        (re.compile(r"^BUF\(([abcde])\)$"),            lambda m: m.group(1)),
+        (re.compile(r"^AND\(([abcde]),([abcde])\)$"),   lambda m: f"{m.group(1)} & {m.group(2)}"),
+        (re.compile(r"^OR\(([abcde]),([abcde])\)$"),    lambda m: f"{m.group(1)} | {m.group(2)}"),
+        (re.compile(r"^XOR\(([abcde]),([abcde])\)$"),   lambda m: f"{m.group(1)} ^ {m.group(2)}"),
+        (re.compile(r"^NAND\(([abcde]),([abcde])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
+        (re.compile(r"^NOR\(([abcde]),([abcde])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
+        (re.compile(r"^XNOR\(([abcde]),([abcde])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
         # MUX(sel,i0,i1): 3-input LUT mux, sel=0 -> i0, sel=1 -> i1 (see classify_lut).
-        (re.compile(r"^MUX\(([abcd]),([abcd]),([abcd])\)$"),
+        (re.compile(r"^MUX\(([abcde]),([abcde]),([abcde])\)$"),
                                                       lambda m: f"({m.group(1)} ? {m.group(3)} : {m.group(2)})"),
+        # MUX(sel0,i0,MUX(sel1,i1,i2)): Cyclone V LUT5-only cascaded 2-select
+        # mux tree (see load.py's _mux5_tree: "y = i0 if sel0 else (i1 if
+        # sel1 else i2)").  OUTER level is sel0=1->i0 / sel0=0->inner --
+        # inverted from the inner/3-input MUX's sel=0->i0 convention above;
+        # _mux5_tree's own bit-check (not the rule above) is the ground truth.
+        (re.compile(r"^MUX\(([abcde]),([abcde]),MUX\(([abcde]),([abcde]),([abcde])\)\)$"),
+                                                      lambda m: (f"({m.group(1)} ? {m.group(2)} : "
+                                                                 f"({m.group(3)} ? {m.group(5)} : {m.group(4)}))")),
     ]
     def _fn_to_vlog(fn: str) -> str:
         for pat, xform in _FN_RULES:
@@ -1082,7 +1111,7 @@ def emit_luts(data: dict) -> list[str]:
     # sorted by output name — related bits (e.g. dpram_r2c11_*) then group.
     blocks: list[tuple[str, list[str]]] = []
 
-    for cell, init, pa, pb, pc, pd, out_z, fn in luts:
+    for cell, init, pa, pb, pc, pd, pe, out_z, fn in luts:
         if out_z is None:
             # Output is not connected to any fabric net — skip
             continue
@@ -1105,12 +1134,15 @@ def emit_luts(data: dict) -> list[str]:
         b_expr = rn(pb)
         c_expr = rn(pc)
         d_expr = rn(pd)
+        # e is NULL for every 4-input family (#63) — keep None, not "NC", so
+        # _lut_init_to_case's len(init)==16 branch (no `e` param) still applies.
+        e_expr = rn(pe) if pe is not None else None
 
         if fn is None or fn.startswith("COMBO"):
             # Pass human name for localparam naming; empty → use z_name (avoids lut_lut_lut…)
             lp_key = _sanitise(cell_human) if cell_human else ""
             blk = _lut_init_to_case(init, z_name, a_expr, b_expr, c_expr, d_expr,
-                                    lp_key, tie_unused=tie_unused)
+                                    lp_key, tie_unused=tie_unused, e=e_expr)
             blk[-1] += f"  // {cell_name}  init={init}"
 
         elif fn == "CONST0":
@@ -1123,7 +1155,9 @@ def emit_luts(data: dict) -> list[str]:
             # Structured fn: convert function-call syntax to operators first,
             # then substitute port letters with resolved net names.
             fn_op = _fn_to_vlog(fn)
-            port_map = {"a": a_expr, "b": b_expr, "c": c_expr, "d": d_expr}
+            # e_expr is None for every 4-input family; fn never contains the
+            # letter 'e' in that case, so the missing map entry is never hit.
+            port_map = {"a": a_expr, "b": b_expr, "c": c_expr, "d": d_expr, "e": e_expr}
 
             def replace_port(m):
                 letter = m.group(0)
@@ -1133,7 +1167,7 @@ def emit_luts(data: dict) -> list[str]:
                     return f"({expr})"
                 return expr
 
-            vlog_expr = re.sub(r"\b([abcd])\b", replace_port, fn_op)
+            vlog_expr = re.sub(r"\b([abcde])\b", replace_port, fn_op)
             # Drop the comment when it just repeats the (now-named) output.
             _cmt = "" if z_name == cell_name else f"  // {cell_name}"
             blk = [f"    assign {z_name} = {vlog_expr};{_cmt}"]
@@ -1147,6 +1181,9 @@ def emit_luts(data: dict) -> list[str]:
 
     lines.append("")
     return lines
+
+
+_NO_CLK = "/* no_clk */"  # sentinel: FF's clock source is unresolved (not a net)
 
 
 def emit_ffs(data: dict) -> list[str]:
@@ -1306,10 +1343,21 @@ def emit_ffs(data: dict) -> list[str]:
         stuck_groups: dict[str, list] = defaultdict(list)
         for row in stuck_ffs:
             cell, clk, ce, d, q, lsr = row
-            clk_expr = rn(clk) if clk else "/* no_clk */"
+            clk_expr = rn(clk) if clk else _NO_CLK
             stuck_groups[clk_expr].append(cell)
 
         for clk_expr, cells in sorted(stuck_groups.items()):
+            if clk_expr == _NO_CLK:
+                # No resolved clock (Cyclone V: CLK_SEL mux decode not done
+                # yet, see docs/cyclonev-lifter-status.md) -- `posedge` on a
+                # comment is not valid Verilog.  Recording "undriven", not
+                # fabricating an edge, is the same under-connect-don't-guess
+                # convention as the rest of this lifter.
+                lines.append(f"    // {len(cells)} FFs stuck at 0 -- clock unresolved, left undriven")
+                for cell in cells:
+                    lines.append(f"    // {reg_ref(cell)}: no resolved clock")
+                lines.append("")
+                continue
             lines.append(f"    // {len(cells)} FFs stuck at 0 on posedge {clk_expr}")
             lines.append(f"    always @(posedge {clk_expr}) begin")
             for cell in cells:
@@ -1334,7 +1382,7 @@ def emit_ffs(data: dict) -> list[str]:
         ce_groups: dict[tuple, list] = _dd(list)
         for row in ce_clear_ffs:
             cell, clk, ce, d, q, lsr = row
-            clk_expr = rn(clk) if clk else "/* no_clk */"
+            clk_expr = rn(clk) if clk else _NO_CLK
             ce_expr  = rn(ce)  if ce  else "1'b1"
             lsr_expr = rn(lsr) if lsr else None
             # Merge lsr + ce into one condition when both lead to 0
@@ -1345,6 +1393,14 @@ def emit_ffs(data: dict) -> list[str]:
             ce_groups[(clk_expr, cond)].append(cell)
 
         for (clk_expr, cond), cells in sorted(ce_groups.items()):
+            if clk_expr == _NO_CLK:
+                # See the stuck-at-reset block above: no resolved clock means
+                # no valid `posedge` expression -- leave undriven, not faked.
+                lines.append(f"    // {len(cells)} FFs clear on ({cond}) -- clock unresolved, left undriven")
+                for cell in cells:
+                    lines.append(f"    // {reg_ref(cell)}: no resolved clock")
+                lines.append("")
+                continue
             lines.append(f"    // {len(cells)} FFs clear on ({cond}) @ posedge {clk_expr}")
             lines.append(f"    always @(posedge {clk_expr}) begin")
             lines.append(f"        if ({cond}) begin")
@@ -1368,7 +1424,7 @@ def emit_ffs(data: dict) -> list[str]:
 
         act_groups: dict[tuple, list] = _dd2(list)
         for cell, clk, ce, d, q, lsr in active_ffs:
-            clk_expr = rn(clk) if clk else "/* no_clk */"
+            clk_expr = rn(clk) if clk else _NO_CLK
             ce_expr  = rn(ce)  if ce  else "1'b1"
             d_expr   = rn(d)   if d   else "NC"
             lsr_expr = rn(lsr) if lsr else None
@@ -1384,6 +1440,19 @@ def emit_ffs(data: dict) -> list[str]:
                 ctl += f"  CE={ce_expr}"
             if lsr_key:
                 ctl += f"  LSR={lsr_key}"
+            if clk_expr == _NO_CLK:
+                # No resolved clock (Cyclone V CLK_SEL mux decode is a
+                # documented gap, see docs/cyclonev-lifter-status.md) --
+                # `posedge` on a comment is not valid Verilog.  Leaving the
+                # register undriven is the honest representation; the D
+                # expression is reported in a comment, not fabricated into
+                # an always block it does not belong in.
+                lines.append(f"    // {len(members)} FFs — {ctl} -- clock unresolved, left undriven")
+                for reg_ident, d_expr, human in members:
+                    hc = f"  // {human}" if human else ""
+                    lines.append(f"    // {reg_ident}: D={d_expr}{hc}")
+                lines.append("")
+                continue
             lines.append(f"    // {len(members)} FFs — {ctl}")
             lines.append(f"    always @(posedge {clk_expr}) begin")
             for reg_ident, d_expr, human in members:
