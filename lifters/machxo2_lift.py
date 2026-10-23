@@ -27,6 +27,30 @@ import os
 import re
 from collections import defaultdict
 
+_PLC_ENUM_DEFAULTS = {}
+
+
+def plc_enum_defaults(dbroot):
+    """PLC/bits.db `.config_enum` defaults: {enum_name: value}.
+
+    A decoded .config omits an enum at its default, so a missing key means the default.
+    """
+    d = _PLC_ENUM_DEFAULTS.get(dbroot)
+    if d is None:
+        d = {}
+        path = os.path.join(dbroot, "MachXO2", "tiledata", "PLC", "bits.db")
+        with open(path) as fh:
+            for ln in fh:
+                t = ln.split()
+                if len(t) >= 3 and t[0] == ".config_enum":
+                    d[t[1]] = t[2]
+        if not d:
+            from db import die
+            die(f"no .config_enum entries in {path}")
+        _PLC_ENUM_DEFAULTS[dbroot] = d
+    return d
+
+
 DEF_BUILD_DIR = os.environ.get("TRELLIS_BUILD",
                                "tmp/prjtrellis/libtrellis/build")
 
@@ -265,6 +289,7 @@ class MachXO2Lift:
                 sys.path.insert(0, _repo)
             from native_trellis import pytrellis_compat as pytrellis
         self._pt = pytrellis
+        self.dbroot = dbroot
         pytrellis.load_database(dbroot)
         self.device = device
         self.chip = pytrellis.Chip(device)
@@ -1009,6 +1034,7 @@ class MachXO2Lift:
                     })
 
         # ---- flip-flops ----
+        enum_def = plc_enum_defaults(self.dbroot)   # missing enum key = bits.db default
         for (r, c) in sorted(plc_tiles):
             bels = self.bels_of(r, c)
             for sl in "ABCD":
@@ -1067,7 +1093,7 @@ class MachXO2Lift:
                         "clk": net_or(pins.get("CLK"), "1'b0"),
                         "ce": net_or(pins.get("CE"), "1'b1"),
                         "lsr": net_or(pins.get("LSR"), "1'b0"),
-                        "regset": senum.get(f"REG{j}.REGSET", "RESET"),
+                        "regset": senum.get(f"REG{j}.REGSET", enum_def[f"SLICE{sl}.REG{j}.REGSET"]),
                         "sd": sd,
                         "gsr": senum.get("GSR", "DISABLED"),
                     })

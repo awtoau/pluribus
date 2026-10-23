@@ -70,7 +70,7 @@ os.environ.setdefault("TRELLIS_DBROOT", toolchain.trellis_dbroot())
 
 DEVICE = "LCMXO2-1200"
 PACKAGE = "TQFP100"
-TARGETS_DIR = os.path.join(REPO, "diamond-fuzz", "targets")
+TARGETS_DIR = os.environ.get("PLURIBUS_FUZZ_TARGETS") or os.path.join(REPO, "diamond-fuzz", "targets")
 WORK_DIR = os.path.join(REPO, "tmp", "lifter_equiv_work")
 
 # ---------------------------------------------------------------------------
