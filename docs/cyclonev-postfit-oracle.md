@@ -79,7 +79,7 @@ How it was proven (`scripts/cyclonev_lut_pinmap_proof.py`, log `tmp/logs/cyclone
   - `F_0`/`F_1` modes: one instance (counter_en_aclr `q[0]~0`, `BMODE F_1`); it fits no address function of its used pins. Reported `UNMODELLED`.
   - `D_F`/`C_F` vs `D_E`/`C_E`: no LUT difference seen in the data.
   - Arith ALMs match the same model, but `sumout`/carry semantics are not checked (only `combout` masks are compared).
-- The Quartus `!` on a LUT input is not a polarity of the mask. Every routed input carries `!`. An input fed back from the ALM's own register also carries `!`, but the mask then reads the uninverted value (two_clocks `ca[0]~3`: equation `!ca[0]`, mask `FFFF0000FFFF0000` over `e`). The model is in Quartus-mask space and needs no per-pin inversion.
+- The Quartus `!` on a LUT input is not a polarity of the mask. Every routed input carries `!`. An input fed back from the ALM's own register also carries `!`, but the mask then reads the uninverted value (two_clocks `ca[0]~3`: equation `!ca[0]`, mask `FFFF0000FFFF0000` over `e`). The model is in Quartus-mask space and needs no per-pin inversion for the structural compare. As a Boolean function of the signals the `!` is real (see "Self-feeding LUT latch"): the lifted mask is a function of the ports, not of the signals.
 
 The mapping lives in the lifter (`_lut_table()`, `_port_pins()`); the compare only knows which LAB pin carries which Quartus port (`lab_pin()`).
 
@@ -207,8 +207,14 @@ Corpus now 236 designs (`c_ram_vnd_logic_16` has an oracle since its rebuild; it
 
 ## Self-feeding LUT latch
 
-- `verilog.py` `_lut_self_latch()` (64-char init only): per assignment of the other inputs, (f0,f1) = (1,1) set, (0,0) clear, (0,1) hold -> `always @*` latch; (1,0) for any assignment can oscillate and stays a loop.
-- Unverified: the cases it was written for came from a non-Cyclone-V decode (#114) and no corpus design has a self-feeding LUT. Treat as untested against Quartus.
+- `verilog.py` `_lut_self_latch()` REMOVED (64-char init = Cyclone V only). Self-feeding LUTs are plain combinational-loop `assign`s again.
+- Evidence: corpus design `c_latch_v95_1` (SR latch, gated D latch, `q3 = ~(q3 & x)`), built with Quartus 25.1; structural compare all MATCH (lut_mask 5, conn 16, pins 8).
+- `scripts/cyclonev_lifted_sim_check.py c_latch_v95_1 --zero x` (iverilog, lifted.v vs Quartus `build.vo`): Quartus netlist behaves as the source (q1 set/clear/hold, q2 follows `e`). Lifted: q1 never sets, q2 and q3 stay X.
+- Why the function was wrong: it read (f0,f1) in port space, but every routed LUT port carries `!` in the netlist (port = NOT signal). Hold looks like (1,0) and was refused (q2); the oscillator `q3` looked like (0,1) and was emitted as a hold latch.
+- Wider gap found with the same script (not fixed, not scored): lifted.v LUTs apply the Quartus mask to the uninverted signals, and pad output inverters (`i ... DATAOUT.0 1`) are ignored.
+  - `c_casemux_v95_4`: 364 ok / 436 bad; with every lifted input driven complemented 800 / 0.
+  - `c_decoder_v95_3`: 1018 / 582; complemented 1200 / 400, the 2 bad pins are the ones whose obuf has `.i(!...)`.
+  - Fix needs a polarity pass in the lifter / emitter (mask index complement, pad inverter). Until then lifted.v is structurally right and functionally unchecked; the scorecard fields do not see it.
 
 ## Pads (2026-10-24)
 

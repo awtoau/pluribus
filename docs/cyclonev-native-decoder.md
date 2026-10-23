@@ -108,8 +108,7 @@ Oracle = Quartus post-fit `.vo` atoms/conns and RCF routes (`corpus.db`, read-on
 
 ## Known gaps
 
-- FF presence misses 42 FFs whose output is used only through ALM feedback (the feedback bit is set but adding it gives 80 extras).
-- FF sclr / sload usage not resolved (sclr 93-96%, sload 95-97%; corpus has no sload user). Not claimed.
+- FF presence, sclr and sload are 2794/2794 against the post-fit oracle. `sload` as a signal is not claimed (no corpus register has a non-constant `sload`).
 - 110 pins missing: dedicated clock inputs (K17 x105, L17, N9, G11) reaching the fabric via clock muxes.
 - 15 + 107 route links are classified above; the RCLK to SCLK link (1) is unconfirmed. ACLR source (DATAIN.3 default) has no explicit link.
 - Unscored RCF edges: IO paths, clock tree buffers (50% of RCF edges).

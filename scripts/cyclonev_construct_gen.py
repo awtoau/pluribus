@@ -227,6 +227,15 @@ def comb(v, n, w):
             f"  always_comb y = {f};\nendmodule\n")
 
 
+def latch(n):
+    """Three self-feeding LUTs: SR latch, gated D latch, and a loop that can oscillate (stays a loop)."""
+    return (f"module {n} (s, c, e, d, x, q1, q2, q3);\n  input s, c, e, d, x;\n  output q1, q2, q3;\n"
+            f"  reg q1, q2;\n  wire q3;\n"
+            f"  always @* if (s & e) q1 = 1'b1; else if (c) q1 = 1'b0;\n"
+            f"  always @* if (e) q2 = d;\n"
+            f"  assign q3 = ~(q3 & x);\nendmodule\n")
+
+
 def fsm(v, n, w, enc):
     """w = number of states.  Inputs go/alt, sync rst; outputs done (last state), odd."""
     nb = max(1, (w - 1).bit_length())
@@ -337,6 +346,9 @@ def main():
                 nm = f"c_{c}_{v}_{w}"
                 text = fn(v, nm, w)
                 names.append(emit(c, v, w, text, f"{purpose} [{VARIANT_NOTE[v]}]", ex, v))
+    names.append(emit("latch", "v95", 1, latch("c_latch_v95_1"),
+                      "self-feeding LUTs: SR latch, D latch, oscillating loop [Verilog-95]",
+                      ["latch", "lut_self_feedback"], "v95"))
     for states in (4, 8, 16):
         for enc in ("bin", "oh"):
             for v in ("v95", "vnd", "sv"):
