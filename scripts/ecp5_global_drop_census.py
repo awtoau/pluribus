@@ -23,13 +23,12 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
-import psutil
-
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS)
 sys.path.insert(0, os.path.dirname(SCRIPTS))
 import toolchain  # noqa: E402
-from ecp5_diamond_oracle import REPO, data_root, MEM_GATE_PCT, MEM_LOG_EVERY_S  # noqa: E402
+from ecp5_diamond_oracle import REPO, data_root  # noqa: E402
+import heavy_guard  # noqa: E402
 
 os.environ.setdefault("TRELLIS_DBROOT", toolchain.trellis_dbroot())
 from lifters.ecp5_lift import ECP5Lift  # noqa: E402
@@ -39,6 +38,12 @@ import ecp5_corpus_test as CT  # noqa: E402  (identify / materialise)
 LOG_PATH = os.path.join(REPO, "tmp", "logs", "ecp5_global_drop_census.log")
 _lock = threading.Lock()
 _tls = threading.local()
+
+
+class _GuardLog:
+    @staticmethod
+    def info(fmt, *a):
+        log("[guard] " + (fmt % a))
 
 
 def log(msg):
@@ -98,7 +103,7 @@ def one(path, label, work):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--data-root", default=None)
-    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--only")
     args = ap.parse_args()
     root = os.path.abspath(args.data_root or data_root())
@@ -130,13 +135,10 @@ def main():
                 grp, label, path = q.get_nowait()
             except queue.Empty:
                 return
-            while psutil.virtual_memory().percent >= MEM_GATE_PCT:
+            if heavy_guard.available_gb() < heavy_guard.MIN_AVAILABLE_GB:
                 _tls.__dict__.pop("L", None)    # idle workers must not hold the memory they wait on
                 _tls.dev = None
-                if time.monotonic() - last >= MEM_LOG_EVERY_S:
-                    log(f"[mem] {psutil.virtual_memory().percent:.0f}%: waiting")
-                    last = time.monotonic()
-                stop.wait(1.0)
+            heavy_guard.wait_available(_GuardLog, f"census {label}")
             try:
                 r = one(path, label, work)
             except (Exception, SystemExit) as e:  # noqa: BLE001 -- recorded per bitstream

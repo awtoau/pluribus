@@ -27,14 +27,13 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
-import psutil
-
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS)
 sys.path.insert(0, os.path.dirname(SCRIPTS))
 import toolchain  # noqa: E402
 import diamond_oracle_parse as P  # noqa: E402
-from ecp5_diamond_oracle import REPO, data_root, MEM_GATE_PCT, MEM_LOG_EVERY_S  # noqa: E402
+from ecp5_diamond_oracle import REPO, data_root  # noqa: E402
+import heavy_guard  # noqa: E402
 
 os.environ.setdefault("TRELLIS_DBROOT", toolchain.trellis_dbroot())
 from lifters.ecp5_lift import ECP5Lift  # noqa: E402
@@ -43,6 +42,13 @@ import native_config  # noqa: E402
 LOG_PATH = os.path.join(REPO, "tmp", "logs", "ecp5_oracle_compare.log")
 SCHEMA_VERSION = 2
 _log_lock = threading.Lock()
+
+
+class _GuardLog:
+    """logging-style adapter for heavy_guard.wait_available."""
+    @staticmethod
+    def info(fmt, *a):
+        log("[guard] " + (fmt % a))
 
 
 def log(msg):
@@ -862,7 +868,7 @@ def main():
                     help="recompute the headline from _compare_summary.json and print it")
     ap.add_argument("--data-root", default=None)
     ap.add_argument("--out", default=None)
-    ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--force", action="store_true", help="recompute even if compare.json is current")
     args = ap.parse_args()
@@ -892,6 +898,7 @@ def main():
     for t in targets:
         q.put(t)
     results, lock, stop = [], threading.Lock(), threading.Event()
+    lock85 = threading.Lock()
 
     def worker():
         last = 0.0
@@ -900,17 +907,17 @@ def main():
                 t = q.get_nowait()
             except queue.Empty:
                 return
-            while psutil.virtual_memory().percent >= MEM_GATE_PCT:
+            if heavy_guard.available_gb() < heavy_guard.MIN_AVAILABLE_GB:
                 _tls.__dict__.pop("c", None)    # idle workers must not hold the memory they wait on
-                if time.monotonic() - last >= MEM_LOG_EVERY_S:
-                    log(f"[mem] {psutil.virtual_memory().percent:.0f}% >= "
-                        f"{MEM_GATE_PCT:.0f}%: waiting")
-                    last = time.monotonic()
-                stop.wait(1.0)
+            heavy_guard.wait_available(_GuardLog, f"compare {t}")
             try:
                 r = None if args.force else cached(t, args.out)
                 if r is None:
-                    r = compare_target(t, args.out)
+                    if dev_of[t].endswith("85F"):
+                        with lock85:        # 85F lifts run one at a time (coordinator)
+                            r = compare_target(t, args.out)
+                    else:
+                        r = compare_target(t, args.out)
                 r = {"target": t, "status": "ok", "device": r["device"],
                      **{k: r[k] for k in SUMMARY_KEYS + (
                          "pip_detail", "conn_detail", "clock_family", "clock_join",
