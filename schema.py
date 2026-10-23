@@ -840,6 +840,104 @@ Index("idx_cv_block_muxes_file", cv_block_muxes.c.source_file)
 Index("idx_cv_block_muxes_target", cv_block_muxes.c.dump_target)
 Index("idx_cv_block_muxes_mux", cv_block_muxes.c.dump_target, cv_block_muxes.c.mux)
 
+# ── Post-fit oracle corpus (vendor post-fit netlist vs our lift) ─────────────
+# One row per corpus design build; atoms/conns/compare cascade from it.
+# Always-rebuild: scripts/cyclonev_corpus_build.py deletes the build row and
+# reinserts.  Layout + example SQL: corpus/README.md.
+
+postfit_builds = Table("postfit_builds", metadata,
+    Column("id",          Integer, primary_key=True, autoincrement=True),
+    Column("design",      Text,    nullable=False, unique=True),  # corpus dir name
+    Column("family",      Text,    nullable=False),               # e.g. "cyclonev"
+    Column("device",      Text,    nullable=False),
+    Column("top",         Text,    nullable=False),
+    Column("toolchain",   Text),                                  # vendor tool version string
+    Column("src_sha256",  JSON,    nullable=False),               # {file: sha256}
+    Column("qsf",         JSON,    nullable=False),               # extra QSF lines from design.toml
+    Column("purpose",     Text),
+    Column("exercises",   JSON),                                  # feature tags from design.toml
+    Column("built_at",    DateTime(timezone=True)),
+    Column("out_dir",     Text,    nullable=False),               # repo-relative
+    Column("lift_label",  Text),                                  # bitstreams.label of our lift
+    Column("status",      Text,    nullable=False),               # "ok" | "fail:<step>"
+)
+
+# Placed atoms from the post-fit netlist.  Top-level ports are type "pin"
+# (location = PIN_xx, params = io standard etc.).
+postfit_atoms = Table("postfit_atoms", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("build",     Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("name",      Text,    nullable=False),   # instance name, escapes removed
+    Column("type",      Text,    nullable=False),   # e.g. cyclonev_lcell_comb, dffeas, pin
+    Column("location",  Text),                      # raw, e.g. LABCELL_X1_Y19_N3
+    Column("loc_kind",  Text),                      # e.g. LABCELL, FF, IOOBUF, PIN
+    Column("x",         Integer),
+    Column("y",         Integer),
+    Column("n",         Integer),
+    Column("params",    JSON,    nullable=False),   # {defparam: value}, values as written
+    UniqueConstraint("build", "name"),
+)
+Index("idx_postfit_atoms_type", postfit_atoms.c.build, postfit_atoms.c.type)
+
+# One row per port bit of an atom.  net is the canonical net name (assign
+# aliases resolved); const is "0"/"1" for gnd/vcc/literals, else NULL.
+postfit_conns = Table("postfit_conns", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("build",     Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("atom",      Integer, ForeignKey("postfit_atoms.id", ondelete="CASCADE"), nullable=False),
+    Column("port",      Text,    nullable=False),
+    Column("bit",       Integer, nullable=False),   # 0 for scalar ports, LSB = 0
+    Column("direction", Text,    nullable=False),   # "in" | "out"
+    Column("net",       Text),
+    Column("inverted",  Boolean, nullable=False, server_default="0"),
+    Column("const",     Text),
+)
+Index("idx_postfit_conns_atom", postfit_conns.c.atom)
+Index("idx_postfit_conns_net", postfit_conns.c.build, postfit_conns.c.net)
+
+# Per-atom, per-field comparison: vendor value vs our lifted value.
+postfit_compare = Table("postfit_compare", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("build",         Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("atom",          Text),                  # postfit_atoms.name, NULL for lift-only rows
+    Column("location",      Text),
+    Column("field",         Text,    nullable=False),  # e.g. lut_mask, ff.clk, conn.dataa, pin
+    Column("quartus_value", Text),
+    Column("lifted_value",  Text),
+    Column("verdict",       Text,    nullable=False),  # MATCH|MISMATCH|LIFT_MISSING|QUARTUS_ONLY
+)
+Index("idx_postfit_compare_build", postfit_compare.c.build, postfit_compare.c.field)
+
+# Vendor timing-report routes, one row per hop, every reported path kept (no dedupe).
+# Source: quartus_sta report_timing -show_routing (route_report.txt per build).
+route_hops = Table("route_hops", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("build",     Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("analysis",  Text,    nullable=False),   # "setup" | "recovery"
+    Column("path",      Integer, nullable=False),   # Path #N within that analysis
+    Column("from_node", Text),
+    Column("to_node",   Text),
+    Column("part",      Text,    nullable=False),   # "arrival" | "required"
+    Column("hop",       Integer, nullable=False),   # row index within part
+    Column("depth",     Integer, nullable=False),   # 0 = section row, 1 = hop inside it
+    Column("total",     Float),
+    Column("incr",      Float),
+    Column("rf",        Text),                      # RR/RF/FR/FF or NULL
+    Column("type",      Text),                      # RE | IC | CELL | uTco | NULL
+    Column("fanout",    Integer),
+    Column("location",  Text),                      # raw, e.g. LOCAL_LINE_X1_Y19_N0_I1
+    Column("loc_kind",  Text),                      # e.g. LOCAL_LINE, LABCELL, PIN
+    Column("x",         Integer),
+    Column("y",         Integer),
+    Column("n",         Integer),
+    Column("idx",       Integer),                   # the _I<k> routing-element index
+    Column("element",   Text),                      # RE type, or atom|port for IC/CELL
+    Column("section",   Text),                      # enclosing depth-0 row, e.g. "clock path", "data path"
+    Column("driver",    Text),                      # last CELL row before this hop (atom|port): the net being routed
+)
+Index("idx_route_hops_build", route_hops.c.build, route_hops.c.analysis, route_hops.c.path)
+Index("idx_route_hops_loc", route_hops.c.build, route_hops.c.location)
+
 # ── Schema management ─────────────────────────────────────────────────────────
 
 def init(eng=None):

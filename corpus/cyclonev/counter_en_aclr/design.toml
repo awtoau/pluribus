@@ -1,0 +1,4 @@
+top = "counter_en_aclr"
+purpose = "4-bit counter, enable + async active-low clear, AND-reduce output (tmp/vo_demo/demo.v)"
+exercises = ["lut", "dffeas", "async_clear", "global_clock", "io"]
+qsf = []

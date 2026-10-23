@@ -1,0 +1,4 @@
+top = "ram_altsyncram"
+purpose = "512x16 single-port M10K via an explicit altsyncram instance, registered output"
+exercises = ["m10k", "ram_block", "altsyncram", "ip_instance"]
+qsf = []

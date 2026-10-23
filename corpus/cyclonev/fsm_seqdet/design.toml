@@ -1,0 +1,5 @@
+top = "fsm_seqdet"
+purpose = "5-state Moore sequence detector (1011), state exported so encoding stays visible"
+exercises = ["fsm", "lut", "dffeas", "sync_reset"]
+# Keep the written binary encoding, so the state bits map to the source.
+qsf = ["set_global_assignment -name STATE_MACHINE_PROCESSING \"USER-ENCODED\""]

@@ -1,0 +1,4 @@
+top = "lut_random"
+purpose = "16 arbitrary 6-input functions; dense asymmetric LUT masks for the pin-mapping proof"
+exercises = ["lut", "lut6", "combinational_only"]
+qsf = []

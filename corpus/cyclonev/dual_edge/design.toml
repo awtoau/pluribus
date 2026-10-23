@@ -1,0 +1,4 @@
+top = "dual_edge"
+purpose = "posedge and negedge register banks on one clock"
+exercises = ["dffeas", "negedge_clock", "clock_inversion"]
+qsf = []

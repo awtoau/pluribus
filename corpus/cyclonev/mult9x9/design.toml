@@ -1,0 +1,4 @@
+top = "mult9x9"
+purpose = "9x9 signed multiply, registered output (scripts/cyclonev_dsp_fuzz.py: expect DSP MODE M9X9)"
+exercises = ["dsp", "mac", "output_register"]
+qsf = []
