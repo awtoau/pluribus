@@ -283,6 +283,7 @@ def main():
     ap.add_argument("--skip-quartus", action="store_true",
                     help="reuse existing outputs; only re-parse + re-compare")
     ap.add_argument("--match", help="glob on design names, e.g. 'c_*'")
+    ap.add_argument("--missing", action="store_true", help="only designs with no postfit_builds row")
     ap.add_argument("--jobs", type=int, default=1, help="parallel builds (default 1)")
     ap.add_argument("--limit-scale", type=float, help="multiplier on per-step limits (default jobs)")
     args = ap.parse_args()
@@ -295,6 +296,11 @@ def main():
                                 if (p / "design.toml").exists())
     if args.match:
         names = [n for n in names if fnmatch.fnmatch(n, args.match)]
+    if args.missing:
+        import db
+        with db.engine().connect() as conn:
+            have = {r[0] for r in conn.exec_driver_sql("select design from postfit_builds")}
+        names = [n for n in names if n not in have]
     log.info("DB %s; %d designs; NoGIL=%s", os.environ["PLURIBUS_SQLITE_PATH"], len(names),
              not getattr(sys, "_is_gil_enabled", lambda: True)())
     from concurrent.futures import ThreadPoolExecutor
