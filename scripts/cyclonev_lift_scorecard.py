@@ -6,6 +6,7 @@ concurrent 85F-class lifts hit ~30 GB, #111), then aggregates postfit_compare.
 Per field: matched / (matched + missing + extra + wrong), plus the raw fault counts.
   matched = MATCH   missing = LIFT_MISSING   extra = LIFT_ONLY
   wrong   = MISMATCH + UNMODELLED
+  excluded = EXCLUDED (reported beside the table, not in the total): dead Quartus cells, reason in the row
 No headline ever hides missing/extra (CLAUDE.md "Scoring faults").
 
 Usage: PLURIBUS_SQLITE_PATH=<corpus db copy> python3.15t scripts/cyclonev_lift_scorecard.py --label NAME [--score-only]
@@ -91,7 +92,7 @@ def aggregate(designs):
         wrong = t["MISMATCH"] + t["UNMODELLED"]
         total = t["MATCH"] + t["LIFT_MISSING"] + t["LIFT_ONLY"] + wrong
         out[name] = dict(matched=t["MATCH"], missing=t["LIFT_MISSING"], extra=t["LIFT_ONLY"],
-                         wrong=wrong, total=total, faults=total - t["MATCH"],
+                         wrong=wrong, total=total, faults=total - t["MATCH"], excluded=t["EXCLUDED"],
                          pct=round(100.0 * t["MATCH"] / total, 1) if total else None)
     return out, len(designs)
 
@@ -122,10 +123,10 @@ def main():
                total_s=sum(ok_times), fields=out)
     (REPO / "tmp" / f"scorecard-{a.label}.json").write_text(json.dumps(res, indent=1))
     log(f"--- {a.label}: {n_builds} builds, max design {res['max_design_s']}, total {res['total_s']:.0f}s")
-    log(f"{'field':14s} {'matched':>8s} {'missing':>8s} {'extra':>6s} {'wrong':>6s} {'total':>7s} {'%':>6s} {'faults':>7s}")
+    log(f"{'field':14s} {'matched':>8s} {'missing':>8s} {'extra':>6s} {'wrong':>6s} {'total':>7s} {'%':>6s} {'faults':>7s} {'excl':>5s}")
     for name, v in out.items():
         log(f"{name:14s} {v['matched']:8d} {v['missing']:8d} {v['extra']:6d} {v['wrong']:6d} "
-            f"{v['total']:7d} {v['pct'] if v['pct'] is not None else '-':>6} {v['faults']:7d}")
+            f"{v['total']:7d} {v['pct'] if v['pct'] is not None else '-':>6} {v['faults']:7d} {v['excluded']:5d}")
 
 
 if __name__ == "__main__":

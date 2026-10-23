@@ -230,6 +230,7 @@ def compare_build(bid, ddir):
 
     # ── LUTs ──────────────────────────────────────────────────────────────
     quartus_lut_keys = set()
+    read_nets = {c["net"] for cs_ in by_atom.values() for c in cs_ if c["direction"] == "in" and c["net"]}
     for a in atoms.values():
         if a["type"] != "cyclonev_lcell_comb":
             continue
@@ -244,7 +245,12 @@ def compare_build(bid, ddir):
         mode = setting(blk, x, y, f"{half}MODE", alm) or DEFAULT_MODE[half]
         qv = f"{q_mask:016x} used={''.join(sorted(used))} half={half} mode={mode}"
         entry = lifted_lut.get((blk, x, y, alm, half))
-        if entry is None:
+        out_nets = [c["net"] for c in by_atom[a["id"]] if c["direction"] == "out" and c["net"]]
+        if entry is None and not used and not any(n in read_nets for n in out_nets):
+            # dead cell (e.g. ~QUARTUS_CREATED_GND~I): no input net, output read by nothing.  No
+            # observable function and no bitstream trace (constants are unrouted pins): not scored.
+            row(a["name"], a["location"], field, qv, "dead cell: no input net, output unread", "EXCLUDED")
+        elif entry is None:
             row(a["name"], a["location"], field, qv, None, "LIFT_MISSING")
         else:
             ok = all(lifted_lut_bit(entry, half, mode, v, used) == (q_mask >> v) & 1

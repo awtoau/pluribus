@@ -236,3 +236,15 @@ Classification of the 63 pins + 47 obuf.i still missing before this step:
 - 3 pins (`up`, c_updown_{sv,v95,vnd}_1): unused input, only `USE_WEAK_PULLUP` settings, no arc. A configured pad with no arc -> `in`, no net (3/3 in the corpus are Quartus inputs, 0 outputs; an output always has a DATAOUT or HMC arc).
 - Dedicated clock pins: closed with the clock tree (pad -> CMUX).
 - Not evidence-backed: a pad that is both unrouted and an output (constant-driven output) would be mislabelled `in`; none in the corpus.
+
+## Constant-0 LUT (`~QUARTUS_CREATED_GND~I`) decision (2026-10-24)
+
+| field | before | after |
+|---|---|---|
+| lut function | 3288/3524 (93.3%), faults 236 (m236 x0 w0) | 3288/3288 (100.0%), faults 0, excluded 236 |
+
+- Decision: oracle-side artifact, excluded from the score with verdict `EXCLUDED` (a row per cell, reason in `lifted_value`), counted in the scorecard `excl` column.
+- Rule (generic, not name-based): a Quartus `cyclonev_lcell_comb` with no lifted counterpart, no input net on any data port and an output net that no atom reads.
+- Evidence (236/236 designs, 236 cells): `lut_mask 64'h0`, all inputs `gnd`, `combout` net has 0 sinks in `postfit_conns`; the bitstream stores constants as unrouted pins (all-ones `LUT_MASK` = absent line), so the cell has no trace and no observable function.
+- Not a lift fault: emitting a LUT with no sink would change no net. A cell that fits the rule but the lifter does emit is still scored.
+- Scope of "lut function 100%": `combout` masks only. Arithmetic `sumout`/`cout` are not scored (see "Arithmetic").
