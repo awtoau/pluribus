@@ -560,6 +560,14 @@ class MachXO2Lift:
                 gv = self.rg.globalise_net(row, col, bare)
                 if overshoot == 1 and gv.loc.x >= 0 and gv.loc.y >= 0:
                     return (gv.loc.x, gv.loc.y, gv.id)
+                if overshoot == 2:
+                    # Diamond turnaround (docs/machxo2-diamond-oracle.md, #105):
+                    # the wire reflects at the die edge and continues as the
+                    # opposite-letter span, same index+segment, 2 rows inward.
+                    prow = row + 2 if is_north else row - 2
+                    gp = self.rg.globalise_net(prow, col, bare)
+                    if gp.loc.x >= 0 and gp.loc.y >= 0:
+                        return self._v02_alias(gp.loc.x, gp.loc.y, gp.id)
 
             for delta in range(1, hops + 1):
                 if is_east or wire[0] == 'W':
