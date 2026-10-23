@@ -1,8 +1,0 @@
-top = "top"
-purpose = "case mux with logic-op arms, registered"
-construct = "casemux"
-variant = "sv"
-width = 16
-lang = "systemverilog"
-io_bits = 51
-io_reduced = false

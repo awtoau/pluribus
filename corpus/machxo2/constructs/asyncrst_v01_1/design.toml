@@ -1,0 +1,8 @@
+top = "top"
+purpose = "register with async reset"
+construct = "asyncrst"
+variant = "v01"
+width = 1
+lang = "verilog-2001"
+io_bits = 4
+io_reduced = false

@@ -1,8 +1,0 @@
-top = "top"
-purpose = "decoder with enable (width = select bits)"
-construct = "decoder"
-variant = "sv"
-width = 3
-lang = "systemverilog"
-io_bits = 13
-io_reduced = false

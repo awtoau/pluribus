@@ -1,8 +1,0 @@
-top = "top"
-purpose = "up counter with enable"
-construct = "counter"
-variant = "sv"
-width = 16
-lang = "systemverilog"
-io_bits = 18
-io_reduced = false

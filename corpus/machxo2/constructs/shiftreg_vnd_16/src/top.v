@@ -1,6 +1,6 @@
 module top (clk, din, q);
-  input clk;
-  input din;
+  input [0:0] clk;
+  input [0:0] din;
   output [15:0] q;
   FD1S3AX #(.GSR("DISABLED")) f0 (.D(din), .CK(clk), .Q(q[0]));
   FD1S3AX #(.GSR("DISABLED")) f1 (.D(q[0]), .CK(clk), .Q(q[1]));

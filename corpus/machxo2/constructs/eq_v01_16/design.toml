@@ -1,0 +1,8 @@
+top = "top"
+purpose = "equality comparator, registered"
+construct = "eq"
+variant = "v01"
+width = 16
+lang = "verilog-2001"
+io_bits = 34
+io_reduced = false

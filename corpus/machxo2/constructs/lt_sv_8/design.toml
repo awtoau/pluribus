@@ -1,8 +1,0 @@
-top = "top"
-purpose = "less-than comparator, registered (signed in sv)"
-construct = "lt"
-variant = "sv"
-width = 8
-lang = "systemverilog"
-io_bits = 18
-io_reduced = false

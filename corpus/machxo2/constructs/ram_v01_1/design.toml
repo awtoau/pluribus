@@ -1,0 +1,8 @@
+top = "top"
+purpose = "inferred 256-deep sync-read RAM"
+construct = "ram"
+variant = "v01"
+width = 1
+lang = "verilog-2001"
+io_bits = 12
+io_reduced = false

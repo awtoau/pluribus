@@ -1,8 +1,0 @@
-top = "top"
-purpose = "a+b with carry out, registered"
-construct = "adder"
-variant = "sv"
-width = 16
-lang = "systemverilog"
-io_bits = 50
-io_reduced = false

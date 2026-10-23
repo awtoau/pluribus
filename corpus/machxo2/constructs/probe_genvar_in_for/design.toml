@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog feature probe: genvar_in_for"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog-in-.v"
+feature = "genvar_in_for"
+io_bits = 0
+io_reduced = false

@@ -1,8 +1,0 @@
-top = "top"
-purpose = "inferred 256-deep sync-read RAM"
-construct = "ram"
-variant = "sv"
-width = 8
-lang = "systemverilog"
-io_bits = 26
-io_reduced = false

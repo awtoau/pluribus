@@ -1,6 +1,6 @@
 module top (clk, we, addr, din, dout);
-  input clk;
-  input we;
+  input [0:0] clk;
+  input [0:0] we;
   input [7:0] addr;
   input [7:0] din;
   output [7:0] dout;

@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog feature probe: generate_if"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog-in-.v"
+feature = "generate_if"
+io_bits = 0
+io_reduced = false

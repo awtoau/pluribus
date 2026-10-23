@@ -1,15 +1,15 @@
 module top (clk, go, abort, last, busy);
-  input clk;
-  input go;
-  input abort;
-  output last;
-  reg last;
-  output busy;
-  reg busy;
-  parameter S0 = 0;
-  parameter S1 = 1;
-  parameter S2 = 2;
-  parameter S3 = 3;
+  input [0:0] clk;
+  input [0:0] go;
+  input [0:0] abort;
+  output [0:0] last;
+  reg [0:0] last;
+  output [0:0] busy;
+  reg [0:0] busy;
+  parameter S0 = 2'd0;
+  parameter S1 = 2'd1;
+  parameter S2 = 2'd2;
+  parameter S3 = 2'd3;
   (* syn_encoding = "onehot" *) reg [1:0] st;
   reg [1:0] ns;
   always @(st or go or abort) begin

@@ -1,8 +1,0 @@
-top = "top"
-purpose = "combinational assign logic"
-construct = "comb"
-variant = "sv"
-width = 16
-lang = "systemverilog"
-io_bits = 64
-io_reduced = false

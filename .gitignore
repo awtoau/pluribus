@@ -78,3 +78,7 @@ scripts/efb_wb_boot.vh
 # Rust build artifacts (rust/*/target/) -- Cargo.lock IS committed for
 # reproducible builds; the compiled output is not.
 rust/*/target/
+
+corpus/machxo2/constructs/_*.json
+!corpus/machxo2/constructs/_skipped.json
+corpus/machxo2/coverage/_*.json

@@ -1,8 +1,0 @@
-top = "top"
-purpose = "a-b with borrow, registered"
-construct = "sub"
-variant = "sv"
-width = 8
-lang = "systemverilog"
-io_bits = 26
-io_reduced = false

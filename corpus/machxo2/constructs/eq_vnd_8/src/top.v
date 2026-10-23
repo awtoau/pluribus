@@ -1,9 +1,9 @@
 module top (clk, a, b, y);
-  input clk;
+  input [0:0] clk;
   input [7:0] a;
   input [7:0] b;
-  output y;
-  reg y;
+  output [0:0] y;
+  reg [0:0] y;
   (* syn_keep = 1 *) wire [7:0] x;
   assign x = ~(a ^ b);
   always @(posedge clk) y <= &x;

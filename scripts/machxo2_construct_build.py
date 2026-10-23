@@ -23,7 +23,6 @@ import shutil
 import subprocess
 import sys
 import time
-import tomllib
 from datetime import datetime, timezone
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
@@ -177,20 +176,29 @@ def build_one(d, env, do_oracle):
             except subprocess.TimeoutExpired:
                 res["postpar_vo"] = False
                 log(f"[warn] {name}: ldbanno exceeded {ANNO_TIMEOUT_S}s")
+    res["src_sha256"] = src_hash(d)
     with open(os.path.join(d, "build.json"), "w") as fh:
         json.dump(res, fh, indent=1, sort_keys=True)
     return res
 
 
+def src_hash(d):
+    import hashlib
+    h = hashlib.sha256()
+    names = [os.path.join("src", f) for f in sorted(os.listdir(os.path.join(d, "src")))]
+    names += [f for f in ("placement.lpf", "design.toml") if os.path.exists(os.path.join(d, f))]
+    for n in names:
+        h.update(n.encode())
+        h.update(open(os.path.join(d, n), "rb").read())
+    return h.hexdigest()
+
+
 def up_to_date(d):
+    """Content hash, not mtime: a checkout or regenerate must not trigger rebuilds."""
     bj = os.path.join(d, "build.json")
     if not os.path.exists(bj):
         return False
-    t = os.path.getmtime(bj)
-    inputs = [os.path.join(d, "src", f) for f in os.listdir(os.path.join(d, "src"))]
-    inputs += [p for p in (os.path.join(d, "placement.lpf"), os.path.join(d, "design.toml"))
-               if os.path.exists(p)]
-    return all(os.path.getmtime(p) <= t for p in inputs)
+    return json.load(open(bj)).get("src_sha256") == src_hash(d)
 
 
 def main():
@@ -222,7 +230,6 @@ def main():
         log(f"[build] {i}/{len(names)} {n}: {r['status']} {r['flow_seconds']}s "
             f"{r.get('reason', '')[:160]}")
     log(f"[build] done: {cnt}")
-    tomllib  # noqa: B018 -- imported for design.toml validation in the generator
 
 
 if __name__ == "__main__":
