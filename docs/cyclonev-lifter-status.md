@@ -194,7 +194,7 @@ python3.15t load.py --lifter cyclonev --label REGBANK16 \
     --config corpus/cyclonev/regbank16/decomp.bt --device 5CEBA4U19C8
 ```
 
-Rows landed in the DB match the selftest's in-memory counts (61 LUTs, 64 FFs, 139 nets, 608 arcs, 18 pad_map rows; same counts as the `cyclonev_verify_all.py` baseline).
+Rows landed in the DB match the selftest's in-memory counts (61 LUTs, 64 FFs, 139 nets, 608 arcs, 19 pad_map rows; same counts as the `cyclonev_verify_all.py` baseline).
 
 ## verilog.py: emits LUT5
 

@@ -6,6 +6,7 @@ concurrent 85F-class lifts hit ~30 GB, #111), then aggregates postfit_compare.
 Per field: matched / (matched + missing + extra + wrong), plus the raw fault counts.
   matched = MATCH   missing = LIFT_MISSING   extra = LIFT_ONLY
   wrong   = MISMATCH + UNMODELLED
+  excluded = EXCLUDED (reported beside the table, not in the total): dead Quartus cells, reason in the row
 No headline ever hides missing/extra (CLAUDE.md "Scoring faults").
 
 Usage: PLURIBUS_SQLITE_PATH=<corpus db copy> python3.15t scripts/cyclonev_lift_scorecard.py --label NAME [--score-only]
@@ -28,11 +29,16 @@ LOG = REPO / "tmp" / "logs" / "cyclonev_lift_scorecard.log"
 # the design and the limit, skip it (the design is then absent from the scorecard).
 PER_DESIGN_LIMIT_S = int(os.environ.get("SCORECARD_DESIGN_LIMIT_S", "3"))
 
+# Designs with no usable oracle: name -> reason (never dropped silently).
+EXCLUDED = {}
+
 FAMILIES = [
     ("lut function", ["lut_mask", "lut_mask_arith", "lut.extra"]),
     ("lut inputs", ["conn.dataa", "conn.datab", "conn.datac", "conn.datad", "conn.datae",
                     "conn.dataf", "conn_arith.dataa", "conn_arith.datab", "conn_arith.datac",
                     "conn_arith.datad", "conn_arith.datae", "conn_arith.dataf"]),
+    ("arith function", ["arith.sum", "arith.cout", "arith.shareout"]),
+    ("arith cin/share", ["conn.cin", "conn.sharein"]),
     ("ff.present", ["ff.present", "ff.extra"]),
     ("ff.d", ["ff.d"]), ("ff.clk", ["ff.clk"]),
     ("ff.clk.edge", ["ff.clk.edge"]), ("ff.clk.domain", ["ff.clk.domain"]), ("ff.clrn", ["ff.clrn"]),
@@ -88,7 +94,7 @@ def aggregate(designs):
         wrong = t["MISMATCH"] + t["UNMODELLED"]
         total = t["MATCH"] + t["LIFT_MISSING"] + t["LIFT_ONLY"] + wrong
         out[name] = dict(matched=t["MATCH"], missing=t["LIFT_MISSING"], extra=t["LIFT_ONLY"],
-                         wrong=wrong, total=total, faults=total - t["MATCH"],
+                         wrong=wrong, total=total, faults=total - t["MATCH"], excluded=t["EXCLUDED"],
                          pct=round(100.0 * t["MATCH"] / total, 1) if total else None)
     return out, len(designs)
 
@@ -98,11 +104,16 @@ def main():
     ap.add_argument("--label", required=True)
     ap.add_argument("--lifter-file", help="score this lifter file instead of lifters/cyclonev_lift.py")
     ap.add_argument("--score-only", action="store_true", help="aggregate the existing postfit_compare")
+    ap.add_argument("--split", choices=("even", "odd"),
+                    help="only the even- / odd-indexed designs of the sorted list (develop on even, hold out odd)")
     a = ap.parse_args()
     if "PLURIBUS_SQLITE_PATH" not in os.environ:
         sys.exit("set PLURIBUS_SQLITE_PATH to the corpus DB copy (never the live one)")
     times = {}
-    designs = sorted(p.parent.name for p in (REPO / "corpus" / "cyclonev").glob("*/decomp.bt"))
+    designs = sorted(p.parent.name for p in (REPO / "corpus" / "cyclonev").glob("*/decomp.bt")
+                     if p.parent.name not in EXCLUDED)
+    if a.split:
+        designs = designs[0::2] if a.split == "even" else designs[1::2]
     if not a.score_only:
         log(f"=== {a.label}: {len(designs)} designs with decomp.bt")
         if a.lifter_file:
@@ -114,10 +125,10 @@ def main():
                total_s=sum(ok_times), fields=out)
     (REPO / "tmp" / f"scorecard-{a.label}.json").write_text(json.dumps(res, indent=1))
     log(f"--- {a.label}: {n_builds} builds, max design {res['max_design_s']}, total {res['total_s']:.0f}s")
-    log(f"{'field':14s} {'matched':>8s} {'missing':>8s} {'extra':>6s} {'wrong':>6s} {'total':>7s} {'%':>6s} {'faults':>7s}")
+    log(f"{'field':14s} {'matched':>8s} {'missing':>8s} {'extra':>6s} {'wrong':>6s} {'total':>7s} {'%':>6s} {'faults':>7s} {'excl':>5s}")
     for name, v in out.items():
         log(f"{name:14s} {v['matched']:8d} {v['missing']:8d} {v['extra']:6d} {v['wrong']:6d} "
-            f"{v['total']:7d} {v['pct'] if v['pct'] is not None else '-':>6} {v['faults']:7d}")
+            f"{v['total']:7d} {v['pct'] if v['pct'] is not None else '-':>6} {v['faults']:7d} {v['excluded']:5d}")
 
 
 if __name__ == "__main__":

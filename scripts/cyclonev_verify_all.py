@@ -103,9 +103,9 @@ EXPECTED_LIFTER = {
     "n_unparsed_lines": 0,
 }
 EXPECTED_PADMAP = {
-    "n_pads_annotated": 18, "n_pads_unannotated": 0,
+    "n_pads_annotated": 19, "n_pads_unannotated": 0,
     "n_dup_pins": 0,
-    "direction_breakdown": {"in": 14, "out": 4},
+    "direction_breakdown": {"in": 15, "out": 4},
 }
 # DSP mode mapping (docs/cyclonev-dsp-fuzz-status.md): a design either gets
 # an explicit MODE string, or (mult18x18/multacc18x18) NO MODE line at all

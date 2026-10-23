@@ -14,7 +14,7 @@ Script: `scripts/cyclonev_verify_all.py`. Log: `tmp/logs/cyclonev_verify_all.log
 | Die probe | `scripts/cyclonev_die_probe.py: compile_die()` | all 7 Mistral-covered dies compile |
 | DSP fuzz | `scripts/cyclonev_dsp_fuzz.py: quartus_compile_design()` / `decompile_and_extract_design()` | `docs/cyclonev-dsp-fuzz-status.md`'s MODE mapping (`mult9x9`->`M9X9`, `mult27x27`->`M27X27`, `mult18x18`/`multacc18x18`->no explicit MODE, the documented default-encoding result) |
 | Lifter selftest | `lifters/cyclonev_lift.py: CycloneVLift` directly | `docs/cyclonev-lifter-status.md`'s LUT/FF/net/arc/unparsed-line counts (61/64/139/608/0 on corpus design `regbank16`) |
-| pad_map DB insert | `load.py: load_cyclonev()` (real subprocess) | the lifter selftest's own pin-recovery ground truth (18 annotated, 0 duplicate pins on `regbank16`) |
+| pad_map DB insert | `load.py: load_cyclonev()` (real subprocess) | the lifter selftest's own pin-recovery ground truth (19 annotated, 0 duplicate pins on `regbank16`) |
 
 None of the four stages are copy-pasted logic — each imports and calls the
 existing script's own functions. Nothing here is a second implementation

@@ -13,7 +13,7 @@ Quartus's own post-fit netlist is the oracle for the Bluebird acceptance loop (V
   - `conn.<port>` / `conn_arith.<port>`: for every LUT data input, the atom driving it per Quartus vs the lifted LUT's own pin (or feedback register) via the DSU nets. A LUT the lifter did not emit, or a pin it does not wire, is LIFT_MISSING.
   - `conn.obuf.i`: driver of each output buffer, via the lifter's pad for that package pin.
   - `ff.present`, `ff.extra` (lifted register with no Quartus register), `ff.d/clk/clrn/ena/sclr/sload`: driver + inversion of each control. `ff.d` = `asdata` when Quartus ties `sload` high. Quartus clock-enable buffers are traced through.
-  - `ff.clk` needs the clock tree (CMUX/PLL -> spine), which is not modelled: the lifted source is an unnamed spine node, scored LIFT_MISSING ("unbridged"). Two checks that do not need it: `ff.clk.edge` (polarity) and `ff.clk.domain` (lifted clock-root partition == Quartus clock-net partition, per design).
+  - `ff.clk`: driver of the clock pin, traced through the lifter's clock-tree links (pad/PLL -> CMUX -> GCLK/RCLK -> SCLK, see "Clock tree"); an unresolved spine node stays LIFT_MISSING ("unbridged"). Also `ff.clk.edge` (polarity) and `ff.clk.domain` (lifted clock-root partition == Quartus clock-net partition, per design).
   - `pin`: package pin + direction vs the lifter's `Design.pads`.
   - `block.*`: DSP (`cyclonev_mac`), M10K (`cyclonev_ram_block`), clock control (`cyclonev_clkena`) -- no lifted model, always `QUARTUS_ONLY`.
 - Verdicts: `MATCH`, `MISMATCH`, `LIFT_MISSING` (lifter has no value), `QUARTUS_ONLY` (no lifted counterpart at all), `LIFT_ONLY`, `UNMODELLED` (ALM mode the LUT mapping does not cover).
@@ -172,7 +172,7 @@ Half mode = `<d source>_<e source>` (T: `D_E` default, `D_F`, `E_0`, `F_0`; B: `
 
 - Fixed: LUT polarity, halves, input order, bottom c/d swap, MLAB permutation; `F0`/`F1` are inputs; `NLUT` ports are LUT outputs, not registers; one register per physical register; registers independent of LUT halves; register feedback; absent `LUT_MASK` = constant 0.
 - Not lifted (counted in `Design.unmodelled_halves`): MLAB `RAM`/`ROM` halves and undecoded `BMNONE`.
-- Arithmetic `sumout`/carry is not modelled: arith halves are lifted as their `combout` LUT only; an arith half with a constant table and no output is not emitted.
+- (superseded, see "Arithmetic") `sumout`/carry was not modelled: arith halves were lifted as their `combout` LUT only.
 - Old lifter: every non-zero 32-bit half incl. unused ones, every routed `FF*` port as a register (nlut pass-throughs, `FF?1`+`FF?1L` twice). Corpus check: lifted FFs 1754 = Quartus 1754.
 
 ## Verified vs assumed
@@ -183,3 +183,75 @@ Half mode = `<d source>_<e source>` (T: `D_E` default, `D_F`, `E_0`, `F_0`; B: `
   - `aclr1`, inverted enable / sclr, `sload` signal, MLAB `GIN3`.
   - Clock-tree source of a register clock (CMUX); DSP/M10K internals; Mistral routing-element names vs Mistral nodes.
 - Single device/die and one Quartus version.
+
+## Clock tree (2026-10-24)
+
+Corpus now 236 designs (`c_ram_vnd_logic_16` has an oracle since its rebuild; its 1040 registers were the `ff.clk.domain` regression below). Same compare, 236 designs unless stated.
+
+| field | before | after |
+|---|---|---|
+| ff.clk | 22/2794 (0.8%), faults 2772 (m2772 x0 w0) | 2794/2794 (100.0%), faults 0 |
+| ff.clk.domain | 1754/2794 (62.8%), faults 1040 (m0 x0 w1040) | 2794/2794 (100.0%), faults 0 |
+| pins | 4386/4556 (96.3%), faults 170 (m170 x0 w0) | 4493/4556 (98.6%), faults 63 (m63 x0 w0) |
+| every other field | unchanged | unchanged |
+
+- Split (sorted design list, even / odd index; same rules, nothing tuned per split): ff.clk even 2200/2200, odd 594/594; pins even 3352/3412 (m60), odd 1141/1144 (m3).
+- Corpus clock sources are few: every design clocks from pad K17 (CMUXHG.054.022, inst 2 `INPUT_SEL` 6 = `NCLKPIN_SEL_2`; inst 0/1 in `clock_promotion`/`two_clocks`) or L17 (CMUXCR.054.002 inst 2). The split therefore checks the same CMUX paths twice; PLL inputs, other pins and `HR`/`VR` muxes have no corpus evidence.
+- Chain (lifter `clock_tree_links()`, data `lifters/data/cyclonev_e50f_clocks.json` from `scripts/cyclonev_clock_tree_extract.py`, Mistral `e50f-r`/`e50f-cmux`/`cyclonev.cc`):
+  - Quartus RCF element = Mistral node: `GLOBAL_CLOCK X0Y22 I10` = `GCLK.000.022.0010`, `SPINE_CLOCK X12Y0 I16` = `SCLK.012.000.0016` (counter_en_aclr, c_counter_sv_8: `X39Y0 I11`).
+  - A default SCLK mux gets no `r` line (`cv-rmux.cc`: `dnode.t()==SCLK && default -> continue`). SCLK root source = the one candidate in its `e50f-r` source list whose CMUX instance has an `INPUT_SEL` setting (GCLK list index = instance; RCLK list index = instance for CR/HR/VR). 0 or >1 live candidates = no link, counted in `Design.clock_unresolved`.
+  - CMUX instance input: `INPUT_SEL.<i>` (hex) indexes `cmux{hg,vg,cr,hr,vr}_link_table[i]` -> `CLKPIN_SEL_k` / `NCLKPIN_SEL_k` (label = slot in the CMUX `clkpin`/`nclkpin` list; default label 2k for G muxes, k for CR) or `PLLIN n` (`pllg`/`pllr`). Other kinds (`CLKIN`, `ICLK_SEL`, `SWITCH`) are not resolved.
+  - Pad label: `s GPIO.x.y:<MUX>.<n> ... ; <pin>` names pad n of the tile (2428/2428 against the bi-qualified comments, 0 conflicts); the clock pads K17/L17 carry no `r` arc, only such comments.
+  - Clock links are DSU unions, not `.bt` arcs: one clock reaching several sectors is one net (fixes the `c_ram_vnd_logic_16` 959 + 81 split).
+- Scorecard option: `--split even|odd`.
+
+## Self-feeding LUT latch
+
+- `verilog.py` `_lut_self_latch()` (64-char init only): per assignment of the other inputs, (f0,f1) = (1,1) set, (0,0) clear, (0,1) hold -> `always @*` latch; (1,0) for any assignment can oscillate and stays a loop.
+- Unverified: the cases it was written for came from a non-Cyclone-V decode (#114) and no corpus design has a self-feeding LUT. Treat as untested against Quartus.
+
+## Pads (2026-10-24)
+
+| field | before | after |
+|---|---|---|
+| pins | 4493/4556 (98.6%), faults 63 (m63 x0 w0) | 4556/4556 (100.0%), faults 0 |
+| obuf.i | 1509/1556 (97.0%), faults 47 (m47 x0 w0) | 1556/1556 (100.0%), faults 0 |
+
+(Start of the session: pins 4386/4556, 170 missing; the 107 closed before this step were dedicated clock pads and pad comments, see "Clock tree".)
+
+Classification of the 63 pins + 47 obuf.i still missing before this step:
+- 60 pins + 47 obuf.i: pad reached through the HMC (top/bottom edge DDR I/O). Arc `r TD.. HMC.011.045:IOINTDQDOUT.20 ; D13` (fabric -> pin) or `r HMC.011.045:IOINTDQDIN.40 V2.. ; F15` (pin -> fabric); no GPIO arc. Lifter: `pc.hmc_pins` (node -> pin comment, `IOINT*DIN/DOUT` ports), `recover_pads()` makes the pad (DIN = in, DOUT = out, both = bidir), row/col/pio from the tile's GPIO annotation. Compare: `conn.obuf.i` uses the HMC DOUT node when there is no GPIO DATAOUT node.
+- 3 pins (`up`, c_updown_{sv,v95,vnd}_1): unused input, only `USE_WEAK_PULLUP` settings, no arc. A configured pad with no arc -> `in`, no net (3/3 in the corpus are Quartus inputs, 0 outputs; an output always has a DATAOUT or HMC arc).
+- Dedicated clock pins: closed with the clock tree (pad -> CMUX).
+- Not evidence-backed: a pad that is both unrouted and an output (constant-driven output) would be mislabelled `in`; none in the corpus.
+
+## Constant-0 LUT (`~QUARTUS_CREATED_GND~I`) decision (2026-10-24)
+
+| field | before | after |
+|---|---|---|
+| lut function | 3288/3524 (93.3%), faults 236 (m236 x0 w0) | 3288/3288 (100.0%), faults 0, excluded 236 |
+
+- Decision: oracle-side artifact, excluded from the score with verdict `EXCLUDED` (a row per cell, reason in `lifted_value`), counted in the scorecard `excl` column.
+- Rule (generic, not name-based): a Quartus `cyclonev_lcell_comb` with no lifted counterpart, no input net on any data port and an output net that no atom reads.
+- Evidence (236/236 designs, 236 cells): `lut_mask 64'h0`, all inputs `gnd`, `combout` net has 0 sinks in `postfit_conns`; the bitstream stores constants as unrouted pins (all-ones `LUT_MASK` = absent line), so the cell has no trace and no observable function.
+- Not a lift fault: emitting a LUT with no sink would change no net. A cell that fits the rule but the lifter does emit is still scored.
+- Scope of "lut function 100%": `combout` masks only. Arithmetic `sumout`/`cout` are not scored (see "Arithmetic").
+
+## Arithmetic (2026-10-24)
+
+| field | before | after |
+|---|---|---|
+| arith function (sum + cout + shareout) | 0/741 (0.0%), faults 741 (m741 x0 w0) | 741/741 (100.0%), faults 0 |
+| arith cin/share (`conn.cin`, `conn.sharein`) | 0/431 (0.0%), faults 431 (m431 x0 w0) | 431/431 (100.0%), faults 0 |
+| every other field | unchanged | unchanged |
+
+Split (sorted designs, even / odd): arith function 661/661 / 80/80; cin/share 381/381 / 50/50.
+
+- Oracle `arith.*` (compare): Quartus `sumout`/`cout`/`shareout` function from the `cyclonev_lcell_comb` simulation model (Quartus 25.1 `eda/sim_lib/cyclonev_atoms.v`, read as reference, not copied) evaluated on `lut_mask`, vs the lifted row over every vector of the connected inputs (`a b c d f cin sharein`); `conn.cin` / `conn.sharein` = driver atom of the pin vs the lifted source half. Rows exist only where the Quartus net is read.
+  - `f0 = mask[15:0](a,b,c,d)`, `f2 = mask[47:32](a,b,c,dataf)`, `in2 = sharein` if `shared_arith` else `!f2`, `sum = cin^f0^in2`, `cout = maj(cin,f0,in2)`, `shareout = mask[47:32](a,b,c,d)`.
+- Lifter (`_arith_luts()`): `ARITH_SEL ADDER` halves emit up to three rows on the 64-bit Mistral->Quartus table (`_lut_table` with no folding, since `f2` reads the `f=1` region):
+  - `sum` (name = the plain half name, `z` = the NLUT/register net): letters a,b,c,d as before, e = cin, f = dataf (sharein in shared mode, where dataf is unused).
+  - `cout` (`*_cout`) and `shareout` (`*_shout`) rows own new carry nets; emitted only while a later emitted half consumes them.
+  - Chain: halves run T0,B0,T1,B1,... of a tile; cin = cout of the previous half (Quartus lcell N -> N+3: 314/314, sharein 84/84), cin = 0 at the start of an ADDER run. `SHARE=1` <=> `shared_arith on` (93/93; 254/254 off have no `SHARE`).
+- Combout view kept for `lut_mask_arith`: rows carry `comb_init`/`comb_pins`.
+- Not modelled: carry chain across a LAB boundary (cin of the first half of a tile is 0; no corpus chain crosses a LAB), two back-to-back chains in one ADDER run (not distinguishable in the bitstream), `extended_lut` (datag; `extended_lut off` in all 347 arithmetic cells).
