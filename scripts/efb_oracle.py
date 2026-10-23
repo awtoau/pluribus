@@ -138,6 +138,13 @@ TCL = ('prj_project open "[file normalize [file join [file dirname [info script]
        "prj_project close\n")
 
 
+TCL_MAP_ONLY = ('prj_project open "[file normalize [file join [file dirname [info script]] fuzz.ldf]]"\n'
+                "prj_run Synthesis -impl impl1\n"
+                "prj_run Translate -impl impl1\n"
+                "prj_run Map -impl impl1\n"
+                "prj_project close\n")
+
+
 def setup_logging():
     LOG.parent.mkdir(parents=True, exist_ok=True)
     log = logging.getLogger("efb_oracle")
@@ -169,7 +176,7 @@ def diamond_env():
     return os.path.join(root, "bin", "lin64", "diamondc"), env
 
 
-def run_diamond(d, log):
+def run_diamond(d, log, need_bit=True):
     """diamondc run.tcl in d.  Returns (ok, elapsed_s, detail)."""
     import time
     exe, env = diamond_env()
@@ -193,7 +200,7 @@ def run_diamond(d, log):
                 return False, now - t0, f"killed ({why}); last line: {tail}"
     el = time.monotonic() - t0
     bit = d / "impl1" / "fuzz_impl1.bit"
-    if p.returncode != 0 or not bit.exists():
+    if p.returncode != 0 or (need_bit and not bit.exists()):
         errs = [ln for ln in dlog.read_text(errors="replace").splitlines()
                 if re.search(r"error|ERROR", ln)][:4]
         return False, el, f"rc={p.returncode} errors={errs}"

@@ -791,6 +791,11 @@ def emit_wires(data: dict) -> list[str]:
     return lines
 
 
+def _efb_port(name: str) -> str:
+    """Vendor EFB primitive port name: the fabric wire name (JWBCLKI) minus the leading J."""
+    return name[1:] if name.startswith("J") else name
+
+
 def emit_efb_comment(data: dict) -> list[str]:
     """Comment block describing EFB port connections.
 
@@ -831,7 +836,7 @@ def emit_efb_comment(data: dict) -> list[str]:
         direction = row[2] if len(row) > 2 else None
         wire_name = resolve_net(net, net_name_map, const_net_map)
         arrow = "→" if direction == "out" else "?"
-        lines.append(f"    // EFB.{port_name} {arrow} {wire_name}  (raw net: {net}"
+        lines.append(f"    // EFB.{_efb_port(port_name)} {arrow} {wire_name}  (raw net: {net}"
                      f"{', ' + direction if direction else ''})")
     if efb_ports and n_out == len(efb_ports):
         # Only reachable if the input side regressed (#100 recovered it); say so
@@ -859,7 +864,7 @@ def emit_efb_comment(data: dict) -> list[str]:
         for i, (pn, wire, d) in enumerate(conns):
             comma = "," if i < len(conns) - 1 else ""
             tag = {"in": "// fabric -> EFB", "out": "// EFB -> fabric"}.get(d, "")
-            lines.append(f"        .{pn}({wire}){comma:<2} {tag}")
+            lines.append(f"        .{_efb_port(pn)}({wire}){comma:<2} {tag}")
         lines.append("    );")
     lines.append("")
     return lines
@@ -901,9 +906,9 @@ def emit_efb_module(data: dict) -> list[str]:
         ",\n".join(f'    parameter {k} = "{v}"' for k, v in _EFB_PARAM_DEFAULTS.items()),
         ") (",
     ]
-    decls = ([f"    input  wire {p}" for p in ins]
-             + [f"    output wire {p}" for p in outs]
-             + [f"    inout  wire {p}  // direction not recovered" for p in unknown])
+    decls = ([f"    input  wire {_efb_port(p)}" for p in ins]
+             + [f"    output wire {_efb_port(p)}" for p in outs]
+             + [f"    inout  wire {_efb_port(p)}  // direction not recovered" for p in unknown])
     for i, d in enumerate(decls):
         lines.append(d + ("," if i < len(decls) - 1 else ""))
     lines.append(");")

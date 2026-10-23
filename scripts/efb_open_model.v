@@ -10,7 +10,7 @@
 //       through spi_xfer(); the pins are dedicated on silicon, so they are
 //       model-internal here.
 //     * Any other address: plain byte store.
-// - Not modelled: I2C, timer/counter, UFM, PLL port, interrupts; JSPISCSN is ignored
+// - Not modelled: I2C, timer/counter, UFM, PLL port, interrupts; SPISCSN is ignored
 //   (spi_csn_i is the chip select).
 // SR bits: TIP 7, BUSY 6, TRDY 4, RRDY 3, TOE 2, ROE 1, MDF 0.
 `timescale 1ns/1ps
@@ -32,24 +32,24 @@ module EFB #(
     parameter SPI_INTR_RXRDY = "DISABLED",
     parameter SPI_INTR_TXRDY = "DISABLED"
 ) (
-    input  wire JWBCLKI,
-    input  wire JWBRSTI,
-    input  wire JWBCYCI,
-    input  wire JWBSTBI,
-    input  wire JWBWEI,
-    input  wire JWBADRI0, JWBADRI1, JWBADRI2, JWBADRI3,
-    input  wire JWBADRI4, JWBADRI5, JWBADRI6, JWBADRI7,
-    input  wire JWBDATI0, JWBDATI1, JWBDATI2, JWBDATI3,
-    input  wire JWBDATI4, JWBDATI5, JWBDATI6, JWBDATI7,
-    output wire JWBACKO,
-    output wire JWBDATO0, JWBDATO1, JWBDATO2, JWBDATO3,
-    output wire JWBDATO4, JWBDATO5, JWBDATO6, JWBDATO7,
-    input  wire JSPISCSN
+    input  wire WBCLKI,
+    input  wire WBRSTI,
+    input  wire WBCYCI,
+    input  wire WBSTBI,
+    input  wire WBWEI,
+    input  wire WBADRI0, WBADRI1, WBADRI2, WBADRI3,
+    input  wire WBADRI4, WBADRI5, WBADRI6, WBADRI7,
+    input  wire WBDATI0, WBDATI1, WBDATI2, WBDATI3,
+    input  wire WBDATI4, WBDATI5, WBDATI6, WBDATI7,
+    output wire WBACKO,
+    output wire WBDATO0, WBDATO1, WBDATO2, WBDATO3,
+    output wire WBDATO4, WBDATO5, WBDATO6, WBDATO7,
+    input  wire SPISCSN
 );
-    wire [7:0] adr  = {JWBADRI7, JWBADRI6, JWBADRI5, JWBADRI4,
-                       JWBADRI3, JWBADRI2, JWBADRI1, JWBADRI0};
-    wire [7:0] dati = {JWBDATI7, JWBDATI6, JWBDATI5, JWBDATI4,
-                       JWBDATI3, JWBDATI2, JWBDATI1, JWBDATI0};
+    wire [7:0] adr  = {WBADRI7, WBADRI6, WBADRI5, WBADRI4,
+                       WBADRI3, WBADRI2, WBADRI1, WBADRI0};
+    wire [7:0] dati = {WBDATI7, WBDATI6, WBDATI5, WBDATI4,
+                       WBDATI3, WBDATI2, WBDATI1, WBDATI0};
 
     localparam A_CR1 = 8'h55, A_CSR = 8'h58, A_TXDR = 8'h59, A_SR = 8'h5A,
                A_RXDR = 8'h5B;
@@ -87,13 +87,13 @@ module EFB #(
         endcase
     endfunction
 
-    always @(posedge JWBCLKI) begin
-        if (JWBRSTI === 1'b1) begin
+    always @(posedge WBCLKI) begin
+        if (WBRSTI === 1'b1) begin
             ack  <= 1'b0;
             dato <= 8'h00;
-        end else if ((JWBSTBI === 1'b1) && (JWBCYCI === 1'b1) && !ack) begin
+        end else if ((WBSTBI === 1'b1) && (WBCYCI === 1'b1) && !ack) begin
             adr_seen[adr] = 1'b1;
-            if (JWBWEI === 1'b1) begin
+            if (WBWEI === 1'b1) begin
                 wb_writes = wb_writes + 1;
                 case (adr)
                     A_TXDR:       begin txdr <= dati; trdy <= 1'b0; end
@@ -114,9 +114,9 @@ module EFB #(
         end
     end
 
-    assign {JWBDATO7, JWBDATO6, JWBDATO5, JWBDATO4,
-            JWBDATO3, JWBDATO2, JWBDATO1, JWBDATO0} = dato;
-    assign JWBACKO = ack;
+    assign {WBDATO7, WBDATO6, WBDATO5, WBDATO4,
+            WBDATO3, WBDATO2, WBDATO1, WBDATO0} = dato;
+    assign WBACKO = ack;
 
     // One SPI byte, mode 0, MSB first, driven by the testbench.
     // TX: TXDR if loaded (TRDY=0) else 0x00 (+TOE).  RX: RXDR <= byte, RRDY=1 (+ROE if

@@ -55,3 +55,28 @@ Results (60 us run-out after the SPI script, 1093 FFs, 270 undriven wires):
 - The what-if rows are exploration only (tie-offs are invented), but show the undriven wires are the sole X source in the datapath.
 - Undriven wires (yosys check, 270): 201 raw `n<id>` nets, 44 `ghost_d_*`, 8 output-pad nets (pin4, pin61, U7_DS, U1_STCP, DAC_CLK, ADC_ENCA, ADC_ENCB, ADC_ENCB_n1570), 17 other named (carry/EBR/LUT-derived).
 - No SPI-register traffic (a=0x5A/0x5B) appears in either what-if: the fabric never consumes the SPI bytes in this lift. Whether that is a lift gap or the real design reads them through paths in the undriven set is open.
+
+## Step 4: structural round-trip (#84, #38)
+
+- Command: `python3.15t scripts/aw2_roundtrip.py --board boards/aw2-2d82auto --label V07 --config tmp/v7/FPGA_V07.bin.config [--ghosts-as-inputs]`
+- Flow: `out/V07.v` (EFB stub dropped so Diamond uses the primitive; vendor EFB port names now emitted) -> Diamond LSE + map + PAR + bitgen -> native decode -> `diamond_roundtrip.compare_configs` against the original decode. Pads located from `pad_map`; bank VCCIO is board data (banks holding an SSTL25 pad are 2.5 V, so LVTTL-class pads there are emitted LVCMOS25, else PAR rejects the bank).
+- Diamond runs measured 5-8 s (this design collapses; see below).
+
+Stages reached (2026-10-24):
+
+| stage | result |
+|---|---|
+| lift -> Verilog, yosys gate | pass |
+| Diamond LSE | accepts; 307 warnings: 72 registers stuck at zero, 158 undriven nets patched with GND |
+| map | 1 register, 3 LUT4, 2 slices; 0 of 7 EBR, 0 of 1 PLL |
+| PAR, bitgen, native decode | pass (after the bank fix above) |
+| compare vs original | LUT INITs 2 of 1257 present; tiles 56 vs 271; enum residual 4418, arc residual 12817, config-line residual 3218 |
+
+Raw fidelity: LUT INITs 2/1257 (the other 1255 missing from the rebuilt bitstream, 0 extra beyond the 2 compared); FFs 1/1093 survive synthesis.
+
+- Blocking construct: every output pad is constant after synthesis. Two causes, both missing connections:
+  1. 270 undriven wires, patched to GND by LSE (158 reach logic).
+  2. 59 of 1093 FFs recovered with constant D = 1'b0 and shown as "stuck-at-reset": 40 of them select the M input (`REGn.SD 0`) and the config routes that M wire; 19 select the LUT. This includes the registers behind 12 pad outputs. The lifter's fallback turns an unresolved D into 0.
+- `--ghosts-as-inputs` (experiment: the 263 undriven internal wires become input ports, synthesis + map only): still 3 registers / 4 LUT4, because cause 2 keeps the outputs constant.
+- Not in the lift at all: the PLL (0 of 1 used; clocks are input ports), so LSE sees the primary clocks as plain pads (#104).
+- Known-source round-trip (`machxo2_roundtrip.py`): proven to cycle 52, diverges at 53 (unchanged since baseline).
