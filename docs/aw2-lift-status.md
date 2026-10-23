@@ -70,9 +70,9 @@ Stages reached (2026-10-24):
 | Diamond LSE | accepts; 307 warnings: 72 registers stuck at zero, 158 undriven nets patched with GND |
 | map | 1 register, 3 LUT4, 2 slices; 0 of 7 EBR, 0 of 1 PLL |
 | PAR, bitgen, native decode | pass (after the bank fix above) |
-| compare vs original | LUT INITs 2 of 1257 present; tiles 56 vs 271; enum residual 4418, arc residual 12817, config-line residual 3218 |
+| compare vs original | 2 of 1257 LUT INITs matched, 1255 missing, 0 extra; tiles 56 vs 271; enum residual 4418, arc residual 12817, config-line residual 3218 |
 
-Raw fidelity: LUT INITs 2/1257 (the other 1255 missing from the rebuilt bitstream, 0 extra beyond the 2 compared); FFs 1/1093 survive synthesis.
+Headline (LUT INIT multiset, canonical under input permutation): matched / (matched + missing + extra + wrong) = 2 / (2 + 1255 + 0 + 0) = 0.16%. Registers configured: 1 vs 1070 in the original decode.
 
 - Blocking construct: every output pad is constant after synthesis. Two causes, both missing connections:
   1. 270 undriven wires, patched to GND by LSE (158 reach logic).
