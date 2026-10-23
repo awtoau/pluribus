@@ -45,12 +45,12 @@ def mistral_decomp(device, rbf, bt):
     return r.stdout[-1500:] + r.stderr[-1500:]
 
 
-def native_decomp(device, body, bt):
+def native_decomp(device, body, bt, force=False):
     import cyclonev_decode as cd
     import cyclonev_native_tables as nt
     try:
-        m = cd.decode(body, device)
-    except nt.TableError as e:
+        m = cd.decode(body, device, strict=not force)
+    except (nt.TableError, cd.ContainerError) as e:
         die(f"native decoder: {e} (use --decoder mistral)")
     lines = m.bt_lines()
     with open(bt, "w") as f:
@@ -65,6 +65,7 @@ def main():
     ap.add_argument("--device", default="5CEBA4U19C8")
     ap.add_argument("--rbf", help="where to keep the stripped .rbf (default: <bt>.rbf)")
     ap.add_argument("--decoder", choices=("native", "mistral"), default="native")
+    ap.add_argument("--force", action="store_true", help="native: decode even if the container checks fail")
     ap.add_argument("--crosscheck", action="store_true", help="also run mistral-cv; log the line-set diff")
     a = ap.parse_args()
 
@@ -88,7 +89,7 @@ def main():
     os.makedirs(os.path.dirname(os.path.abspath(a.bt)), exist_ok=True)
 
     if a.decoder == "native":
-        log.info("native decode: %s", native_decomp(a.device, body, a.bt))
+        log.info("native decode: %s", native_decomp(a.device, body, a.bt, a.force))
     else:
         log.info("mistral-cv:\n%s", mistral_decomp(a.device, rbf, a.bt))
     if a.crosscheck:
@@ -97,7 +98,7 @@ def main():
         if a.decoder == "native":
             mistral_decomp(a.device, rbf, other)
         else:
-            native_decomp(a.device, body, other)
+            native_decomp(a.device, body, other, a.force)
         d = bd.diff(bd.read(a.bt), bd.read(other))
         for k, (oa, ob, na, nb) in d.items():
             log.info("crosscheck [%s] chosen=%d other=%d only_chosen=%d only_other=%d", k, na, nb, len(oa), len(ob))

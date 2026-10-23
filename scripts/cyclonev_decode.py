@@ -177,13 +177,44 @@ def oram_get(oram, strip, bit):
     return (oram[strip] >> bit) & 1
 
 
-def load_rbf(tables, data, geo=None, need_framed=False):
+class ContainerError(ValueError):
+    pass
+
+
+def container_problems(a, geo, framed=None):
+    """Structural checks of the .rbf container (header, option checksum, PRAM page CRCs, CRAM frame sync)."""
+    pr = []
+    if not (a[:0x80] == 0xFF).all() or bytes(a[0x80:0x84]) != b"jjjj":
+        pr.append("no 0xff*0x80 + 'jjjj' option-frame header")
+    if len(a) > 0x128 and cd_crc16(a[0x84:0x126]) != (int(a[0x126]) | (int(a[0x127]) << 8)):
+        pr.append("option-frame checksum mismatch")
+    for pg in range(geo.pram_blocks):
+        off = geo.oram_frame_bytes + pg * geo.pram_frame_bytes
+        seg = a[off:off + geo.pram_frame_bytes]
+        if len(seg) < geo.pram_frame_bytes or cd_crc16(seg[:-2]) != (int(seg[-2]) | (int(seg[-1]) << 8)):
+            pr.append("PRAM page %d CRC mismatch" % pg)
+            break
+    if framed is not None:
+        f = np.frombuffer(framed, np.uint8)
+        if bytes(f[:3]) != b"\x84\x3e\x01" or bytes(f[(geo.sx - 1) * geo.cfb:(geo.sx - 1) * geo.cfb + 3]) != b"\x42\x9f\x00":
+            pr.append("CRAM frame sync bytes missing")
+    return pr
+
+
+def cd_crc16(buf):
+    return crc16(bytes(buf))
+
+
+def load_rbf(tables, data, geo=None, need_framed=False, strict=True):
     geo = geo or Geometry(tables["geom"])
     b = Bits(geo)
     a = np.frombuffer(data, np.uint8)
     b.raw = a
     if len(a) < geo.cram_off:
-        raise ValueError(f"rbf too short ({len(a)} < {geo.cram_off}): wrong die?")
+        raise ContainerError(f"rbf too short ({len(a)} < {geo.cram_off}): wrong die?")
+    b.problems = container_problems(a, geo)
+    if strict and b.problems:
+        raise ContainerError("not a Cyclone V .rbf of this die: " + "; ".join(b.problems) + " (--force to decode anyway)")
     # ORAM: 32 strips x 40 bits
     for strip in range(32):
         for bit in range(40):
@@ -200,6 +231,8 @@ def load_rbf(tables, data, geo=None, need_framed=False):
         b.pram[bit] = ((a[idx] & (1 << (bit & 7))) != 0).astype(np.uint8)
     comp_dis = options_compression_dis(tables, b)
     region = a[geo.cram_off:]
+    if not strict and len(region) < geo.framed_bytes and comp_dis:
+        region = np.concatenate([region, np.zeros(geo.framed_bytes - len(region), np.uint8)])
     if not comp_dis:
         framed, used = nibble_decompress(region, geo.framed_bytes)
         b.compressed = (geo.cram_off, used)
@@ -208,6 +241,11 @@ def load_rbf(tables, data, geo=None, need_framed=False):
             raise ValueError("uncompressed CRAM region short")
         framed = bytes(region[:geo.framed_bytes])
     b.framed = framed
+    b.problems += container_problems(a, geo, framed)[len(b.problems):] if False else []
+    if strict:
+        extra = [p for p in container_problems(a, geo, framed) if p.startswith("CRAM frame sync")]
+        if extra:
+            raise ContainerError("not a Cyclone V .rbf of this die: " + "; ".join(extra) + " (--force to decode anyway)")
     f = np.frombuffer(framed, np.uint8)
     # fold: CRAM (x, y>=32) <- frame x bit slot
     ys = np.arange(32, geo.sy)
@@ -1029,14 +1067,14 @@ def encode_rbf(tables, bits, compress=None):
 
 # ---- API ---------------------------------------------------------------------------------------
 
-def decode(data, device="5CEBA4U19C8", overrides=True, claims=False, compat=False, tables=None):
+def decode(data, device="5CEBA4U19C8", overrides=True, claims=False, compat=False, tables=None, strict=True):
     tb = tables or nt.load(device)
     ov = None
     if overrides:
         import cyclonev_native_overrides as ovm
         ov = ovm.Overrides()
     mdl = Model(tb, ov, claims=claims, compat=compat)
-    mdl.bits = load_rbf(tb, data, mdl.geo)
+    mdl.bits = load_rbf(tb, data, mdl.geo, strict=strict)
     return mdl
 
 
@@ -1047,6 +1085,7 @@ def main():
     ap.add_argument("--device", default="5CEBA4U19C8")
     ap.add_argument("--no-overrides", action="store_true", help="bootstrap tables exactly (differential runs)")
     ap.add_argument("--mistral-compat", action="store_true", help="reproduce libmistral quirks (SCLK/DCMUX link skip)")
+    ap.add_argument("--force", action="store_true", help="decode even if the container checks fail")
     ap.add_argument("--claims", help="write claimed/unclaimed accounting JSON")
     a = ap.parse_args()
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
@@ -1054,7 +1093,7 @@ def main():
         logging.StreamHandler(), logging.FileHandler(os.path.join(REPO, "tmp", "logs", "cyclonev_decode.log"))])
     t0 = time.time()
     data = open(a.rbf, "rb").read()
-    m = decode(data, a.device, overrides=not a.no_overrides, claims=bool(a.claims), compat=a.mistral_compat)
+    m = decode(data, a.device, overrides=not a.no_overrides, claims=bool(a.claims), compat=a.mistral_compat, strict=not a.force)
     lines = m.bt_lines()
     os.makedirs(os.path.dirname(os.path.abspath(a.bt)), exist_ok=True)
     with open(a.bt, "w") as f:
