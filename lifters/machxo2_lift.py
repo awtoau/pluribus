@@ -27,6 +27,30 @@ import os
 import re
 from collections import defaultdict
 
+_PLC_ENUM_DEFAULTS = {}
+
+
+def plc_enum_defaults(dbroot):
+    """PLC/bits.db `.config_enum` defaults: {enum_name: value}.
+
+    A decoded .config omits an enum at its default, so a missing key means the default.
+    """
+    d = _PLC_ENUM_DEFAULTS.get(dbroot)
+    if d is None:
+        d = {}
+        path = os.path.join(dbroot, "MachXO2", "tiledata", "PLC", "bits.db")
+        with open(path) as fh:
+            for ln in fh:
+                t = ln.split()
+                if len(t) >= 3 and t[0] == ".config_enum":
+                    d[t[1]] = t[2]
+        if not d:
+            from db import die
+            die(f"no .config_enum entries in {path}")
+        _PLC_ENUM_DEFAULTS[dbroot] = d
+    return d
+
+
 DEF_BUILD_DIR = os.environ.get("TRELLIS_BUILD",
                                "tmp/prjtrellis/libtrellis/build")
 
@@ -265,6 +289,7 @@ class MachXO2Lift:
                 sys.path.insert(0, _repo)
             from native_trellis import pytrellis_compat as pytrellis
         self._pt = pytrellis
+        self.dbroot = dbroot
         pytrellis.load_database(dbroot)
         self.device = device
         self.chip = pytrellis.Chip(device)
@@ -489,6 +514,15 @@ class MachXO2Lift:
                         gc = self.rg.globalise_net(row, 0, cname)
                         if gc.loc.x >= 0 and gc.loc.y >= 0:
                             return (gc.loc.x, gc.loc.y, gc.id)
+                elif col - hops == -1:
+                    # H06W stub 1 col off the die: Diamond turns it around at
+                    # the edge (H06W{i}01 -> H06E{i}04 at C2, #105); it is the
+                    # H06E wire of the same index+segment at col 0.
+                    mw = re.match(r'^W\d_H06W(\d+)$', name)
+                    if mw:
+                        gc = self.rg.globalise_net(row, 0, f"H06E{mw.group(1)}")
+                        if gc.loc.x >= 0 and gc.loc.y >= 0:
+                            return self._v02_alias(gc.loc.x, gc.loc.y, gc.id)
                 return None
 
             # Vertical span whose hop runs off the top/bottom edge.
@@ -535,6 +569,14 @@ class MachXO2Lift:
                 gv = self.rg.globalise_net(row, col, bare)
                 if overshoot == 1 and gv.loc.x >= 0 and gv.loc.y >= 0:
                     return (gv.loc.x, gv.loc.y, gv.id)
+                if overshoot == 2:
+                    # Diamond turnaround (docs/machxo2-diamond-oracle.md, #105):
+                    # the wire reflects at the die edge and continues as the
+                    # opposite-letter span, same index+segment, 2 rows inward.
+                    prow = row + 2 if is_north else row - 2
+                    gp = self.rg.globalise_net(prow, col, bare)
+                    if gp.loc.x >= 0 and gp.loc.y >= 0:
+                        return self._v02_alias(gp.loc.x, gp.loc.y, gp.id)
 
             for delta in range(1, hops + 1):
                 if is_east or wire[0] == 'W':
@@ -1009,6 +1051,7 @@ class MachXO2Lift:
                     })
 
         # ---- flip-flops ----
+        enum_def = plc_enum_defaults(self.dbroot)   # missing enum key = bits.db default
         for (r, c) in sorted(plc_tiles):
             bels = self.bels_of(r, c)
             for sl in "ABCD":
@@ -1067,9 +1110,13 @@ class MachXO2Lift:
                         "clk": net_or(pins.get("CLK"), "1'b0"),
                         "ce": net_or(pins.get("CE"), "1'b1"),
                         "lsr": net_or(pins.get("LSR"), "1'b0"),
-                        "regset": senum.get(f"REG{j}.REGSET", "RESET"),
+                        "regset": senum.get(f"REG{j}.REGSET", enum_def[f"SLICE{sl}.REG{j}.REGSET"]),
                         "sd": sd,
                         "gsr": senum.get("GSR", "DISABLED"),
+                        # tile enum LSR{slice}.SRMODE: ASYNC | LSR_OVER_CE
+                        "srmode": pc.enums.get((r, c), {}).get(
+                            f"LSR{'ABCD'.index(sl)}.SRMODE",
+                            enum_def[f"LSR{'ABCD'.index(sl)}.SRMODE"]),
                     })
 
         # Force net names for all arc endpoints, including pad nodes that only
@@ -1444,11 +1491,17 @@ _RECOVERED_PRIM_LIB = (
     "  assign Z = INIT[{D, C, B, A}];\n"
     "endmodule\n\n"
     "module RFF #(parameter REGSET = \"RESET\", parameter SD = \"0\",\n"
-    "             parameter GSR = \"DISABLED\")\n"
+    "             parameter GSR = \"DISABLED\",\n"
+    "             parameter SRMODE = \"LSR_OVER_CE\")\n"
     "            (input CLK, CE, LSR, D, output reg Q);\n"
     "  localparam RINIT = (REGSET == \"SET\") ? 1'b1 : 1'b0;\n"
     "  initial Q = RINIT;\n"
-    "  always @(posedge CLK) if (LSR) Q <= RINIT; else if (CE) Q <= D;\n"
+    "  generate if (SRMODE == \"ASYNC\") begin : g_async\n"
+    "    always @(posedge CLK or posedge LSR)\n"
+    "      if (LSR) Q <= RINIT; else if (CE) Q <= D;\n"
+    "  end else begin : g_sync\n"
+    "    always @(posedge CLK) if (LSR) Q <= RINIT; else if (CE) Q <= D;\n"
+    "  end endgenerate\n"
     "endmodule\n\n"
 )
 
@@ -1521,9 +1574,10 @@ def write_netlist_verilog(design, out_path, target, source,
         fh.write("\n  // %d flip-flops\n" % n_ff)
         for ff in design.ffs:
             fh.write(
-                "  RFF #(.REGSET(\"%s\"), .SD(\"%s\"), .GSR(\"%s\")) %s "
+                "  RFF #(.REGSET(\"%s\"), .SD(\"%s\"), .GSR(\"%s\"), "
+                ".SRMODE(\"%s\")) %s "
                 "(.CLK(%s), .CE(%s), .LSR(%s), .D(%s), .Q(%s));\n"
-                % (ff["regset"], ff["sd"], ff["gsr"], ff["name"],
+                % (ff["regset"], ff["sd"], ff["gsr"], ff.get("srmode", "LSR_OVER_CE"), ff["name"],
                    ff["clk"], ff["ce"], ff["lsr"], ff["d"], ff["q"]))
 
         fh.write("\nendmodule\n")
@@ -1589,7 +1643,7 @@ def write_netlist_json(design, out_path, module_name="recovered_netlist",
             "hide_name": 0,
             "type": "MACHXO2_FF",
             "parameters": {"REGSET": ff["regset"], "SD": ff["sd"],
-                           "GSR": ff["gsr"]},
+                           "GSR": ff["gsr"], "SRMODE": ff.get("srmode", "LSR_OVER_CE")},
             "port_directions": {"CLK": "input", "CE": "input", "LSR": "input",
                                 "D": "input", "Q": "output"},
             "connections": {
