@@ -1,0 +1,7 @@
+top = "c_fsm_bin_v95_16"
+purpose = "16-state FSM, binary [Verilog-95]"
+exercises = ["fsm", "dffeas"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "fsm_bin"
+variant = "v95"
+width = 16

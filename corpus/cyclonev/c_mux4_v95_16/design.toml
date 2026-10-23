@@ -1,0 +1,7 @@
+top = "c_mux4_v95_16"
+purpose = "4:1 mux [Verilog-95]"
+exercises = ["mux"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "mux4"
+variant = "v95"
+width = 16

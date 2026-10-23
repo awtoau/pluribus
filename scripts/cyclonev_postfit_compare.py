@@ -289,7 +289,7 @@ def compare_build(bid, ddir):
 
     # ── hard blocks with no lifted model ─────────────────────────────────
     for a in atoms.values():
-        if a["type"] in ("cyclonev_mac", "cyclonev_ram_block", "cyclonev_clkena"):
+        if a["type"] in ("cyclonev_mac", "cyclonev_ram_block", "cyclonev_clkena", "cyclonev_mlab_cell"):
             row(a["name"], a["location"], f"block.{a['type']}", a["type"], None, "QUARTUS_ONLY")
 
     t = schema.postfit_compare

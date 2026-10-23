@@ -1,0 +1,7 @@
+top = "c_comb_sv_8"
+purpose = "pure combinational assign logic [SystemVerilog]"
+exercises = ["lut", "comb"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "comb"
+variant = "sv"
+width = 8

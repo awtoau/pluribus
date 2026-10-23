@@ -1,0 +1,7 @@
+top = "c_cmp_eq_vnd_4"
+purpose = "equality comparator [vendor]"
+exercises = ["comparator", "eq"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "cmp_eq"
+variant = "vnd"
+width = 4

@@ -1,0 +1,7 @@
+top = "c_cmp_lt_v95_1"
+purpose = "less-than comparator [Verilog-95]"
+exercises = ["comparator", "lt"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "cmp_lt"
+variant = "v95"
+width = 1

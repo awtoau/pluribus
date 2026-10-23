@@ -1,0 +1,7 @@
+top = "c_ram_vnd_altsyncram_4"
+purpose = "64x4 simple-dual-port RAM, registered read [vnd_altsyncram]"
+exercises = ["ram", "ram_block"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "ram"
+variant = "vnd_altsyncram"
+width = 4

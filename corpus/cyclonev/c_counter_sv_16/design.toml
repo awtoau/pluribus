@@ -1,0 +1,7 @@
+top = "c_counter_sv_16"
+purpose = "free-running up counter [SystemVerilog]"
+exercises = ["counter", "carry"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "counter"
+variant = "sv"
+width = 16

@@ -1,0 +1,7 @@
+top = "c_subtractor_sv_16"
+purpose = "a-b with borrow bit [SystemVerilog]"
+exercises = ["subtractor", "carry"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "subtractor"
+variant = "sv"
+width = 16

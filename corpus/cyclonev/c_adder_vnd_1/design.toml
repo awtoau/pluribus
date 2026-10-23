@@ -1,0 +1,7 @@
+top = "c_adder_vnd_1"
+purpose = "a+b with carry out [vendor]"
+exercises = ["adder", "carry"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "adder"
+variant = "vnd"
+width = 1

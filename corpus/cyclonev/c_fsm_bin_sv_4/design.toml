@@ -1,0 +1,7 @@
+top = "c_fsm_bin_sv_4"
+purpose = "4-state FSM, binary [SystemVerilog]"
+exercises = ["fsm", "dffeas"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "fsm_bin"
+variant = "sv"
+width = 4

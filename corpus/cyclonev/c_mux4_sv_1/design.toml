@@ -1,0 +1,7 @@
+top = "c_mux4_sv_1"
+purpose = "4:1 mux [SystemVerilog]"
+exercises = ["mux"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "mux4"
+variant = "sv"
+width = 1

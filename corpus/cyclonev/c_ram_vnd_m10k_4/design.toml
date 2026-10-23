@@ -1,0 +1,7 @@
+top = "c_ram_vnd_m10k_4"
+purpose = "64x4 simple-dual-port RAM, registered read [vnd_m10k]"
+exercises = ["ram", "ram_block"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "ram"
+variant = "vnd_m10k"
+width = 4

@@ -1,0 +1,7 @@
+top = "c_counter_v95_8"
+purpose = "free-running up counter [Verilog-95]"
+exercises = ["counter", "carry"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "counter"
+variant = "v95"
+width = 8

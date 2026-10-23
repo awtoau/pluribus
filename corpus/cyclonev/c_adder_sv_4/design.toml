@@ -1,0 +1,7 @@
+top = "c_adder_sv_4"
+purpose = "a+b with carry out [SystemVerilog]"
+exercises = ["adder", "carry"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "adder"
+variant = "sv"
+width = 4
