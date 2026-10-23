@@ -817,6 +817,10 @@ class MachXO2Lift:
             # the CCU2 pass below.
             if pc.slice_enum.get((r, c, sl), {}).get("MODE") == "CCU2":
                 continue
+            # DPRAM / RAMW: the INIT word is RAM contents (all-0 = empty RAM), not
+            # a LUT function; F is the RAM read port, not a constant (#113).
+            if pc.slice_enum.get((r, c, sl), {}).get("MODE") in ("DPRAM", "RAMW"):
+                continue
             pins = self.bels_of(r, c).get(f"SLICE{sl}.K{k}")
             if not pins:
                 continue
@@ -1095,6 +1099,15 @@ class MachXO2Lift:
                         if ((r, c, sl, str(j)) not in pc.lut_init
                                 and senum.get("MODE") not in ("DPRAM", "RAMW")):
                             dkey, d_default = None, "1'b1"
+                        # DPRAM read port: F is driven by the RAMW write data (the
+                        # DPRAM pass below adds the pseudo-LUT).  Its F wire has no
+                        # arc yet, so root it now or D falls back to 0 (#113).
+                        if (dkey is not None and not connected(dkey)
+                                and senum.get("MODE") == "DPRAM"):
+                            rw_pin = {"A": "B1", "B": "D1", "C": "C1", "D": "A1"}[sl]
+                            rw_key = bels.get("SLICEC.RAMW", {}).get(rw_pin)
+                            if rw_key is not None and connected(rw_key):
+                                dsu.union(dkey, dkey)
                     else:
                         dkey = pins.get("M")
 
