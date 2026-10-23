@@ -567,6 +567,8 @@ def compare_target(target, targets_dir, out_root):
             fld(f"FF{j}.lift.regset", "MATCH" if ff["regset"] == regset else "MISMATCH",
                 regset, ff["regset"])
             fld(f"FF{j}.lift.sd", "MATCH" if ff["sd"] == sd else "MISMATCH", sd, ff["sd"])
+            fld(f"FF{j}.lift.srmode", "MATCH" if ff["srmode"] == f["SRMODE"] else "MISMATCH",
+                f["SRMODE"], ff["srmode"])
             fld(f"FF{j}.lift.gsr", "MATCH" if ff["gsr"] == f["GSR"] else "MISMATCH",
                 f["GSR"], ff["gsr"])
             for pin, key, const in (("CLK", "clk", "1'b0"), ("CE", "ce", "1'b1"),

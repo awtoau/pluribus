@@ -1096,6 +1096,10 @@ class MachXO2Lift:
                         "regset": senum.get(f"REG{j}.REGSET", enum_def[f"SLICE{sl}.REG{j}.REGSET"]),
                         "sd": sd,
                         "gsr": senum.get("GSR", "DISABLED"),
+                        # tile enum LSR{slice}.SRMODE: ASYNC | LSR_OVER_CE
+                        "srmode": pc.enums.get((r, c), {}).get(
+                            f"LSR{'ABCD'.index(sl)}.SRMODE",
+                            enum_def[f"LSR{'ABCD'.index(sl)}.SRMODE"]),
                     })
 
         # Force net names for all arc endpoints, including pad nodes that only
@@ -1470,11 +1474,17 @@ _RECOVERED_PRIM_LIB = (
     "  assign Z = INIT[{D, C, B, A}];\n"
     "endmodule\n\n"
     "module RFF #(parameter REGSET = \"RESET\", parameter SD = \"0\",\n"
-    "             parameter GSR = \"DISABLED\")\n"
+    "             parameter GSR = \"DISABLED\",\n"
+    "             parameter SRMODE = \"LSR_OVER_CE\")\n"
     "            (input CLK, CE, LSR, D, output reg Q);\n"
     "  localparam RINIT = (REGSET == \"SET\") ? 1'b1 : 1'b0;\n"
     "  initial Q = RINIT;\n"
-    "  always @(posedge CLK) if (LSR) Q <= RINIT; else if (CE) Q <= D;\n"
+    "  generate if (SRMODE == \"ASYNC\") begin : g_async\n"
+    "    always @(posedge CLK or posedge LSR)\n"
+    "      if (LSR) Q <= RINIT; else if (CE) Q <= D;\n"
+    "  end else begin : g_sync\n"
+    "    always @(posedge CLK) if (LSR) Q <= RINIT; else if (CE) Q <= D;\n"
+    "  end endgenerate\n"
     "endmodule\n\n"
 )
 
@@ -1547,9 +1557,10 @@ def write_netlist_verilog(design, out_path, target, source,
         fh.write("\n  // %d flip-flops\n" % n_ff)
         for ff in design.ffs:
             fh.write(
-                "  RFF #(.REGSET(\"%s\"), .SD(\"%s\"), .GSR(\"%s\")) %s "
+                "  RFF #(.REGSET(\"%s\"), .SD(\"%s\"), .GSR(\"%s\"), "
+                ".SRMODE(\"%s\")) %s "
                 "(.CLK(%s), .CE(%s), .LSR(%s), .D(%s), .Q(%s));\n"
-                % (ff["regset"], ff["sd"], ff["gsr"], ff["name"],
+                % (ff["regset"], ff["sd"], ff["gsr"], ff.get("srmode", "LSR_OVER_CE"), ff["name"],
                    ff["clk"], ff["ce"], ff["lsr"], ff["d"], ff["q"]))
 
         fh.write("\nendmodule\n")
@@ -1615,7 +1626,7 @@ def write_netlist_json(design, out_path, module_name="recovered_netlist",
             "hide_name": 0,
             "type": "MACHXO2_FF",
             "parameters": {"REGSET": ff["regset"], "SD": ff["sd"],
-                           "GSR": ff["gsr"]},
+                           "GSR": ff["gsr"], "SRMODE": ff.get("srmode", "LSR_OVER_CE")},
             "port_directions": {"CLK": "input", "CE": "input", "LSR": "input",
                                 "D": "input", "Q": "output"},
             "connections": {
