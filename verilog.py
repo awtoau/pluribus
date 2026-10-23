@@ -1071,6 +1071,41 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
     ]
 
 
+def _lut_self_latch(init: str, z_name: str, exprs: dict[str, str | None]) -> list[str] | None:
+    """Latch for a 6-input LUT whose output net is also one of its inputs, else None.
+
+    Per assignment of the other inputs, (f0, f1) = output with the self input at 0 / 1:
+    (1,1) -> set, (0,0) -> clear, (0,1) -> hold (bistable).  (1,0) would oscillate: such a LUT
+    is not a latch, so it returns None and stays a combinational loop for the gate to report.
+    """
+    if len(init) != 64:
+        return None
+    selfl = [ch for ch in "abcdef" if exprs.get(ch) == z_name]
+    if not selfl:
+        return None
+    others = [ch for ch in "abcdef" if ch not in selfl]
+    smask = sum(1 << "abcdef".index(ch) for ch in selfl)
+    sets, clrs = 0, 0
+    for o in range(1 << len(others)):
+        base = sum(((o >> j) & 1) << "abcdef".index(ch) for j, ch in enumerate(others))
+        f0, f1 = int(init[63 - base]), int(init[63 - (base | smask)])
+        if (f0, f1) == (1, 0):
+            return None
+        sets |= (f0 & f1) << o
+        clrs |= (1 - f0) * (1 - f1) << o
+    k = max(len(others), 1)
+    sel = "{" + ", ".join(exprs[ch] for ch in reversed(others)) + "}" if others else "1'b0"
+    r = "_lat_" + re.sub(r"[^a-zA-Z0-9_]", "_", z_name)
+    return [
+        f"    // {z_name} feeds its own LUT input: set-hold latch (set {sets:#x}, clear {clrs:#x} over {others})",
+        f"    reg {r};",
+        f"    localparam [{(1 << k) - 1}:0] {r}_set = {1 << k}'h{sets:x};",
+        f"    localparam [{(1 << k) - 1}:0] {r}_clr = {1 << k}'h{clrs:x};",
+        f"    always @* if ({r}_set[{sel}]) {r} = 1'b1; else if ({r}_clr[{sel}]) {r} = 1'b0;",
+        f"    assign {z_name} = {r};",
+    ]
+
+
 def emit_luts(data: dict) -> list[str]:
     """Emit LUTs as assign statements.
 
@@ -1171,6 +1206,13 @@ def emit_luts(data: dict) -> list[str]:
         # _lut_init_to_case's len(init)==16 branch (no `e` param) still applies.
         e_expr = rn(pe) if pe is not None else None
         f_expr = rn(pf) if pf is not None else None
+
+        if fn not in ("CONST0", "CONST1"):
+            blk = _lut_self_latch(init, z_name, dict(zip("abcdef", (a_expr, b_expr, c_expr, d_expr, e_expr, f_expr))))
+            if blk is not None:
+                blocks.append((z_name, blk))
+                _assigned_lut_outputs.add(z_name)
+                continue
 
         if fn is None or fn.startswith("COMBO"):
             # Pass human name for localparam naming; empty → use z_name (avoids lut_lut_lut…)
@@ -2020,7 +2062,7 @@ def emit_fplls(data: dict) -> list[str]:
     duplicated -- one calibrated M/N-counter decode, used by both the fuzz
     harness and the emitter. See docs/cyclonev-fpll-fuzz-status.md for what
     is and is not calibrated: M divide is confirmed for symmetric (50%
-    duty, hi==lo) non-bypassed cases and for the bypass case; a real sample
+    duty, hi==lo) non-bypassed cases and for the bypass case; a configuration
     with hi != lo (any non-50%-duty or odd-division M/N) decodes to
     confidence=UNKNOWN and is emitted as a comment-only placeholder, not a
     guessed parameter value -- never papers over an uncalibrated case with

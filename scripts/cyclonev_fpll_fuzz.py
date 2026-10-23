@@ -31,12 +31,12 @@ Same proven flow as cyclonev_dsp_fuzz.py:
     quartus_map -> quartus_fit -> quartus_asm -> quartus_cpf -c (.rbf)
     -> mistral-cv decomp -> extract `s FPLL.*` lines
 
-Device: 5CEBA4U19C8 (e50f/e50b) -- same die as the real DJI m2001 ground FPGA.
+Device: 5CEBA4U19C8 (e50f/e50b).
 
 Usage:
     python3 scripts/cyclonev_fpll_fuzz.py              # all designs
     python3 scripts/cyclonev_fpll_fuzz.py --only pll_m8_n1_c4
-    python3 scripts/cyclonev_fpll_fuzz.py --apply-real <path-to-m2001.bt>
+    python3 scripts/cyclonev_fpll_fuzz.py --apply-real <path-to-decomp.bt>
         # run the decode against a real .bt's FPLL tiles (read-only; does
         # NOT require the designs above to have been (re)compiled first if
         # tmp/cyclonev_fpll_fuzz/mapping.json already exists from a prior run)
@@ -45,7 +45,7 @@ Output:
     tmp/logs/cyclonev_fpll_fuzz.log      -- full run log
     tmp/cyclonev_fpll_fuzz/<design>/     -- quartus project + .bt (gitignored)
     tmp/cyclonev_fpll_fuzz/mapping.json  -- design -> FPLL.* settings
-    tmp/cyclonev_fpll_fuzz/real_sample_report.json -- decode applied to m2001
+    tmp/cyclonev_fpll_fuzz/real_sample_report.json -- decode applied to the given .bt
 """
 import argparse
 import json
@@ -369,8 +369,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--apply-real", type=Path, default=None,
-                     help="path to a real .bt to decode (e.g. awto-dji's "
-                          "m2001.bt); report written alongside mapping.json")
+                     help="path to a real .bt to decode (e.g. a corpus "
+                          "decomp.bt); report written alongside mapping.json")
     ap.add_argument("--skip-compile", action="store_true",
                      help="skip the Quartus/Mistral fuzz run, only do "
                           "--apply-real against an existing real .bt (or "
@@ -433,8 +433,8 @@ def main():
 
 
 def apply_to_real_sample(bt_path: Path, logger):
-    """Decode every FPLL tile in a real .bt (e.g. awto-dji's m2001.bt) and
-    report recovered parameters with an honest per-tile confidence label.
+    """Decode every FPLL tile in a real .bt (e.g. a corpus decomp.bt) and
+    report recovered parameters with a per-tile confidence label.
     Read-only: never writes into the source .bt's own tree."""
     if not bt_path.is_file():
         logger.error("--apply-real: %s is not a file", bt_path)

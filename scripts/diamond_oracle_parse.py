@@ -251,7 +251,8 @@ def parse_nmc(data, trace=None):
     return m
 
 
-# Diamond's placement grid: y = (max_row - row) * SITE_SLOTS + site_index.
+# Diamond's placement grid: y = (max_row - row) * site_slots + site_index.
+# MachXO2 uses 14 slots per row, ECP5 20 (docs/ecp5-diamond-oracle.md).
 SITE_SLOTS = 14
 _WIRE_RE = re.compile(r"^R(-?\d+)C(-?\d+)_(\S+)$")
 _SITE_RE = re.compile(r"^R(\d+)C(\d+)([A-D])$")
@@ -275,11 +276,16 @@ def split_wire(w):
     return int(m.group(1)), int(m.group(2)), m.group(3)
 
 
-def build_oracle(ncdr, macro, n2n_log, max_row, pinmap=None):
+def build_oracle(ncdr, macro, n2n_log, max_row, pinmap=None, site_slots=SITE_SLOTS,
+                 unique_votes=False):
     """Merge ncdread + parsed nmc into the oracle dict; absolute coordinates.
 
     max_row: device's last row (Diamond numbering).  pinmap: iodb package pins
-    {pin: {row, col, pio}} (prjtrellis 0-based col) used only as a cross-check."""
+    {pin: {row, col, pio}} (prjtrellis 0-based col) used only as a cross-check.
+    site_slots: placement-grid slots per row (MachXO2 14, ECP5 20).
+    unique_votes: anchor votes only from pins whose slice-pin wire name occurs once
+    among the net's pins and once among its wires (ECP5: high-fanout nets repeat
+    A0_SLICE etc. in many tiles, so a name match alone is ambiguous)."""
     warn = []
     checks = {}
     ncomps = {c["name"]: c for c in ncdr["comps"]}
@@ -311,7 +317,7 @@ def build_oracle(ncdr, macro, n2n_log, max_row, pinmap=None):
     tiles = []
     for i, (x, y, placed) in enumerate(macro["relplace"]):
         ax, ay = (x, y) if i == 0 else (x0 + x, y0 + y)
-        tiles.append((max_row - ay // SITE_SLOTS, ax, ay % SITE_SLOTS, placed))
+        tiles.append((max_row - ay // site_slots, ax, ay % site_slots, placed))
     place_bad = []
     n_checked = 0
     pio_cols = {}       # "edge:dcol-iodbcol:slot-pio" -> count (pads vs iodb)
@@ -325,7 +331,7 @@ def build_oracle(ncdr, macro, n2n_log, max_row, pinmap=None):
                 place_bad.append(c["name"])
                 warn.append(f"relplace_mismatch: {c['name']} {site} got "
                             f"R{row}C{col}/{slot} want R{want[0]}C{want[1]}/{want[2]}")
-        elif site.isdigit() and pinmap and site in pinmap:
+        elif pinmap and site in pinmap:
             n_checked += 1
             pm = pinmap[site]
             edge = ("T" if pm["row"] == 0 else "B" if pm["row"] == max_row
@@ -356,13 +362,25 @@ def build_oracle(ncdr, macro, n2n_log, max_row, pinmap=None):
         if rt is None:
             continue
         wires = {w for a in rt["arcs"] for w in a}
+        pin_tw = []
         for p in s["pins"]:
             site = (ncomps.get(mcomps[p["comp"]]["name"]) or {}).get("site") or ""
             ms = _SITE_RE.match(site)
-            if not ms:
-                continue
-            tw = slice_pin_wire(ms.group(3), p["pin"])
+            tw = slice_pin_wire(ms.group(3), p["pin"]) if ms else None
+            pin_tw.append((ms, tw))
+        if unique_votes:
+            wcount = {}
+            pcount = {}
+            for w in wires:
+                nm = split_wire(w)[2]
+                wcount[nm] = wcount.get(nm, 0) + 1
+            for _ms, tw in pin_tw:
+                if tw is not None:
+                    pcount[tw] = pcount.get(tw, 0) + 1
+        for ms, tw in pin_tw:
             if tw is None:
+                continue
+            if unique_votes and (pcount[tw] != 1 or wcount.get(tw + "_SLICE") != 1):
                 continue
             for w in wires:
                 dr, dc, nm = split_wire(w)

@@ -3,7 +3,7 @@
 Altera/Intel bitstream by header, length and frame structure.  Vendor files stay under tmp/.
 
   python3.15t scripts/fpga_family_probe.py [--glob 'sfl_ep*.sof']
-Out: tmp/m2001/rbf/<stem>.rbf, <stem>.c.rbf; log: tmp/logs/fpga_family_probe.log
+Out: tmp/fpga_family/rbf/<stem>.rbf, <stem>.c.rbf; log: tmp/logs/fpga_family_probe.log
 """
 import argparse
 import logging
@@ -21,7 +21,7 @@ import toolchain  # noqa: E402
 # quartus_cpf on a small SFL .sof: ~1-2 s (corpus note: < 2 min cold worst case); 120 s backstop
 LIMIT_S = 120
 MIN_GB = 3
-OUT = os.path.join(REPO, "tmp", "m2001", "rbf")
+OUT = os.path.join(REPO, "tmp", "fpga_family", "rbf")
 
 
 def main():
