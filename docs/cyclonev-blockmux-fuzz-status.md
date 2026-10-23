@@ -433,6 +433,105 @@ Not reached:
   `testsyn_enout_select` as a verdict: need a PLL or DDR/DQS design, not built.
 - `cmuxhr` input_sel for other pins: not probed.
 
+## dsp (input / coefficient / register / output muxes) -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target dsp --all`. Probes in `DSP_PROBES`, checks in `DSP_CHECKS`. MODE excluded
+(covered by `cyclonev_dsp_fuzz.py`). Verdict = printed value or Mistral default on the DSP tile
+with the most printed settings.
+
+Counts (`cv_block_muxes`, 60 rows): before 60 INCONCLUSIVE (no dsp probe); after MATCH 4,
+MISMATCH 6, INCONCLUSIVE 50.
+
+Probes (one DSP each, plain Verilog unless noted): `u_comb`, `u_reg`, `s_reg`, `w9_reg`
+(9x9 signed), `inreg`, `inout`, `coef_const` (`a * 18'sd11111`), `coef_sig`, `preadd`
+(`(a+b)*c`, no pre-adder inferred), `en_reg`, `acc`, `sub`, `chain`, `preadd_ip` (megafunction).
+
+MISMATCH (against name-based expectation):
+- `ax_signed`, `ay_signed` (probe `s_reg`, 18x18 both operands signed): decoded 0, expected 1.
+  `s_reg/dsp_s_reg.bt` has `s DSP.033.001:BX_SIGNED 1` and `BY_SIGNED 1`, no AX/AY line.
+  Same flags on 9x9 (`w9_reg/dsp_w9_reg.bt:203-204`: `AX_SIGNED 1`, `AY_SIGNED 1`) and
+  `acc`/`sub`/`coef_const`/`coef_sig` (18x18 signed) print no AX/AY. Mistral's AX/AY
+  mapping for 18x18 or the A-operand sign field is not established.
+- `dec_inv`, `preload_inv`, `acc_inv`, `sub_inv` (probe `u_reg`, no inversion requested):
+  decoded 1, expected 0. Each prints `1` in all 10 probes, including unsigned comb
+  (`u_comb/dsp_u_comb.bt:456` `DEC_INV 1`). DATA_INV prints `1ff` in the same probes.
+  Whether 1 means "not inverted" in silicon is not established.
+
+MATCH: `bx_signed`, `by_signed` (signed 18x18 and unsigned), `oreg_ctrl` (REG when registered,
+`bypass` absent when not, `inout` REG), `preadder_en` (absent, default 0, on `u_reg` only).
+
+Observed only (INCONCLUSIVE), printed values recorded in `results.json`:
+- Input registers: `s_reg` none; `inreg` prints `INREG_CTRL_BX/BY/BZ REG` only. The A operand
+  register is not printed although the map report shows 36 dedicated logic registers (not
+  packed into the DSP). `inreg_ctrl_ax/ay/az` unresolved.
+- Coefficient rows `coef_a`/`coef_b` (raw `r`, 8 spans): no `COEF_*` line in any probe,
+  including the constant and signal coefficient probes. Not reached.
+- `preadder_en`: `preadd` (plain Verilog) maps `(a+b)` to ALUTs (map: 37 ALUTs, 2 DSPs), no
+  pre-adder flag. `preadd_ip` (`altera_mult_add`, `preadder_mode("SIMPLE")`,
+  `preadder_direction_0("ADD")`) fails in quartus_map: `Error (272006): Illegal parameter
+  value: dataa port is not instantiated` and an internal assertion
+  (`cbx_altera_mult_add.cpp:1113`). Port names not resolved. Not reached.
+- `enable0_inv`, `enable0_force`: `en_reg` prints no enable field.
+- Clock selects `clk*_sel`, `aclr*_sel`, `clk_*_sel`: printed (`CLK0_SEL 3`, `ACLR0_SEL 2`,
+  `CLK_AX17_SEL 2`), no independent expectation.
+- `data_inv` (raw): `1ff`/`0ff` vary by probe (`s_reg` DATA_INV.5 `0ff`), no expectation.
+
+Not reached: `cascade_*`, `chain_output_en`, `delay_cascade_*`, `systolic_reg_en`,
+`double_acc_en`, `partial_reconfig_en`, `dft_*`, `load_value`, `idireg_*` except acc/sub,
+`cascade_1st_en`, `dec/acc/preload/sub` inversion as true (not requested in any probe).
+
+## gpio round 2: termination, LVDS, variant X -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target gpio --all --value`. Code: `run_gpio_round2`, `gpio_row_results`,
+`ibis_scan_pins`. Legal names come from strings in
+`quartus/linux64/libdb_acf.so`. Quartus rejects unknown values (Error 169006 for OCT,
+125036 for VOD), so the string list was checked by compile.
+
+OCT (`<volt>_<N>ohm` names, drive_strength table):
+- Assignments that compile on F8: `OUTPUT_TERMINATION "Series 25 Ohms with Calibration"`
+  and `"Series 50 Ohms with Calibration"` (5 voltages each).
+- Quartus rejects `INPUT_TERMINATION "Parallel 50 Ohms with Calibration"` on a 3.0-V LVTTL
+  input pin (Error 169058).
+- Series OCT prints `termination_mode` RS_STATIC on every accepted option (10 of 10).
+  `s GPIO.018.045:TERMINATION_MODE.2 RS_STATIC ; F8`.
+- The `drive_strength` field is not printed for OCT settings, so the 10 reachable `*_ohm`
+  names are INCONCLUSIVE.
+- 11 names (`*_34ohm`, `*_40ohm`, `hsul12_48/60/80ohm`, `sstl125/135/15_34/40ohm`): no
+  34/40/48/60/80-ohm value in the Quartus string list. Not attempted.
+- `termination_control`: not printed in any OCT build. INCONCLUSIVE.
+
+LVDS:
+- `IO_STANDARD LVDS` on U6 (`D3_3A_LVDSOUT2_P`): accepted, no drive_strength line decodes
+  (`lvds_1r`/`lvds_3r` not observed). INCONCLUSIVE.
+- `PROGRAMMABLE_VOD` is a recognised assignment name, but LOW, MEDIUM, HIGH, 0, 1, 2, 3 are
+  all rejected (Error 125036). Legal values not found. `vod_level` INCONCLUSIVE.
+- `vos_level`: no Quartus name tried.
+
+Variant X (pram bit 24):
+- Shared masks: the two tables differ only in names. Masks 787200 and 524800 are the
+  differing ones. `v3p3_lvttl_8ma` (524800) exists only in x.
+- Scan: 3.3-V LVTTL 8mA on all 179 LVDS-named user pins from the package file
+  (`eda/ibis/5ceba4_u4840.xml`, chunks of 90 for the 224-pin limit). All 179 decode
+  `v3p3_lvttl_8ma`, i.e. variant x. Zero variant-X pins.
+- Scan A (3.0-V LVTTL 8mA on X candidates) therefore never ran.
+- Result: variant X not reached. The pin set searched excludes general I/O not listed in
+  the package file (e.g. F8 was x in earlier rounds too).
+
+Row counts (gpio, 24 rows): before, no row accounting existed (verdicts only on values:
+43 MATCH on F8, 8 on other pins, 21 INCONCLUSIVE). After: MATCH 2 (`x.drive_strength`,
+`i.termination_mode`), MISMATCH 0, INCONCLUSIVE 22.
+
+## lvl -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+- The 16 `lvl` rows are clock-delay / PLL-style fields (`clk_delay`, `fbout0/1_delay`,
+  `phyclk_sel`, `dll_sel`, `co_delay`, `delay_clk_sel`, `pll_sel`). They are not level
+  shifters, as far as these names show.
+- Probe: IO standard 1.8 V LVCMOS (`v1p8_2ma`) vs 3.3 V LVTTL (`v3p3_lvttl_8ma`) on F8.
+  Neither build prints an LVL tile or any of the 16 field names. Non-GPIO differences are
+  fitter routing/placement (`r`/`s` LAB and HMC lines), not an IO-standard field.
+- Result: all 16 rows INCONCLUSIVE. One IO-bank pair tested; the VCCIO-dependence
+  hypothesis is not supported, not disproved.
+
 ## Not done
 
 - Other GPIO `m`/`n` muxes (see above).

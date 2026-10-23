@@ -11,6 +11,10 @@ Dump targets (--dump-target):
 
   gpio  (pram, `m`)   named value of GPIO drive_strength, per pin.
                       Verdict = decoded name for the pin == requested name.
+                      `--all`: OCT (`*_ohm`), LVDS, PROGRAMMABLE_VOD, variant-X
+                      scan (run_gpio_round2), with row accounting.
+  dsp   (cram, `g`/`c`/`d`/`m`/`n`/`r`)  DSP input/coef/register/output muxes
+                      (DSP_PROBES; MODE excluded, see cyclonev_dsp_fuzz.py).
   opt   (oram)        global option bits (`o` lines).  Mistral prints the
                       RAW value of each non-default option, so the verdict
                       compares the raw bit with the value the QSF setting
@@ -446,6 +450,231 @@ def control_default(pin: str, logger) -> dict:
     logger.info("control (no strength assignment): %s decodes to %s", pin, names)
     return {"verdict": "CONTROL", "decoded_names": names,
             "decoded_lines_for_pin": target}
+
+
+# ── gpio round 2: on-chip termination, LVDS, variant X ───────────────────────
+# OCT names in the drive_strength table are `<volt>_<N>ohm`.  Quartus 25.1 OCT
+# values (strings from libdb_acf.so): Series 25/50 Ohms with/without
+# Calibration, Parallel 50 Ohms with Calibration.  No 34/40/48/60/80 ohm value
+# is in that list.  Each option: (assignment, value, pin side, expected term mode).
+GPIO_VOLT_STD = {"v1p2": "1.2 V", "v1p5": "1.5 V", "v1p8": "1.8 V",
+                 "v2p5": "2.5 V", "v3p0": "3.0-V LVTTL"}
+OCT_OPTIONS = {
+    25: [("OUTPUT_TERMINATION", "Series 25 Ohms with Calibration", "out", "rs_static")],
+    50: [("OUTPUT_TERMINATION", "Series 50 Ohms with Calibration", "out", "rs_static"),
+         ("INPUT_TERMINATION", "Parallel 50 Ohms with Calibration", "in", "rt_static")],
+}
+VOD_CANDIDATES = ["LOW", "MEDIUM", "HIGH", "0", "1", "2", "3"]
+VOD_EXPECT = {"LOW": "low", "MEDIUM": "med", "HIGH": "high"}
+# Variant-X scan: 3.3-V LVTTL 8mA decodes v3p3_lvttl_8ma (x-only mask 524800) on
+# variant-x pins; a variant-0 pin cannot decode that name.
+_IBIS_PIN_RE = re.compile(r"^([A-Z][0-9]{1,2})\s+\|\s+\d+\s+(\S+)")
+
+
+def ibis_scan_pins(logger) -> list:
+    """LVDS-named user I/O pins from the Quartus package file (RZQ/VREF excluded)."""
+    path = QUARTUS_BIN.parent / "eda" / "ibis" / "5ceba4_u4840.xml"
+    pins = []
+    for line in path.read_text(errors="replace").splitlines():
+        m = _IBIS_PIN_RE.match(line)
+        if m and "LVDS" in m.group(2) and "RZQ" not in m.group(2) and "VREF" not in m.group(2):
+            pins.append(m.group(1))
+    logger.info("ibis: %d LVDS-named user pins in the package file", len(pins))
+    return pins
+
+
+def write_gpio_probe(d: Path, top: str, rows: list):
+    """One output/input pin per row.  Both ports of a row get the IO standard and
+    strength so the unplaced side passes the I/O standard check; extras go on the
+    placed side only."""
+    d.mkdir(parents=True, exist_ok=True)
+    n = len(rows)
+    bus = n > 1
+    rng = f"[{n - 1}:0] " if bus else ""
+    (d / f"{top}.v").write_text(
+        f"module {top}(input {rng}d, output {rng}q);\n  assign q = d;\nendmodule\n")
+    sig = lambda port, i: f"{port}[{i}]" if bus else port
+    lines = qsf_header(top)
+    for i, r in enumerate(rows):
+        placed = sig("d" if r["dir"] == "in" else "q", i)
+        other = sig("q" if r["dir"] == "in" else "d", i)
+        lines.append(f"set_location_assignment PIN_{r['pin']} -to {placed}")
+        for s in (placed, other):
+            if r.get("std"):
+                lines.append(f'set_instance_assignment -name IO_STANDARD "{r["std"]}" -to {s}')
+            if r.get("strength"):
+                lines.append(f'set_instance_assignment -name CURRENT_STRENGTH_NEW '
+                             f'"{r["strength"]}" -to {s}')
+        for name, val in r.get("extras", []):
+            lines.append(f'set_instance_assignment -name {name} "{val}" -to {placed}')
+    (d / f"{top}.qsf").write_text("\n".join(lines) + "\n")
+    (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
+
+
+def gpio_probe(top: str, rows: list, logger):
+    """(error_reason, bt_text).  error_reason None on success."""
+    d = WORK_DIR / top
+    write_gpio_probe(d, top, rows)
+    logger.info("=== %s: %s ===", top,
+                "; ".join(f"{r['pin']}/{r['dir']} {r.get('std')} {r.get('strength')} "
+                          f"{r.get('extras')}" for r in rows))
+    err = quartus_chain(top, d, logger)
+    if err:
+        return err, ""
+    return mistral_decomp(top, d, logger)
+
+
+PIN_SHORT = DEFAULT_PIN.replace("PIN_", "")   # "F8": QSF writes PIN_<site>
+
+
+def pin_lines(bt: str, mux: str, pin: str) -> list:
+    return [ln for ln in read_gpio_lines(bt, mux) if pin_matches(ln["pin"], pin)]
+
+
+def run_gpio_round2(logger) -> dict:
+    rows_db = load_mux_rows("gpio", MUX)
+    values = {}
+    for r in rows_db:
+        for _, nm in (r["values"] or []):
+            values.setdefault(str(nm), r)
+    results = {}
+
+    # 1. OCT: <volt>_<N>ohm, one pin per option; first option that decodes the name wins.
+    for name in sorted(values):
+        m = re.match(r"^(v\d+p\d+)_(\d+)ohm$", name)
+        if not m:
+            continue
+        volt, ohm = m.group(1), int(m.group(2))
+        key = f"gpio.{MUX}.{name}"
+        if ohm not in OCT_OPTIONS or volt not in GPIO_VOLT_STD:
+            results[key] = {"verdict": "INCONCLUSIVE", "reason":
+                            f"no {ohm}-ohm OCT value in Quartus 25.1 (Series 25/50, Parallel 50)"}
+            continue
+        attempts = []
+        verdict, decoded = "INCONCLUSIVE", []
+        for asgn, val, side, mode_exp in OCT_OPTIONS[ohm]:
+            top = slug(f"gpio_oct_{name}_{asgn}")
+            rows = [dict(pin=PIN_SHORT, dir=side, std=GPIO_VOLT_STD[volt],
+                         extras=[(asgn, val)])]
+            err, bt = gpio_probe(top, rows, logger)
+            if err:
+                attempts.append({"setting": f"{asgn} {val}", "error": err[:300]})
+                continue
+            names = sorted({ln["name"] for ln in pin_lines(bt, MUX, PIN_SHORT)})
+            modes = sorted({ln["name"] for ln in pin_lines(bt, "termination_mode", PIN_SHORT)})
+            attempts.append({"setting": f"{asgn} {val}", "decoded": names, "term_mode": modes})
+            # termination_mode is judged on every accepted option, independent of drive decode.
+            results[f"gpio.termination_mode.{asgn}.{name}"] = {
+                "verdict": "MATCH" if mode_exp in modes else "MISMATCH" if modes else "INCONCLUSIVE",
+                "expected": mode_exp, "decoded": modes,
+                "reason": f"{asgn} {val} -> termination_mode {modes or 'absent'}"}
+            if name in names:
+                verdict, decoded = "MATCH", names
+            elif names and any("ohm" in n for n in names):
+                verdict, decoded = "MISMATCH", names
+            if verdict != "INCONCLUSIVE":
+                break
+        reason = (f"requested {name} decodes {decoded}" if verdict == "MATCH" else
+                  f"setting gave {decoded}, expected {name}" if verdict == "MISMATCH" else
+                  "no Quartus option decoded this name (see attempts)")
+        results[key] = {"verdict": verdict, "reason": reason, "attempts": attempts,
+                        "decoded_names": decoded}
+        logger.info("%s: %s -- %s", key, verdict, reason)
+
+    # 2. LVDS standard (observed) and PROGRAMMABLE_VOD legal values (name-based where mapped).
+    err, bt = gpio_probe("gpio_lvds_std", [dict(pin="U6", dir="out", std="LVDS")], logger)
+    lvds = sorted({ln["name"] for ln in pin_lines(bt, MUX, "U6")}) if not err else err[:200]
+    for name in ("lvds_1r", "lvds_3r"):
+        results[f"gpio.{MUX}.{name}"] = {
+            "verdict": "INCONCLUSIVE", "decoded_names": lvds if isinstance(lvds, list) else [],
+            "reason": f"observed: IO_STANDARD LVDS on U6 decodes {lvds}; no LVDS-to-name map"}
+    for v in VOD_CANDIDATES:
+        top = slug(f"gpio_vod_{v}")
+        err, bt = gpio_probe(top, [dict(pin="U6", dir="out", std="LVDS",
+                                        extras=[("PROGRAMMABLE_VOD", v)])], logger)
+        key = f"gpio.vod_level.PROGRAMMABLE_VOD_{v}"
+        if err:
+            results[key] = {"verdict": "INCONCLUSIVE", "reason": err[:300]}
+            continue
+        dec = sorted({ln["name"] for ln in pin_lines(bt, "vod_level", "U6")})
+        exp = VOD_EXPECT.get(v)
+        if exp is None or not dec:
+            results[key] = {"verdict": "INCONCLUSIVE", "decoded_names": dec,
+                            "reason": f"accepted; vod_level decode {dec or 'absent'}"}
+        else:
+            results[key] = {"verdict": "MATCH" if exp in dec else "MISMATCH",
+                            "expected": exp, "decoded_names": dec,
+                            "reason": f"PROGRAMMABLE_VOD {v} -> vod_level {dec}"}
+        logger.info("%s: %s -- %s", key, results[key]["verdict"], results[key]["reason"])
+
+    # 3. Variant X scan: one compile per scan, many pins.  Scan B: 3.3-V LVTTL 8mA.
+    # Pins decoding v3p3_lvttl_8ma are variant x; others are variant-X candidates.
+    # Each row costs two I/O pins (the unplaced port); 224 user I/O on this part -> chunks of 90.
+    scan_pins = ibis_scan_pins(logger)
+    chunks = [scan_pins[i:i + 90] for i in range(0, len(scan_pins), 90)]
+    xcand, xpins = [], {}
+    for ci, chunk in enumerate(chunks):
+        err, bt = gpio_probe(f"gpio_scan_b{ci}", [dict(pin=p, dir="out", std="3.3-V LVTTL",
+                                                       strength="8mA") for p in chunk], logger)
+        if err:
+            results[f"gpio.{MUX}.scan_b.{ci}"] = {"verdict": "INCONCLUSIVE", "reason": err[:300]}
+            continue
+        for p in chunk:
+            names = sorted({ln["name"] for ln in pin_lines(bt, MUX, p)})
+            if not names:
+                continue
+            if names == ["v3p3_lvttl_8ma"]:
+                results[f"gpio.{MUX}.scan.x.{p}"] = {"verdict": "MATCH", "variant": "x",
+                                                     "decoded_names": names, "reason":
+                                                     "3.3-V LVTTL 8mA -> v3p3_lvttl_8ma (x-only)"}
+            else:
+                xcand.append(p)
+                xpins[p] = names
+    # Scan A: 3.0-V LVTTL 8mA (mask 26676, in both tables) on variant-X candidates.
+    for ci in range(0, len(xcand), 90):
+        chunk = xcand[ci:ci + 90]
+        err, bt = gpio_probe(f"gpio_scan_a{ci}", [dict(pin=p, dir="out", std="3.0-V LVTTL",
+                                                       strength="8mA") for p in chunk], logger)
+        for p in chunk:
+            if err:
+                results[f"gpio.{MUX}.scan.X.{p}"] = {"verdict": "INCONCLUSIVE", "reason": err[:300]}
+                continue
+            names = sorted({ln["name"] for ln in pin_lines(bt, MUX, p)})
+            ok = names == ["v3p0_lvttl_8ma"]
+            results[f"gpio.{MUX}.scan.X.{p}"] = {
+                "verdict": "MATCH" if ok else "MISMATCH" if names else "INCONCLUSIVE",
+                "variant": "X", "decoded_names": names, "scan_b_decoded": xpins[p],
+                "reason": (f"3.3-V LVTTL 8mA decoded {xpins[p]} on this pin; "
+                           f"3.0-V LVTTL 8mA decoded {names}")}
+    results["gpio.scan.summary"] = {"verdict": "INCONCLUSIVE", "x_pins": [
+        p for p in scan_pins if p in xpins], "x_scan_b": xpins,
+        "reason": "variant split from 3.3-V LVTTL 8mA decode (see scan entries)"}
+    return results
+
+
+def gpio_row_results(rows_db: list, results: dict) -> dict:
+    """One verdict per cv_block_muxes gpio row.  drive_strength rows (X/x) take the
+    scan entries of their variant plus the untagged OCT/LVDS entries."""
+    out = {}
+    for row in rows_db:
+        mux = row["mux"]
+        # Scan entries belong to one variant (tag X = variant 0, x = variant 1);
+        # OCT/LVDS/scan-B entries apply to both rows.
+        tag = {0: "X", 1: "x"}.get(row["variant"])
+        mine = [v for k, v in results.items() if k.startswith(f"gpio.{mux}.")
+                and (".scan." not in k or k.startswith(f"gpio.{mux}.scan.{tag}."))
+                and "summary" not in k]
+        if any(v["verdict"] == "MISMATCH" for v in mine):
+            vd = "MISMATCH"
+        elif any(v["verdict"] == "MATCH" for v in mine):
+            vd = "MATCH"
+        else:
+            vd = "INCONCLUSIVE"
+        reason = ("; ".join(sorted({v.get("reason", "") for v in mine}))[:400] if mine
+                  else "no probe reaches this mux")
+        out[f"gpio.row.{row['subtype']}.{mux}"] = {
+            "verdict": vd, "reason": reason, "subtype": row["subtype"], "stype": row["stype"]}
+    return out
 
 
 # ── opt path ─────────────────────────────────────────────────────────────────
@@ -1351,6 +1580,231 @@ def run_cmux_dumps(targets: list, logger) -> dict:
     return decodes
 
 
+# ── dsp path (input / coefficient / register / output muxes; MODE excluded) ─
+# Each probe is one DSP operation written as plain Verilog (same style as
+# cyclonev_dsp_fuzz.py).  Verdict = printed value (or Mistral default when
+# absent) on the probe's DSP tile.  Only signed flags and output register have
+# a name-based expectation; the rest are observed (INCONCLUSIVE).
+DSP_PROBES = {
+    # Unsigned, no registers: control for every "register/sign" row.
+    "u_comb": "module {t}(input [17:0] a, input [17:0] b, output [35:0] p);\n"
+              "  assign p = a * b;\nendmodule\n",
+    "u_reg": "module {t}(input clk, input [17:0] a, input [17:0] b, output reg [35:0] p);\n"
+             "  always @(posedge clk) p <= a * b;\nendmodule\n",
+    "s_reg": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+             "output reg signed [35:0] p);\n  always @(posedge clk) p <= a * b;\nendmodule\n",
+    "w9_reg": "module {t}(input clk, input signed [8:0] a, input signed [8:0] b, "
+              "output reg signed [17:0] p);\n  always @(posedge clk) p <= a * b;\nendmodule\n",
+    # Registered operands, combinational output.
+    "inreg": "module {t}(input clk, input [17:0] a, input [17:0] b, output [35:0] p);\n"
+             "  reg [17:0] ar, br;\n  always @(posedge clk) begin ar <= a; br <= b; end\n"
+             "  assign p = ar * br;\nendmodule\n",
+    # Registered operands and registered output.
+    "inout": "module {t}(input clk, input [17:0] a, input [17:0] b, output reg [35:0] p);\n"
+             "  reg [17:0] ar, br;\n  always @(posedge clk) begin ar <= a; br <= b; "
+             "p <= ar * br; end\nendmodule\n",
+    # Constant coefficient (18'sd11111) on the B operand.
+    "coef_const": "module {t}(input clk, input signed [17:0] a, output reg signed [35:0] p);\n"
+                  "  always @(posedge clk) p <= a * 18'sd11111;\nendmodule\n",
+    # Multiply-accumulate and multiply-subtract (accumulator register, data inversion).
+    "acc": "module {t}(input clk, input rst, input signed [17:0] a, input signed [17:0] b, "
+           "output reg signed [43:0] acc);\n  always @(posedge clk)\n    if (rst) acc <= 0;\n"
+           "    else acc <= acc + (a * b);\nendmodule\n",
+    "sub": "module {t}(input clk, input rst, input signed [17:0] a, input signed [17:0] b, "
+           "output reg signed [43:0] acc);\n  always @(posedge clk)\n    if (rst) acc <= 0;\n"
+           "    else acc <= acc - (a * b);\nendmodule\n",
+    # Coefficient from a signal (registered), not a constant.
+    "coef_sig": "module {t}(input clk, input signed [17:0] a, input signed [17:0] c, "
+                "output reg signed [35:0] p);\n  reg signed [17:0] cr;\n"
+                "  always @(posedge clk) begin cr <= c; p <= a * cr; end\nendmodule\n",
+    # Pre-adder: (a + b) * c.  Plain Verilog put the adder in ALUTs.
+    "preadd": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+              "input signed [17:0] c, output reg signed [35:0] p);\n"
+              "  always @(posedge clk) p <= (a + b) * c;\nendmodule\n",
+    # Same operation as the megafunction with the pre-adder set to ADD.
+    "preadd_ip": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+                 "input signed [17:0] c, output signed [35:0] p);\n"
+                 "  altera_mult_add #(.number_of_multipliers(1), .width_a(18), .width_b(18), "
+                 ".width_result(36), .representation_a(\"SIGNED\"), .representation_b(\"SIGNED\"), "
+                 ".input_register_a0(\"CLOCK0\"), .input_register_b0(\"CLOCK0\"), "
+                 ".output_register(\"CLOCK0\"), .preadder_mode(\"SIMPLE\"), "
+                 ".preadder_direction_0(\"ADD\"), .width_coef(18), .input_register_coef_0(\"CLOCK0\"), "
+                 ".SELECTED_DEVICE_FAMILY(\"CYCLONEV\"), "
+                 ".dedicated_multiplier_circuitry(\"YES\"), .intended_device_family(\"Cyclone V\"), "
+                 ".lpm_type(\"altera_mult_add\")) mult (.clock0(clk), .dataa_0(a), .datab_0(b), "
+                 ".datac_0(c), .result(p));\nendmodule\n",
+    # Clock enable on the product register.
+    "en_reg": "module {t}(input clk, input en, input [17:0] a, input [17:0] b, "
+              "output reg [35:0] p);\n  always @(posedge clk) if (en) p <= a * b;\nendmodule\n",
+    # Two-stage operand chain (systolic-style register between the input and multiplier).
+    "chain": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+             "output reg signed [35:0] p);\n  reg signed [17:0] ar, ad;\n"
+             "  always @(posedge clk) begin ar <= a; ad <= ar; p <= ad * b; end\nendmodule\n",
+}
+
+# (mux, probe, kind, expected, basis).  kind: eq (printed or default == expected),
+# observed (recorded, INCONCLUSIVE).
+DSP_CHECKS = [
+    ("ax_signed", "s_reg", "eq", 1, "signed operands: AX_SIGNED 1"),
+    ("ay_signed", "s_reg", "eq", 1, "signed operands: AY_SIGNED 1"),
+    ("bx_signed", "s_reg", "eq", 1, "signed operands: BX_SIGNED 1"),
+    ("by_signed", "s_reg", "eq", 1, "signed operands: BY_SIGNED 1"),
+    ("ax_signed", "u_reg", "eq", 0, "unsigned operands: default 0"),
+    ("ay_signed", "u_reg", "eq", 0, "unsigned operands: default 0"),
+    ("bx_signed", "u_reg", "eq", 0, "unsigned operands: default 0"),
+    ("by_signed", "u_reg", "eq", 0, "unsigned operands: default 0"),
+    ("ax_signed", "w9_reg", "eq", 1, "signed 9x9 operands: AX_SIGNED 1"),
+    ("oreg_ctrl", "u_reg", "eq", "reg", "registered output: OREG_CTRL REG"),
+    ("oreg_ctrl", "u_comb", "eq", "bypass", "combinational output: default bypass"),
+    ("oreg_ctrl", "inreg", "eq", "bypass", "registered inputs, combinational output: bypass"),
+    ("oreg_ctrl", "inout", "eq", "reg", "registered inputs and output: REG"),
+    ("preadder_en", "preadd_ip", "eq", 1, "altera_mult_add preadder ADD: preadder_en 1"),
+    ("preadder_en", "u_reg", "eq", 0, "plain multiply: no pre-adder, default 0"),
+    ("dec_inv", "u_reg", "eq", 0, "no inversion requested: 0"),
+    ("preload_inv", "u_reg", "eq", 0, "no inversion requested: 0"),
+    ("acc_inv", "u_reg", "eq", 0, "no inversion requested: 0"),
+    ("sub_inv", "u_reg", "eq", 0, "no subtraction requested: 0"),
+]
+DSP_OBSERVED = {
+    "inreg_ctrl_ax": "registered operand A: which of ax/ay/az takes the register",
+    "inreg_ctrl_ay": "registered operand A", "inreg_ctrl_az": "registered operand A",
+    "inreg_ctrl_bx": "registered operand B", "inreg_ctrl_by": "registered operand B",
+    "inreg_ctrl_bz": "registered operand B",
+    "idireg_acc_ctrl": "accumulator path register (acc probe)",
+    "idireg_sub": "subtract path register (sub probe)",
+    "clk0_sel": "clock select, no independent expectation",
+    "clk1_sel": "clock select, no independent expectation",
+    "clk2_sel": "clock select, no independent expectation",
+    "aclr0_sel": "async clear select (acc probe), no independent expectation",
+    "aclr1_sel": "async clear select, no independent expectation",
+    "coef_b": "constant coefficient: raw coefficient bits recorded",
+    "coef_a": "constant coefficient: raw coefficient bits recorded",
+    "chain_output_en": "cascade/chain output, no independent expectation",
+    "enable0_inv": "clock-enable probe printed no enable field (en_reg), no expectation",
+    "enable0_force": "clock-enable probe printed no enable field (en_reg), no expectation",
+    "cascade_en": "cascade output, no independent expectation",
+}
+DSP_NOT_IN_SCOPE = {"mode": "MODE covered by scripts/cyclonev_dsp_fuzz.py"}
+
+_DSP_FIELD_RE = re.compile(r"^s (DSP\.\d+\.\d+)(?:\.\w+)?:([A-Za-z0-9_]+)(?:\.(\d+))? (\S+)")
+
+
+def compile_dsp_probe(probe: str, logger):
+    """Quartus + mistral decomp for one DSP probe.  Returns (error, bt_text)."""
+    top = slug(f"dsp_{probe}")
+    d = WORK_DIR / top
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{top}.v").write_text(DSP_PROBES[probe].format(t=top))
+    (d / f"{top}.qsf").write_text("\n".join(qsf_header(top)) + "\n")
+    (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
+    logger.info("=== %s: DSP probe %s ===", top, probe)
+    err = quartus_chain(top, d, logger)
+    if err:
+        return err, ""
+    return mistral_decomp(top, d, logger)
+
+
+def parse_dsp_decode(bt_text: str):
+    """(tile, fields) for the DSP tile with the most printed settings.
+    fields[mux_lower][idx_or_None] = printed value string.  None if no DSP tile."""
+    per_tile = {}
+    for line in bt_text.splitlines():
+        m = _DSP_FIELD_RE.match(line)
+        if m:
+            per_tile.setdefault(m.group(1), {}).setdefault(m.group(2).lower(), {})[
+                int(m.group(3)) if m.group(3) is not None else None] = m.group(4)
+    if not per_tile:
+        return None, {}
+    tile = max(per_tile, key=lambda t: sum(len(v) for v in per_tile[t].values()))
+    return tile, per_tile[tile]
+
+
+def dsp_observed(row, fields: dict, idx=None):
+    """Printed value (normalised) or Mistral's default when absent."""
+    key = row["mux"]
+    if key in fields and (None in fields[key] or idx in fields[key]):
+        s = fields[key].get(idx, fields[key].get(None))
+        if row["stype"] in ("n", "b"):
+            return int(s)
+        return s.lower()
+    return row_default(row)
+
+
+def _dsp_results(decodes: dict, rows: list, logger) -> dict:
+    rows_by_mux = {}
+    for r in rows:
+        rows_by_mux.setdefault(r["mux"], r)
+    results = {}
+    for mux, probe, kind, expected, basis in DSP_CHECKS:
+        key = f"dsp.{mux}.{probe}"
+        dec = decodes.get(probe, {})
+        row = rows_by_mux.get(mux)
+        if "error" in dec or row is None:
+            results[key] = {"verdict": "INCONCLUSIVE", "basis": basis,
+                            "reason": dec.get("error", f"no row {mux!r}")}
+            continue
+        if not dec["fields"]:
+            results[key] = {"verdict": "INCONCLUSIVE", "basis": basis,
+                            "reason": "no DSP tile with settings in the .bt"}
+            continue
+        v = dsp_observed(row, dec["fields"])
+        ok = (v == expected)
+        verdict = "MATCH" if ok else "MISMATCH"
+        results[key] = {"verdict": verdict, "basis": basis, "tile": dec["tile"],
+                        "decoded": v, "expected": expected,
+                        "raw": dec["raw"].get(mux, []),
+                        "reason": basis if ok else
+                        f"decoded {v}, expected {expected}: {basis}"}
+        logger.info("%s: %s -- decoded %s, expected %s", key, verdict, v, expected)
+
+    # Row accounting: every cv_block_muxes dsp row gets one verdict.
+    for row in rows:
+        mux = row["mux"]
+        mine = [v for k, v in results.items() if k.startswith(f"dsp.{mux}.")]
+        if mux in DSP_NOT_IN_SCOPE:
+            vd, reason = "INCONCLUSIVE", DSP_NOT_IN_SCOPE[mux]
+        elif any(v["verdict"] == "MISMATCH" for v in mine):
+            vd = "MISMATCH"
+        elif any(v["verdict"] == "MATCH" for v in mine):
+            vd = "MATCH"
+        else:
+            vd = "INCONCLUSIVE"
+        if mux in DSP_NOT_IN_SCOPE:
+            pass
+        elif mine:
+            reason = "; ".join(sorted({v.get("reason", "") for v in mine}))
+        elif mux in DSP_OBSERVED:
+            seen = {p: d["fields"].get(mux) for p, d in decodes.items() if d.get("fields")}
+            seen = {p: v for p, v in seen.items() if v}
+            reason = f"observed only ({DSP_OBSERVED[mux]}); printed in " + (
+                ", ".join(sorted(seen)) if seen else "no probe")
+        else:
+            reason = "no probe prints this field"
+        results[f"dsp.row.{row['subtype']}.{mux}"] = {
+            "verdict": vd, "reason": reason, "subtype": row["subtype"], "stype": row["stype"]}
+    return results
+
+
+def run_dsp_dumps(logger) -> dict:
+    rows = load_rows("dsp")
+    decodes = {}
+    for probe in DSP_PROBES:
+        err, bt = compile_dsp_probe(probe, logger)
+        if err:
+            decodes[probe] = {"error": err}
+            logger.info("%s: compile failed -- %s", probe, err)
+            continue
+        tile, fields = parse_dsp_decode(bt)
+        raw = {}
+        for line in bt.splitlines():
+            m = _DSP_FIELD_RE.match(line)
+            if m and tile and m.group(1) == tile:
+                raw.setdefault(m.group(2).lower(), []).append(line)
+        decodes[probe] = {"tile": tile, "fields": fields, "raw": raw}
+        logger.info("%s: DSP tile %s, %d fields printed", probe, tile, len(fields))
+    return {**_dsp_results(decodes, rows, logger)}
+
+
 # ── merge / main ─────────────────────────────────────────────────────────────
 
 def merge_results(new: dict):
@@ -1373,7 +1827,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dump-target", default="gpio",
-                    choices=["gpio", "opt", "m10k", "lab", "mlab", "cmux"],
+                    choices=["gpio", "opt", "m10k", "lab", "mlab", "cmux", "dsp"],
                     help="which cv_block_muxes dump target to check (default %(default)s)")
     ap.add_argument("--value", nargs="*", default=[],
                     help="gpio: named value(s) of drive_strength to test (one compile each)")
@@ -1397,6 +1851,24 @@ def main():
                      "scripts/cyclonev_db_import_blockmux.py first")
         if args.list:
             print_gpio_list(rows)
+            return
+        if args.all:
+            logger = setup_logging()
+            results = run_gpio_round2(logger)
+            results.update(gpio_row_results(load_rows("gpio"), results))
+            merge_results(results)
+            print("\n=== gpio round-2 verdicts (checks) ===")
+            for key, r in results.items():
+                if ".row." not in key:
+                    print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')[:160]}")
+            print("\n=== gpio row verdicts ===")
+            counts = {"MATCH": 0, "MISMATCH": 0, "INCONCLUSIVE": 0}
+            for key, r in results.items():
+                if key.startswith("gpio.row."):
+                    counts[r["verdict"]] += 1
+            print("gpio: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+            print(f"\nresults: {RESULTS_PATH}")
+            print(f"log: {LOG_PATH}")
             return
         if not args.value and not args.control:
             ap.error("give at least one --value, or --control (or --list)")
@@ -1437,6 +1909,18 @@ def main():
                 print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
         print(f"\n=== {args.dump_target} row verdicts ===")
         print_row_counts(results, args.dump_target)
+    elif args.dump_target == "dsp":
+        if not args.all:
+            ap.error("dsp: give --all")
+        logger = setup_logging()
+        results = run_dsp_dumps(logger)
+        merge_results(results)
+        print("\n=== dsp verdicts (checks) ===")
+        for key, r in results.items():
+            if ".row." not in key:
+                print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
+        print("\n=== dsp row verdicts ===")
+        print_row_counts(results, "dsp")
     elif args.dump_target == "cmux":
         if not args.all:
             ap.error("cmux: give --all")
