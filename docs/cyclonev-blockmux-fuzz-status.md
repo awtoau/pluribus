@@ -86,8 +86,7 @@ Row counts from `cv_block_muxes`. "Die" = whether the e50f die has data for it.
 
 - `opt` (19 rows, oram): tested, see "opt" below.
 - `m10k` (76 rows, cram): tested, see "m10k" below.
-- `lab` (56), `mlab` (61): LAB clock/enable/clear selects. Needs FF enable/clear
-  source designs. Medium-hard.
+- `lab` (56), `mlab` (61): tested, see "lab / mlab" below.
 - `dsp` (60): MODE values covered by `cyclonev_dsp_fuzz.py`. Input/coef muxes
   remain. Cross-reference, not a duplicate.
 - `cmuxcr` (10), `cmuxvr`/`cmuxvg` (5/16), `cmuxhr`/`cmuxhg` (10/31): clock-network
@@ -233,6 +232,76 @@ Caveats:
   expectation; not counted as a Mistral failure.
 - Caveat for the `a=40` results in SP/SDP: `A_DATA_WIDTH 40` is absent (default), so those
   are absence matches. `B_DATA_WIDTH 40` is printed (non-default) in SP and SDP.
+
+## lab / mlab -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target lab --all` and `--dump-target mlab --all`. Probes in `LAB_PROBES`,
+checks in `LAB_CHECKS` (`scripts/cyclonev_blockmux_fuzz.py`). Each check states its
+basis; `distinct` checks are relational (no value name is established).
+
+Method:
+- Registers pinned with `set_location_assignment LAB_Xa_Yb -to <reg>`. Decoded tile
+  is `LAB.a.b` (verified on LAB_X10_Y10 and LAB_X20_Y20).
+- `LABCELL_*` on a register is rejected (Error 171011). `LAB_*` on a register works.
+- Three clocks pinned to one LAB fail to fit (Error 170071). Unpinned, the third clock
+  lands in a different LAB, so clk2 is not reached.
+- Slot is chosen by the fitter. Checks read it from the FF routing line
+  (`r LAB.a.b.S:FFT0`).
+- Logic pinned with `(* keep *)` wires lands in another LAB for sclr/sload/en.
+  Enable is LUT feedback; LAB `EN0_EN` stays 0 with and without an enable.
+- Control: one posedge FF (`ctrl`). MLAB control is the idle MLAB tile in the same .bt.
+- Probes: ctrl, negclk, clk2, clk3, sclr, sload, en, mlab_ram (16x1, ramstyle MLAB).
+
+Counts, by row (`cv_block_muxes`, one verdict per row):
+
+| target | rows | MATCH | MISMATCH | INCONCLUSIVE |
+|---|---|---|---|---|
+| lab | 56 | 3 | 1 | 52 |
+| mlab | 61 | 5 | 0 | 56 |
+
+Checks (lab 14, mlab 12):
+- lab MATCH: `tsclr_dis` (ctrl, clk2), `en0_en` (ctrl), `tclk_sel` (clk2, relational).
+- mlab MATCH: `ram_dis` (RAM 0, idle 1), `write_en` (RAM 1, idle 0), `sclr_dis` (RAM 1),
+  `tmode` and `bmode` (RAM in all 10 slots), each from the mlab_ram probe unless noted.
+- Raw .bt lines checked by hand (`tmp/cyclonev_blockmux_fuzz/labdump_*/`):
+  - `s LAB.020.020:TSCLR_DIS.0 1` (ctrl).
+  - `s LAB.020.020:TCLK_SEL.0 CLK0` and `TCLK_SEL.1 CLK1` (clk2).
+  - `s MLAB.013.001:RAM_DIS 0`, `TMODE.0 RAM`, `WRITE_EN 1` (mlab_ram).
+
+### MISMATCH
+
+- `clk0_inv`, control (`ctrl`, posedge FF, no inversion requested).
+  - Expected 0 (Mistral default, `cv_block_muxes` g row).
+  - Decoded `s LAB.020.020:CLK0_INV 1`.
+  - The negedge probe also decodes `CLK0_INV 1`, with `CLK0_SEL CLKB` added. So the
+    bit is 1 for both polarities. Not established: whether the bit means "not inverted"
+    in silicon (naming wrong) or is unrelated to clock polarity. Verdict is MISMATCH
+    against the naive expectation only.
+
+### Observed only (INCONCLUSIVE, decoded value recorded in results.json)
+
+- `clk0_sel`: negedge decodes `CLKB`. clka/clkb polarity not established.
+- `clka_sel`: `cin0` (ctrl), `din0` (clk2). Source depends on fitter routing.
+- `clkb_sel`: `din1` in ctrl and negedge. Unused, no fixed expectation.
+- `aclr0_sel`: `ACLR0` printed with no clear. Not discriminating.
+- `tmode` (ctrl): `e_0` for one top FF. Mode meaning not established.
+- `tclk_sel` (clk3): `off` in the probed slot. Clk2 not reached.
+- `tsclr_dis` (sclr): `1` in the FF's LAB. Sync clear is LUT logic in another LAB.
+- `sload_sel` (sload): `din1`. No LAB-level change.
+- `en0_en` (en): `0`. Enable is LUT feedback, not LAB EN0.
+- mlab: `mcrg_voltage` `VCCL`; `write_pulse_length` `650`; `clka_sel` `gin2`;
+  `tclk_sel` slot 5 `CLK2`; `t_feedback_sel` all 10 slots `1`.
+
+### Not reached
+
+- lab, all rows: the `b`-half of every i row (only top FF slots probed); `tclr_sel`,
+  `tef_sel`, `tpkreg*`, `en1/2_*`, `clk1/2_inv`, `sclr_*`, `sload_*`, `aclr*_inv`,
+  `dft_mode`, `regscan_latch_en`, `bypass_dis`, `tto/bto_dis`.
+  - Reason: no probe changes these, or the LUT-based forms of these controls land in
+    another LAB.
+- `tclk_sel = clk2` in a LAB: a third clock needs a LAB the fitter did not give.
+- `write_pulse_length` 500/800/950 and `mcrg/maddg` `vcchg`: no design variant tried.
+- `lut_mask`: out of scope (lifter exercises it).
 
 ## Not done
 

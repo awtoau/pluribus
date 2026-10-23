@@ -17,6 +17,10 @@ Dump targets (--dump-target):
                       should set, on both the knob build and the default
                       build.  The bitstream must change (rbf diff vs the
                       default build) or the verdict is INCONCLUSIVE.
+  lab   (cram, `g`/`i`)  LAB control muxes (clock/enable/clear/load selects,
+                      inversions, tmode/bmode).  Probes pin registers to one LAB
+                      (LAB_PROBES); checks in LAB_CHECKS; one verdict per row.
+  mlab  (cram, `g`/`i`)  same, with the MLAB probe (ramstyle MLAB, 16x1 RAM).
   m10k  (cram, `m`/`n`/`b`)  M10K port widths and true-dual-port mode, from
                       single/simple/true dual-port RAM inferred at each
                       width.  Verdict = decoded value on every M10K tile
@@ -696,6 +700,321 @@ def run_m10k(styles: list, logger) -> dict:
     return results
 
 
+# ── lab / mlab path ──────────────────────────────────────────────────────────
+# Probes are small designs whose registers are pinned to one LAB with
+# `set_location_assignment LAB_Xa_Yb` (LAB.a.b in the decode; verified on
+# LAB_X10_Y10 and LAB_X20_Y20).  Wires marked keep are pinned too, so the
+# LUT feeding a register lands in the same LAB where the fitter allows it.
+# The fitter, not the probe, chooses the LUT slot: checks read the slot from
+# the FF routing line (`r LAB.x.y.S:FFT0`), never from a fixed index.
+
+LAB_PROBE_LAB = "LAB_X20_Y20"
+LAB_PROBES = {
+    # Control: one posedge FF, no clear/enable/sload, clock via the LAB input.
+    "ctrl": ("module {t}(input clk, input d, output q);\n  reg a;\n"
+             "  always @(posedge clk) a <= d;\n  assign q = a;\nendmodule\n",
+             [("a", LAB_PROBE_LAB)]),
+    "negclk": ("module {t}(input clk, input d, output q);\n  reg a;\n"
+               "  always @(negedge clk) a <= d;\n  assign q = a;\nendmodule\n",
+               [("a", LAB_PROBE_LAB)]),
+    # Two clocks in one LAB: two FFs, two slots.
+    "clk2": ("module {t}(input c0, input c1, input d, output q0, output q1);\n"
+             "  reg a, b;\n  always @(posedge c0) a <= d;\n  always @(posedge c1) b <= d;\n"
+             "  assign q0 = a;\n  assign q1 = b;\nendmodule\n",
+             [("a", LAB_PROBE_LAB), ("b", LAB_PROBE_LAB)]),
+    # Three clocks: no LAB pin (a LAB holding all three fails to fit, Error 170071).
+    "clk3": ("module {t}(input c0, input c1, input c2, input d, output q0, output q1, output q2);\n"
+             "  reg a, b, c;\n  always @(posedge c0) a <= d;\n  always @(posedge c1) b <= d;\n"
+             "  always @(posedge c2) c <= d;\n  assign q0 = a;\n  assign q1 = b;\n"
+             "  assign q2 = c;\nendmodule\n", []),
+    # Synchronous clear / load / enable written as LUT logic (keep wire pinned).
+    "sclr": ("module {t}(input clk, input rst, input d, output q);\n  reg a;\n"
+             "  (* keep *) wire m = rst ? 1'b0 : d;\n  always @(posedge clk) a <= m;\n"
+             "  assign q = a;\nendmodule\n",
+             [("a", LAB_PROBE_LAB), ("m", LAB_PROBE_LAB)]),
+    "sload": ("module {t}(input clk, input ld, input d, input x, output q);\n  reg a;\n"
+              "  (* keep *) wire m = ld ? x : d;\n  always @(posedge clk) a <= m;\n"
+              "  assign q = a;\nendmodule\n",
+              [("a", LAB_PROBE_LAB), ("m", LAB_PROBE_LAB)]),
+    "en": ("module {t}(input clk, input en, input d, output q);\n  reg a;\n"
+           "  (* keep *) wire m = en ? d : a;\n  always @(posedge clk) a <= m;\n"
+           "  assign q = a;\nendmodule\n",
+           [("a", LAB_PROBE_LAB), ("m", LAB_PROBE_LAB)]),
+    # Distributed RAM: 16x1 with ramstyle MLAB.  Fills every LUT slot of one MLAB.
+    "mlab_ram": ("module {t}(input clk, input we, input [3:0] wa, input [3:0] ra, input d, "
+                 "output q);\n  (* ramstyle = \"MLAB\" *) reg mem [0:15];\n  reg qq;\n"
+                 "  always @(posedge clk) if (we) mem[wa] <= d;\n"
+                 "  always @(posedge clk) qq <= mem[ra];\n  assign q = qq;\nendmodule\n",
+                 []),
+}
+
+# (target, probe, mux, span, kind, expected, basis).  span: None (g rows),
+# "ff" (the slot holding the probe's FF), or an int.  kind:
+#   eq       decoded == expected
+#   distinct two spans decode to different non-off values (expected unused)
+#   observed recorded, INCONCLUSIVE (no independent expectation)
+LAB_CHECKS = [
+    # Control, no clear/enable/clock inversion requested.
+    ("lab", "ctrl", "clk0_inv", None, "eq", 0,
+     "no inversion requested: Mistral default 0"),
+    ("lab", "ctrl", "en0_en", None, "eq", 0,
+     "no register enable in the design: LAB enable 0 unused"),
+    ("lab", "ctrl", "tsclr_dis", "ff", "eq", 1,
+     "no synchronous clear in the design: top sclr disabled (1)"),
+    ("lab", "clk2", "tclk_sel", "ff2", "distinct", None,
+     "two FFs on two clocks in one LAB: two different LAB clock selects"),
+    ("lab", "clk2", "tsclr_dis", "ff", "eq", 1,
+     "no synchronous clear in the design: top sclr disabled (1)"),
+    ("lab", "negclk", "clk0_sel", None, "observed", None,
+     "negedge FF selects clkb; clka/clkb polarity not established by these probes"),
+    ("lab", "ctrl", "clka_sel", None, "observed", None,
+     "cin0 default in ctrl, din0 in clk2: source depends on fitter routing"),
+    ("lab", "ctrl", "clkb_sel", None, "observed", None,
+     "din1 in ctrl and negclk: unused clkb source, no fixed expectation"),
+    ("lab", "ctrl", "aclr0_sel", None, "observed", None,
+     "ACLR0 printed with no clear: value not discriminating"),
+    ("lab", "ctrl", "tmode", "ff", "observed", None,
+     "e_0 for a single top FF: mode meaning not established"),
+    ("lab", "clk3", "tclk_sel", None, "observed", None,
+     "clk2 not reached: a third clock lands in a different LAB"),
+    ("lab", "sclr", "tsclr_dis", "ff", "observed", None,
+     "sync clear is LUT logic in another LAB; top sclr stays 1 in this LAB"),
+    ("lab", "sload", "sload_sel", None, "observed", None,
+     "sload is LUT logic in another LAB; no LAB-level change"),
+    ("lab", "en", "en0_en", None, "observed", None,
+     "enable is LUT feedback (TDFF1L NLUT); LAB EN0 unchanged at 0"),
+    ("mlab", "mlab_ram", "ram_dis", None, "eq", 0,
+     "RAM in use: ram_dis must be 0 (enabled)"),
+    ("mlab", "mlab_ram", "write_en", None, "eq", 1,
+     "RAM with a write port: write_en 1"),
+    ("mlab", "mlab_ram", "sclr_dis", None, "eq", 1,
+     "RAM uses no synchronous clear: sclr disabled (1)"),
+    ("mlab", "mlab_ram", "tmode", "all", "eq", "ram",
+     "16x1 RAM fills all 10 LUT slots: each top mode RAM"),
+    ("mlab", "mlab_ram", "bmode", "all", "eq", "ram",
+     "16x1 RAM fills all 10 LUT slots: each bottom mode RAM"),
+    ("mlab", "mlab_ram", "mcrg_voltage", None, "observed", None,
+     "VCCL decoded; no independent voltage expectation"),
+    ("mlab", "mlab_ram", "write_pulse_length", None, "observed", None,
+     "650 decoded; no knob ties it to the design"),
+    ("mlab", "mlab_ram", "clka_sel", None, "observed", None,
+     "gin2 decoded; global-input mapping not established"),
+    ("mlab", "mlab_ram", "tclk_sel", 5, "observed", None,
+     "CLK2 decoded; clock-name mapping not established"),
+    ("mlab", "mlab_ram", "t_feedback_sel", None, "observed", None,
+     "all 10 slots print 1; no independent expectation"),
+    ("mlab", "ctrl", "ram_dis", None, "eq", 1,
+     "idle MLAB (control): ram_dis default 1"),
+    ("mlab", "ctrl", "write_en", None, "eq", 0,
+     "idle MLAB (control): write_en default 0"),
+]
+
+_LABMUX_LINE_RE = re.compile(
+    r"^s (M?LAB)\.(\d+)\.(\d+):([A-Za-z0-9_]+)(?:\.(\d+))? (\S+)")
+_LABFF_LINE_RE = re.compile(r"^r (M?LAB)\.(\d+)\.(\d+)\.(\d+):FF(\w+)")
+
+
+def parse_lab_decode(bt_text: str, kind: str):
+    """kind 'LAB' or 'MLAB'.  Returns (printed, ff_slots, raw) where
+    printed[tile][mux_lower][span_or_None] = printed value string,
+    ff_slots[tile] = sorted slots with an FF routing line,
+    raw[(tile, mux_lower, span)] = the .bt line."""
+    printed, ff_slots, raw = {}, {}, {}
+    for line in bt_text.splitlines():
+        m = _LABMUX_LINE_RE.match(line)
+        if m and m.group(1) == kind:
+            tile = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+            span = int(m.group(5)) if m.group(5) is not None else None
+            key = (m.group(4).lower(), span)
+            printed.setdefault(tile, {})[key] = m.group(6)
+            raw[(tile, key[0], span)] = line
+            continue
+        m = _LABFF_LINE_RE.match(line)
+        if m and m.group(1) == kind:
+            tile = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+            ff_slots.setdefault(tile, set()).add(int(m.group(4)))
+    return printed, {t: sorted(s) for t, s in ff_slots.items()}, raw
+
+
+def lab_norm(row, s):
+    if s is None:
+        return None
+    if row["stype"] in ("b", "n"):
+        return int(s)
+    return s.lower()
+
+
+def lab_observed(row, printed_tile: dict, mux: str, span):
+    """Value for (mux, span) in this tile, printed or Mistral's default."""
+    key = (mux, span)
+    if key in printed_tile:
+        return lab_norm(row, printed_tile[key]), True
+    return row_default(row), False
+
+
+def pick_tile(ff_slots: dict, printed: dict, kind: str, idle_ok: bool):
+    """Tile holding the probe's FFs (most FF routing lines).  idle_ok: no FF
+    needed, use the first MLAB tile without FFs (the MLAB control)."""
+    cand = [(len(s), t) for t, s in ff_slots.items() if s]
+    if cand:
+        return max(cand)[1]
+    if idle_ok:
+        idle = sorted(t for t in printed if t.startswith(kind + "."))
+        return idle[0] if idle else None
+    return None
+
+
+def compile_lab_probe(probe: str, logger):
+    """Quartus + mistral decomp for one probe.  Returns (error, bt_text)."""
+    body, locs = LAB_PROBES[probe]
+    top = slug(f"labdump_{probe}")
+    d = WORK_DIR / top
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{top}.v").write_text(body.format(t=top))
+    lines = qsf_header(top) + [f"set_location_assignment {lab} -to {reg}" for reg, lab in locs]
+    (d / f"{top}.qsf").write_text("\n".join(lines) + "\n")
+    (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
+    logger.info("=== %s: probe %s ===", top, probe)
+    err = quartus_chain(top, d, logger)
+    if err:
+        return err, ""
+    return mistral_decomp(top, d, logger)
+
+
+def run_lab_dumps(targets: list, logger) -> dict:
+    """Compile each needed probe once, decode for each target, return results."""
+    probes_needed = sorted({c[1] for c in LAB_CHECKS if c[0] in targets})
+    bts = {}
+    for probe in probes_needed:
+        err, bt = compile_lab_probe(probe, logger)
+        bts[probe] = (err, bt)
+    results = {}
+    for target in targets:
+        results.update(_lab_results(target, bts, logger))
+    return results
+
+
+def _lab_results(target: str, bts: dict, logger) -> dict:
+    kind = "LAB" if target == "lab" else "MLAB"
+    rows = load_rows(target)
+    rows_by_mux = {}
+    for r in rows:
+        rows_by_mux.setdefault(r["mux"], r)
+    decodes = {}
+    for probe, (err, bt) in bts.items():
+        if err:
+            decodes[probe] = {"error": err}
+            continue
+        printed, ff_slots, raw = parse_lab_decode(bt, kind)
+        tile = pick_tile(ff_slots, printed, kind,
+                         idle_ok=(kind == "MLAB" and probe == "ctrl"))
+        decodes[probe] = {"printed": printed, "ff": ff_slots, "raw": raw, "tile": tile}
+        logger.info("%s probe %s: tile %s, FF slots %s", kind, probe, tile,
+                    ff_slots.get(tile, []) if tile else None)
+
+    results = {}
+    for tgt, probe, mux, span_sel, kind_chk, expected, basis in LAB_CHECKS:
+        if tgt != target:
+            continue
+        key = f"{target}.{mux}.{probe}" + ("" if span_sel is None else f".{span_sel}")
+        dec = decodes.get(probe, {})
+        row = rows_by_mux.get(mux)
+        if "error" in dec or row is None:
+            results[key] = {"verdict": "INCONCLUSIVE", "basis": basis,
+                            "reason": dec.get("error", f"no row {mux!r}")}
+            logger.info("%s: INCONCLUSIVE -- %s", key, results[key]["reason"])
+            continue
+        tile = dec["tile"]
+        if tile is None:
+            results[key] = {"verdict": "INCONCLUSIVE", "basis": basis,
+                            "reason": f"no {kind} tile with the probe's FFs in the .bt"}
+            logger.info("%s: INCONCLUSIVE -- %s", key, results[key]["reason"])
+            continue
+        ptile = dec["printed"].get(tile, {})
+        ff = dec["ff"].get(tile, [])
+        base = {"probe": probe, "tile": tile, "basis": basis, "ff_slots": ff}
+
+        if kind_chk == "observed":
+            spans = [None] if span_sel is None else (
+                [ff[0]] if span_sel == "ff" and ff else
+                ([x for x in range(10)] if span_sel == "all" else
+                 [span_sel] if isinstance(span_sel, int) else []))
+            obs = {str(s): lab_observed(row, ptile, mux, s)[0] for s in spans}
+            results[key] = {**base, "verdict": "INCONCLUSIVE", "observed": obs,
+                            "reason": "observed only: " + basis}
+            logger.info("%s: INCONCLUSIVE (observed %s) -- %s", key, obs, basis)
+            continue
+
+        if kind_chk == "distinct":
+            if len(ff) < 2:
+                results[key] = {**base, "verdict": "INCONCLUSIVE",
+                                "reason": f"fewer than two FF slots in {tile}: {ff}"}
+                continue
+            a, _ = lab_observed(row, ptile, mux, ff[0])
+            b, _ = lab_observed(row, ptile, mux, ff[1])
+            ok = a != b and a is not None and b is not None
+            verdict = "MATCH" if ok else "MISMATCH"
+            results[key] = {**base, "verdict": verdict, "decoded": {str(ff[0]): a, str(ff[1]): b},
+                            "reason": "relational: distinct per-slot clock selects"}
+            logger.info("%s: %s -- slots %s decode %s / %s", key, verdict, ff[:2], a, b)
+            continue
+
+        # eq
+        if span_sel == "ff":
+            spans = [ff[0]] if ff else []
+        elif span_sel == "all":
+            spans = list(range(10))
+        else:
+            spans = [span_sel]
+        if not spans:
+            results[key] = {**base, "verdict": "INCONCLUSIVE", "reason": "no FF slot to check"}
+            continue
+        decoded = {}
+        raw_lines = []
+        for s in spans:
+            v, _ = lab_observed(row, ptile, mux, s)
+            decoded[str(s)] = v
+            ln = dec["raw"].get((tile, mux, s))
+            if ln:
+                raw_lines.append(ln)
+        bad = {s: v for s, v in decoded.items() if v != expected}
+        verdict = "MISMATCH" if bad else "MATCH"
+        results[key] = {**base, "verdict": verdict, "expected": expected, "decoded": decoded,
+                        "raw": raw_lines,
+                        "reason": (f"decoded {bad}, expected {expected}" if bad else basis)}
+        logger.info("%s: %s -- expected %s, decoded %s", key, verdict, expected, decoded)
+
+    # Row accounting: every cv_block_muxes row gets one verdict.
+    row_results = {}
+    for row in rows:
+        mux = row["mux"]
+        mine = [v for k, v in results.items() if k.startswith(f"{target}.{mux}.")]
+        if any(v["verdict"] == "MISMATCH" for v in mine):
+            vd = "MISMATCH"
+        elif any(v["verdict"] == "MATCH" for v in mine):
+            vd = "MATCH"
+        else:
+            vd = "INCONCLUSIVE"
+        if mine:
+            reason = "; ".join(sorted({v.get("reason", "") for v in mine}))
+        elif mux == "lut_mask":
+            reason = "LUT mask: exercised by the lifter, out of scope here"
+        else:
+            reason = "no probe reaches this mux"
+        row_results[f"{target}.row.{row['subtype']}.{mux}"] = {
+            "verdict": vd, "reason": reason, "subtype": row["subtype"], "stype": row["stype"]}
+    results.update(row_results)
+    return results
+
+
+def print_row_counts(results: dict, target: str):
+    rows = {k: v for k, v in results.items() if k.startswith(f"{target}.row.")}
+    counts = {"MATCH": 0, "MISMATCH": 0, "INCONCLUSIVE": 0}
+    for v in rows.values():
+        counts[v["verdict"]] += 1
+    print(f"{target}: {len(rows)} rows -- " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+
+
 # ── merge / main ─────────────────────────────────────────────────────────────
 
 def merge_results(new: dict):
@@ -717,7 +1036,7 @@ def print_gpio_list(rows):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dump-target", default="gpio", choices=["gpio", "opt", "m10k"],
+    ap.add_argument("--dump-target", default="gpio", choices=["gpio", "opt", "m10k", "lab", "mlab"],
                     help="which cv_block_muxes dump target to check (default %(default)s)")
     ap.add_argument("--value", nargs="*", default=[],
                     help="gpio: named value(s) of drive_strength to test (one compile each)")
@@ -769,6 +1088,18 @@ def main():
         print("\n=== opt verdicts ===")
         for key, r in results.items():
             print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
+    elif args.dump_target in ("lab", "mlab"):
+        if not args.all:
+            ap.error(f"{args.dump_target}: give --all")
+        logger = setup_logging()
+        results = run_lab_dumps([args.dump_target], logger)
+        merge_results(results)
+        print(f"\n=== {args.dump_target} verdicts (checks) ===")
+        for key, r in results.items():
+            if ".row." not in key:
+                print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
+        print(f"\n=== {args.dump_target} row verdicts ===")
+        print_row_counts(results, args.dump_target)
     else:
         if not args.all:
             ap.error("m10k: give --all")
