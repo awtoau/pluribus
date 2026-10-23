@@ -12,8 +12,21 @@ Reuses pluribus's own Cyclone V lifter (lifters/cyclonev_lift.py) to turn
 each forced decode into an actual recovered netlist (LUT/FF/pad_map), then
 compares:
 
-  1. LUT:FF ratio            -- real designs have a non-degenerate balance
-                                 of combinational vs. sequential logic.
+  1. used LUT:FF ratio       -- RETIRED the raw lut_ff_ratio as a signal
+                                 (confounded with resolved-route count: LUTs
+                                 are counted unconditionally, FFs only if Q
+                                 appears in a resolved route, so the raw
+                                 ratio just re-measures route resolution
+                                 rate -- demonstrated directly: forcing the
+                                 KNOWN-GOOD m2001 sample against the
+                                 DEFINITELY-WRONG gt75f produces lut_ff_ratio
+                                 2.67, nearly identical to the correct
+                                 decode's 2.90, because gt75f's larger
+                                 fabric coincidentally resolves more routes.
+                                 used_lut_ff_ratio (n_luts_used_by_routing /
+                                 n_ffs) gates both sides on resolution and is
+                                 reported instead -- not proven valid, just
+                                 not this specific confound).
   2. Pad/pin usage            -- sane count + direction mix + 4-edge spread,
                                  vs. degenerate (0, or "every pin", or
                                  one-edge-only).
@@ -313,7 +326,18 @@ def run_one(label, rbf_path: Path, work_dir: Path, log, decomp_timeout_s,
 
 def print_comparison_table(label, per_die, log):
     print(f"\n=== {label} ===")
-    hdr = (f"{'die':8s} {'LUTs':>7s} {'FFs':>7s} {'LUT:FF':>7s} "
+    print("NOTE: raw lut_ff_ratio is RETIRED as a plausibility signal (confounded")
+    print("with resolved-route count -- n_luts is unconditional, n_ffs is gated on")
+    print("Q appearing in a RESOLVED route, so the ratio just re-measures route")
+    print("resolution rate under another name; a definitely-wrong larger die can")
+    print("resolve MORE routes than the correct die and produce a near-identical")
+    print("ratio, verified directly: m2001/known-good e50f=2.90 vs. m2001 forced")
+    print("against the definitely-wrong gt75f=2.67. used_lut_ff_ratio below divides")
+    print("n_luts_USED-by-routing by n_ffs -- both sides now gated on route")
+    print("resolution, so it is no longer comparing a conditional count against an")
+    print("unconditional one. Still not a proven-valid signal, just no longer the")
+    print("specific confound found and demonstrated this session.")
+    hdr = (f"{'die':8s} {'LUTs':>7s} {'FFs':>7s} {'usedLUT:FF':>10s} "
            f"{'cfgALM%':>8s} {'pads':>5s} {'pins':>5s} {'opts':>5s} {'dsp_md':>7s} "
            f"{'ram_ln':>7s} {'arcs':>8s} {'unparsed%':>9s}")
     print(hdr)
@@ -331,7 +355,7 @@ def print_comparison_table(label, per_die, log):
         unparsed_pct = (100 * p.get("n_unparsed_lines", 0) / total_lines) if total_lines else 0
         dsp_modes_str = ",".join(f"{k}:{v}" for k, v in m.get("dsp_modes", {}).items()) or "-"
         print(f"{die:8s} {m.get('n_luts', '-'):>7} {m.get('n_ffs', '-'):>7} "
-              f"{str(m.get('lut_ff_ratio', '-')):>7} "
+              f"{str(m.get('used_lut_ff_ratio', '-')):>10} "
               f"{str(round((m.get('configured_alm_fraction') or 0) * 100, 1)):>8} "
               f"{m.get('pads', {}).get('n_pads', '-'):>5} "
               f"{m.get('pads', {}).get('n_distinct_pins', '-'):>5} "
