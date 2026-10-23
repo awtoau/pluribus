@@ -72,4 +72,4 @@ Measured 2026-10-24 on base commit `b7d1ce7f0`, Quartus 25.1std.0 Lite (`scripts
 - Compressor not written; Quartus' explicit-zero-nibble choices not modelled.
 - Encrypted (AES) streams: no oracle — Quartus 25.1 Lite refuses `--key` (`Error 213052: Design security feature is not enabled`). Strip 6 bits 36..37 and strips 3..4 (Mistral `OPT_B`) are the candidates for the encryption flag / IV; unconfirmed.
 - Container `0xFF` padding beyond 1024 bytes is treated as padding and trimmed to a 32-bit boundary; the length field then follows the trimmed length, not the original Quartus file.
-- `scripts/cyclonev_unpack.py` strips the leading `0xFF` preamble before `mistral-cv`. Mistral reads the option RAM at absolute `0x84`, so a stripped file is misread: corpus `adder12` (correct die) stripped -> 28,321 "Source unknown" rnodes and 2,136 routes vs 174 routes and none unknown unstripped.
+- `scripts/cyclonev_unpack.py` keeps the 0xFF preamble + sync, validates with this decoder and dies on a failed check (#114). Check: `scripts/cyclonev_unpack_check.py` -> 236/236 `.bt` identical to the stored `decomp.bt`.
