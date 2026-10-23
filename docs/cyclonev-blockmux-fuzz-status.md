@@ -532,6 +532,96 @@ Row counts (gpio, 24 rows): before, no row accounting existed (verdicts only on 
 - Result: all 16 rows INCONCLUSIVE. One IO-bank pair tested; the VCCIO-dependence
   hypothesis is not supported, not disproved.
 
+## Mismatch resolution -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target resolve` (`RESOLVE_OPT_BUILDS`, `RESOLVE_LAB_PROBES`, `RESOLVE_DSP_PROBES`,
+`RESOLVE_CMUX_PROBES`; 32 builds, `.bt` in `tmp/cyclonev_blockmux_fuzz/{rs_opt_*,labdump_rs_*,dsp_rs_*,cmux_rs_*}/`).
+Sources: Mistral `data/*-mux.txt` (`b+` = default 1, `b-` = default 0, `tools/mux_to_source.py:47-51`);
+`docs/cyclonev_details.rst`; nextpnr `mistral/bitstream.cc`; Cyclone V Device Handbook vol 1
+(2022.07.05, `sources/altera/Cyclone_V_Device_Handbook_vol1.pdf`, 325 pages).
+
+| # | item | verdict |
+|---|---|---|
+| 1 | opt 6.2 moved by `RELEASE_CLEARS_BEFORE_TRI_STATES` | **Mistral wrong** |
+| 2 | `cvp_conf_done_en` | **Mistral wrong** (6.2 is not CvP); CvP bit not located |
+| 3 | `device_wide_reset_en` polarity | **Mistral wrong** (name polarity; bit and default right) |
+| 4 | opt 6.4/6.5 overlap with `start_up_clock` | **Mistral wrong** (aliased field) |
+| 5 | M10K TDP x40 = two x20 tiles | expectation wrong |
+| 6 | LAB `clk0_inv` | **Mistral wrong** (`clk0_inv` / `clk0_sel` roles swapped) |
+| 7 | LAB `en0_ninv`, `en1_ninv` | expectation wrong (polarity bit, name misleading) |
+| 8 | LAB `aclr0_inv`, `aclr0_sel` | expectation wrong |
+| 9 | cmux L17 REGIONAL -> CMUXCR | expectation wrong (CMUXHR reached when placement needs it) |
+| 10 | DSP 18x18 prints only `BX/BY_SIGNED` | expectation wrong |
+| 11 | DSP `dec/preload/acc/sub_inv` = 1 | expectation wrong (`sub_inv` proven by pair; others by mechanism) |
+
+Evidence:
+1. `rs_opt_relclr_on` adds exactly `o CVP_CONF_DONE_EN 0` (bit 6.2); `.rbf` differs by 3 bytes. `rs_opt_relclr_off`
+   and default: no line (1). Asm report: "Release clears before tri-states ; On". 6.3 never moves in any of the
+   10 opt builds (`START_UP_CLOCK`, which also reads 6.3 as its bit 2, never prints bit 2 cleared).
+   - Correction: 6.2 = `release_clears_before_tristates_dis`, 1 = Off (Quartus default), 0 = On.
+   - 6.3: meaning not established (Mistral's label for it is unconfirmed; a 6.2/6.3 swap is possible, not shown).
+2. `rs_opt_cvp_on`: fit report "Enable CvP_CONFDONE pin ; On", but the `.bt` diff vs default is only pin T20
+   (`GPIO.054.015 ... USE_OPEN_DRAIN.3 1 ; T20`, `OEIN`) plus placement; no `o` line changes. 6.2 stays 1.
+   - 6.2 is not the CvP bit (item 1). No oram bit for CvP found on this die; an unnamed oram bit would not print.
+   - Mistral default `b+` (1) means the "decodes 1 when Off" observation was only the default, not a polarity error.
+3. `rs_opt_dwr_on` -> `o DEVICE_WIDE_RESET_EN 0`, fit "Enable device-wide reset (DEV_CLRn) ; On", DEV_CLRn
+   reserved on R22. `rs_opt_dwr_off` and default -> no line (1). Flips in both directions.
+   - Correction: 6.4 = `device_wide_reset_dis`, 1 = DEV_CLRn off (default), 0 = on. Same polarity as
+     6.5 `allow_device_wide_output_enable_dis` (MATCH).
+4. `START_UP_CLOCK` (`r3f:8`, bits `6.0 6.7 6.3 6.4 6.5 3.38 3.39 3.40`) prints 37 for DWR On, 2f for DWOE On,
+   27 for both: it moves only when 6.4/6.5 move. `USER_START_UP_CLOCK On` (handbook "Enable user-supplied
+   start-up clock (CLKUSR)"): `.rbf` byte-identical to default.
+   - Correction: 6.3/6.4/6.5 do not belong to `start_up_clock`; 6.4/6.5 are the device-wide reset/OE bits.
+     The other 5 `start_up_clock` bits are unverified (no knob moved them).
+5. Handbook vol 1, Table 2-8 "M10K Block Mixed-Width Configurations in True Dual-Port Mode" (p. 2-10): widest
+   TDP port is 512 x 20; x40 exists only in single-port / simple dual-port (Tables 2-6, 2-7). Two x20 tiles
+   is the only legal mapping. Mistral not contradicted.
+6. Clock-source / edge pairs, `labdump_rs_*/*.bt` (clock arrival from `r ... LAB.020.020:CLKIN.n|DATAIN.n`):
+
+   | probe | clock enters on | edge | 10.44 `CLK0_SEL` | 6.45 `CLK0_INV` |
+   |---|---|---|---|---|
+   | `rs_ctrl` | DATAIN.1 (clkb) | pos | 0 (clka) | 1 |
+   | `rs_negclk` | DATAIN.1 (clkb) | neg | 1 (clkb) | 1 |
+   | `rs_bank_plain`, `rs_ctrl_glob` | CLKIN.0 (clka) | pos | 0 | 0 |
+   | `rs_bank_neg`, `rs_negclk_glob` | CLKIN.0 (clka) | neg | 1 | 0 |
+   | `rs_bank_plain_off` (`CLKA_SEL DIN0`) | DATAIN.0 (clka) | pos | 0 | 0 |
+   | `rs_bank_neg_off` | DATAIN.0 (clka) | neg | 1 | 0 |
+
+   - Read with Mistral's labels, `rs_ctrl`, `rs_bank_neg`, `rs_bank_neg_off` clock from an undriven source.
+   - Swapped, all 8 builds are consistent: 10.44 tracks the edge, 6.45 tracks the source.
+   - Correction: 6.45 = clk0 source select (0 = clka, 1 = clkb); 10.44 = clk0 inversion (0 = posedge, 1 = negedge).
+   - clk1/clk2 (6.43/10.43, 6.41/10.41) by analogy only: unused `CLK1_INV`/`CLK2_INV` print 1 when clka is in
+     use and are absent when clkb is in use (parked on the idle source). Not tested with a used clk1/clk2.
+   - nextpnr sets `CLK*_INV` for inverted clocks (`bitstream.cc:290-291`); by this result that selects the other
+     source. Not tested on hardware.
+7. `rs_bank_en` (`if (e0)`): `s LAB.020.020:EN0_NINV 0`. `rs_bank_en_n` (`if (!e0)`): no line (1). Both enter
+   on DATAIN.2. Bit flips with polarity in both directions.
+   - 0 = active-high enable, 1 = active-low (in Verilog terms). nextpnr writes `EN*_NINV = ena.inverted`
+     (`bitstream.cc:295`), the same mapping. Data right; the name reads backwards.
+8. `rs_bank_aclr` (active-high): `ACLR0_INV 1`, no `ACLR0_SEL` (din3). `rs_bank_aclr_n` (active-low): neither line.
+   Both route the clear on `TD.020.020.0035 -> LAB.020.020:DATAIN.3`. No clear: `ACLR0_SEL ACLR0`.
+   - `aclr0_inv`: polarity bit, 1 = active-high clear (the register clear is active-low). Flips both ways.
+   - `aclr0_sel`: din3 = clear from DATAIN.3 (in use here); `aclr0` = idle. nextpnr: "Quartus seems to set
+     unused ACLRs to ACLR0" (`bitstream.cc:352-356`).
+9. Mistral `data/e50f-cmux.txt`: L17 = `GPIO.054.018.0` (`e50f-pkg.txt` u19). Corner `CMUX 054.002` has it as
+   clkpin 2 and drives only `RCLK.028.011.*` (lower right); `CMUX 054.022` drives `RCLK.028.034.*` too.
+   - `rs_l17_reg_lo` (FFs on LAB_X40_Y5): `s CMUXCR.054.002:CLKPIN_SEL_0.0 2`, `INPUT_SEL.0 8` (= CLKPIN_SEL.0,
+     `cmuxcr-links.rst` row 08). Exactly Mistral's predicted input.
+   - `rs_l17_reg_hi` (FFs on LAB_X40_Y38): `s CMUXHR.054.022:INPUT_SEL.2 06` (= CLKPIN_SEL.2, `cmuxhr-links.rst`),
+     `CLKPIN_SEL.2 PINB`. CMUXHR is selected when the corner cannot reach.
+10. `rs_s_reg` (one 18x18, fit "Two Independent 18x18"): `BX_SIGNED 1`, `BY_SIGNED 1`, no AX/AY.
+    `rs_s_sum2` / `rs_s_diff2` (fit "Sum of two 18x18", `MODE M18X19_COMBINED`): all four `*_SIGNED 1`.
+    `rs_u_sum2`: none. So a lone 18x18 sits on the B multiplier; AX/AY are the A multiplier's sign bits.
+    `rs_w9_reg` (`MODE M9X9`) prints all four.
+11. `rs_s_sum2` (`a*b + c*d`): `SUB_INV 1`. `rs_s_diff2` (`a*b - c*d`): no `SUB_INV` line (0). Flips with
+    the operation.
+    - Mechanism: Mistral `docs/cyclonev_details.rst:141-142` "Unconnected bits default to 1 and must be
+      inverted to get a 0". `*_INV 1` = an unconnected dynamic control (NEGATE/LOADCONST/ACCUMULATE/SUB)
+      forced to 0. Handbook Table 3-3: plain multiply needs NEGATE = LOADCONST = ACCUMULATE = 0.
+    - `dec/preload/acc_inv` were never flipped: `rs_acc` and `rs_acc_free` (no reset) both fit as
+      "Two Independent 18x18" (accumulator in ALMs), so ACCUMULATE stays 0 and `ACC_INV 1`. No design reached
+      the DSP accumulator, negate or preload.
+
 ## Not done
 
 - Other GPIO `m`/`n` muxes (see above).
