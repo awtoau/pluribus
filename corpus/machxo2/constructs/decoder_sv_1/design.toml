@@ -1,0 +1,8 @@
+top = "top"
+purpose = "decoder with enable (width = select bits)"
+construct = "decoder"
+variant = "sv"
+width = 1
+lang = "systemverilog"
+io_bits = 5
+io_reduced = false

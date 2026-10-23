@@ -1,0 +1,18 @@
+module top (clk, we, wa, ra, din, dout);
+  input clk;
+  input we;
+  input [9:0] wa;
+  input [9:0] ra;
+  input [8:0] din;
+  output [8:0] dout;
+  wire nc9;
+  wire nc10;
+  wire nc11;
+  wire nc12;
+  wire nc13;
+  wire nc14;
+  wire nc15;
+  wire nc16;
+  wire nc17;
+  DP8KC #(.DATA_WIDTH_A(9), .DATA_WIDTH_B(9), .REGMODE_A("NOREG"), .REGMODE_B("NOREG"), .CSDECODE_A("0b000"), .CSDECODE_B("0b000"), .WRITEMODE_A("NORMAL"), .WRITEMODE_B("NORMAL"), .GSR("DISABLED")) u0 (.CEA(1'b1), .CLKA(clk), .WEA(we), .CSA0(1'b0), .CSA1(1'b0), .CSA2(1'b0), .RSTA(1'b0), .CEB(1'b1), .CLKB(clk), .WEB(1'b0), .CSB0(1'b0), .CSB1(1'b0), .CSB2(1'b0), .RSTB(1'b0), .DIA0(din[0]), .DIA1(din[1]), .DIA2(din[2]), .DIA3(din[3]), .DIA4(din[4]), .DIA5(din[5]), .DIA6(din[6]), .DIA7(din[7]), .DIA8(din[8]), .DIA9(1'b0), .DIA10(1'b0), .DIA11(1'b0), .DIA12(1'b0), .DIA13(1'b0), .DIA14(1'b0), .DIA15(1'b0), .DIA16(1'b0), .DIA17(1'b0), .DIB0(1'b0), .DIB1(1'b0), .DIB2(1'b0), .DIB3(1'b0), .DIB4(1'b0), .DIB5(1'b0), .DIB6(1'b0), .DIB7(1'b0), .DIB8(1'b0), .DIB9(1'b0), .DIB10(1'b0), .DIB11(1'b0), .DIB12(1'b0), .DIB13(1'b0), .DIB14(1'b0), .DIB15(1'b0), .DIB16(1'b0), .DIB17(1'b0), .ADA0(wa[0]), .ADA1(wa[1]), .ADA2(wa[2]), .ADA3(wa[3]), .ADA4(wa[4]), .ADA5(wa[5]), .ADA6(wa[6]), .ADA7(wa[7]), .ADA8(wa[8]), .ADA9(wa[9]), .ADA10(1'b0), .ADA11(1'b0), .ADA12(1'b0), .ADB0(ra[0]), .ADB1(ra[1]), .ADB2(ra[2]), .ADB3(ra[3]), .ADB4(ra[4]), .ADB5(ra[5]), .ADB6(ra[6]), .ADB7(ra[7]), .ADB8(ra[8]), .ADB9(ra[9]), .ADB10(1'b0), .ADB11(1'b0), .ADB12(1'b0), .DOB0(dout[0]), .DOB1(dout[1]), .DOB2(dout[2]), .DOB3(dout[3]), .DOB4(dout[4]), .DOB5(dout[5]), .DOB6(dout[6]), .DOB7(dout[7]), .DOB8(dout[8]), .DOB9(nc9), .DOB10(nc10), .DOB11(nc11), .DOB12(nc12), .DOB13(nc13), .DOB14(nc14), .DOB15(nc15), .DOB16(nc16), .DOB17(nc17));
+endmodule

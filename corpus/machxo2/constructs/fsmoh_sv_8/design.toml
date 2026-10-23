@@ -1,0 +1,8 @@
+top = "top"
+purpose = "8-state FSM, one-hot encoding"
+construct = "fsm_oh"
+variant = "sv"
+width = 8
+lang = "systemverilog"
+io_bits = 5
+io_reduced = false

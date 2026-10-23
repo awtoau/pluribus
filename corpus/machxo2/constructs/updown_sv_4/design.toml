@@ -1,0 +1,8 @@
+top = "top"
+purpose = "up/down counter"
+construct = "updown"
+variant = "sv"
+width = 4
+lang = "systemverilog"
+io_bits = 6
+io_reduced = false

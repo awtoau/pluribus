@@ -1,0 +1,8 @@
+top = "top"
+purpose = "up counter with enable"
+construct = "counter"
+variant = "vnd"
+width = 1
+lang = "verilog-95+lattice"
+io_bits = 3
+io_reduced = false

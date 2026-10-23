@@ -1,0 +1,5 @@
+top = "top"
+purpose = "coverage design, profile perm"
+profile = "perm"
+seed = 103
+lanes = 39

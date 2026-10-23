@@ -1,0 +1,24 @@
+module top (clk, a, b, c, d, s, y);
+  input clk;
+  input [3:0] a;
+  input [3:0] b;
+  input [3:0] c;
+  input [3:0] d;
+  input [1:0] s;
+  output [3:0] y;
+  reg [3:0] y;
+  wire [3:0] ma, mb, m;
+  LUT4 #(.INIT(16'hCACA)) la0 (.A(a[0]), .B(b[0]), .C(s[0]), .D(1'b0), .Z(ma[0]));
+  LUT4 #(.INIT(16'hCACA)) lb0 (.A(c[0]), .B(d[0]), .C(s[0]), .D(1'b0), .Z(mb[0]));
+  PFUMX p0 (.ALUT(mb[0]), .BLUT(ma[0]), .C0(s[1]), .Z(m[0]));
+  LUT4 #(.INIT(16'hCACA)) la1 (.A(a[1]), .B(b[1]), .C(s[0]), .D(1'b0), .Z(ma[1]));
+  LUT4 #(.INIT(16'hCACA)) lb1 (.A(c[1]), .B(d[1]), .C(s[0]), .D(1'b0), .Z(mb[1]));
+  PFUMX p1 (.ALUT(mb[1]), .BLUT(ma[1]), .C0(s[1]), .Z(m[1]));
+  LUT4 #(.INIT(16'hCACA)) la2 (.A(a[2]), .B(b[2]), .C(s[0]), .D(1'b0), .Z(ma[2]));
+  LUT4 #(.INIT(16'hCACA)) lb2 (.A(c[2]), .B(d[2]), .C(s[0]), .D(1'b0), .Z(mb[2]));
+  PFUMX p2 (.ALUT(mb[2]), .BLUT(ma[2]), .C0(s[1]), .Z(m[2]));
+  LUT4 #(.INIT(16'hCACA)) la3 (.A(a[3]), .B(b[3]), .C(s[0]), .D(1'b0), .Z(ma[3]));
+  LUT4 #(.INIT(16'hCACA)) lb3 (.A(c[3]), .B(d[3]), .C(s[0]), .D(1'b0), .Z(mb[3]));
+  PFUMX p3 (.ALUT(mb[3]), .BLUT(ma[3]), .C0(s[1]), .Z(m[3]));
+  always @(posedge clk) y <= m;
+endmodule

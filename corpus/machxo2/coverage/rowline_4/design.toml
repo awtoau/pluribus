@@ -1,0 +1,5 @@
+top = "top"
+purpose = "coverage design, profile rowline"
+profile = "rowline"
+seed = 404
+lanes = 8

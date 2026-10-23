@@ -1,0 +1,8 @@
+top = "top"
+purpose = "DP8KC primitive, A write / B read"
+construct = "dp8kc"
+variant = "vnd"
+width = 18
+lang = "verilog-95+lattice"
+io_bits = 56
+io_reduced = false

@@ -1,0 +1,4 @@
+{
+ "casemux_vnd": "no Lattice-specific form: a logic-op case mux has no attribute or primitive beyond the LUT4/PFUMX covered by mux2_vnd and mux4_vnd",
+ "updown_vnd": "no Lattice-specific form: an up/down counter has no CCU2D template (the add/sub select needs per-bit INIT hand-derivation)"
+}

@@ -1,0 +1,8 @@
+top = "top"
+purpose = "4:1 mux, registered"
+construct = "mux4"
+variant = "sv"
+width = 1
+lang = "systemverilog"
+io_bits = 8
+io_reduced = false
