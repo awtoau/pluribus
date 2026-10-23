@@ -1076,6 +1076,22 @@ class CycloneVLift:
                         dsu.union(q, p["node"](port))
         source_roots = {dsu.find(src) for (src, _dst) in pc.arcs}
 
+        # Arithmetic chain: halves in a tile run T0, B0, T1, B1, ... (k = 2*alm + (half == B)); cin of
+        # half k is cout of half k-1 (Quartus lcell N -> N+3, 314/314 in the corpus), sharein is the
+        # shareout of k-1.  The first half of a run takes cin = 0 (a chain from the previous LAB is not
+        # modelled).  A half is emitted when its sum is used; cout / shareout only while a later
+        # emitted half consumes them.
+        arith_k = {}
+        for tile_key, alm_idx, raw, kv, halves in plans:
+            if kv.get(("ARITH_SEL", alm_idx)) == "ADDER":
+                for h, p in halves.items():
+                    arith_k[(tile_key, 2 * alm_idx + (h == "B"))] = (alm_idx, h, kv, p)
+        sum_used = {key: bool(v[3]["nlut"]) or any(v[3]["lut_fed"].values()) for key, v in arith_k.items()}
+        cout_active, share_on = {}, {k: v[2].get(("SHARE", v[0])) == "1" for k, v in arith_k.items()}
+        for key in sorted(arith_k, reverse=True):
+            nxt = (key[0], key[1] + 1)
+            cout_active[key] = nxt in arith_k and (sum_used[nxt] or cout_active[nxt])
+
         for tile_key, alm_idx, raw, kv, halves in plans:
             block = tile_key[0]
             is_mlab = block == "MLAB"
@@ -1090,9 +1106,14 @@ class CycloneVLift:
                     else:
                         active[letter] = node(tok) in sink_nodes
                 table = _lut_table(raw, h, p["mode"], is_mlab, active)
-                arith = kv.get(("ARITH_SEL", alm_idx)) == "ADDER"
+                arith_key = (tile_key, 2 * alm_idx + (h == "B"))
+                arith = arith_key in arith_k
                 regs_here = [s for s in (0, 1) if p["present"][s]]
-                used = bool(p["nlut"]) or any(p["lut_fed"].values()) or (arith and table not in (0, (1 << 64) - 1))
+                if arith:
+                    d.luts.extend(self._arith_luts(
+                        arith_key, arith_k, sum_used, cout_active, share_on, raw, h, p, is_mlab,
+                        active, table, net_of))
+                used = (not arith) and (bool(p["nlut"]) or any(p["lut_fed"].values()))
                 if used:
                     nets = {}
                     for letter, tok in pins.items():
@@ -1139,6 +1160,86 @@ class CycloneVLift:
         d.n_arcs = len(pc.arcs)
         self.recover_pads(pc, d, net_of)
         return d
+
+    def _arith_luts(self, key, arith_k, sum_used, cout_active, share_on, raw, h, p, is_mlab,
+                    active, comb_table, net_of):
+        """LUT rows of one ALM half in ADDER mode: sum, cout and (shared arithmetic) shareout.
+
+        Quartus lcell semantics (cyclonev_lcell_comb simulation model, checked here against the
+        post-fit oracle by scripts/cyclonev_postfit_compare.py `arith.*`):
+          f0 = mask[15:0](a,b,c,d)   f2 = mask[47:32](a,b,c,dataf)   adder input 2 = !f2, or sharein
+          sum = cin ^ f0 ^ in2   cout = maj(cin, f0, in2)   shareout = mask[47:32](a,b,c,d)
+        The 64-bit Mistral->Quartus table (`_lut_table`, no folding) is that mask.  Rows use letters
+        a,b,c,d as the half's LUT inputs, e = cin, f = dataf (or sharein in shared mode, where dataf
+        is unused).  Row roles: sum (name = the plain half name), cout, shareout.
+        """
+        tile_key, k = key
+        alm_idx, _h, kv, _p = arith_k[key]
+        block = tile_key[0]
+        node, pins = p["node"], p["pins"]
+        shared = share_on[key]
+        prev = (tile_key, k - 1)
+        sum_on, cout_on = sum_used[key], cout_active[key]
+        nxt = (tile_key, k + 1)
+        share_out = shared and nxt in arith_k and share_on[nxt] and (sum_used[nxt] or cout_active[nxt])
+        if not (sum_on or cout_on or share_out):
+            return []
+        full = _lut_table(raw, h, p["mode"], is_mlab, {ch: True for ch in "abcdef"})
+        tok_net = {}
+        for letter in "abcdf":
+            tok = pins[letter]
+            if not active[letter]:
+                tok_net[letter] = "1'b0"
+            elif tok == "FB":
+                tok_net[letter] = net_of(node(f"{h}Q{p['fb_slot']}"))
+            else:
+                tok_net[letter] = net_of(node(tok))
+        prev_cout = prev in arith_k and cout_active[prev]
+        pnode = lambda tag: net_of(CVNode(block, tile_key[1], tile_key[2], (k - 1) // 2,
+                                          ("B" if (k - 1) % 2 else "T") + tag, None))
+        cin_net = pnode("COUT") if prev_cout else "1'b0"
+        prev_share = prev in arith_k and shared and share_on[prev] and (sum_used[key] or cout_active[key])
+        sharein_net = pnode("SHOUT") if prev_share else "1'b0"
+        x_net = sharein_net if shared else tok_net["f"]
+        nets = {"a": tok_net["a"], "b": tok_net["b"], "c": tok_net["c"], "d": tok_net["d"],
+                "e": cin_net, "f": x_net}
+        live = sum(1 << "abcdef".index(ch) for ch in "abcdef" if nets[ch] != "1'b0")
+        sum_t = cout_t = shout_t = 0
+        for v in range(64):
+            a, b, c, dd, cin, x = ((v >> i) & 1 for i in range(6))
+            f0 = (full >> (a | b << 1 | c << 2 | dd << 3)) & 1
+            f2d = (full >> (a | b << 1 | c << 2 | dd << 3 | 1 << 5)) & 1
+            in2 = x if shared else 1 - ((full >> (a | b << 1 | c << 2 | x << 3 | 1 << 5)) & 1)
+            sum_t |= (cin ^ f0 ^ in2) << v
+            cout_t |= ((cin & f0) | (cin & in2) | (f0 & in2)) << v
+            shout_t |= f2d << v
+        fold = lambda t: sum(((t >> (v & live)) & 1) << v for v in range(64))
+        base = (f"alm_{block.lower()}_r{tile_key[1]}c{tile_key[2]}_a{alm_idx}_"
+                f"{'top' if h == 'T' else 'bottom'}")
+        pk = (tile_key[1], tile_key[2], (k - 1) // 2, "B" if (k - 1) % 2 else "T")
+        meta = {"block": block, "x": tile_key[1], "y": tile_key[2], "alm": alm_idx, "half": h,
+                "mode": p["mode"], "arith": True, "shared": shared,
+                "pin_src": {tok: ("ff", (tile_key[1], tile_key[2], alm_idx, h, str(p["fb_slot"])))
+                            for tok in pins.values() if tok == "FB"},
+                "cin_src": pk if prev_cout else None, "sharein_src": pk if prev_share else None,
+                "comb_init": format(comb_table, "064b"), "comb_pins": dict(pins)}
+        pin_map = dict(pins)
+        pin_map["e"] = "CIN"
+        pin_map["f"] = "SHAREIN" if shared else pins["f"]
+        rows = []
+        if sum_on:
+            rows.append({"name": base, "init": format(fold(sum_t), "064b"), **nets,
+                         "z": net_of(node(f"{h}COMB")), "z_used": bool(p["nlut"]), "role": "sum",
+                         "pins": pin_map, **meta})
+        if cout_on:
+            rows.append({"name": base + "_cout", "init": format(fold(cout_t), "064b"), **nets,
+                         "z": net_of(node(f"{h}COUT")), "z_used": True, "role": "cout",
+                         "pins": pin_map, **meta})
+        if share_out:
+            rows.append({"name": base + "_shout", "init": format(fold(shout_t), "064b"), **nets,
+                         "z": net_of(node(f"{h}SHOUT")), "z_used": True, "role": "shareout",
+                         "pins": pin_map, **meta})
+        return rows
 
     # ---- package-pin recovery (GPIO pads) ----------------------------------
     def recover_pads(self, pc, d, net_of):
@@ -1347,6 +1448,10 @@ class CycloneVLift:
             if row is not None:                # same pin also seen through a GPIO arc: merge
                 row["net_in"] = row["net_in"] or din
                 row["net_out"] = row["net_out"] or dout
+                if din and dout or (din and row["direction"] == "out") or (dout and row["direction"] == "in"):
+                    row["direction"] = "bidir"
+                elif row["direction"] == "unknown":
+                    row["direction"] = "in" if din else "out"
                 continue
             _blk, gx, gy, gbi = gpio_of.get(pin, (None, None, None, None))
             first = (ports["din"] or ports["dout"])[0]

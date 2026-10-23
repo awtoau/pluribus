@@ -169,7 +169,7 @@ def compare_build(bid, ddir):
         return "MATCH" if qv == lv else "MISMATCH"
 
     # ── lifted LUT / FF indexes (new lifter: metadata keys; old lifter: parse the name) ──
-    lifted_lut = {}
+    lifted_lut, lifted_arith = {}, {}
     for lt in d.luts:
         if "half" in lt:
             key = (lt["block"], lt["x"], lt["y"], lt["alm"], lt["half"])
@@ -180,6 +180,14 @@ def compare_build(bid, ddir):
             # old lifter: bottom = lo32 + E0, top = hi32 + E1; labels taken at face value
             key = (blk_.upper(), int(x_), int(y_), int(alm_), "T" if h_ == "top" else "B")
             pins = {"a": "A", "b": "B", "c": "C", "d": "D", "e": "E0" if h_ == "bottom" else "E1"}
+        if lt.get("role", "sum") != "sum":          # arithmetic cout / shareout rows
+            lifted_arith[(key, lt["role"])] = lt
+            if key not in lifted_lut:
+                lifted_lut[key] = (dict(lt, init=lt["comb_init"]), lt["comb_pins"])
+            continue
+        if lt.get("arith"):                        # combout view of an adder half (mask check) + sum row
+            lifted_arith[(key, "sum")] = lt
+            lt, pins = dict(lt, init=lt["comb_init"]), lt["comb_pins"]
         lifted_lut[key] = (lt, pins)
 
     def lifted_lut_bit(entry, half, mode, v, used):
@@ -229,6 +237,65 @@ def compare_build(bid, ddir):
         return name + ("!" if c["inverted"] else "")
 
     # ── LUTs ──────────────────────────────────────────────────────────────
+    def arith_checks(a, blk, x, y, alm, half, mode, q_mask, conns):
+        """Adder lcell: sumout / cout / shareout functions and cin / sharein drivers vs the lifted rows.
+
+        Quartus functions are the cyclonev_lcell_comb model: f0 = mask[15:0](a,b,c,d),
+        f2 = mask[47:32](a,b,c,dataf), in2 = sharein (shared_arith on) else !f2,
+        sum = cin^f0^in2, cout = maj(cin,f0,in2), shareout = mask[47:32](a,b,c,d)."""
+        cm = {c["port"]: c for c in conns}
+        shared = a["params"].get("shared_arith") == "on"
+        key = (blk, x, y, alm, half)
+        var, fixed = [], {}
+        for port in ("dataa", "datab", "datac", "datad", "dataf", "cin", "sharein"):
+            c = cm.get(port)
+            if c is not None and c["net"]:
+                var.append(port)
+            elif c is not None and c["const"] == "1":
+                fixed[port] = 1
+        for role, port in (("sum", "sumout"), ("cout", "cout"), ("shareout", "shareout")):
+            c = cm.get(port)
+            if c is None or not c["net"] or c["net"] not in read_nets:
+                continue
+            lt = lifted_arith.get((key, role))
+            qs = f"{role} mask={q_mask:016x} shared={int(shared)} vars={''.join(v[4] if v.startswith('data') else v[0] for v in var)}"
+            if lt is None:
+                row(a["name"], a["location"], f"arith.{role}", qs, None, "LIFT_MISSING")
+                continue
+            ok = True
+            for assign in range(1 << len(var)):
+                vals = {p_: fixed.get(p_, 0) for p_ in ("dataa", "datab", "datac", "datad", "dataf", "cin", "sharein")}
+                for i_, p_ in enumerate(var):
+                    vals[p_] = (assign >> i_) & 1
+                qa, qb, qc, qd, qf = (vals[p_] for p_ in ("dataa", "datab", "datac", "datad", "dataf"))
+                f0 = (q_mask >> (qa | qb << 1 | qc << 2 | qd << 3)) & 1
+                f2f = (q_mask >> (32 + (qa | qb << 1 | qc << 2 | qf << 3))) & 1
+                in2 = vals["sharein"] if shared else 1 - f2f
+                qv_ = {"sum": vals["cin"] ^ f0 ^ in2,
+                       "cout": (vals["cin"] & f0) | (vals["cin"] & in2) | (f0 & in2),
+                       "shareout": (q_mask >> (32 + (qa | qb << 1 | qc << 2 | qd << 3))) & 1}[role]
+                tv = {"CIN": vals["cin"], "SHAREIN": vals["sharein"]}
+                for p_, port_ in (("dataa", "a"), ("datab", "b"), ("datac", "c"), ("datad", "d"), ("dataf", "f")):
+                    pin_ = lab_pin(half, mode, port_)
+                    if pin_ is not None:
+                        tv[pin_] = vals[p_]
+                idx = sum(1 << w for w, letter in enumerate("abcdef") if tv.get(lt["pins"].get(letter), 0))
+                ok = ok and int(lt["init"][63 - idx]) == qv_
+            row(a["name"], a["location"], f"arith.{role}", qs, lt["init"], "MATCH" if ok else "MISMATCH")
+        any_row = next((lifted_arith[(key, r)] for r in ("sum", "cout", "shareout") if (key, r) in lifted_arith), None)
+        for port, src_key in (("cin", "cin_src"), ("sharein", "sharein_src")):
+            c = cm.get(port)
+            if c is None or (c["const"] is None and not c["net"]) or (port == "sharein" and not c["net"]):
+                continue
+            qv_ = q_drv(c)
+            if any_row is None:
+                lv_ = None
+            elif any_row.get(src_key) is None:
+                lv_ = "const:0"
+            else:
+                lv_ = lifted_src(("lut", any_row[src_key]))
+            row(a["name"], a["location"], f"conn.{port}", qv_, lv_, conn_verdict(qv_, lv_))
+
     quartus_lut_keys = set()
     read_nets = {c["net"] for cs_ in by_atom.values() for c in cs_ if c["direction"] == "in" and c["net"]}
     for a in atoms.values():
@@ -258,6 +325,8 @@ def compare_build(bid, ddir):
                      if not any((v >> k) & 1 for k, p in enumerate(PINS) if p not in used))
             row(a["name"], a["location"], field, qv, entry[0]["init"],
                 "MATCH" if ok else "MISMATCH")
+        if arith:
+            arith_checks(a, blk, x, y, alm, half, mode, q_mask, by_atom[a["id"]])
         # data-input connectivity, read off the lifted LUT's own pins
         fb = setting(blk, x, y, f"{half}_FEEDBACK_SEL", alm)
         for c in by_atom[a["id"]]:

@@ -37,6 +37,8 @@ FAMILIES = [
     ("lut inputs", ["conn.dataa", "conn.datab", "conn.datac", "conn.datad", "conn.datae",
                     "conn.dataf", "conn_arith.dataa", "conn_arith.datab", "conn_arith.datac",
                     "conn_arith.datad", "conn_arith.datae", "conn_arith.dataf"]),
+    ("arith function", ["arith.sum", "arith.cout", "arith.shareout"]),
+    ("arith cin/share", ["conn.cin", "conn.sharein"]),
     ("ff.present", ["ff.present", "ff.extra"]),
     ("ff.d", ["ff.d"]), ("ff.clk", ["ff.clk"]),
     ("ff.clk.edge", ["ff.clk.edge"]), ("ff.clk.domain", ["ff.clk.domain"]), ("ff.clrn", ["ff.clrn"]),
