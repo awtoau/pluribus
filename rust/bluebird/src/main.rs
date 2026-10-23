@@ -220,39 +220,36 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
 
-    /// End-to-end round trip against the real DJI C1 (m2001) e50f bitstream
-    /// used throughout this session's Cyclone V investigation. Skips (does
-    /// not fail) if either the fixture or a populated pluribus DB is absent
-    /// -- both are environment-specific paths outside this crate, not
-    /// something `cargo test` should require elsewhere. Run
-    /// `scripts/cyclonev_db_import.py` first to populate the DB this test
-    /// reads from $PLURIBUS_SQLITE_PATH (or ./pluribus.db).
+    /// End-to-end round trip against a Quartus-built e50f corpus bitstream
+    /// (corpus/README.md; `scripts/cyclonev_corpus_build.py --only adder12`).
+    /// Skips (does not fail) if the corpus file or a populated pluribus DB
+    /// is absent; run `scripts/cyclonev_db_import.py` to populate the DB
+    /// read from $PLURIBUS_SQLITE_PATH (or ./pluribus.db).
     #[test]
-    fn real_dji_bitstream_roundtrip() {
-        const FIXTURE: &str = "/mnt/2tb/git/awto-dji/firmware/unpacked/C1_FW_V01.06.0000/m2001.depack.bin";
-        if !std::path::Path::new(FIXTURE).exists() {
-            eprintln!("skipping real_dji_bitstream_roundtrip: fixture not present at {FIXTURE}");
+    fn corpus_bitstream_roundtrip() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../corpus/cyclonev/adder12/bitstream.compressed.rbf");
+        if !fixture.exists() {
+            eprintln!("skipping corpus_bitstream_roundtrip: fixture not present at {}", fixture.display());
             return;
         }
         let db_path = std::env::var("PLURIBUS_SQLITE_PATH").unwrap_or_else(|_| "./pluribus.db".to_string());
         if !std::path::Path::new(&db_path).exists() {
-            eprintln!("skipping real_dji_bitstream_roundtrip: no pluribus DB at {db_path} -- run scripts/cyclonev_db_import.py");
+            eprintln!("skipping corpus_bitstream_roundtrip: no pluribus DB at {db_path} -- run scripts/cyclonev_db_import.py");
             return;
         }
 
         let die = db::load_die(&db_path, "e50f").expect("e50f die must be importable");
-        let data = fs::read(FIXTURE).expect("reading DJI fixture");
+        let data = fs::read(&fixture).expect("reading corpus fixture");
         let cram_offset = cram_region_offset(&die);
         let geom = codec::CramFrameGeom::new(die.cram_sy, die.frame_size);
         let framed_bytes = die.cram_sx as usize * geom.cram_frame_bytes;
         let region = &data[cram_offset..];
 
-        let framed = codec::nibble_decompress(region, framed_bytes).expect("decompress real file");
+        let framed = codec::nibble_decompress(region, framed_bytes).expect("decompress corpus file");
         let cram_bits = codec::unpack_cram_bits(&framed, die.cram_sx, die.cram_sy, &geom);
 
-        // Real fabric config should be sparse but non-trivial -- a sanity
-        // bound, not a precise expected value (this is real silicon data,
-        // not a fixture we control the exact bit count of).
+        // Sanity bound only: sparse but non-trivial.
         let popcount: u32 = cram_bits.iter().map(|b| b.count_ones()).sum();
         let total_bits = die.cram_sx as u64 * die.cram_sy as u64;
         assert!(popcount > 0, "decompressed CRAM is all-zero -- codec likely broken");
@@ -265,12 +262,12 @@ mod tests {
         let mut framed_back = vec![0u8; framed_bytes];
         codec::pack_cram_bits(&cram_bits, die.cram_sx, die.cram_sy, &geom, &mut framed_back);
         let cram_bits_back = codec::unpack_cram_bits(&framed_back, die.cram_sx, die.cram_sy, &geom);
-        assert_eq!(cram_bits_back, cram_bits, "CRAM fold/unfold roundtrip mismatch on real file data");
+        assert_eq!(cram_bits_back, cram_bits, "CRAM fold/unfold roundtrip mismatch on corpus file data");
 
         // And the nibble codec itself: compress what we just unpacked from
         // the real file, decompress again, must reproduce the same bytes.
         let recompressed = codec::nibble_compress(&framed_back);
         let redecompressed = codec::nibble_decompress(&recompressed, framed_bytes).expect("re-decompress");
-        assert_eq!(redecompressed, framed_back, "nibble codec roundtrip mismatch on real file data");
+        assert_eq!(redecompressed, framed_back, "nibble codec roundtrip mismatch on corpus file data");
     }
 }

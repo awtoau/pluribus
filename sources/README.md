@@ -7,8 +7,7 @@ Re-fetch and verify by hash per entry below.
 ## Altera / Intel FPGA tooling
 
 Oracle toolchain for the Cyclone V lifter work (Mistral cross-check, device-db
-validation) — see `CLAUDE.md` device-db section, `scripts/cyclonev_die_probe.py`, and
-awto-au/awto-dji#3 (the air Lightbridge FPGA die-ID investigation this was built for).
+validation) — see `CLAUDE.md` device-db section and `scripts/cyclonev_die_probe.py`.
 
 Installed at `/mnt/2tb/opt/altera/quartus-25.1` (outside the repo — large, ~24 GB).
 

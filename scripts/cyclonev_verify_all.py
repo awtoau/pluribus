@@ -97,15 +97,15 @@ LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_verify_all.log"
 #    actual point of this script, not just "did Quartus/Mistral crash". ──
 EXPECTED_LIFTER = {
     "device": "5CEBA4U19C8", "die": "e50f",
-    # LUT/FF/net counts re-baselined by the #106 lifter rewrite (old 33336/11502/144296 came from
-    # the wrong lifter); see docs/cyclonev-postfit-oracle.md.
-    "n_luts": 6511, "n_ffs": 7855, "n_nets": 15818, "n_arcs": 70007,
+    # Counts for REFERENCE_BT (corpus regbank16); lifter correctness is judged by the
+    # Quartus oracle (docs/cyclonev-postfit-oracle.md), these only catch drift.
+    "n_luts": 61, "n_ffs": 64, "n_nets": 139, "n_arcs": 608,
     "n_unparsed_lines": 0,
 }
 EXPECTED_PADMAP = {
-    "n_pads_annotated": 224, "n_pads_unannotated": 48,
+    "n_pads_annotated": 18, "n_pads_unannotated": 0,
     "n_dup_pins": 0,
-    "direction_breakdown": {"unknown": 71, "in": 146, "bidir": 49, "out": 6},
+    "direction_breakdown": {"in": 14, "out": 4},
 }
 # DSP mode mapping (docs/cyclonev-dsp-fuzz-status.md): a design either gets
 # an explicit MODE string, or (mult18x18/multacc18x18) NO MODE line at all
@@ -117,9 +117,8 @@ EXPECTED_DSP_MODE = {
     "mult27x27": "M27X27",
     "multacc18x18": None,    # negative result: behaves identically to mult18x18
 }
-REFERENCE_BT = Path("/tmp/m2001_padmap_test.bt")  # produced by this session; see
-# docs/cyclonev-lifter-status.md for the mistral-cv decomp invocation that
-# makes one from scratch if this path doesn't exist.
+# Quartus-built corpus design (corpus/README.md); `cyclonev_corpus_build.py --only regbank16` makes it.
+REFERENCE_BT = REPO / "corpus" / "cyclonev" / "regbank16" / "decomp.bt"
 
 
 def setup_logging():

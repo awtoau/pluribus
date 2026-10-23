@@ -6,8 +6,8 @@ gap: Mistral itself does not decode DSP mux usage/port mapping ("TODO:
 everything" in its own source) — this maps MODE strings to known operations
 by compiling designs where the operation is controlled, not assumed.
 
-Script: `scripts/cyclonev_dsp_fuzz.py`. Device: `5CEBA4U19C8` (e50f/e50b,
-same die as the DJI m2001 ground FPGA). Flow: `quartus_map` -> `quartus_fit`
+Script: `scripts/cyclonev_dsp_fuzz.py`. Device: `5CEBA4U19C8` (e50f/e50b).
+Flow: `quartus_map` -> `quartus_fit`
 -> `quartus_asm` -> `quartus_cpf -c` -> `mistral-cv decomp`, same proven
 sequence as `scripts/cyclonev_die_probe.py`.
 
@@ -86,9 +86,7 @@ Settings present in multacc18x18 but NOT mult18x18:
 
 ## 18x19 combined, systolic FIR, complex multiply — NOT attempted
 
-Named in the DJI sample's observed `MODE` strings
-(`M18X19_COMBINED`/`BMNONE` per the session's prior awto-dji work) and in
-the task's scope list (18x18 complex multiplier, systolic FIR) — none of
+Mode names such as `M18X19_COMBINED` and the task's scope list (18x18 complex multiplier, systolic FIR): none of
 these were tried this session. Time went to nailing the pure-multiplier
 modes solidly plus one real (negative) accumulate-mode attempt, per the
 task's stated priority order.

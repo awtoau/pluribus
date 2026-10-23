@@ -2,7 +2,7 @@
 """Compare an unknown Altera/Intel .rbf-style image with the quartus_cpf .rbf set made by
 fpga_family_probe.py: header block, length, 0xFF gap, trailer.  Read-only on the image.
 
-  python3.15t scripts/fpga_family_compare.py IMAGE.bin [--rbf-dir tmp/m2001/rbf] [--skip 0x20]
+  python3.15t scripts/fpga_family_compare.py IMAGE.bin [--rbf-dir tmp/fpga_family/rbf] [--skip 0x20]
 """
 import argparse
 import os
@@ -45,7 +45,7 @@ def lane(h, n):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("image")
-    ap.add_argument("--rbf-dir", default=os.path.join(REPO, "tmp", "m2001", "rbf"))
+    ap.add_argument("--rbf-dir", default=os.path.join(REPO, "tmp", "fpga_family", "rbf"))
     a = ap.parse_args()
     d = open(a.image, "rb").read()
     pre, hdr, gap, end = parse(d)

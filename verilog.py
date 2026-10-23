@@ -2020,7 +2020,7 @@ def emit_fplls(data: dict) -> list[str]:
     duplicated -- one calibrated M/N-counter decode, used by both the fuzz
     harness and the emitter. See docs/cyclonev-fpll-fuzz-status.md for what
     is and is not calibrated: M divide is confirmed for symmetric (50%
-    duty, hi==lo) non-bypassed cases and for the bypass case; a real sample
+    duty, hi==lo) non-bypassed cases and for the bypass case; a configuration
     with hi != lo (any non-50%-duty or odd-division M/N) decodes to
     confidence=UNKNOWN and is emitted as a comment-only placeholder, not a
     guessed parameter value -- never papers over an uncalibrated case with

@@ -173,7 +173,7 @@ Half mode = `<d source>_<e source>` (T: `D_E` default, `D_F`, `E_0`, `F_0`; B: `
 - Fixed: LUT polarity, halves, input order, bottom c/d swap, MLAB permutation; `F0`/`F1` are inputs; `NLUT` ports are LUT outputs, not registers; one register per physical register; registers independent of LUT halves; register feedback; absent `LUT_MASK` = constant 0.
 - Not lifted (counted in `Design.unmodelled_halves`): MLAB `RAM`/`ROM` halves and undecoded `BMNONE`.
 - Arithmetic `sumout`/carry is not modelled: arith halves are lifted as their `combout` LUT only; an arith half with a constant table and no output is not emitted.
-- DJI ground sample (`cyclonev_verify_all.py`): 33336/11502/144296 -> 6511/7855/15818 LUTs/FFs/nets. Old: every non-zero 32-bit half incl. unused ones, every routed `FF*` port as a register (nlut pass-throughs, `FF?1`+`FF?1L` twice). Corpus check: lifted FFs 1754 = Quartus 1754.
+- Old lifter: every non-zero 32-bit half incl. unused ones, every routed `FF*` port as a register (nlut pass-throughs, `FF?1`+`FF?1L` twice). Corpus check: lifted FFs 1754 = Quartus 1754.
 
 ## Verified vs assumed
 
