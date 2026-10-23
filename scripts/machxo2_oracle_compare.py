@@ -170,6 +170,9 @@ def lut_eval(expr):
     return v
 
 
+LUT_INIT_DEFAULT = 0xFFFF   # PLC bits.db `.config SLICEA.K0.INIT 1111111111111111`
+
+
 def init_int(s):
     """Decoded 'word: SLICEx.Kk.INIT' bit string (MSB first) -> int."""
     return int(s, 2)
@@ -228,6 +231,8 @@ class Ctx:
         m = (L._SEG_EAST.match(name) or L._SEG_WEST.match(name)
              or L._SEG_NORTH.match(name) or L._SEG_SOUTH.match(name))
         if not m:
+            if re.match(r"^(G|BRANCH|D)_", name):
+                return "global_drop"       # chip-global clock net: no fabric key
             return "unresolved_drop"
         hops, d = int(m.group(1)), name[0]
         if d == "E" and col + hops > self.max_col:
@@ -263,6 +268,30 @@ def ctx():
     if not hasattr(_tls, "c"):
         _tls.c = Ctx()
     return _tls.c
+
+
+_SPAN = re.compile(r"^([VH])(\d\d)([NSEW])(\d\d)(\d\d)$")
+_OPP = {"N": "S", "S": "N", "E": "W", "W": "E"}
+
+
+def span_alias(C, r, c, nm):
+    """Diamond span wire named by a non-canonical segment (V02N0400 at R1, where
+    prjtrellis only has V02N0401) -> (hop-prefixed local alias, label) or None.
+    Segment s -> t is a hop of t-s tiles in the wire's own direction."""
+    m = _SPAN.match(nm)
+    if not m:
+        return None
+    vh, span, d, idx, s = m.group(1), m.group(2), m.group(3), m.group(4), int(m.group(5))
+    for t in range(0, int(span) + 1):
+        k = t - s
+        if k == 0:
+            continue
+        cand = f"{vh}{span}{d}{idx}{t:02d}"
+        alias = f"{d if k > 0 else _OPP[d]}{abs(k)}_{cand}"
+        g = C.glob(r, c, alias)
+        if g and C.L.wname_id(g[0], g[1], g[2]) is not None:
+            return alias, f"segment_alias_{vh}{span}{d}_{s:02d}->{t:02d}"
+    return None
 
 
 def dwire(w):
@@ -310,6 +339,15 @@ def compare_target(target, targets_dir, out_root):
                     norm[f"prefix_{pfx}"] += 1
                     nm = pfx + nm
                     break
+        if ongrid and L.wname_id(c, r, nm) is None:
+            alias = span_alias(C, r, c, nm)
+            if alias:
+                norm[alias[1]] += 1
+                g = C.glob(r, c, alias[0])
+                info = {"exists": True, "raw": g, "dsu": L.gkey(r, c, alias[0]),
+                        "alias": alias[0]}
+                wcache[w] = info
+                return info
         if ongrid and L.wname_id(c, r, nm) is not None:
             info["exists"] = True
             g = C.glob(r, c, nm)
@@ -389,6 +427,9 @@ def compare_target(target, targets_dir, out_root):
     for (ks, kd), arc in cfg_raw.items():
         if (ks, kd) not in d_arcs:
             res["pips"]["LIFT_ONLY"] += 1
+            glb = re.match(r"^(G|BRANCH|L|R)_", arc[3]) or re.match(r"^(G|BRANCH|L|R)_", arc[2])
+            res["pip_detail"]["LIFT_ONLY:" + ("global_clock_name" if glb else "fabric")][
+                re.sub(r"\d", "#", arc[3]) + ">" + re.sub(r"\d", "#", arc[2])] += 1
             if len(res["lift_only_arcs"]) < 50:
                 res["lift_only_arcs"].append(list(arc))
 
@@ -500,10 +541,10 @@ def compare_target(target, targets_dir, out_root):
                 v = "MATCH" if dec is None or init_int(dec) == 0 else "LIFT_ONLY"
                 fld(f"K{k}.INIT", v, "#OFF", dec)
                 continue
-            got = init_int(dec) if dec is not None else None
-            fld(f"K{k}.INIT", "MATCH" if got == want else
-                ("LIFT_MISSING" if got is None else "MISMATCH"),
-                f"0x{want:04X}", None if got is None else f"0x{got:04X}")
+            # No word in the .config = bits.db default for SLICEx.Kk.INIT (all 1s).
+            got = init_int(dec) if dec is not None else LUT_INIT_DEFAULT
+            fld(f"K{k}.INIT", "MATCH" if got == want else "MISMATCH",
+                f"0x{want:04X}", f"0x{got:04X}" + ("" if dec is not None else " (default)"))
             # lifted cell (constant LUTs are folded, CCU2 emitted differently)
             if not ccu and want not in (0, 0xFFFF):
                 lt = luts.get(f"lut_r{r}c{c}_{sl}k{k}")
@@ -543,6 +584,7 @@ def compare_target(target, targets_dir, out_root):
                              "fields": fields})
 
     # ---- gkey workarounds ---------------------------------------------------
+    split_nets = {n["net"] for n in res["nets"] if n["lift_classes"] > 1}
     dwire_net = {}
     for n in O["nets"]:
         for w in n["wires"]:
@@ -568,8 +610,11 @@ def compare_target(target, targets_dir, out_root):
                 v, why = "INCONCLUSIVE", "Diamond does not route the other end"
             elif gk_net == onet:
                 v, why = "AGREE", "rewritten wire is on the same Diamond net"
+            elif gk_net is None and onet in split_nets:
+                v, why = "DISAGREE", (f"rewritten key unused by Diamond; Diamond net "
+                                      f"{onet} is split in the lift")
             elif gk_net is None:
-                v, why = "INCONCLUSIVE", "rewritten wire not used by Diamond"
+                v, why = "INCONCLUSIVE", "rewritten wire not used by Diamond; net intact"
             else:
                 v, why = "DISAGREE", f"rewritten wire is on Diamond net {gk_net}"
             res["gkey"].append({"branch": br, "tile": [r, c], "end": end, "name": nm,

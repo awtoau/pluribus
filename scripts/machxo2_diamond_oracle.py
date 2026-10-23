@@ -52,10 +52,10 @@ REPO = _repo()
 LOG_PATH = os.path.join(REPO, "tmp", "logs", "machxo2_diamond_oracle.log")
 SCHEMA_VERSION = 1
 
-# Waits for one ncdread / ncd2nmc run.  Worst observed 0.30 s (16 workers, full
-# corpus; docs/machxo2-diamond-oracle.md); x3 backstop, rounded up.  The batch
-# logs its max each run.  Expiry: target failed with tool, limit and elapsed.
-TOOL_TIMEOUT_S = 1.0
+# Waits for one ncdread / ncd2nmc run.  Worst observed 0.80 s (16 workers, full
+# corpus, 3 runs; docs/machxo2-diamond-oracle.md); x3 backstop, rounded up.  The
+# batch logs its max each run.  Expiry: target failed with tool, limit, elapsed.
+TOOL_TIMEOUT_S = 2.5
 MEM_GATE_PCT = 85.0
 MEM_LOG_EVERY_S = 30.0
 
