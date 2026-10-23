@@ -149,6 +149,31 @@ Method: for every decoded arc endpoint, `gkey_branch()` (mirrors `gkey()`'s cond
 - **Headline, every non-match counted as a fault:** pips 80,532 / 134,261 matched (60.0%; 53,729 faults: 2,990 missing, 44,100 not modelled/named, 6,639 extra); nets 17,641 / 19,498 (90.5%; 1,857 faults); register-clock nets 1,135 / 2,996 (37.9%). "0 pip MISMATCH" only means no pip disagreed where both sides had it.
 - Diamond's turnaround arcs give the missing rules directly: top edge `V06N{i}00@R1 -> V06S{i}03@R3`; left edge `H06W{i}01@C2 -> H06E{i}04@C2`. Not applied here (`lifters/machxo2_lift.py` untouched).
 
+## Lifter fixes from the oracle (2026-10-23, 2779 targets)
+
+One commit each; `scripts/machxo2_oracle_compare.py` rerun after each. Fault = every non-MATCH verdict.
+
+| category | before | after | faults before -> after |
+|---|---|---|---|
+| pips | 80,532 / 134,261 = 60.0% | 80,532 / 134,261 = 60.0% | 53,729 -> 53,729 (every pip verdict unchanged) |
+| nets | 17,641 / 19,498 = 90.5% | 18,325 / 19,498 = 94.0% | 1,857 -> 1,173 |
+| register clock nets | 1,135 / 2,996 = 37.9% | 1,876 / 2,996 = 62.6% | 1,861 -> 1,120 |
+| FF regset | 2,990 / 2,996 | 2,996 / 2,996 | 6 -> 0 |
+| FF srmode (new check) | not checked | 2,996 / 2,996 | 0 |
+| gkey `vspan_offdie_over2_walkback` | 0 AGREE / 681 DISAGREE | 681 AGREE / 0 | 681 -> 0 |
+| gkey `left_stub_drop` | 0 AGREE / 4 DISAGREE | 4 AGREE / 0 | 4 -> 0 |
+
+- Field-by-field summary diff: only the rows above change; every other site/pip/gkey count is identical (no MATCH lost, no fault category rose).
+- Net MISMATCH 1,792 -> 1,108 = 1,096 global clock + 8 PLL feedback + 2 DCC/DCM + 2 `pll_outdivider_muxa2_refclk`.
+- Fixes:
+  1. FF REGSET: missing `REG*.REGSET` = bits.db default (`SET`), read via `plc_enum_defaults()`; was hardcoded `RESET`. ECP5 (`ecp5_lift.py:502`) has the same hardcoded `RESET` while ECP5 `bits.db` also defaults `SET`; not changed (no ECP5 SET register evidence run).
+  2. SRMODE: tile enum `LSR{slice}.SRMODE`, `ASYNC` | `LSR_OVER_CE`. Diamond config strings equal the bits.db option names (corpus: 2,905 `ASYNC`, 34 `LSR_OVER_CE`); lifted FF `srmode` matches 2,996/2,996. `RFF` model is async for `ASYNC`.
+  3. gkey V-span off-die by 2 rows: key = opposite-letter span, same index+segment, 2 rows inward (top row 1: `N3_V06N{i}03` -> `V06S{i}03@R3`, `N3_V06S0103` -> `V06N0103@R3`; bottom row 11: `S3_V06N0103` -> `V06S0103@R9`). Arcs: 674 + 5 + 1 + 1 over `dp8kc_*`, `re_ebr_*`, `fifo8kb_x18`, `pic_b0_hiio_hstl18_i`.
+  4. Left stub: `W3_H06W{i}03` at col 2 (1 col off die) = `H06E{i}03` at col 0 (Diamond `H06W0301@C2 -> H06E0304@C2`); 4 arcs in `efb_i2c2_spi*`.
+- Hantek V02 (`run_pipeline.py`, per commit): REGSET and SRMODE commits leave `2611/1280 LUTs, 1108 FFs, 4341 nets`; V-span rule -> 4274 nets (67 split nets rejoined); left-stub rule -> 1112 FFs, 4262 nets. The 4 new FFs (`ff_r3c2_A0`, `r3c2_B0`, `r5c2_A1`, `r8c2_C0`) are registers whose Q previously fell on the dropped stub and was treated as unused.
+- V02 register modes after the fix: 34 registers are `REGSET=SET` (were all lifted RESET); 871 RESET/ASYNC, 207 RESET/LSR_OVER_CE.
+- `lifter_equiv_corpus.py` before and after each fix: 459 equivalent, 0 not equivalent, 204 error (ECP5 `sedga_*`, unchanged).
+
 ## Other findings
 
 - **Lifter FF REGSET default is inverted.** bits.db: `.config_enum SLICEA.REG0.REGSET SET` (absent from the .config = SET). `recover_netlist()` uses `senum.get("REG{j}.REGSET", "RESET")`. All 6 Diamond `REGSET=SET` registers in the corpus (`ff_*async_pre*` targets) lift as RESET; the decoded enum compare (default-aware) matches 2996/2996.
