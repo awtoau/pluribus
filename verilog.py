@@ -153,9 +153,9 @@ def load_data(conn, bs_id: int) -> dict:
         ffs = [(cell, clk_unify.get(clk, clk), ce, d, qn, lsr)
                for (cell, clk, ce, d, qn, lsr) in ffs]
 
-    # LUTs: (cell, init, a, b, c, d, e, z, fn) — e is NULL for every 4-input
+    # LUTs: (cell, init, a, b, c, d, e, f, z, fn) — e,f are NULL for every 4-input
     # family, populated only for Cyclone V's ALM-half LUT5 (#63).
-    luts = q("SELECT cell, init, a, b, c, d, e, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
+    luts = q("SELECT cell, init, a, b, c, d, e, f, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
 
     # ALU cells (GOWIN carry/adder) — empty for MachXO2.
     alus = q("SELECT cell, mode, sum_net, cout_net, cin, i0, i1, i3 "
@@ -261,7 +261,7 @@ def load_data(conn, bs_id: int) -> dict:
     # extracted as BOTH a dpram_* and a lut_* cell sharing one output net; the
     # query is ORDER BY cell so dpram_* is seen first and wins.
     _existing_net_names = set(net_name_map.values())
-    for _cell, _i, _a, _b, _c, _d, _e, _outz, _fn in luts:
+    for _cell, _i, _a, _b, _c, _d, _e, _f, _outz, _fn in luts:
         if _outz is None or _outz in net_name_map or _outz in const_net_map:
             continue
         _cname = resolve_cell(_cell, cell_name_map)   # human name, else the cell id
@@ -394,7 +394,7 @@ def load_data(conn, bs_id: int) -> dict:
     # Q wire names that are ALSO driven by a LUT continuous assign.
     # Adding `assign q_wire = reg;` for these would create a multi-driver conflict,
     # so emit_ffs must skip connect assigns for them.
-    lut_z_nets: set[str] = {z for _cell, _init, _a, _b, _c, _d, _e, z, _fn in luts if z}
+    lut_z_nets: set[str] = {z for _cell, _init, _a, _b, _c, _d, _e, _f, z, _fn in luts if z}
     # Resolved LUT output identifiers: used by emit_ebr to avoid double-assigning
     # nets that already have a LUT driver (EBR dout bits routed through buffering LUTs).
     lut_driven_net_ids: set[str] = {resolve_net(z, net_name_map, const_net_map)
@@ -916,7 +916,8 @@ def emit_efb_module(data: dict) -> list[str]:
     return lines
 
 
-def _simplify_lut(init: str, a: str, b: str, c: str, d: str, e: str | None = None) -> str | None:
+def _simplify_lut(init: str, a: str, b: str, c: str, d: str, e: str | None = None,
+                  f: str | None = None) -> str | None:
     """Reduce a 4- or 5-input LUT to a direct Verilog operator expression where possible.
 
     NC and 1'b0 inputs are treated as constant 0; 1'b1 inputs as constant 1.
@@ -934,6 +935,8 @@ def _simplify_lut(init: str, a: str, b: str, c: str, d: str, e: str | None = Non
     ports  = [(0, a), (1, b), (2, c), (3, d)]
     if e is not None:
         ports.append((4, e))
+    if f is not None:
+        ports.append((5, f))
     live   = [(pos, sig) for pos, sig in ports if sig not in ZERO and sig not in ONE]
     fixed1 = [pos for pos, sig in ports if sig in ONE]
 
@@ -1000,7 +1003,7 @@ def _lut_active_positions(init: str) -> set[int]:
 
 def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                       cell_name: str = "", tie_unused: bool = False,
-                      e: str | None = None) -> list[str]:
+                      e: str | None = None, f: str | None = None) -> list[str]:
     """Emit an assign for a LUT with no structured fn tag.
 
     First tries _simplify_lut() — for LUTs with ≤2 live inputs this emits a
@@ -1032,13 +1035,19 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                               f"needs the `e` port, cell {cell_name or z_name!r}")
         ports = [e, d, c, b, a]        # index bits {e,d,c,b,a}, positions 4,3,2,1,0
         positions = (4, 3, 2, 1, 0)
+    elif n == 64:
+        if e is None or f is None:
+            raise ValueError(f"_lut_init_to_case: a 64-char (6-input) init "
+                              f"needs the `e` and `f` ports, cell {cell_name or z_name!r}")
+        ports = [f, e, d, c, b, a]     # index bits {f,e,d,c,b,a}, positions 5..0
+        positions = (5, 4, 3, 2, 1, 0)
     else:
-        raise ValueError(f"_lut_init_to_case: only 4-input (16-char) or "
-                          f"5-input (32-char) LUTs are supported, got a "
+        raise ValueError(f"_lut_init_to_case: only 4-, 5- or 6-input (16/32/64-char) LUTs are "
+                          f"supported, got a "
                           f"{n}-char init for cell {cell_name or z_name!r}")
 
     # _simplify_lut expects LSB-first; the stored INIT is MSB-first, so reverse.
-    expr = _simplify_lut(init[::-1], a, b, c, d, e)
+    expr = _simplify_lut(init[::-1], a, b, c, d, e, f)
     if expr is not None:
         return [f"    assign {z_name} = {expr};"]
 
@@ -1092,23 +1101,23 @@ def emit_luts(data: dict) -> list[str]:
     # [abcde]: e only ever appears for Cyclone V's ALM-half LUT5 (#63); every
     # 4-input family's fn tags simply never use the letter.
     _FN_RULES = [
-        (re.compile(r"^(INV|NOT)\(([abcde])\)$"),     lambda m: f"~{m.group(2)}"),
-        (re.compile(r"^BUF\(([abcde])\)$"),            lambda m: m.group(1)),
-        (re.compile(r"^AND\(([abcde]),([abcde])\)$"),   lambda m: f"{m.group(1)} & {m.group(2)}"),
-        (re.compile(r"^OR\(([abcde]),([abcde])\)$"),    lambda m: f"{m.group(1)} | {m.group(2)}"),
-        (re.compile(r"^XOR\(([abcde]),([abcde])\)$"),   lambda m: f"{m.group(1)} ^ {m.group(2)}"),
-        (re.compile(r"^NAND\(([abcde]),([abcde])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
-        (re.compile(r"^NOR\(([abcde]),([abcde])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
-        (re.compile(r"^XNOR\(([abcde]),([abcde])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
+        (re.compile(r"^(INV|NOT)\(([abcdef])\)$"),     lambda m: f"~{m.group(2)}"),
+        (re.compile(r"^BUF\(([abcdef])\)$"),            lambda m: m.group(1)),
+        (re.compile(r"^AND\(([abcdef]),([abcdef])\)$"),   lambda m: f"{m.group(1)} & {m.group(2)}"),
+        (re.compile(r"^OR\(([abcdef]),([abcdef])\)$"),    lambda m: f"{m.group(1)} | {m.group(2)}"),
+        (re.compile(r"^XOR\(([abcdef]),([abcdef])\)$"),   lambda m: f"{m.group(1)} ^ {m.group(2)}"),
+        (re.compile(r"^NAND\(([abcdef]),([abcdef])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
+        (re.compile(r"^NOR\(([abcdef]),([abcdef])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
+        (re.compile(r"^XNOR\(([abcdef]),([abcdef])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
         # MUX(sel,i0,i1): 3-input LUT mux, sel=0 -> i0, sel=1 -> i1 (see classify_lut).
-        (re.compile(r"^MUX\(([abcde]),([abcde]),([abcde])\)$"),
+        (re.compile(r"^MUX\(([abcdef]),([abcdef]),([abcdef])\)$"),
                                                       lambda m: f"({m.group(1)} ? {m.group(3)} : {m.group(2)})"),
         # MUX(sel0,i0,MUX(sel1,i1,i2)): Cyclone V LUT5-only cascaded 2-select
         # mux tree (see load.py's _mux5_tree: "y = i0 if sel0 else (i1 if
         # sel1 else i2)").  OUTER level is sel0=1->i0 / sel0=0->inner --
         # inverted from the inner/3-input MUX's sel=0->i0 convention above;
         # _mux5_tree's own bit-check (not the rule above) is the ground truth.
-        (re.compile(r"^MUX\(([abcde]),([abcde]),MUX\(([abcde]),([abcde]),([abcde])\)\)$"),
+        (re.compile(r"^MUX\(([abcdef]),([abcdef]),MUX\(([abcdef]),([abcdef]),([abcdef])\)\)$"),
                                                       lambda m: (f"({m.group(1)} ? {m.group(2)} : "
                                                                  f"({m.group(3)} ? {m.group(5)} : {m.group(4)}))")),
     ]
@@ -1135,7 +1144,7 @@ def emit_luts(data: dict) -> list[str]:
     # sorted by output name — related bits (e.g. dpram_r2c11_*) then group.
     blocks: list[tuple[str, list[str]]] = []
 
-    for cell, init, pa, pb, pc, pd, pe, out_z, fn in luts:
+    for cell, init, pa, pb, pc, pd, pe, pf, out_z, fn in luts:
         if out_z is None:
             # Output is not connected to any fabric net — skip
             continue
@@ -1161,12 +1170,13 @@ def emit_luts(data: dict) -> list[str]:
         # e is NULL for every 4-input family (#63) — keep None, not "NC", so
         # _lut_init_to_case's len(init)==16 branch (no `e` param) still applies.
         e_expr = rn(pe) if pe is not None else None
+        f_expr = rn(pf) if pf is not None else None
 
         if fn is None or fn.startswith("COMBO"):
             # Pass human name for localparam naming; empty → use z_name (avoids lut_lut_lut…)
             lp_key = _sanitise(cell_human) if cell_human else ""
             blk = _lut_init_to_case(init, z_name, a_expr, b_expr, c_expr, d_expr,
-                                    lp_key, tie_unused=tie_unused, e=e_expr)
+                                    lp_key, tie_unused=tie_unused, e=e_expr, f=f_expr)
             blk[-1] += f"  // {cell_name}  init={init}"
 
         elif fn == "CONST0":
@@ -1181,7 +1191,7 @@ def emit_luts(data: dict) -> list[str]:
             fn_op = _fn_to_vlog(fn)
             # e_expr is None for every 4-input family; fn never contains the
             # letter 'e' in that case, so the missing map entry is never hit.
-            port_map = {"a": a_expr, "b": b_expr, "c": c_expr, "d": d_expr, "e": e_expr}
+            port_map = {"a": a_expr, "b": b_expr, "c": c_expr, "d": d_expr, "e": e_expr, "f": f_expr}
 
             def replace_port(m):
                 letter = m.group(0)
@@ -1191,7 +1201,7 @@ def emit_luts(data: dict) -> list[str]:
                     return f"({expr})"
                 return expr
 
-            vlog_expr = re.sub(r"\b([abcde])\b", replace_port, fn_op)
+            vlog_expr = re.sub(r"\b([abcdef])\b", replace_port, fn_op)
             # Drop the comment when it just repeats the (now-named) output.
             _cmt = "" if z_name == cell_name else f"  // {cell_name}"
             blk = [f"    assign {z_name} = {vlog_expr};{_cmt}"]

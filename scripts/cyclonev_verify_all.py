@@ -97,7 +97,9 @@ LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_verify_all.log"
 #    actual point of this script, not just "did Quartus/Mistral crash". ──
 EXPECTED_LIFTER = {
     "device": "5CEBA4U19C8", "die": "e50f",
-    "n_luts": 33336, "n_ffs": 11502, "n_nets": 144296, "n_arcs": 70007,
+    # LUT/FF/net counts re-baselined by the #106 lifter rewrite (old 33336/11502/144296 came from
+    # the wrong lifter); see docs/cyclonev-postfit-oracle.md.
+    "n_luts": 6511, "n_ffs": 7855, "n_nets": 15818, "n_arcs": 70007,
     "n_unparsed_lines": 0,
 }
 EXPECTED_PADMAP = {
