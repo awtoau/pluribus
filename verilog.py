@@ -1968,6 +1968,103 @@ def emit_ebr(data: dict) -> list[str]:
     return lines
 
 
+def emit_fplls(data: dict) -> list[str]:
+    """Emit a named, parameterized `altpll` instance per recognized Cyclone V
+    FPLL tile, instead of leaving the tile invisible (issue #104).
+
+    First IP-recognition emitter in pluribus -- no family had one before.
+    `cyclonev_lift.py` does not populate `data["fpll_tiles"]` today (FPLL is
+    explicitly unmodelled there, docs/cyclonev-lifter-status.md); this
+    function is a no-op (returns []) when that key is absent, so every
+    existing pipeline run is unaffected. It is wired in so the day a lifter
+    starts populating `fpll_tiles` (tile -> {FIELD: hex_value} straight from
+    a `.bt`'s `s FPLL.x.y:FIELD value` lines, same shape
+    scripts/cyclonev_fpll_fuzz.py's extract_fpll_settings() produces), the
+    output appears with no further plumbing.
+
+    Decode is imported from scripts/cyclonev_fpll_fuzz.py rather than
+    duplicated -- one calibrated M/N-counter decode, used by both the fuzz
+    harness and the emitter. See docs/cyclonev-fpll-fuzz-status.md for what
+    is and is not calibrated: M divide is confirmed for symmetric (50%
+    duty, hi==lo) non-bypassed cases and for the bypass case; a real sample
+    with hi != lo (any non-50%-duty or odd-division M/N) decodes to
+    confidence=UNKNOWN and is emitted as a comment-only placeholder, not a
+    guessed parameter value -- never papers over an uncalibrated case with
+    a confident-looking number.
+    """
+    fpll_tiles = data.get("fpll_tiles")
+    if not fpll_tiles:
+        return []
+
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent / "scripts"))
+    import cyclonev_fpll_fuzz as _fpllfuzz
+
+    lines: list[str] = [
+        "",
+        "    // =========================================================",
+        "    // FPLL (fractional PLL) -- recognized vendor IP, issue #104",
+        "    // =========================================================",
+        "    // WARNING: decode is CALIBRATED against a handful of compiled",
+        "    // Quartus designs (scripts/cyclonev_fpll_fuzz.py), not derived",
+        "    // from a full register-map specification. Confidence is",
+        "    // per-tile; HIGH/MEDIUM means the M/N decode matched the",
+        "    // calibration arithmetic, UNKNOWN means the tile's fields fell",
+        "    // outside every calibrated case and NO parameter is guessed.",
+        "    // See docs/cyclonev-fpll-fuzz-status.md.",
+        "    //",
+    ]
+
+    for tile, raw_settings in sorted(fpll_tiles.items()):
+        # raw_settings keys may carry the "FPLL.x.y:" prefix (as read
+        # straight from a .bt) or be bare field names already -- accept
+        # either so this function works against both a lifter's eventual
+        # row shape and the fuzz script's own extract_fpll_settings() output.
+        bare = {(k.split(":", 1)[1] if ":" in k else k): v
+                for k, v in raw_settings.items()}
+        decoded = _fpllfuzz.decode_fpll_tile(bare)
+        m = decoded["m_counter"]
+        n = decoded["n_counter"]
+        m_div, n_div = m.get("divide"), n.get("divide")
+        inst_name = "fpll_" + tile.replace(".", "_").replace("FPLL_", "").lstrip("_")
+
+        if m_div is None or n_div is None:
+            notes = [m.get("note"), n.get("note")]
+            lines.append(f"    // {tile}: UNKNOWN -- decode did not resolve "
+                         f"(confidence=UNKNOWN, no parameter guessed)")
+            for note in notes:
+                if note:
+                    lines.append(f"    //   {note}")
+            lines.append(f"    // raw fields: {bare}")
+            lines.append("")
+            continue
+
+        confidence = ("HIGH" if not m.get("bypass") and not n.get("bypass")
+                      and m_div is not None and n_div is not None
+                      else "MEDIUM (bypass path not independently "
+                           "calibrated for this counter, see decode notes)")
+        lines += [
+            f"    // {tile}: M={m_div} (bypass={m.get('bypass')}) "
+            f"N={n_div} (bypass={n.get('bypass')})  confidence={confidence}",
+            f"    altpll #(",
+            f'        .operation_mode("NORMAL"),',
+            f'        .intended_device_family("Cyclone V"),',
+            f"        .clk0_multiply_by({m_div}),",
+            f"        .clk0_divide_by({n_div})",
+            f"    ) {inst_name} (",
+            f"        // Reference clock / clk0 output nets not resolved by",
+            f"        // this emitter -- {tile}'s own local arcs are the",
+            f"        // next step (issue #104 scope was the config decode).",
+            f"        .inclk(2'b00),",
+            f"        .clk()",
+            f"    );",
+            "",
+        ]
+
+    return lines
+
+
 def emit_output_drives(data: dict) -> list[str]:
     """`assign <output_port> = <fabric driver>;` for output pads (#58).
 
@@ -2270,6 +2367,7 @@ def main():
         emit_alus(data),
         emit_trigger_comment(data),
         emit_ebr(data),
+        emit_fplls(data),
         emit_output_drives(data),
         emit_unresolved_pads_comment(data),
         emit_footer(),
