@@ -46,7 +46,7 @@ parallelism Quartus compiles should get.
     awareness), each running one full Quartus compile sequence per work
     item (one die for stage 1, one DSP design for stage 2), pulling the
     next item off a shared queue.Queue the moment it finishes. A memory
-    gate (--max-ram-pct, default 50%) additionally pauses new work being
+    gate (--max-ram-pct, default 85%) additionally pauses new work being
     claimed whenever psutil.virtual_memory().percent is at or above that
     threshold, independent of thread count -- the real fix for the crash,
     since the worker-count cap alone doesn't bound actual RAM use (that
@@ -64,7 +64,7 @@ parallelism Quartus compiles should get.
 Usage
 -----
     python3.15t scripts/cyclonev_verify_all.py
-    python3.15t scripts/cyclonev_verify_all.py --compile-workers 20 --max-ram-pct 50
+    python3.15t scripts/cyclonev_verify_all.py --compile-workers 20 --max-ram-pct 85
     python3.15t scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz  # fast re-check
     PLURIBUS_QUARTUS_BIN=/opt/altera/quartus-24.1/quartus/bin python3.15t scripts/cyclonev_verify_all.py
 """
@@ -166,12 +166,12 @@ _SENTINEL = object()  # marks "no more items will ever arrive" on produced_q
 
 def run_producer_consumer(work_items, produce_fn, consume_fn,
                            n_producers, n_consumers, logger, stage_name,
-                           max_ram_pct=50.0):
+                           max_ram_pct=85.0):
     """Run `produce_fn(item)` across a wide thread pool (the slow Quartus
     compile), feed whatever it returns into `consume_fn(result)` on a
     separate, smaller thread pool (the fast Mistral decompile + compare).
 
-    MEMORY GATE (max_ram_pct, default 50%): a prior run with
+    MEMORY GATE (max_ram_pct, default 85%): a prior run with
     --compile-workers defaulted to os.cpu_count() (30 on this machine)
     crashed the IDE -- 30 concurrent quartus_map/fit/asm processes with no
     memory awareness, only a worker-COUNT cap, which doesn't bound actual
@@ -182,6 +182,15 @@ def run_producer_consumer(work_items, produce_fn, consume_fn,
     CPU-bound Quartus compiles) while actual concurrent RAM use is capped
     independent of how many threads exist. This only throttles NEW work
     being claimed; an in-flight compile is never killed mid-run.
+
+    Default is 85%, not 50% -- this host runs a permanently-resident ~16GB
+    QEMU VM plus VSCode/Chrome, holding a ~50-58% RAM baseline before this
+    script does anything. A 50% default is unreachable in steady state and
+    stalls every producer indefinitely (confirmed: this exact bug, same
+    gate pattern, hung scripts/cyclonev_db_import_routes.py for 20+ minutes
+    with zero log output -- see that script's _wait_for_ram). The gate
+    should bound THIS script's own usage, not reserve half the machine for
+    processes that were never going to free it.
 
     A producer thread pulls its next item the moment it finishes its own --
     it never waits on that item's own decompile, which is the whole point:
@@ -217,6 +226,8 @@ def run_producer_consumer(work_items, produce_fn, consume_fn,
     remaining = [total]  # items not yet pulled off work_q by any producer
 
     def producer_worker():
+        wait_start = None
+        last_wait_log = 0.0
         while True:
             # Memory gate: poll every 2s while over budget rather than claim
             # work and risk the OOM/crash this gate exists to prevent. 2s is
@@ -224,11 +235,25 @@ def run_producer_consumer(work_items, produce_fn, consume_fn,
             # session (~20s) -- frequent enough not to stall a ready slot for
             # long once RAM frees up, infrequent enough not to burn CPU on
             # psutil calls across up to `n_producers` polling threads at once.
+            # Re-logs every 30s while waiting (not just silently polling) --
+            # a gate stuck at an unreachable threshold must be visible in the
+            # log as a stall, not indistinguishable from normal progress.
             while psutil.virtual_memory().percent >= max_ram_pct:
-                if not error_event.is_set():
-                    time.sleep(2)
-                else:
+                if error_event.is_set():
                     return  # another thread already failed -- stop waiting
+                now = time.time()
+                if wait_start is None:
+                    wait_start = now
+                    logger.info("[%s] RAM at %.0f%% >= %.0f%% -- pausing new work",
+                                stage_name, psutil.virtual_memory().percent, max_ram_pct)
+                    last_wait_log = now
+                elif now - last_wait_log >= 30.0:
+                    logger.info("[%s] still waiting on RAM (%.0f%% >= %.0f%%) for %.0fs",
+                                stage_name, psutil.virtual_memory().percent, max_ram_pct,
+                                now - wait_start)
+                    last_wait_log = now
+                time.sleep(2)
+            wait_start = None
             try:
                 item = work_q.get(block=False)
             except queue.Empty:
@@ -297,7 +322,7 @@ def run_producer_consumer(work_items, produce_fn, consume_fn,
 
 # ── stage 1: die probe ──────────────────────────────────────────────────────
 
-def stage_die_probe(work_dir, n_producers, n_consumers, logger, max_ram_pct=50.0):
+def stage_die_probe(work_dir, n_producers, n_consumers, logger, max_ram_pct=85.0):
     items = list(die_probe.DIES.items())  # [(die_name, part), ...]
 
     def produce(item):
@@ -321,7 +346,7 @@ def stage_die_probe(work_dir, n_producers, n_consumers, logger, max_ram_pct=50.0
 
 # ── stage 2: DSP fuzz ────────────────────────────────────────────────────────
 
-def stage_dsp_fuzz(work_dir, n_producers, n_consumers, logger, max_ram_pct=50.0):
+def stage_dsp_fuzz(work_dir, n_producers, n_consumers, logger, max_ram_pct=85.0):
     items = list(dsp_fuzz.DESIGNS.items())  # [(name, spec), ...]
 
     def produce(item):
@@ -494,10 +519,11 @@ def main():
                           "(default: min(20, os.cpu_count()))")
     ap.add_argument("--decompile-workers", type=int, default=4,
                      help="consumer pool size for mistral-cv decompile + compare (default: 4)")
-    ap.add_argument("--max-ram-pct", type=float, default=50.0,
+    ap.add_argument("--max-ram-pct", type=float, default=85.0,
                      help="pause claiming new compile work while system RAM use is at or "
                           "above this percent (psutil.virtual_memory().percent); does not "
-                          "kill in-flight work (default: 50.0)")
+                          "kill in-flight work (default: 85.0 -- see run_producer_consumer's "
+                          "docstring for why 50 stalls indefinitely on this host)")
     ap.add_argument("--reference-bt", type=Path, default=REFERENCE_BT,
                      help="pre-decompiled reference .bt for stages 3/4 "
                           "(default: %(default)s)")
