@@ -58,10 +58,8 @@ OVERALL_S = {"quartus_map": 12, "quartus_fit": 23, "quartus_asm": 6,
              "load": 2, "verilog": 2}
 
 # --jobs N: Quartus steps run N at a time; decomp/load/DB steps are serialised (one SQLite
-# writer).  New builds wait while RAM use >= MEM_GATE_PCT (host is shared); logged every 30 s.
+# writer).  Host safety (one heavy batch at a time, absolute free-RAM gate): scripts/heavy_guard.py.
 # Per-step OVERALL_S limits are multiplied by the limit scale (default = jobs: slowdown under load).
-MEM_GATE_PCT = 85
-MEM_LOG_S = 30
 DB_LOCK = threading.Lock()
 LIMIT_SCALE = 1
 
@@ -248,12 +246,8 @@ def record_build(name, ddir, spec, srcs, status):
 
 
 def wait_for_memory(name):
-    import psutil
-    t0 = time.monotonic()
-    while psutil.virtual_memory().percent >= MEM_GATE_PCT:
-        log.info("%s: waiting for RAM < %d%% (now %.1f%%, %.0fs waited)", name, MEM_GATE_PCT,
-                 psutil.virtual_memory().percent, time.monotonic() - t0)
-        threading.Event().wait(MEM_LOG_S)
+    import heavy_guard
+    heavy_guard.wait_available(log, name)
 
 
 def build_one(name, skip_quartus):
@@ -322,7 +316,9 @@ def main():
     log.info("DB %s; %d designs; NoGIL=%s", os.environ["PLURIBUS_SQLITE_PATH"], len(names),
              not getattr(sys, "_is_gil_enabled", lambda: True)())
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=args.jobs) as ex:
+    import heavy_guard
+    with heavy_guard.heavy_lock("cyclonev_corpus_build", log), \
+            ThreadPoolExecutor(max_workers=args.jobs) as ex:
         results = dict(zip(names, ex.map(lambda n: build_one(n, args.skip_quartus), names)))
     for n, f in results.items():
         log.info("RESULT %-18s %s", n, "ok" if f is None else f"FAIL at {f}")
