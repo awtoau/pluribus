@@ -91,7 +91,7 @@ Keep three claims separate, as the ECP5 corpus work did:
 3. **lifted, consistency checks pass** — no unconnected nets, no impossible LUT
    INITs, counts agreeing with the tile census
 
-Known lifter gaps, all of which **under-connect rather than mis-connect**: wide
+Known lifter gaps, all of which are faults (missing connections, as bad as wrong ones): wide
 muxes (F5MUX/PFUMX/L6MUX21), the CCU2 carry path, and clock globals. The
 headline question is whether commercial designs hit these harder than hobby ones
 did.
