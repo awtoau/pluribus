@@ -28,6 +28,8 @@ Dump targets (--dump-target):
   cmux  (pram, cmuxcr/vr/vg/hr/hg)  clock-network muxes.  Probes drive clock
                       pins with GLOBAL_SIGNAL GLOBAL/REGIONAL/OFF (CMUX_PROBES);
                       presence checks on the decoded CMUX block (CMUX_PRESENCE).
+  resolve             differential builds for the open MISMATCH items (RESOLVE_*);
+                      decoded lines recorded in results.json, judged in the status doc.
   m10k  (cram, `m`/`n`/`b`)  M10K port widths and true-dual-port mode, from
                       single/simple/true dual-port RAM inferred at each
                       width.  Verdict = decoded value on every M10K tile
@@ -1010,7 +1012,8 @@ def _bank_probe(banks: list):
         if b.get("load"):
             ports += [f"input l{k}", f"input [{n-1}:0] x{k}"]
         ports += [f"input [{n-1}:0] d{k}", f"output [{n-1}:0] q{k}"]
-        en = f"e{k}" if b.get("en") else "1'b1"
+        # en="low": active-low enable (polarity differential vs en=True).
+        en = {True: f"e{k}", "low": f"!e{k}"}.get(b.get("en"), "1'b1")
         for i in range(n):
             reg = f"b{k}_{i}"
             nxt = f"l{k} ? x{k}[{i}] : d{k}[{i}]" if b.get("load") else f"d{k}[{i}]"
@@ -1018,6 +1021,9 @@ def _bank_probe(banks: list):
             if b.get("clr") == "async":
                 body.append(f"  always @({edge} clk or posedge r{k}) "
                             f"if (r{k}) {reg} <= 1'b0; else if ({en}) {reg} <= {nxt};")
+            elif b.get("clr") == "async_n":       # active-low async clear
+                body.append(f"  always @({edge} clk or negedge r{k}) "
+                            f"if (!r{k}) {reg} <= 1'b0; else if ({en}) {reg} <= {nxt};")
             elif b.get("clr") == "sync":
                 body.append(f"  always @({edge} clk) "
                             f"if (r{k}) {reg} <= 1'b0; else if ({en}) {reg} <= {nxt};")
@@ -1030,6 +1036,26 @@ def _bank_probe(banks: list):
 
 
 LAB_PROBES.update({name: _bank_probe(spec) for name, spec in BANK_PROBE_SPECS.items()})
+
+# ── mismatch resolution probes (--dump-target resolve) ───────────────────────
+# Differential pairs for the open MISMATCH items (status doc, "Mismatch
+# resolution").  LAB entries may carry a third element: extra QSF lines.
+_GLOBAL_CLK = 'set_instance_assignment -name GLOBAL_SIGNAL "{}" -to clk'
+RESOLVE_LAB_PROBES = {
+    "rs_ctrl": LAB_PROBES["ctrl"],
+    "rs_negclk": LAB_PROBES["negclk"],
+    "rs_ctrl_glob": (*LAB_PROBES["ctrl"], [_GLOBAL_CLK.format("GLOBAL CLOCK")]),
+    "rs_negclk_glob": (*LAB_PROBES["negclk"], [_GLOBAL_CLK.format("GLOBAL CLOCK")]),
+    "rs_bank_plain": LAB_PROBES["bank_plain"],
+    "rs_bank_plain_off": (*LAB_PROBES["bank_plain"], [_GLOBAL_CLK.format("OFF")]),
+    "rs_bank_neg": _bank_probe([dict(n=16, edge="neg")]),
+    "rs_bank_neg_off": (*_bank_probe([dict(n=16, edge="neg")]), [_GLOBAL_CLK.format("OFF")]),
+    "rs_bank_en": LAB_PROBES["bank_en"],
+    "rs_bank_en_n": _bank_probe([dict(n=16, en="low")]),
+    "rs_bank_aclr": LAB_PROBES["bank_aclr"],
+    "rs_bank_aclr_n": _bank_probe([dict(n=16, clr="async_n")]),
+}
+LAB_PROBES.update(RESOLVE_LAB_PROBES)
 
 # (target, probe, mux, span, kind, expected, basis).  span: None (g rows),
 # "ff" (the slot holding the probe's FF), "ffall" (every slot with an FF), or an
@@ -1233,12 +1259,13 @@ def pick_tile(ff_slots: dict, printed: dict, kind: str, idle_ok: bool):
 
 def compile_lab_probe(probe: str, logger):
     """Quartus + mistral decomp for one probe.  Returns (error, bt_text)."""
-    body, locs = LAB_PROBES[probe]
+    body, locs, *extra = LAB_PROBES[probe]
     top = slug(f"labdump_{probe}")
     d = WORK_DIR / top
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{top}.v").write_text(body.format(t=top))
     lines = qsf_header(top) + [f"set_location_assignment {lab} -to {reg}" for reg, lab in locs]
+    lines += extra[0] if extra else []
     (d / f"{top}.qsf").write_text("\n".join(lines) + "\n")
     (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
     logger.info("=== %s: probe %s ===", top, probe)
@@ -1424,6 +1451,14 @@ CMUX_PROBES = {
     "cm_l17_reg": [("PIN_L17", "REGIONAL CLOCK")],
     "cm_l17_glob": [("PIN_L17", "GLOBAL CLOCK")],
 }
+# probe -> (clocks, LAB the FFs are pinned to).  L17 = GPIO.054.018.0 (e50f-pkg u19).
+# e50f-cmux.txt: corner CMUX 054.002 drives RCLK.028.011.* (lower-right quadrant) only;
+# CMUX 054.022 (CMUXHR) drives RCLK.028.034.* (upper right) too.  FFs in the upper-right
+# quadrant cannot be reached from the corner, so REGIONAL there must use CMUXHR.
+RESOLVE_CMUX_PROBES = {
+    "rs_l17_reg_lo": ([("PIN_L17", "REGIONAL CLOCK")], "LAB_X40_Y5"),
+    "rs_l17_reg_hi": ([("PIN_L17", "REGIONAL CLOCK")], "LAB_X40_Y38"),
+}
 
 
 def _cmux_verilog(top: str, clocks: list) -> str:
@@ -1441,7 +1476,8 @@ def _cmux_verilog(top: str, clocks: list) -> str:
 
 def compile_cmux_probe(probe: str, logger):
     """Quartus + mistral decomp for one clock-network probe.  Returns (error, bt_text)."""
-    clocks = CMUX_PROBES[probe]
+    clocks = CMUX_PROBES.get(probe) or RESOLVE_CMUX_PROBES[probe][0]
+    reg_lab = RESOLVE_CMUX_PROBES[probe][1] if probe in RESOLVE_CMUX_PROBES else None
     top = slug(f"cmux_{probe}")
     d = WORK_DIR / top
     d.mkdir(parents=True, exist_ok=True)
@@ -1451,6 +1487,8 @@ def compile_cmux_probe(probe: str, logger):
         lines.append(f"set_location_assignment {pin} -to c{k}")
         if glob:
             lines.append(f'set_instance_assignment -name GLOBAL_SIGNAL "{glob}" -to c{k}')
+    if reg_lab:
+        lines += [f"set_location_assignment {reg_lab} -to r{j}" for j in range(8 * len(clocks))]
     (d / f"{top}.qsf").write_text("\n".join(lines) + "\n")
     (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
     logger.info("=== %s: probe %s (clocks %s) ===", top, probe, clocks)
@@ -1686,6 +1724,39 @@ DSP_OBSERVED = {
 }
 DSP_NOT_IN_SCOPE = {"mode": "MODE covered by scripts/cyclonev_dsp_fuzz.py"}
 
+# Resolution probes (--dump-target resolve).  Sum/difference of two 18x18 products uses
+# both multipliers (A and B); constant vs dynamic accumulate/subtract probes *_INV.
+_SUM2 = ("module {{t}}(input clk, input {s}[17:0] a, input {s}[17:0] b, input {s}[17:0] c, "
+         "input {s}[17:0] d, output reg {s}[37:0] p);\n"
+         "  always @(posedge clk) p <= a * b {op} c * d;\nendmodule\n")
+RESOLVE_DSP_PROBES = {
+    "rs_s_reg": DSP_PROBES["s_reg"],
+    "rs_u_reg": DSP_PROBES["u_reg"],
+    "rs_w9_reg": DSP_PROBES["w9_reg"],
+    "rs_s_sum2": _SUM2.format(s="signed ", op="+"),
+    "rs_u_sum2": _SUM2.format(s="", op="+"),
+    "rs_s_diff2": _SUM2.format(s="signed ", op="-"),
+    # accumulate always on (no reset): accumulate input constant 1
+    "rs_acc_free": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+                   "output reg signed [43:0] acc);\n  always @(posedge clk) acc <= acc + (a * b);\n"
+                   "endmodule\n",
+    "rs_acc": DSP_PROBES["acc"],
+}
+
+# opt differential builds: name -> global QSF assignments (no -to).
+RESOLVE_OPT_BUILDS = {
+    "rs_opt_default": [],
+    "rs_opt_relclr_on": ["RELEASE_CLEARS_BEFORE_TRI_STATES On"],
+    "rs_opt_relclr_off": ["RELEASE_CLEARS_BEFORE_TRI_STATES Off"],
+    "rs_opt_cvp_on": ["ENABLE_CVP_CONFDONE On"],
+    "rs_opt_cvp_relclr_on": ["ENABLE_CVP_CONFDONE On", "RELEASE_CLEARS_BEFORE_TRI_STATES On"],
+    "rs_opt_dwr_on": ["ENABLE_DEVICE_WIDE_RESET On"],
+    "rs_opt_dwr_off": ["ENABLE_DEVICE_WIDE_RESET Off"],
+    "rs_opt_dwoe_on": ["ENABLE_DEVICE_WIDE_OE On"],
+    "rs_opt_dwr_dwoe_on": ["ENABLE_DEVICE_WIDE_RESET On", "ENABLE_DEVICE_WIDE_OE On"],
+    "rs_opt_startup_on": ["USER_START_UP_CLOCK On"],
+}
+
 _DSP_FIELD_RE = re.compile(r"^s (DSP\.\d+\.\d+)(?:\.\w+)?:([A-Za-z0-9_]+)(?:\.(\d+))? (\S+)")
 
 
@@ -1694,7 +1765,8 @@ def compile_dsp_probe(probe: str, logger):
     top = slug(f"dsp_{probe}")
     d = WORK_DIR / top
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"{top}.v").write_text(DSP_PROBES[probe].format(t=top))
+    src = DSP_PROBES.get(probe) or RESOLVE_DSP_PROBES[probe]
+    (d / f"{top}.v").write_text(src.format(t=top))
     (d / f"{top}.qsf").write_text("\n".join(qsf_header(top)) + "\n")
     (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
     logger.info("=== %s: DSP probe %s ===", top, probe)
@@ -1805,6 +1877,66 @@ def run_dsp_dumps(logger) -> dict:
     return {**_dsp_results(decodes, rows, logger)}
 
 
+# ── mismatch resolution (differential builds; lines recorded, judged by hand) ─
+
+_RPT_RE = re.compile(r"(?i)release clears|cvp|device-wide|dev_clrn|dev_oe|"
+                     r"18x18|18x19|9x9|27x27|sum of|independent|m10k block")
+
+
+def _rpt_lines(d: Path, top: str) -> list:
+    out = []
+    for ext in ("asm.rpt", "fit.rpt"):
+        p = d / f"{top}.{ext}"
+        if p.exists():
+            out += [f"{ext}: {ln.strip()}" for ln in p.read_text(errors="replace").splitlines()
+                    if _RPT_RE.search(ln) and ";" in ln][:40]
+    return out
+
+
+def run_resolve(logger) -> dict:
+    """Compile every RESOLVE_* build and keep the decoded lines each item needs."""
+    res = {}
+    for name, qsf in RESOLVE_OPT_BUILDS.items():
+        err, bt, d = opt_compile(name, qsf, logger)
+        e = {"group": "opt", "qsf": qsf, "error": err}
+        if not err:
+            e["lines"] = [ln for ln in bt.splitlines() if ln.startswith("o ")]
+            base = WORK_DIR / "rs_opt_default" / "rs_opt_default.rbf"
+            if base.exists():
+                e["rbf_bytes_vs_default"] = rbf_diff_bytes(d / f"{name}.rbf", base)
+            e["rpt"] = _rpt_lines(d, name)
+        res[f"resolve.{name}"] = e
+    for name in RESOLVE_LAB_PROBES:
+        err, bt = compile_lab_probe(name, logger)
+        e = {"group": "lab", "error": err}
+        if not err:
+            e["lines"] = [ln for ln in bt.splitlines()
+                          if re.match(r"^s LAB\.020\.020:(CLK|EN|ACLR|SCLR|SLOAD)", ln)
+                          or (ln.startswith("r ") and "CLK" in ln)]
+            e["ff_lines"] = [ln for ln in bt.splitlines() if _LABFF_LINE_RE.match(ln)]
+        res[f"resolve.{name}"] = e
+    for name in RESOLVE_DSP_PROBES:
+        err, bt = compile_dsp_probe(name, logger)
+        top = slug(f"dsp_{name}")
+        e = {"group": "dsp", "error": err}
+        if not err:
+            e["lines"] = [ln for ln in bt.splitlines() if ln.startswith("s DSP.")]
+            e["route_lines"] = [ln for ln in bt.splitlines()
+                                if ln.startswith("r DSP.") or (ln.startswith("r ") and ":DSP." in ln)]
+            e["rpt"] = _rpt_lines(WORK_DIR / top, top)
+        res[f"resolve.{name}"] = e
+    for name in RESOLVE_CMUX_PROBES:
+        err, bt = compile_cmux_probe(name, logger)
+        e = {"group": "cmux", "error": err}
+        if not err:
+            e["lines"] = [ln for ln in bt.splitlines() if "CMUX" in ln]
+            e["clk_route"] = [ln for ln in bt.splitlines() if ln.startswith("r ") and "RCLK" in ln]
+        res[f"resolve.{name}"] = e
+    for k, e in res.items():
+        logger.info("%s: %s", k, e.get("error") or f"{len(e.get('lines', []))} lines")
+    return res
+
+
 # ── merge / main ─────────────────────────────────────────────────────────────
 
 def merge_results(new: dict):
@@ -1827,7 +1959,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dump-target", default="gpio",
-                    choices=["gpio", "opt", "m10k", "lab", "mlab", "cmux", "dsp"],
+                    choices=["gpio", "opt", "m10k", "lab", "mlab", "cmux", "dsp", "resolve"],
                     help="which cv_block_muxes dump target to check (default %(default)s)")
     ap.add_argument("--value", nargs="*", default=[],
                     help="gpio: named value(s) of drive_strength to test (one compile each)")
@@ -1909,6 +2041,14 @@ def main():
                 print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
         print(f"\n=== {args.dump_target} row verdicts ===")
         print_row_counts(results, args.dump_target)
+    elif args.dump_target == "resolve":
+        logger = setup_logging()
+        results = run_resolve(logger)
+        merge_results(results)
+        for key, e in results.items():
+            print(f"\n=== {key} {e.get('qsf', '')} {e.get('error') or ''}")
+            for ln in e.get("lines", []):
+                print("  " + ln)
     elif args.dump_target == "dsp":
         if not args.all:
             ap.error("dsp: give --all")
