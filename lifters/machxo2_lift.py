@@ -514,6 +514,15 @@ class MachXO2Lift:
                         gc = self.rg.globalise_net(row, 0, cname)
                         if gc.loc.x >= 0 and gc.loc.y >= 0:
                             return (gc.loc.x, gc.loc.y, gc.id)
+                elif col - hops == -1:
+                    # H06W stub 1 col off the die: Diamond turns it around at
+                    # the edge (H06W{i}01 -> H06E{i}04 at C2, #105); it is the
+                    # H06E wire of the same index+segment at col 0.
+                    mw = re.match(r'^W\d_H06W(\d+)$', name)
+                    if mw:
+                        gc = self.rg.globalise_net(row, 0, f"H06E{mw.group(1)}")
+                        if gc.loc.x >= 0 and gc.loc.y >= 0:
+                            return self._v02_alias(gc.loc.x, gc.loc.y, gc.id)
                 return None
 
             # Vertical span whose hop runs off the top/bottom edge.
