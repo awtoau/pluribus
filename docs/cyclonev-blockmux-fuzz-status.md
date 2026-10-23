@@ -303,6 +303,136 @@ Checks (lab 14, mlab 12):
 - `write_pulse_length` 500/800/950 and `mcrg/maddg` `vcchg`: no design variant tried.
 - `lut_mask`: out of scope (lifter exercises it).
 
+## lab second pass -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target lab --all`. Probes `bank_*` in `BANK_PROBE_SPECS`; checks in `LAB_CHECKS`
+(`moved` = differs from `bank_plain` at every span; `ffb`/`fft`/`ffall` = FF-occupied slots).
+
+Counts (`cv_block_muxes`, one verdict per row; a row with any MISMATCH is MISMATCH):
+
+| target | before (first pass) | after (second pass) |
+|---|---|---|
+| lab | 56: MATCH 3, MISMATCH 1, INCONCLUSIVE 52 | 56: MATCH 7, MISMATCH 6, INCONCLUSIVE 43 |
+| mlab | 61: MATCH 5, MISMATCH 0, INCONCLUSIVE 56 | not re-run this pass (baseline re-confirmed) |
+
+- Every bank landed in `LAB.020.020` with FFs in all 10 slots (top `FFT<n>` and bottom `FFB<n>` routing lines).
+- Control: `bank_plain` (16 posedge FFs, nothing shared except the clock).
+- Single-FF `ctrl`/`negclk` probes still print `CLK0_INV 1`.
+
+### Results by probe
+
+| probe | shared control | rows that moved vs control | notes |
+|---|---|---|---|
+| `bank_en` | enable (16) | `EN0_EN` (ctrl `0` -> absent=default `1`), `EN0_NINV` (default `1` -> `0`) | MATCH on `en0_en` is by absence |
+| `bank_en2` | two enables (10+10) | `EN0_EN` as above; `EN1_NINV` default `1` -> `0` | no `EN1_EN` line in either build |
+| `bank_sclr` | sync clear (16) | `TSCLR_DIS` `1` -> `0` on every top FF slot; `BSCLR_DIS` `1` -> `0` on every bottom FF slot | `SCLR_SEL DIN1`, `SLOAD_EN 0` |
+| `bank_sload` | sync load (16) | `TSLOAD_EN` `0` -> `1` on every top FF slot; `BSLOAD_EN` `0` -> `1` on bottom | `SLOAD_SEL DIN2` |
+| `bank_aclr` | async clear (16) | `ACLR0_INV` `0` -> `1`; `ACLR0_SEL` ctrl `ACLR0` -> absent (default `din3`) | |
+| `bank_clr2` | two async clears (10+10) | `ACLR0_INV 1`, `ACLR1_INV 1`; `ACLR0_SEL`/`ACLR1_SEL` absent (default `din3`/`din2`) | |
+| `bank_pn` | posedge 10 + negedge 6 | `CLK0_INV` absent (0); `CLK0_SEL` absent (`clka`); `CLK1_SEL CLKB` | per-slot `TCLK_SEL`/`BCLK_SEL` show CLK0 and CLK1 |
+
+Raw `.bt` lines checked by hand (`tmp/cyclonev_blockmux_fuzz/labdump_bank_*/`):
+- `bank_sclr`: `s LAB.020.020:TSCLR_DIS.6 1` and `.8 1` only. Top FF slots 0-5, 7, 9 have no
+  line, so they decode the default 0. Slots 6 and 8 hold bottom FFs only (`r LAB.020.020.6:FFB0`).
+- `bank_sload`: `TSLOAD_EN.0-5,7,9 1`, no line at 6 and 8. Same set as the top FF slots.
+- `bank_clr2`: `s LAB.020.020:ACLR0_INV 1`, `s LAB.020.020:ACLR1_INV 1`; no `ACLR*_SEL` line.
+- `bank_en`: `s LAB.020.020:EN0_NINV 0`; no `EN0_EN` line.
+
+### MISMATCH (against the naive expectation, not established as Mistral error)
+
+- `clk0_inv` (ctrl, from first pass): `s LAB.020.020:CLK0_INV 1`, expected `0`.
+  - Single FFs print `CLK0_INV 1` for posedge (`ctrl`) and negedge (`negclk`).
+  - 16-FF posedge bank (`bank_plain`) and posedge+negedge mix (`bank_pn`) print no `CLK0_INV` line.
+  - So the bit does not track FF polarity in these builds. Not established what it means.
+- `en0_ninv` (`bank_en`): `s LAB.020.020:EN0_NINV 0`, expected `1` (not inverted, Mistral default).
+  The flip 1 -> 0 happens in exactly the enable builds. Polarity meaning not established.
+- `en1_ninv` (`bank_en2`): `s LAB.020.020:EN1_NINV 0`, expected `1`. Same pattern as EN0.
+- `aclr0_inv` (`bank_aclr`): `s LAB.020.020:ACLR0_INV 1`, expected `0`. Row also MATCHes on `bank_clr2`
+  (`moved`, `ACLR0_INV 1`). The row is MISMATCH because any MISMATCH wins.
+- `aclr0_sel` (`bank_aclr`, `bank_clr2`), `aclr1_sel` (`bank_clr2`): no `*_SEL` line, so default
+  `din3`/`din2`. Naive expectation was `aclr0`/`aclr1` (the clear used). Not what decodes; the
+  `*_INV 1` bits are what moves.
+
+### Observed only (INCONCLUSIVE)
+
+- `clk0_sel`: `CLKB` on the negedge single FF (`negclk`), absent (`clka`) on `bank_pn`.
+- `CLK1_SEL CLKB` appears in `bank_pn` only; the negedge single FF selects it on `CLK0_SEL`.
+  Not checked per FF which clock index the negedge bank uses.
+- `tclk_sel` / `bclk_sel` per slot in `bank_pn`: CLK0 and CLK1 mixed. Not mapped to FF polarity.
+
+### Not reached
+
+- `en1_en`: never printed, `EN1_NINV` carries the only visible change for bank B.
+- `sclr_dis`, `sload_en`: observed `0` / `1`, no independent expectation.
+- Any `clr`/`sclr` LUT-logic form in another LAB: not re-probed this pass.
+- `tclk_sel = clk2` on a bank (clk3 probe): still not reached (first-pass reason unchanged).
+
+## cmux (clock-network muxes) -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target cmux --all`. Probes in `CMUX_PROBES`, checks in `CMUX_PRESENCE`.
+- Each probe drives 8 FFs per clock pin. Clock pins from `eda/ibis/5ceba4_u4840.xml`:
+  K7 (8A CLK_0), G10 (8A CLK_1), P9 (3B CLK_0), H10 (7A CLK_2), T15 (4A CLK_3), L17 (5B CLK_2).
+  F8 is a general user I/O.
+- Promotion knob: `set_instance_assignment -name GLOBAL_SIGNAL "<GLOBAL CLOCK|REGIONAL CLOCK|OFF>"`.
+- Mistral prints non-default config only. Verdicts use the presence of a `CMUX<block>` line
+  (config `s` or routing `r`). Assumption: a selected block always prints its `INPUT_SEL`, since
+  every printed value differs from the row default.
+
+CMUX blocks in each probe (`.bt` lines):
+
+| probe | clock pin | setting | blocks present |
+|---|---|---|---|
+| `cm_ded` | K7 | none | CMUXVG.025.045 |
+| `cm_glob` | K7 | GLOBAL CLOCK | CMUXVG.025.045 |
+| `cm_reg` | K7 | REGIONAL CLOCK | CMUXVR.025.045 (CMUXVG absent) |
+| `cm_off` | K7 | OFF | none |
+| `cm_gen` | F8 (general I/O) | none | CMUXVG.025.045 (routing `TDMUX.026.045.0012 -> CMUXVG:CLKIN.2`) |
+| `cm_h10` | H10 (7A) | none | CMUXVG.025.045 |
+| `cm_t15` | T15 (4A) | none | CMUXVG.021.000 |
+| `cm_p9` | P9 (3B) | none | CMUXVG.021.000 |
+| `cm_2ded` | K7 + G10 | none | CMUXVG.025.045 (INPUT_SEL.1 and .3) |
+| `cm_l17` | L17 (5B) | none | CMUXHG.054.022 |
+| `cm_l17_glob` | L17 | GLOBAL CLOCK | CMUXHG.054.022 |
+| `cm_l17_reg` | L17 | REGIONAL CLOCK | CMUXCR.054.002 (no CMUXHR, no CMUXHG) |
+
+Counts (`cv_block_muxes`, one verdict per row). Before this pass: no cmux probe existed, all 72 rows INCONCLUSIVE.
+
+| target | rows | MATCH | MISMATCH | INCONCLUSIVE |
+|---|---|---|---|---|
+| cmuxcr | 10 | 0 | 0 | 10 |
+| cmuxvr | 5 | 1 | 0 | 4 |
+| cmuxvg | 16 | 1 | 0 | 15 |
+| cmuxhr | 10 | 0 | 1 | 9 |
+| cmuxhg | 31 | 1 | 0 | 30 |
+
+Checks (10 presence checks: 8 MATCH, 1 MISMATCH, 1 INCONCLUSIVE):
+- MATCH `cmuxvr.input_sel`: REGIONAL on a vertical pin selects CMUXVR; GLOBAL does not.
+- MATCH `cmuxvg.input_sel`: default and GLOBAL select CMUXVG; REGIONAL does not.
+- MATCH `cmuxhg.input_sel`: 5B pin default and GLOBAL select CMUXHG; REGIONAL does not.
+- MISMATCH `cmuxhr.input_sel` (against the name-based expectation only): L17 with REGIONAL CLOCK
+  gives no CMUXHR. The clock goes through CMUXCR.054.002 instead (`s CMUXCR.054.002:INPUT_SEL.5 8`).
+  Not established that CMUXHR is wrong: it may serve other pins that this pass did not probe.
+- INCONCLUSIVE `cmuxcr.input_sel`: presence only, no naming-based expectation.
+
+Raw `.bt` lines checked by hand (`tmp/cyclonev_blockmux_fuzz/cmux_cm_*/`):
+- `cm_reg`: `s CMUXVR.025.045:INPUT_SEL.4 6`; the file has no `CMUXVG` line.
+- `cm_glob`: `s CMUXVG.025.045:INPUT_SEL.2 00`; `cm_reg` has no `CMUXVG` line.
+- `cm_l17_glob`: `s CMUXHG.054.022:INPUT_SEL.0 02`; `cm_l17_reg` has no `CMUXHG` line.
+
+Observed only (INCONCLUSIVE):
+- `cmuxhg.clkpin_sel_2`: value 5 in `cm_l17` (span 2) and `cm_l17_glob` (span 0).
+- `cmuxcr.clkpin_sel_0`: value 2 in `cm_l17_reg` (span 5).
+- `cmuxhg.testsyn_enout_select`: `PRE_SYNENB` at spans 2 and 0.
+
+Not reached:
+- `cmuxhr.clkpin_sel` / `nclkpin_sel` and `cmuxvr`/`cmuxvg`/`cmuxhg` `clkpin_sel`: no probe printed
+  them. Pin-index to field mapping not established.
+- `enable_register_mode`, `enable_register_power_up`: no Quartus knob identified for the clock-network
+  enable register.
+- `pll_feedback_enable_*`, `feedback_driver_select_*`, `burst_*`, `dynamic_clk_select`,
+  `testsyn_enout_select` as a verdict: need a PLL or DDR/DQS design, not built.
+- `cmuxhr` input_sel for other pins: not probed.
+
 ## Not done
 
 - Other GPIO `m`/`n` muxes (see above).

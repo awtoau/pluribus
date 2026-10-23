@@ -21,6 +21,9 @@ Dump targets (--dump-target):
                       inversions, tmode/bmode).  Probes pin registers to one LAB
                       (LAB_PROBES); checks in LAB_CHECKS; one verdict per row.
   mlab  (cram, `g`/`i`)  same, with the MLAB probe (ramstyle MLAB, 16x1 RAM).
+  cmux  (pram, cmuxcr/vr/vg/hr/hg)  clock-network muxes.  Probes drive clock
+                      pins with GLOBAL_SIGNAL GLOBAL/REGIONAL/OFF (CMUX_PROBES);
+                      presence checks on the decoded CMUX block (CMUX_PRESENCE).
   m10k  (cram, `m`/`n`/`b`)  M10K port widths and true-dual-port mode, from
                       single/simple/true dual-port RAM inferred at each
                       width.  Verdict = decoded value on every M10K tile
@@ -748,9 +751,62 @@ LAB_PROBES = {
                  []),
 }
 
+# ── LAB register banks (second pass) ─────────────────────────────────────────
+# A bank is N registers on one clock, sharing an enable / clear / load.  Each
+# bank k has its own inputs (e<k>, r<k>, l<k>), so two banks can differ.  The
+# first pass used one register per probe, which left the shared controls as LUT
+# logic; a bank of 16 gives the fitter a LAB-wide net to put on the dedicated line.
+BANK_PROBE_SPECS = {
+    "bank_plain": [dict(n=16)],                          # control: no shared control
+    "bank_en": [dict(n=16, en=True)],
+    "bank_aclr": [dict(n=16, clr="async")],
+    "bank_sclr": [dict(n=16, clr="sync")],
+    "bank_sload": [dict(n=16, load=True)],
+    "bank_en2": [dict(n=10, en=True), dict(n=10, en=True)],      # two enables
+    "bank_clr2": [dict(n=10, clr="async"), dict(n=10, clr="async")],  # two clears
+    "bank_pn": [dict(n=10), dict(n=6, edge="neg")],      # posedge + negedge bank
+}
+
+
+def _bank_probe(banks: list):
+    """(template, locs) for register banks pinned to LAB_PROBE_LAB."""
+    ports, body, locs = ["input clk"], [], []
+    for k, b in enumerate(banks):
+        n = b["n"]
+        edge = "negedge" if b.get("edge") == "neg" else "posedge"
+        if b.get("en"):
+            ports.append(f"input e{k}")
+        if b.get("clr"):
+            ports.append(f"input r{k}")
+        if b.get("load"):
+            ports += [f"input l{k}", f"input [{n-1}:0] x{k}"]
+        ports += [f"input [{n-1}:0] d{k}", f"output [{n-1}:0] q{k}"]
+        en = f"e{k}" if b.get("en") else "1'b1"
+        for i in range(n):
+            reg = f"b{k}_{i}"
+            nxt = f"l{k} ? x{k}[{i}] : d{k}[{i}]" if b.get("load") else f"d{k}[{i}]"
+            body.append(f"  reg {reg};")
+            if b.get("clr") == "async":
+                body.append(f"  always @({edge} clk or posedge r{k}) "
+                            f"if (r{k}) {reg} <= 1'b0; else if ({en}) {reg} <= {nxt};")
+            elif b.get("clr") == "sync":
+                body.append(f"  always @({edge} clk) "
+                            f"if (r{k}) {reg} <= 1'b0; else if ({en}) {reg} <= {nxt};")
+            else:
+                body.append(f"  always @({edge} clk) if ({en}) {reg} <= {nxt};")
+            body.append(f"  assign q{k}[{i}] = {reg};")
+            locs.append((reg, LAB_PROBE_LAB))
+    tmpl = f"module {{t}}({', '.join(ports)});\n" + "\n".join(body) + "\nendmodule\n"
+    return tmpl, locs
+
+
+LAB_PROBES.update({name: _bank_probe(spec) for name, spec in BANK_PROBE_SPECS.items()})
+
 # (target, probe, mux, span, kind, expected, basis).  span: None (g rows),
-# "ff" (the slot holding the probe's FF), or an int.  kind:
+# "ff" (the slot holding the probe's FF), "ffall" (every slot with an FF), or an
+# int.  kind:
 #   eq       decoded == expected
+#   moved    every checked span differs from the same span in bank_plain (control)
 #   distinct two spans decode to different non-off values (expected unused)
 #   observed recorded, INCONCLUSIVE (no independent expectation)
 LAB_CHECKS = [
@@ -807,6 +863,53 @@ LAB_CHECKS = [
      "idle MLAB (control): ram_dis default 1"),
     ("mlab", "ctrl", "write_en", None, "eq", 0,
      "idle MLAB (control): write_en default 0"),
+    # ── second pass: 16-FF banks sharing one control each (LAB-wide nets) ──
+    ("lab", "bank_plain", "tsclr_dis", "fft", "eq", 1,
+     "control bank: no sync clear, top sclr disabled (1) on every top-half FF slot"),
+    ("lab", "bank_plain", "en0_en", None, "observed", None,
+     "control bank: no shared enable"),
+    ("lab", "bank_en", "en0_en", None, "moved", None,
+     "shared clock enable on 16 FFs: LAB EN0 expected to leave its control value"),
+    ("lab", "bank_en", "en0_ninv", None, "eq", 1,
+     "enable not inverted: Mistral default 1"),
+    ("lab", "bank_aclr", "aclr0_sel", None, "eq", "aclr0",
+     "shared async clear on 16 FFs: clr0 source aclr0 (control also prints aclr0)"),
+    ("lab", "bank_aclr", "aclr0_inv", None, "eq", 0,
+     "active-high clear: no inversion, Mistral default 0"),
+    ("lab", "bank_sclr", "tsclr_dis", "fft", "moved", None,
+     "shared sync clear: top sclr on every top-half FF expected to leave control value 1"),
+    ("lab", "bank_sclr", "bsclr_dis", "ffb", "moved", None,
+     "shared sync clear: bottom sclr on every bottom-half FF expected to leave control value 1"),
+    ("lab", "bank_sclr", "sclr_dis", None, "observed", None,
+     "shared sync clear: LAB sclr_dis recorded"),
+    ("lab", "bank_sload", "tsload_en", "fft", "moved", None,
+     "shared sync load: top load enable on every top-half FF expected to leave control value 0"),
+    ("lab", "bank_sload", "bsload_en", "ffb", "moved", None,
+     "shared sync load: bottom load enable on every bottom-half FF expected to leave control value 0"),
+    ("lab", "bank_sload", "sload_en", None, "observed", None,
+     "shared sync load: LAB sload_en recorded (default 1)"),
+    ("lab", "bank_en2", "en0_en", None, "moved", None,
+     "bank A on enable 0: en0 expected to leave control value"),
+    ("lab", "bank_en2", "en1_ninv", None, "eq", 1,
+     "enable not inverted: Mistral default 1"),
+    ("lab", "bank_clr2", "aclr0_sel", None, "eq", "aclr0",
+     "bank A on async clear 0: clr0 source aclr0"),
+    ("lab", "bank_clr2", "aclr1_sel", None, "eq", "aclr1",
+     "bank B on async clear 1: clr1 source aclr1"),
+    ("lab", "bank_clr2", "aclr0_inv", None, "moved", None,
+     "bank A on async clear 0: ACLR0_INV expected to leave control value 0"),
+    ("lab", "bank_clr2", "aclr1_inv", None, "moved", None,
+     "bank B on async clear 1: ACLR1_INV expected to leave control value 0"),
+    ("lab", "bank_plain", "clk0_inv", None, "observed", None,
+     "16 posedge FFs, one clock: CLK0_INV recorded (ctrl single FF prints 1)"),
+    ("lab", "bank_pn", "clk0_inv", None, "observed", None,
+     "posedge bank and negedge bank in one LAB: CLK0_INV recorded"),
+    ("lab", "bank_pn", "clk0_sel", None, "observed", None,
+     "posedge bank and negedge bank in one LAB: CLK0_SEL recorded"),
+    ("lab", "bank_pn", "tclk_sel", "fft", "observed", None,
+     "top-half clock select per top FF slot, posedge and negedge banks"),
+    ("lab", "bank_pn", "bclk_sel", "ffb", "observed", None,
+     "bottom-half clock select per FF slot, posedge and negedge banks"),
 ]
 
 _LABMUX_LINE_RE = re.compile(
@@ -834,6 +937,41 @@ def parse_lab_decode(bt_text: str, kind: str):
             tile = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
             ff_slots.setdefault(tile, set()).add(int(m.group(4)))
     return printed, {t: sorted(s) for t, s in ff_slots.items()}, raw
+
+
+CONTROL_PROBE = "bank_plain"     # reference build for kind "moved"
+
+
+def _lab_spans(span_sel, ff: list, halves: dict) -> list:
+    """Spans a check reads: None (g row), 'ff', 'ffall', 'fft'/'ffb' (top/bottom
+    half FF slots only), 'all', or an int.  A top (`t`) row only applies to
+    slots holding a top FF, so 'fft' is the span set for `t*` muxes."""
+    if span_sel is None:
+        return [None]
+    if span_sel == "ff":
+        return [ff[0]] if ff else []
+    if span_sel == "ffall":
+        return list(ff)
+    if span_sel == "fft":
+        return list(halves.get("T", []))
+    if span_sel == "ffb":
+        return list(halves.get("B", []))
+    if span_sel == "all":
+        return list(range(10))
+    return [span_sel]
+
+
+def parse_lab_halves(bt_text: str, kind: str) -> dict:
+    """{tile: {'T': [slots], 'B': [slots]}} from `r LAB.x.y.S:FFT<n>` / `FFB<n>`
+    routing lines.  T/B is the LAB half, which selects the t* or b* control set."""
+    halves = {}
+    for line in bt_text.splitlines():
+        m = _LABFF_LINE_RE.match(line)
+        if m and m.group(1) == kind:
+            tile = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+            h = halves.setdefault(tile, {"T": set(), "B": set()})
+            h[m.group(5)[0]].add(int(m.group(4)))
+    return {t: {k: sorted(v) for k, v in h.items()} for t, h in halves.items()}
 
 
 def lab_norm(row, s):
@@ -908,7 +1046,8 @@ def _lab_results(target: str, bts: dict, logger) -> dict:
         printed, ff_slots, raw = parse_lab_decode(bt, kind)
         tile = pick_tile(ff_slots, printed, kind,
                          idle_ok=(kind == "MLAB" and probe == "ctrl"))
-        decodes[probe] = {"printed": printed, "ff": ff_slots, "raw": raw, "tile": tile}
+        decodes[probe] = {"printed": printed, "ff": ff_slots, "raw": raw, "tile": tile,
+                          "halves": parse_lab_halves(bt, kind)}
         logger.info("%s probe %s: tile %s, FF slots %s", kind, probe, tile,
                     ff_slots.get(tile, []) if tile else None)
 
@@ -932,13 +1071,12 @@ def _lab_results(target: str, bts: dict, logger) -> dict:
             continue
         ptile = dec["printed"].get(tile, {})
         ff = dec["ff"].get(tile, [])
-        base = {"probe": probe, "tile": tile, "basis": basis, "ff_slots": ff}
+        halves = dec["halves"].get(tile, {})
+        base = {"probe": probe, "tile": tile, "basis": basis, "ff_slots": ff,
+                "ff_halves": halves}
 
         if kind_chk == "observed":
-            spans = [None] if span_sel is None else (
-                [ff[0]] if span_sel == "ff" and ff else
-                ([x for x in range(10)] if span_sel == "all" else
-                 [span_sel] if isinstance(span_sel, int) else []))
+            spans = _lab_spans(span_sel, ff, halves)
             obs = {str(s): lab_observed(row, ptile, mux, s)[0] for s in spans}
             results[key] = {**base, "verdict": "INCONCLUSIVE", "observed": obs,
                             "reason": "observed only: " + basis}
@@ -959,13 +1097,33 @@ def _lab_results(target: str, bts: dict, logger) -> dict:
             logger.info("%s: %s -- slots %s decode %s / %s", key, verdict, ff[:2], a, b)
             continue
 
+        if kind_chk == "moved":
+            ctl = decodes.get(CONTROL_PROBE, {})
+            if "error" in ctl or ctl.get("tile") is None:
+                results[key] = {**base, "verdict": "INCONCLUSIVE",
+                                "reason": f"no control decode ({CONTROL_PROBE}) to compare"}
+                logger.info("%s: INCONCLUSIVE -- no control decode", key)
+                continue
+            cprinted = ctl["printed"].get(ctl["tile"], {})
+            spans = _lab_spans(span_sel, ff, halves)
+            if not spans:
+                results[key] = {**base, "verdict": "INCONCLUSIVE", "reason": "no FF slot to check"}
+                continue
+            moved = {}
+            for s in spans:
+                v, _ = lab_observed(row, ptile, mux, s)
+                c, _ = lab_observed(row, cprinted, mux, s)
+                moved[str(s)] = {"probe": v, "control": c}
+            all_moved = all(x["probe"] != x["control"] for x in moved.values())
+            verdict = "MATCH" if all_moved else "MISMATCH"
+            results[key] = {**base, "verdict": verdict, "moved": moved, "control_tile": ctl["tile"],
+                            "reason": ("moved vs control at every span" if all_moved else
+                                       "did not move vs control at every span: " + basis)}
+            logger.info("%s: %s -- %s", key, verdict, moved)
+            continue
+
         # eq
-        if span_sel == "ff":
-            spans = [ff[0]] if ff else []
-        elif span_sel == "all":
-            spans = list(range(10))
-        else:
-            spans = [span_sel]
+        spans = _lab_spans(span_sel, ff, halves)
         if not spans:
             results[key] = {**base, "verdict": "INCONCLUSIVE", "reason": "no FF slot to check"}
             continue
@@ -1015,6 +1173,184 @@ def print_row_counts(results: dict, target: str):
     print(f"{target}: {len(rows)} rows -- " + ", ".join(f"{k} {v}" for k, v in counts.items()))
 
 
+# ── cmux path (clock-network muxes) ──────────────────────────────────────────
+# Each probe drives 8 FFs per clock from one or more clock pins.  The clock pin
+# and the GLOBAL_SIGNAL setting are the knobs.  Pins are the dedicated clock
+# inputs from eda/ibis/5ceba4_u4840.xml (CLK_n_P): K7 = 8A CLK_0, G10 = 8A CLK_1,
+# P9 = 3B CLK_0; F8 is a general user I/O (bank 8A).
+CMUX_TARGETS = ["cmuxcr", "cmuxvr", "cmuxvg", "cmuxhr", "cmuxhg"]
+CMUX_CONTROL = "cm_ded"
+CMUX_PROBES = {
+    "cm_ded": [("PIN_K7", None)],                      # dedicated clock pin, no promotion setting
+    "cm_gen": [("PIN_F8", None)],                      # general I/O pin as the clock
+    "cm_glob": [("PIN_K7", "GLOBAL CLOCK")],
+    "cm_reg": [("PIN_K7", "REGIONAL CLOCK")],
+    "cm_off": [("PIN_K7", "OFF")],
+    "cm_2ded": [("PIN_K7", None), ("PIN_G10", None)],  # two dedicated clock pins
+    "cm_p9": [("PIN_P9", None)],                       # dedicated clock pin in 3B
+    # Horizontal-side clock pins: exercise the CMUXH* muxes.
+    "cm_h10": [("PIN_H10", None)],                     # 7A CLK_2
+    "cm_t15": [("PIN_T15", None)],                     # 4A CLK_3
+    "cm_l17": [("PIN_L17", None)],                     # 5B CLK_2
+    "cm_l17_reg": [("PIN_L17", "REGIONAL CLOCK")],
+    "cm_l17_glob": [("PIN_L17", "GLOBAL CLOCK")],
+}
+
+
+def _cmux_verilog(top: str, clocks: list) -> str:
+    n = len(clocks)
+    ports = [f"input c{k}" for k in range(n)] + [f"input [{8*n-1}:0] d", f"output [{8*n-1}:0] q"]
+    body = []
+    for k in range(n):
+        for i in range(8):
+            j = 8 * k + i
+            body.append(f"  reg r{j};")
+            body.append(f"  always @(posedge c{k}) r{j} <= d[{j}];")
+            body.append(f"  assign q[{j}] = r{j};")
+    return f"module {top}({', '.join(ports)});\n" + "\n".join(body) + "\nendmodule\n"
+
+
+def compile_cmux_probe(probe: str, logger):
+    """Quartus + mistral decomp for one clock-network probe.  Returns (error, bt_text)."""
+    clocks = CMUX_PROBES[probe]
+    top = slug(f"cmux_{probe}")
+    d = WORK_DIR / top
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{top}.v").write_text(_cmux_verilog(top, clocks))
+    lines = qsf_header(top)
+    for k, (pin, glob) in enumerate(clocks):
+        lines.append(f"set_location_assignment {pin} -to c{k}")
+        if glob:
+            lines.append(f'set_instance_assignment -name GLOBAL_SIGNAL "{glob}" -to c{k}')
+    (d / f"{top}.qsf").write_text("\n".join(lines) + "\n")
+    (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
+    logger.info("=== %s: probe %s (clocks %s) ===", top, probe, clocks)
+    err = quartus_chain(top, d, logger)
+    if err:
+        return err, ""
+    return mistral_decomp(top, d, logger)
+
+
+_CMUX_LINE_RE = re.compile(r"^([sr]) (CMUX[A-Z]+)\.(\d+)\.(\d+)(?:\.(\d+))?(?::(\S+))?\s*(.*)$")
+
+
+def parse_cmux_lines(bt_text: str) -> list:
+    """Every `s`/`r` line whose tile is a CMUX tile, as dicts (raw kept)."""
+    out = []
+    for line in bt_text.splitlines():
+        m = _CMUX_LINE_RE.match(line)
+        if not m:
+            continue
+        # `INPUT_SEL.3` -> field INPUT_SEL, span 3 (mistral prints the span as a suffix)
+        fm = re.match(r"^(.*?)(?:\.(\d+))?$", m.group(6) or "")
+        out.append({"kind": m.group(1), "block": m.group(2),
+                    "tile": f"{m.group(2)}.{m.group(3)}.{m.group(4)}",
+                    "field": fm.group(1), "idx": fm.group(2) or m.group(5),
+                    "value": m.group(7).strip(), "raw": line})
+    return out
+
+
+# Presence checks: (target, mux, probe, expect_present, basis).  The target's block
+# (CMUXVR etc.) appearing anywhere in the probe's decode is "selected".  Only the
+# routing-select row (`input_sel`) of each block is judged; expect_present None
+# records the observation without a verdict.
+CMUX_PRESENCE = [
+    ("cmuxvr", "input_sel", "cm_reg", True,
+     "REGIONAL on a vertical-side pin: CMUXVR selected (name-based expectation)"),
+    ("cmuxvr", "input_sel", "cm_glob", False,
+     "GLOBAL on the same pin: CMUXVR not selected"),
+    ("cmuxvg", "input_sel", "cm_ded", True,
+     "default promotion of a dedicated pin: CMUXVG selected"),
+    ("cmuxvg", "input_sel", "cm_glob", True,
+     "GLOBAL on the same pin: CMUXVG selected"),
+    ("cmuxvg", "input_sel", "cm_reg", False,
+     "REGIONAL on the same pin: CMUXVG not selected"),
+    ("cmuxhg", "input_sel", "cm_l17", True,
+     "5B dedicated pin: CMUXHG selected"),
+    ("cmuxhg", "input_sel", "cm_l17_glob", True,
+     "5B GLOBAL: CMUXHG selected"),
+    ("cmuxhg", "input_sel", "cm_l17_reg", False,
+     "5B REGIONAL: CMUXHG not selected"),
+    ("cmuxhr", "input_sel", "cm_l17_reg", True,
+     "5B REGIONAL: CMUXHR selected (name-based expectation)"),
+    ("cmuxcr", "input_sel", "cm_l17_reg", None,
+     "5B REGIONAL: CMUXCR present, no naming-based expectation for cmuxcr"),
+]
+
+
+def _cmux_results(target: str, decodes: dict, logger) -> dict:
+    rows = load_rows(target)
+    block = target.upper()
+    results = {}
+    for tgt, mux, probe, expect, basis in CMUX_PRESENCE:
+        if tgt != target:
+            continue
+        dec = decodes.get(probe, {})
+        key = f"{target}.{mux}.{probe}"
+        if "error" in dec:
+            results[key] = {"verdict": "INCONCLUSIVE", "basis": basis, "reason": dec["error"]}
+            continue
+        present = any(ln["block"] == block for ln in dec["lines"])
+        base = {"probe": probe, "basis": basis, "block": block, "present": present,
+                "lines": [ln["raw"] for ln in dec["lines"] if ln["block"] == block]}
+        if expect is None:
+            results[key] = {**base, "verdict": "INCONCLUSIVE",
+                            "reason": f"observed only: {block} {'present' if present else 'absent'}"}
+        else:
+            verdict = "MATCH" if present == expect else "MISMATCH"
+            results[key] = {**base, "verdict": verdict, "expected_present": expect,
+                            "reason": basis if verdict == "MATCH" else
+                            f"{block} {'present' if present else 'absent'}, expected "
+                            f"{'present' if expect else 'absent'}"}
+        logger.info("%s: %s -- %s", key, results[key]["verdict"], results[key]["reason"])
+
+    # Row accounting: every cv_block_muxes row of the target gets one verdict.
+    observed = {}
+    for probe, dec in decodes.items():
+        for ln in dec.get("lines", []):
+            if ln["block"] != block or ln["kind"] != "s":
+                continue
+            observed.setdefault(ln["field"].lower(), {}).setdefault(probe, []).append(
+                f"{ln['block']}.{ln['tile'].split('.', 1)[1]}:{ln['field']}"
+                f"{'.' + ln['idx'] if ln['idx'] else ''} {ln['value']}")
+    row_results = {}
+    for row in rows:
+        mux = row["mux"]
+        mine = [v for k, v in results.items() if k.startswith(f"{target}.{mux}.")]
+        if any(v["verdict"] == "MISMATCH" for v in mine):
+            vd = "MISMATCH"
+        elif any(v["verdict"] == "MATCH" for v in mine):
+            vd = "MATCH"
+        else:
+            vd = "INCONCLUSIVE"
+        if mine:
+            reason = "; ".join(sorted({v.get("reason", "") for v in mine}))
+        elif mux in observed:
+            reason = ("observed only: printed in " + ", ".join(sorted(observed[mux]))
+                      + " (no naming-based expectation)")
+        else:
+            reason = "no probe prints this field"
+        row_results[f"{target}.row.{row['subtype']}.{mux}"] = {
+            "verdict": vd, "reason": reason, "subtype": row["subtype"], "stype": row["stype"]}
+    results.update(row_results)
+    return results
+
+
+def run_cmux_dumps(targets: list, logger) -> dict:
+    """Compile every cmux probe once and decode the CMUX lines of each probe."""
+    decodes = {}
+    for probe in CMUX_PROBES:
+        err, bt = compile_cmux_probe(probe, logger)
+        if err:
+            decodes[probe] = {"error": err}
+            logger.info("%s: compile failed -- %s", probe, err)
+            continue
+        lines = parse_cmux_lines(bt)
+        decodes[probe] = {"lines": lines}
+        logger.info("%s: %d CMUX lines decoded", probe, len(lines))
+    return decodes
+
+
 # ── merge / main ─────────────────────────────────────────────────────────────
 
 def merge_results(new: dict):
@@ -1036,7 +1372,8 @@ def print_gpio_list(rows):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dump-target", default="gpio", choices=["gpio", "opt", "m10k", "lab", "mlab"],
+    ap.add_argument("--dump-target", default="gpio",
+                    choices=["gpio", "opt", "m10k", "lab", "mlab", "cmux"],
                     help="which cv_block_muxes dump target to check (default %(default)s)")
     ap.add_argument("--value", nargs="*", default=[],
                     help="gpio: named value(s) of drive_strength to test (one compile each)")
@@ -1100,6 +1437,22 @@ def main():
                 print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
         print(f"\n=== {args.dump_target} row verdicts ===")
         print_row_counts(results, args.dump_target)
+    elif args.dump_target == "cmux":
+        if not args.all:
+            ap.error("cmux: give --all")
+        logger = setup_logging()
+        decodes = run_cmux_dumps(CMUX_TARGETS, logger)
+        results = {}
+        for target in CMUX_TARGETS:
+            results.update(_cmux_results(target, decodes, logger))
+        merge_results(results)
+        print("\n=== cmux verdicts (checks) ===")
+        for key, r in results.items():
+            if ".row." not in key:
+                print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
+        print("\n=== cmux row verdicts ===")
+        for target in CMUX_TARGETS:
+            print_row_counts(results, target)
     else:
         if not args.all:
             ap.error("m10k: give --all")
