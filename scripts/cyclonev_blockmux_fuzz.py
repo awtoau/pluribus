@@ -1351,6 +1351,231 @@ def run_cmux_dumps(targets: list, logger) -> dict:
     return decodes
 
 
+# ── dsp path (input / coefficient / register / output muxes; MODE excluded) ─
+# Each probe is one DSP operation written as plain Verilog (same style as
+# cyclonev_dsp_fuzz.py).  Verdict = printed value (or Mistral default when
+# absent) on the probe's DSP tile.  Only signed flags and output register have
+# a name-based expectation; the rest are observed (INCONCLUSIVE).
+DSP_PROBES = {
+    # Unsigned, no registers: control for every "register/sign" row.
+    "u_comb": "module {t}(input [17:0] a, input [17:0] b, output [35:0] p);\n"
+              "  assign p = a * b;\nendmodule\n",
+    "u_reg": "module {t}(input clk, input [17:0] a, input [17:0] b, output reg [35:0] p);\n"
+             "  always @(posedge clk) p <= a * b;\nendmodule\n",
+    "s_reg": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+             "output reg signed [35:0] p);\n  always @(posedge clk) p <= a * b;\nendmodule\n",
+    "w9_reg": "module {t}(input clk, input signed [8:0] a, input signed [8:0] b, "
+              "output reg signed [17:0] p);\n  always @(posedge clk) p <= a * b;\nendmodule\n",
+    # Registered operands, combinational output.
+    "inreg": "module {t}(input clk, input [17:0] a, input [17:0] b, output [35:0] p);\n"
+             "  reg [17:0] ar, br;\n  always @(posedge clk) begin ar <= a; br <= b; end\n"
+             "  assign p = ar * br;\nendmodule\n",
+    # Registered operands and registered output.
+    "inout": "module {t}(input clk, input [17:0] a, input [17:0] b, output reg [35:0] p);\n"
+             "  reg [17:0] ar, br;\n  always @(posedge clk) begin ar <= a; br <= b; "
+             "p <= ar * br; end\nendmodule\n",
+    # Constant coefficient (18'sd11111) on the B operand.
+    "coef_const": "module {t}(input clk, input signed [17:0] a, output reg signed [35:0] p);\n"
+                  "  always @(posedge clk) p <= a * 18'sd11111;\nendmodule\n",
+    # Multiply-accumulate and multiply-subtract (accumulator register, data inversion).
+    "acc": "module {t}(input clk, input rst, input signed [17:0] a, input signed [17:0] b, "
+           "output reg signed [43:0] acc);\n  always @(posedge clk)\n    if (rst) acc <= 0;\n"
+           "    else acc <= acc + (a * b);\nendmodule\n",
+    "sub": "module {t}(input clk, input rst, input signed [17:0] a, input signed [17:0] b, "
+           "output reg signed [43:0] acc);\n  always @(posedge clk)\n    if (rst) acc <= 0;\n"
+           "    else acc <= acc - (a * b);\nendmodule\n",
+    # Coefficient from a signal (registered), not a constant.
+    "coef_sig": "module {t}(input clk, input signed [17:0] a, input signed [17:0] c, "
+                "output reg signed [35:0] p);\n  reg signed [17:0] cr;\n"
+                "  always @(posedge clk) begin cr <= c; p <= a * cr; end\nendmodule\n",
+    # Pre-adder: (a + b) * c.  Plain Verilog put the adder in ALUTs.
+    "preadd": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+              "input signed [17:0] c, output reg signed [35:0] p);\n"
+              "  always @(posedge clk) p <= (a + b) * c;\nendmodule\n",
+    # Same operation as the megafunction with the pre-adder set to ADD.
+    "preadd_ip": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+                 "input signed [17:0] c, output signed [35:0] p);\n"
+                 "  altera_mult_add #(.number_of_multipliers(1), .width_a(18), .width_b(18), "
+                 ".width_result(36), .representation_a(\"SIGNED\"), .representation_b(\"SIGNED\"), "
+                 ".input_register_a0(\"CLOCK0\"), .input_register_b0(\"CLOCK0\"), "
+                 ".output_register(\"CLOCK0\"), .preadder_mode(\"SIMPLE\"), "
+                 ".preadder_direction_0(\"ADD\"), .width_coef(18), .input_register_coef_0(\"CLOCK0\"), "
+                 ".SELECTED_DEVICE_FAMILY(\"CYCLONEV\"), "
+                 ".dedicated_multiplier_circuitry(\"YES\"), .intended_device_family(\"Cyclone V\"), "
+                 ".lpm_type(\"altera_mult_add\")) mult (.clock0(clk), .dataa_0(a), .datab_0(b), "
+                 ".datac_0(c), .result(p));\nendmodule\n",
+    # Clock enable on the product register.
+    "en_reg": "module {t}(input clk, input en, input [17:0] a, input [17:0] b, "
+              "output reg [35:0] p);\n  always @(posedge clk) if (en) p <= a * b;\nendmodule\n",
+    # Two-stage operand chain (systolic-style register between the input and multiplier).
+    "chain": "module {t}(input clk, input signed [17:0] a, input signed [17:0] b, "
+             "output reg signed [35:0] p);\n  reg signed [17:0] ar, ad;\n"
+             "  always @(posedge clk) begin ar <= a; ad <= ar; p <= ad * b; end\nendmodule\n",
+}
+
+# (mux, probe, kind, expected, basis).  kind: eq (printed or default == expected),
+# observed (recorded, INCONCLUSIVE).
+DSP_CHECKS = [
+    ("ax_signed", "s_reg", "eq", 1, "signed operands: AX_SIGNED 1"),
+    ("ay_signed", "s_reg", "eq", 1, "signed operands: AY_SIGNED 1"),
+    ("bx_signed", "s_reg", "eq", 1, "signed operands: BX_SIGNED 1"),
+    ("by_signed", "s_reg", "eq", 1, "signed operands: BY_SIGNED 1"),
+    ("ax_signed", "u_reg", "eq", 0, "unsigned operands: default 0"),
+    ("ay_signed", "u_reg", "eq", 0, "unsigned operands: default 0"),
+    ("bx_signed", "u_reg", "eq", 0, "unsigned operands: default 0"),
+    ("by_signed", "u_reg", "eq", 0, "unsigned operands: default 0"),
+    ("ax_signed", "w9_reg", "eq", 1, "signed 9x9 operands: AX_SIGNED 1"),
+    ("oreg_ctrl", "u_reg", "eq", "reg", "registered output: OREG_CTRL REG"),
+    ("oreg_ctrl", "u_comb", "eq", "bypass", "combinational output: default bypass"),
+    ("oreg_ctrl", "inreg", "eq", "bypass", "registered inputs, combinational output: bypass"),
+    ("oreg_ctrl", "inout", "eq", "reg", "registered inputs and output: REG"),
+    ("preadder_en", "preadd_ip", "eq", 1, "altera_mult_add preadder ADD: preadder_en 1"),
+    ("preadder_en", "u_reg", "eq", 0, "plain multiply: no pre-adder, default 0"),
+    ("dec_inv", "u_reg", "eq", 0, "no inversion requested: 0"),
+    ("preload_inv", "u_reg", "eq", 0, "no inversion requested: 0"),
+    ("acc_inv", "u_reg", "eq", 0, "no inversion requested: 0"),
+    ("sub_inv", "u_reg", "eq", 0, "no subtraction requested: 0"),
+]
+DSP_OBSERVED = {
+    "inreg_ctrl_ax": "registered operand A: which of ax/ay/az takes the register",
+    "inreg_ctrl_ay": "registered operand A", "inreg_ctrl_az": "registered operand A",
+    "inreg_ctrl_bx": "registered operand B", "inreg_ctrl_by": "registered operand B",
+    "inreg_ctrl_bz": "registered operand B",
+    "idireg_acc_ctrl": "accumulator path register (acc probe)",
+    "idireg_sub": "subtract path register (sub probe)",
+    "clk0_sel": "clock select, no independent expectation",
+    "clk1_sel": "clock select, no independent expectation",
+    "clk2_sel": "clock select, no independent expectation",
+    "aclr0_sel": "async clear select (acc probe), no independent expectation",
+    "aclr1_sel": "async clear select, no independent expectation",
+    "coef_b": "constant coefficient: raw coefficient bits recorded",
+    "coef_a": "constant coefficient: raw coefficient bits recorded",
+    "chain_output_en": "cascade/chain output, no independent expectation",
+    "enable0_inv": "clock-enable probe printed no enable field (en_reg), no expectation",
+    "enable0_force": "clock-enable probe printed no enable field (en_reg), no expectation",
+    "cascade_en": "cascade output, no independent expectation",
+}
+DSP_NOT_IN_SCOPE = {"mode": "MODE covered by scripts/cyclonev_dsp_fuzz.py"}
+
+_DSP_FIELD_RE = re.compile(r"^s (DSP\.\d+\.\d+)(?:\.\w+)?:([A-Za-z0-9_]+)(?:\.(\d+))? (\S+)")
+
+
+def compile_dsp_probe(probe: str, logger):
+    """Quartus + mistral decomp for one DSP probe.  Returns (error, bt_text)."""
+    top = slug(f"dsp_{probe}")
+    d = WORK_DIR / top
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{top}.v").write_text(DSP_PROBES[probe].format(t=top))
+    (d / f"{top}.qsf").write_text("\n".join(qsf_header(top)) + "\n")
+    (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
+    logger.info("=== %s: DSP probe %s ===", top, probe)
+    err = quartus_chain(top, d, logger)
+    if err:
+        return err, ""
+    return mistral_decomp(top, d, logger)
+
+
+def parse_dsp_decode(bt_text: str):
+    """(tile, fields) for the DSP tile with the most printed settings.
+    fields[mux_lower][idx_or_None] = printed value string.  None if no DSP tile."""
+    per_tile = {}
+    for line in bt_text.splitlines():
+        m = _DSP_FIELD_RE.match(line)
+        if m:
+            per_tile.setdefault(m.group(1), {}).setdefault(m.group(2).lower(), {})[
+                int(m.group(3)) if m.group(3) is not None else None] = m.group(4)
+    if not per_tile:
+        return None, {}
+    tile = max(per_tile, key=lambda t: sum(len(v) for v in per_tile[t].values()))
+    return tile, per_tile[tile]
+
+
+def dsp_observed(row, fields: dict, idx=None):
+    """Printed value (normalised) or Mistral's default when absent."""
+    key = row["mux"]
+    if key in fields and (None in fields[key] or idx in fields[key]):
+        s = fields[key].get(idx, fields[key].get(None))
+        if row["stype"] in ("n", "b"):
+            return int(s)
+        return s.lower()
+    return row_default(row)
+
+
+def _dsp_results(decodes: dict, rows: list, logger) -> dict:
+    rows_by_mux = {}
+    for r in rows:
+        rows_by_mux.setdefault(r["mux"], r)
+    results = {}
+    for mux, probe, kind, expected, basis in DSP_CHECKS:
+        key = f"dsp.{mux}.{probe}"
+        dec = decodes.get(probe, {})
+        row = rows_by_mux.get(mux)
+        if "error" in dec or row is None:
+            results[key] = {"verdict": "INCONCLUSIVE", "basis": basis,
+                            "reason": dec.get("error", f"no row {mux!r}")}
+            continue
+        if not dec["fields"]:
+            results[key] = {"verdict": "INCONCLUSIVE", "basis": basis,
+                            "reason": "no DSP tile with settings in the .bt"}
+            continue
+        v = dsp_observed(row, dec["fields"])
+        ok = (v == expected)
+        verdict = "MATCH" if ok else "MISMATCH"
+        results[key] = {"verdict": verdict, "basis": basis, "tile": dec["tile"],
+                        "decoded": v, "expected": expected,
+                        "raw": dec["raw"].get(mux, []),
+                        "reason": basis if ok else
+                        f"decoded {v}, expected {expected}: {basis}"}
+        logger.info("%s: %s -- decoded %s, expected %s", key, verdict, v, expected)
+
+    # Row accounting: every cv_block_muxes dsp row gets one verdict.
+    for row in rows:
+        mux = row["mux"]
+        mine = [v for k, v in results.items() if k.startswith(f"dsp.{mux}.")]
+        if mux in DSP_NOT_IN_SCOPE:
+            vd, reason = "INCONCLUSIVE", DSP_NOT_IN_SCOPE[mux]
+        elif any(v["verdict"] == "MISMATCH" for v in mine):
+            vd = "MISMATCH"
+        elif any(v["verdict"] == "MATCH" for v in mine):
+            vd = "MATCH"
+        else:
+            vd = "INCONCLUSIVE"
+        if mux in DSP_NOT_IN_SCOPE:
+            pass
+        elif mine:
+            reason = "; ".join(sorted({v.get("reason", "") for v in mine}))
+        elif mux in DSP_OBSERVED:
+            seen = {p: d["fields"].get(mux) for p, d in decodes.items() if d.get("fields")}
+            seen = {p: v for p, v in seen.items() if v}
+            reason = f"observed only ({DSP_OBSERVED[mux]}); printed in " + (
+                ", ".join(sorted(seen)) if seen else "no probe")
+        else:
+            reason = "no probe prints this field"
+        results[f"dsp.row.{row['subtype']}.{mux}"] = {
+            "verdict": vd, "reason": reason, "subtype": row["subtype"], "stype": row["stype"]}
+    return results
+
+
+def run_dsp_dumps(logger) -> dict:
+    rows = load_rows("dsp")
+    decodes = {}
+    for probe in DSP_PROBES:
+        err, bt = compile_dsp_probe(probe, logger)
+        if err:
+            decodes[probe] = {"error": err}
+            logger.info("%s: compile failed -- %s", probe, err)
+            continue
+        tile, fields = parse_dsp_decode(bt)
+        raw = {}
+        for line in bt.splitlines():
+            m = _DSP_FIELD_RE.match(line)
+            if m and tile and m.group(1) == tile:
+                raw.setdefault(m.group(2).lower(), []).append(line)
+        decodes[probe] = {"tile": tile, "fields": fields, "raw": raw}
+        logger.info("%s: DSP tile %s, %d fields printed", probe, tile, len(fields))
+    return {**_dsp_results(decodes, rows, logger)}
+
+
 # ── merge / main ─────────────────────────────────────────────────────────────
 
 def merge_results(new: dict):
@@ -1373,7 +1598,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dump-target", default="gpio",
-                    choices=["gpio", "opt", "m10k", "lab", "mlab", "cmux"],
+                    choices=["gpio", "opt", "m10k", "lab", "mlab", "cmux", "dsp"],
                     help="which cv_block_muxes dump target to check (default %(default)s)")
     ap.add_argument("--value", nargs="*", default=[],
                     help="gpio: named value(s) of drive_strength to test (one compile each)")
@@ -1437,6 +1662,18 @@ def main():
                 print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
         print(f"\n=== {args.dump_target} row verdicts ===")
         print_row_counts(results, args.dump_target)
+    elif args.dump_target == "dsp":
+        if not args.all:
+            ap.error("dsp: give --all")
+        logger = setup_logging()
+        results = run_dsp_dumps(logger)
+        merge_results(results)
+        print("\n=== dsp verdicts (checks) ===")
+        for key, r in results.items():
+            if ".row." not in key:
+                print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
+        print("\n=== dsp row verdicts ===")
+        print_row_counts(results, "dsp")
     elif args.dump_target == "cmux":
         if not args.all:
             ap.error("cmux: give --all")

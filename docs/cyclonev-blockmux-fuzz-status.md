@@ -433,6 +433,57 @@ Not reached:
   `testsyn_enout_select` as a verdict: need a PLL or DDR/DQS design, not built.
 - `cmuxhr` input_sel for other pins: not probed.
 
+## dsp (input / coefficient / register / output muxes) -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target dsp --all`. Probes in `DSP_PROBES`, checks in `DSP_CHECKS`. MODE excluded
+(covered by `cyclonev_dsp_fuzz.py`). Verdict = printed value or Mistral default on the DSP tile
+with the most printed settings.
+
+Counts (`cv_block_muxes`, 60 rows): before 60 INCONCLUSIVE (no dsp probe); after MATCH 4,
+MISMATCH 6, INCONCLUSIVE 50.
+
+Probes (one DSP each, plain Verilog unless noted): `u_comb`, `u_reg`, `s_reg`, `w9_reg`
+(9x9 signed), `inreg`, `inout`, `coef_const` (`a * 18'sd11111`), `coef_sig`, `preadd`
+(`(a+b)*c`, no pre-adder inferred), `en_reg`, `acc`, `sub`, `chain`, `preadd_ip` (megafunction).
+
+MISMATCH (against name-based expectation):
+- `ax_signed`, `ay_signed` (probe `s_reg`, 18x18 both operands signed): decoded 0, expected 1.
+  `s_reg/dsp_s_reg.bt` has `s DSP.033.001:BX_SIGNED 1` and `BY_SIGNED 1`, no AX/AY line.
+  Same flags on 9x9 (`w9_reg/dsp_w9_reg.bt:203-204`: `AX_SIGNED 1`, `AY_SIGNED 1`) and
+  `acc`/`sub`/`coef_const`/`coef_sig` (18x18 signed) print no AX/AY. Mistral's AX/AY
+  mapping for 18x18 or the A-operand sign field is not established.
+- `dec_inv`, `preload_inv`, `acc_inv`, `sub_inv` (probe `u_reg`, no inversion requested):
+  decoded 1, expected 0. Each prints `1` in all 10 probes, including unsigned comb
+  (`u_comb/dsp_u_comb.bt:456` `DEC_INV 1`). DATA_INV prints `1ff` in the same probes.
+  Whether 1 means "not inverted" in silicon is not established.
+
+MATCH: `bx_signed`, `by_signed` (signed 18x18 and unsigned), `oreg_ctrl` (REG when registered,
+`bypass` absent when not, `inout` REG), `preadder_en` (absent, default 0, on `u_reg` only).
+
+Observed only (INCONCLUSIVE), printed values recorded in `results.json`:
+- Input registers: `s_reg` none; `inreg` prints `INREG_CTRL_BX/BY/BZ REG` only. The A operand
+  register is not printed although the map report shows 36 dedicated logic registers (not
+  packed into the DSP). `inreg_ctrl_ax/ay/az` unresolved.
+- Coefficient rows `coef_a`/`coef_b` (raw `r`, 8 spans): no `COEF_*` line in any probe,
+  including the constant and signal coefficient probes. Not reached.
+- `preadder_en`: `preadd` (plain Verilog) maps `(a+b)` to ALUTs (map: 37 ALUTs, 2 DSPs), no
+  pre-adder flag. `preadd_ip` (`altera_mult_add`, `preadder_mode("SIMPLE")`,
+  `preadder_direction_0("ADD")`) fails in quartus_map: `Error (272006): Illegal parameter
+  value: dataa port is not instantiated` and an internal assertion
+  (`cbx_altera_mult_add.cpp:1113`). Port names not resolved. Not reached.
+- `enable0_inv`, `enable0_force`: `en_reg` prints no enable field.
+- Clock selects `clk*_sel`, `aclr*_sel`, `clk_*_sel`: printed (`CLK0_SEL 3`, `ACLR0_SEL 2`,
+  `CLK_AX17_SEL 2`), no independent expectation.
+- `data_inv` (raw): `1ff`/`0ff` vary by probe (`s_reg` DATA_INV.5 `0ff`), no expectation.
+
+Not reached: `cascade_*`, `chain_output_en`, `delay_cascade_*`, `systolic_reg_en`,
+`double_acc_en`, `partial_reconfig_en`, `dft_*`, `load_value`, `idireg_*` except acc/sub,
+`cascade_1st_en`, `dec/acc/preload/sub` inversion as true (not requested in any probe).
+
+## gpio termination / LVDS / variant X -- see section below (in progress)
+
+## lvl -- see section below (in progress)
+
 ## Not done
 
 - Other GPIO `m`/`n` muxes (see above).
