@@ -1,0 +1,7 @@
+top = "c_cmp_eq_v95_4"
+purpose = "equality comparator [Verilog-95]"
+exercises = ["comparator", "eq"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "cmp_eq"
+variant = "v95"
+width = 4

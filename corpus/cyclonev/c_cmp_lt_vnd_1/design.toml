@@ -1,0 +1,7 @@
+top = "c_cmp_lt_vnd_1"
+purpose = "less-than comparator [vendor]"
+exercises = ["comparator", "lt"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "cmp_lt"
+variant = "vnd"
+width = 1

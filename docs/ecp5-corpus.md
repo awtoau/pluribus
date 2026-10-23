@@ -84,10 +84,9 @@ two rows would itself be the finding.
 
 ## Which known gaps do real designs actually hit?
 
-The lifter has three documented gaps. All three **under-connect**
-rather than mis-connect, which is the safe direction: a missing
-edge is visible as an unconnected pin, a wrong edge is not. How
-hard real designs lean on them:
+The lifter has three documented gaps. Each is a fault: a missing
+edge is as wrong as a wrong one (it is only more visible, as an
+unconnected pin). How hard real designs lean on them:
 
 - **CCU2 carry path** (FCI/FCO unmodelled): exercised by **85/92** lifted designs
 - **Wide muxes** (F5MUX/PFUMX/L6MUX21): exercised by **233/243** *decoded* designs (88/92 of the lifted subset), totalling **538,196** arcs into F5x/FXx pins. This is the most widely

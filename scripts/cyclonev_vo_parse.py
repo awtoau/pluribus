@@ -28,6 +28,7 @@ OUT_PORTS = {
     "cyclonev_clkena": {"outclk", "enaout"},
     "cyclonev_mac": {"resulta", "resultb", "chainout", "scanout", "dftout"},
     "cyclonev_ram_block": {"portadataout", "portbdataout", "eccstatus", "dftout"},
+    "cyclonev_mlab_cell": {"portbdataout"},
 }
 CONSTS = {"gnd": "0", "vcc": "1", "unknown": "x"}
 

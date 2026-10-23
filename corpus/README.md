@@ -48,6 +48,14 @@ corpus/cyclonev/
    ```
 3. `python3.15t scripts/cyclonev_corpus_build.py --only <name>`
 
+Builder options: `--match 'c_*'` (glob), `--missing` (no DB row yet), `--jobs N` (parallel Quartus; DB steps serialised; new builds wait while RAM >= 85%; step limits x N).
+
+## Construct dictionary (`c_<construct>_<variant>_<width>`)
+
+- 222 designs written by `scripts/cyclonev_construct_gen.py` (tracked `src/` + `design.toml`); variants `v95` / `vnd` (Quartus-specific) / `sv`.
+- Extra `design.toml` fields: `construct`, `variant`, `width` (ignored by the builder).
+- Report: `python3.15t scripts/cyclonev_construct_report.py` -> `docs/cyclonev-construct-dictionary.md`.
+
 ## Tables (schema.py)
 
 | table | one row per | columns |

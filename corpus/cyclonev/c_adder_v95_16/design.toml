@@ -1,0 +1,7 @@
+top = "c_adder_v95_16"
+purpose = "a+b with carry out [Verilog-95]"
+exercises = ["adder", "carry"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "adder"
+variant = "v95"
+width = 16

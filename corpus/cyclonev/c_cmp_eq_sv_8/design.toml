@@ -1,0 +1,7 @@
+top = "c_cmp_eq_sv_8"
+purpose = "equality comparator [SystemVerilog]"
+exercises = ["comparator", "eq"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "cmp_eq"
+variant = "sv"
+width = 8

@@ -1,0 +1,7 @@
+top = "c_decoder_vnd_4"
+purpose = "binary-to-one-hot decoder; width = select bits [vendor]"
+exercises = ["decoder"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "decoder"
+variant = "vnd"
+width = 4

@@ -145,7 +145,8 @@ Method: for every decoded arc endpoint, `gkey_branch()` (mirrors `gkey()`'s cond
 | other unresolvable names (`unresolved_drop`) | 0 | 0 | 2 | |
 | `_v02_alias` (identity) | - | - | - | V02S06xx/07xx used on 3666 tile-uses, never with the V02N mate at the same tile: no evidence either way |
 
-- The two DISAGREE rows are under-connects (splits), never fusions: the walk-back key and the dropped stub join nothing else.
+- The two DISAGREE rows are splits (missing joins), not fusions; both are faults: 680 + 4 nets.
+- **Headline, every non-match counted as a fault:** pips 80,532 / 134,261 matched (60.0%; 53,729 faults: 2,990 missing, 44,100 not modelled/named, 6,639 extra); nets 17,641 / 19,498 (90.5%; 1,857 faults); register-clock nets 1,135 / 2,996 (37.9%). "0 pip MISMATCH" only means no pip disagreed where both sides had it.
 - Diamond's turnaround arcs give the missing rules directly: top edge `V06N{i}00@R1 -> V06S{i}03@R3`; left edge `H06W{i}01@C2 -> H06E{i}04@C2`. Not applied here (`lifters/machxo2_lift.py` untouched).
 
 ## Other findings

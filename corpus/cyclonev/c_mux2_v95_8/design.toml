@@ -1,0 +1,7 @@
+top = "c_mux2_v95_8"
+purpose = "2:1 mux, ?: select [Verilog-95]"
+exercises = ["mux"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "mux2"
+variant = "v95"
+width = 8

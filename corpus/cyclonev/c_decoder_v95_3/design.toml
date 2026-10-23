@@ -1,0 +1,7 @@
+top = "c_decoder_v95_3"
+purpose = "binary-to-one-hot decoder; width = select bits [Verilog-95]"
+exercises = ["decoder"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "decoder"
+variant = "v95"
+width = 3

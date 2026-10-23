@@ -51,9 +51,9 @@ upstream in prjtrellis rather than in the lifter.
 Wide muxes are near-universal too — **204 of 211 decoded designs**, roughly
 493k arcs — a gap the original 18-design suite barely touched.
 
-**Every gap under-connects. The corpus-wide fused-net count is zero.** That
-confirms the safe-direction claim on data that could have falsified it, which
-is the strongest form the claim has had.
+**Every gap is a fault. The corpus-wide fused-net count is zero** (no wrong
+joins), but the missing connections are as bad and are counted in the
+unresolved-clock and split-net figures above, not here.
 
 ## Two harness bugs, both manufacturing false failures
 

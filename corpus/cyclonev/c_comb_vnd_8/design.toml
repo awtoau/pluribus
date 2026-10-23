@@ -1,0 +1,7 @@
+top = "c_comb_vnd_8"
+purpose = "pure combinational assign logic [vendor]"
+exercises = ["lut", "comb"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "comb"
+variant = "vnd"
+width = 8

@@ -1,0 +1,7 @@
+top = "c_casemux_vnd_4"
+purpose = "case mux, 3 inputs on 2-bit select (value 3 unspecified) [vendor]"
+exercises = ["mux", "case"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "casemux"
+variant = "vnd"
+width = 4

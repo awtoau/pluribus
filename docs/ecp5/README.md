@@ -50,8 +50,8 @@ clocks lost on third-party designs against **0% on ours, including 15 Diamond
 builds** — because our designs clock straight from a pad and only ever touch the
 global class prjtrellis positions. Design style mattered more than toolchain.
 
-Every gap **under-connects**; the corpus-wide fused-net count is zero. That is
-the safe direction, now confirmed on data that could have falsified it.
+Every gap is a fault. The corpus-wide fused-net count is zero, but that counts
+only wrong joins; the missing connections are counted separately and are as bad.
 
 ## Blocked on
 

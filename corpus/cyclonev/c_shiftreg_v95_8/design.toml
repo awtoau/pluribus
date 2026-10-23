@@ -1,0 +1,7 @@
+top = "c_shiftreg_v95_8"
+purpose = "serial-in parallel-out shift register [Verilog-95]"
+exercises = ["shiftreg", "dffeas"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "shiftreg"
+variant = "v95"
+width = 8
