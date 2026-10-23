@@ -51,6 +51,9 @@ ffs = Table("ffs", metadata,
     # apycula dff/latch kind (DFF/DFFR/DL/DLC/…) so the Verilog emitter can tell a
     # level-sensitive latch (DL*) from an edge-triggered flop.
     Column("dtype", Text),
+    # NULL = D resolved.  Else why D fell back to a constant (a missing connection,
+    # counted as a fault): 'F-unconnected' | 'M-unconnected' | 'const-0' (MachXO2).
+    Column("d_fault", Text),
     UniqueConstraint("bitstream", "cell"),
 )
 

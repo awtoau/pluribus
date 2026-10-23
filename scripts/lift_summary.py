@@ -50,6 +50,13 @@ def summarise(label):
         s["efb_out"] = c.execute(text(
             "select count(*) from efb_ports where bitstream=:b and direction='out'"),
             {"b": b}).scalar()
+        # FF D faults (#113): unresolved D (d_fault) and every constant-literal D
+        s["n_ffs_d_unresolved"] = c.execute(text(
+            "select count(*) from ffs where bitstream=:b and d_fault is not null"),
+            {"b": b}).scalar()
+        s["n_ffs_d_const"] = c.execute(text(
+            "select count(*) from ffs where bitstream=:b and d like '1''b%'"),
+            {"b": b}).scalar()
         # undriven = net with no driving LUT/FF/EFB output and no pad input
         s["db_undriven_nets"] = c.execute(text("""
             select count(*) from nets n where n.bitstream=:b

@@ -571,6 +571,20 @@ def compare_target(target, targets_dir, out_root):
                 f["SRMODE"], ff["srmode"])
             fld(f"FF{j}.lift.gsr", "MATCH" if ff["gsr"] == f["GSR"] else "MISMATCH",
                 f["GSR"], ff["gsr"])
+            # D: an unresolved D (tied-0 fallback) is a missing connection.  SD=0 has
+            # a Diamond M pin to compare; SD=1 (F->DI) has no routed D wire.
+            dnet = comp["pins"].get(f"M{j}") if sd == "0" else None
+            if ff.get("d_fault"):
+                v = "LIFT_MISSING"
+            elif sd == "0" and dnet is None:
+                v = "LIFT_ONLY"
+            elif sd == "0" and dnet not in dnet_to_lift:
+                v = "ORACLE_ONLY"
+            elif sd == "0":
+                v = "MATCH" if dnet_to_lift[dnet] == ff["d"] else "MISMATCH"
+            else:
+                v = "MATCH"
+            fld(f"FF{j}.lift.d", v, dnet, ff["d"] + (f" [{ff['d_fault']}]" if ff.get("d_fault") else ""))
             for pin, key, const in (("CLK", "clk", "1'b0"), ("CE", "ce", "1'b1"),
                                     ("LSR", "lsr", "1'b0")):
                 dnet = comp["pins"].get(pin)
@@ -732,8 +746,9 @@ def main():
     sf = summ["site_field_verdicts"]
     clk = {k.split(":")[1]: v for k, v in sf.items() if k.startswith("FF#.lift.clk:")}
     summ["headline"] = {}
+    ffd = {k.split(":")[1]: v for k, v in sf.items() if k.startswith("FF#.lift.d:")}
     for label, c in (("pips", summ["pips"]), ("nets", summ["net_verdicts"]),
-                     ("register clock nets", clk)):
+                     ("register clock nets", clk), ("register D nets", ffd)):
         tot, ok = sum(c.values()), c.get("MATCH", 0)
         summ["headline"][label] = {"match": ok, "total": tot, "faults": tot - ok,
                                    "rate_pct": round(100.0 * ok / tot, 1) if tot else None}
