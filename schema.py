@@ -938,6 +938,56 @@ route_hops = Table("route_hops", metadata,
 Index("idx_route_hops_build", route_hops.c.build, route_hops.c.analysis, route_hops.c.path)
 Index("idx_route_hops_loc", route_hops.c.build, route_hops.c.location)
 
+# Full per-net routing trees from `quartus_cdb --back_annotate=routing` (build.rcf).
+# One row per element; a branch = one path segment ending at one sink (`dest`).
+# kind: elem | label (implicit element named by `label =`, a fan-out point).
+rcf_routes = Table("rcf_routes", metadata,
+    Column("id",       Integer, primary_key=True, autoincrement=True),
+    Column("build",    Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("net",      Text,    nullable=False),    # signal_name
+    Column("branch",   Integer, nullable=False),    # 0-based within net, file order
+    Column("parent_branch", Integer),               # NULL for branch 0
+    Column("parent_label",  Text),                  # branch_point label this branch leaves from
+    Column("hop",      Integer, nullable=False),    # index within branch
+    Column("kind",     Text,    nullable=False),
+    Column("element",  Text,    nullable=False),    # TYPE e.g. R6, C2, LOCAL_INTERCONNECT
+    Column("x",        Integer),
+    Column("y",        Integer),
+    Column("n",        Integer),                    # RCF S<n> (route_hops N<n>)
+    Column("idx",      Integer),                    # I<k>; NULL for the B-form elements
+    Column("port_path", Text),                      # B-form tail, e.g. IOC~INPUT~NIOD0OUT[0]
+    Column("raw",      Text,    nullable=False),
+    Column("dest_atom", Text),                      # sink of this branch (same on all its rows)
+    Column("dest_port", Text),
+    Column("route_port", Text),
+)
+Index("idx_rcf_routes_net", rcf_routes.c.build, rcf_routes.c.net, rcf_routes.c.branch)
+Index("idx_rcf_routes_loc", rcf_routes.c.build, rcf_routes.c.element, rcf_routes.c.x, rcf_routes.c.y)
+
+# Directed routing fuzz: one RCF element swapped, bits changed vs the unedited build.
+rcf_fuzz_bits = Table("rcf_fuzz_bits", metadata,
+    Column("id",       Integer, primary_key=True, autoincrement=True),
+    Column("build",    Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("net",      Text,    nullable=False),
+    Column("branch",   Integer, nullable=False),
+    Column("hop",      Integer, nullable=False),
+    Column("element",  Text,    nullable=False),    # element type at the mux
+    Column("x",        Integer),
+    Column("y",        Integer),
+    Column("orig_idx", Integer),
+    Column("alt_idx",  Integer),                    # edit mode: idx tried; exclude mode: depth (1..); NULL = control
+    Column("mode",     Text),                       # edit | exclude
+    Column("status",   Text,    nullable=False),    # control | accepted | rerouted | fail:<step> | no_alternative
+    Column("excluded", JSON),                       # exclude mode: ["TYPE:XxYyS0Ik", ...] listed in the exclusion section
+    Column("new_route", JSON),                      # exported route of the target branch after the fit
+    Column("replay",   Text),                       # exported RCF re-imported alone: accepted | rejected | fail:<step>
+    Column("n_changed", Integer),
+    Column("changed_bits", JSON),                   # [[rbf byte offset, bit 0-7], ...] vs the control variant
+    Column("bt_diff", JSON),                        # mistral-cv decomp lines added/removed vs the control
+    Column("note",     Text),
+)
+Index("idx_rcf_fuzz_build", rcf_fuzz_bits.c.build, rcf_fuzz_bits.c.net)
+
 # ── Schema management ─────────────────────────────────────────────────────────
 
 def init(eng=None):

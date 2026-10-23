@@ -7,6 +7,7 @@ Per design in corpus/cyclonev/<name>/ (only src/ and design.toml are tracked):
   decomp.bt         mistral-cv decomp of bitstream.rbf
   lifted.v          load.py (cyclonev lifter) + verilog.py on decomp.bt
   route_report.txt  quartus_sta report_timing -show_routing (quartus/route.tcl)
+  build.rcf         quartus_cdb --back_annotate=routing on a scratch copy (every net's full route)
   compare.json      scripts/cyclonev_postfit_compare.py summary
   logs/<step>.log   each tool's own output
 Rebuild = delete everything except src/ + design.toml, rebuild, replace DB rows.
@@ -53,7 +54,7 @@ PY = shutil.which("python3.15t") or sys.executable
 # Overall = 3x the measured cold worst case per step (docs/cyclonev-postfit-oracle.md).
 STALL_S = 60
 OVERALL_S = {"quartus_map": 12, "quartus_fit": 23, "quartus_asm": 6,
-             "quartus_eda": 3, "quartus_cpf": 2, "quartus_sta": 4, "decomp": 4,
+             "quartus_eda": 3, "quartus_cpf": 2, "quartus_sta": 4, "quartus_cdb": 4, "decomp": 4,
              "load": 2, "verilog": 2}
 
 # --jobs N: Quartus steps run N at a time; decomp/load/DB steps are serialised (one SQLite
@@ -174,6 +175,8 @@ def quartus(ddir, spec, srcs):
     for step, cmd in steps:
         if not run(step, cmd, qdir, logs):
             return step
+    if not rcf_export(ddir, qdir, qb, logs):
+        return "quartus_cdb"
     (qdir / "build.sof").unlink()
     copies = {"build.qsf": "build.qsf", "simulation/questa/build.vo": "postfit.vo",
               "build.rbf": "bitstream.rbf", "build.map.rpt": "map.rpt",
@@ -183,6 +186,18 @@ def quartus(ddir, spec, srcs):
     for src, dst in copies.items():
         shutil.copyfile(qdir / src, ddir / dst)
     return None
+
+
+def rcf_export(ddir, qdir, qb, logs):
+    """RCF = full routing tree per net.  --write_settings_files rewrites the .qsf -> scratch copy."""
+    work = ddir / "rcf_work"
+    shutil.copytree(qdir, work, ignore=shutil.ignore_patterns("*.rbf", "*.sof", "simulation"))
+    ok = run("quartus_cdb", [qb / "quartus_cdb", "build", "-c", "build",
+                             "--back_annotate=routing", "--write_settings_files=on"], work, logs)
+    if ok:
+        shutil.copyfile(work / "build.rcf", ddir / "build.rcf")
+    shutil.rmtree(work)
+    return ok
 
 
 def decomp_and_lift(ddir, name):
@@ -270,6 +285,9 @@ def finish_one(name, ddir, spec, srcs, skip_quartus, fail, t0):
         cyclonev_vo_parse.load_vo(bid, ddir / "postfit.vo")
         n_hops = cyclonev_route_parse.load_routes(bid, ddir / "route_report.txt")
         log.info("%s: %d route hops", name, n_hops)
+        import cyclonev_rcf_parse
+        n_rcf = cyclonev_rcf_parse.load_rcf(bid, ddir / "build.rcf")
+        log.info("%s: %d rcf rows", name, n_rcf)
         summary = cyclonev_postfit_compare.compare_build(bid, ddir)
         (ddir / "compare.json").write_text(json.dumps(summary, indent=1, sort_keys=True))
     log.info("%s: %s (%.1fs)", name, status, time.monotonic() - t0)

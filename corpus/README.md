@@ -19,6 +19,7 @@ corpus/cyclonev/
     bitstream.rbf           quartus_cpf raw bitstream
     map.rpt fit.rpt asm.rpt eda.rpt build.pin   Quartus reports
     route_report.txt        quartus_sta report_timing -show_routing (script: quartus/route.tcl)
+    build.rcf               quartus_cdb --back_annotate=routing: every net's full routing tree (docs/cyclonev-rcf-oracle.md)
     decomp.bt               mistral-cv decomp of bitstream.rbf
     lifted.v                our lift: load.py (cyclonev lifter) + verilog.py
     compare.json            per-field verdict counts (same data as postfit_compare)
@@ -65,6 +66,8 @@ Builder options: `--match 'c_*'` (glob), `--missing` (no DB row yet), `--jobs N`
 | `postfit_conns` | atom port bit | `build`, `atom`, `port`, `bit` (LSB 0), `direction` (`in`/`out`), `net`, `inverted` (`!` in the .vo), `const` (`0`/`1`/`x`) |
 | `postfit_compare` | atom x field | `build`, `atom`, `location`, `field`, `quartus_value`, `lifted_value`, `verdict` |
 | `route_hops` | hop of a reported timing path | `build`, `analysis` (`setup`/`recovery`), `path`, `from_node`, `to_node`, `part` (`arrival`/`required`), `hop`, `depth`, `section` (`clock path`/`data path`/...), `driver` (last cell output `atom|port` = the net being routed), `total`, `incr`, `rf`, `type` (`RE`/`IC`/`CELL`/`uTco`), `fanout`, `location`, `loc_kind`, `x`, `y`, `n`, `idx`, `element` |
+| `rcf_routes` | element of a net's RCF routing tree | `build`, `net`, `branch`, `parent_branch`, `parent_label`, `hop`, `kind` (`elem`/`label`/`dest`), `element` (TYPE), `x`, `y`, `n`, `idx` (NULL for block-port form), `port_path`, `raw`, `dest_atom`, `dest_port`, `route_port`. Joins `route_hops` on (`loc_kind`=`element`, `x`,`y`,`n`,`idx`) |
+| `rcf_fuzz_bits` | directed-fuzz variant (`scripts/cyclonev_rcf_fuzz.py`) | `build`, `net`, `branch`, `hop`, `element`, `x`, `y`, `orig_idx`, `alt_idx`, `mode` (`edit`/`exclude`), `status`, `excluded`, `new_route`, `replay`, `n_changed` (raw rbf bits vs control), `changed_bits`, `bt_diff` (decomp lines) |
 
 - Our lift of each build is also in the usual tables (`bitstreams.label = postfit_builds.lift_label`: `luts`, `ffs`, `nets`, `arcs`, `pad_map`).
 - Nets: escapes removed, bus bits `name[i]`, `assign` aliases resolved to the driver's net.
