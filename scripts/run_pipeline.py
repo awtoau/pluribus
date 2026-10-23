@@ -114,6 +114,10 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
     # emit + yosys lint like MachXO2.  chains.py and the regression LEC-vs-prior
     # stay MachXO2-only (they lean on the MachXO2 pad/hard-IP layers).
     is_gowin = (lifter == "gowin")
+    # CYCLONE V (e50f): `config` is the Mistral `.bt` decompile (scripts/cyclonev_unpack.py:
+    # flash image -> strip 0xFF -> mistral-cv decomp).  No iomap stage (package pins come
+    # from the .bt itself); pins.tsv is optional board annotation keyed by BGA ball.
+    is_cv = (lifter == "cyclonev")
 
     # ANLOGIC EG4 (eagle_s20, #67): the structural lift (tile grid + occupancy +
     # LUT-init) lands in the DB, but routing/mux decode is future work — with no
@@ -158,6 +162,10 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
             if package:
                 unpack_cmd += ["--package", package]
             run("unpack", label, unpack_cmd)
+        elif is_cv:
+            run("unpack", label,
+                [PY, "scripts/cyclonev_unpack.py", raw_bin, config,
+                 "--device", device or "5CEBA4U19C8"])
         else:
             run("unpack", label,
                 [PY, "scripts/trellis_unpack.py", raw_bin, config])
@@ -166,14 +174,19 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
                 [PY, "scripts/fpga_iomap.py", config], extra_env=iomap_env)
 
     if not skip_load:
-        load_cmd = [PY, "load.py", "--label", label,
-                    "--config", config, "--pins", pins]
+        load_cmd = [PY, "load.py", "--label", label, "--config", config]
+        if pins:
+            load_cmd += ["--pins", pins]
         # Board net annotations (clock names, frequencies, functions,
         # descriptions) — without this the recovered clocks stay as
         # auto-numbered clk_N placeholders instead of their semantic names.
         if nets:
             load_cmd += ["--nets", nets]
-        if is_gowin:
+        if is_cv:
+            load_cmd += ["--lifter", "cyclonev", "--device", device or "5CEBA4U19C8"]
+            if package:
+                load_cmd += ["--package", package]
+        elif is_gowin:
             # GW1N designs are small (few LUTs) and pad/EFB/EBR checks don't
             # apply — --fuzz skips the MachXO2-scale count sanity asserts.
             # Forward device+package too: load.py otherwise defaults to the
@@ -244,7 +257,7 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
         if verify and shutil.which("yosys"):
             vcheck = [PY, "scripts/check_verilog.py", out_v, "--top", top]
             # Regression LEC-vs-prior stays MachXO2-only for now.
-            if os.path.exists(prev_v) and not is_gowin:
+            if os.path.exists(prev_v) and not (is_gowin or is_cv):
                 vcheck += ["--lec", prev_v]
                 if strict_lec:
                     vcheck += ["--strict-lec"]
@@ -339,9 +352,10 @@ def main():
         if not config:
             sys.exit(f"no config for {label}: pass --config or declare "
                      f"[bitstreams.{label}] in board.toml")
-        # anlogic has no pad-map layer yet, so its load path needs no pins
+        # anlogic has no pad-map layer yet, so its load path needs no pins; cyclonev
+        # takes pins.tsv as optional annotation only
         if (not args.skip_load and not pins
-                and board.get("lifter") != "anlogic"):
+                and board.get("lifter") not in ("anlogic", "cyclonev")):
             sys.exit("load needs --pins (or --board with pins_tsv)")
         top = args.top or board.get("top") or "top"
         # Optional board-provided Verilog header note (board-specific context).
