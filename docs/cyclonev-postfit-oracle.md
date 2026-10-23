@@ -204,3 +204,20 @@ Corpus now 236 designs (`c_ram_vnd_logic_16` has an oracle since its rebuild; it
   - Pad label: `s GPIO.x.y:<MUX>.<n> ... ; <pin>` names pad n of the tile (2428/2428 against the bi-qualified comments, 0 conflicts); the clock pads K17/L17 carry no `r` arc, only such comments.
   - Clock links are DSU unions, not `.bt` arcs: one clock reaching several sectors is one net (fixes the `c_ram_vnd_logic_16` 959 + 81 split).
 - Scorecard option: `--split even|odd`.
+
+## Ground-side loops (DJI ground FPGA, label `G`, no oracle)
+
+`python3.15t scripts/run_pipeline.py --board <awto-dji>/ground/fpga --label G --workers 8` (PLURIBUS_SQLITE_PATH under `tmp/`). `check_verilog.py` combinational loops: 4 before this step.
+
+| LUT | mode | function (f0,f1 = output with own net at 0 / 1) | class |
+|---|---|---|---|
+| `alm_lab_r10c7_a8_bottom` | E_1 | `z = z \| ~s` | set-hold latch |
+| `alm_lab_r10c18_a7_bottom` | E_1 | `z = z \| s` | set-hold latch |
+| `alm_lab_r16c2_a9_bottom` | E_1, `ARITH_SEL ADDER` | `z = ~(s & z)` | arithmetic ALM: `FFB0` is the adder `sumout`, lifted as the LUT `combout` |
+| `alm_mlab_r9c6_a5_bottom` | F_1 | 16 assignments hold/set, 8 invert | unresolved |
+
+- Self-feeding LUT = own output routed to its own input pin (`FFB1L -> A/B`, same ALM). Not a pin/half mix-up: all four are `FFB?` outputs of a bottom half going back to a pin that half uses.
+- Fix (`verilog.py` `_lut_self_latch()`, 64-char init only): per assignment of the other inputs, (f0,f1) = (1,1) set, (0,0) clear, (0,1) hold -> `always @*` latch (yosys `$dlatch`, passes the gate as a state element). (1,0) for any assignment = can oscillate = not a latch: left as a loop.
+- After: 2 loops (rows 3 and 4), both with oscillating assignments:
+  - Row 3 is the arithmetic gap (step 5 below), not a real inverter loop.
+  - Row 4: `TMODE BMNONE` (undecoded, MLAB) next to a `F_1` bottom half whose `F1` pin carries its own output; no Quartus oracle for MLAB `F_1` self-feedback in the corpus.
