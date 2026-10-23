@@ -748,6 +748,98 @@ cv_p2p = Table("cv_p2p", metadata,
 Index("idx_cv_p2p_src", cv_p2p.c.die, cv_p2p.c.src_block_type, cv_p2p.c.src_block_x, cv_p2p.c.src_block_y)
 Index("idx_cv_p2p_dst", cv_p2p.c.die, cv_p2p.c.dst_block_type, cv_p2p.c.dst_block_x, cv_p2p.c.dst_block_y)
 
+# ── Cyclone V block-mux tables (2026-10-23, 3rd session) ─────────────────────
+# Imported by scripts/cyclonev_db_import_blockmux.py from Mistral's 21
+# data/<x>-mux.txt generator inputs (generator/*.cc's own loader is the
+# compiled consumer; tools/mux_to_source.py is the one-step-removed reference
+# PRODUCER-side grammar spec this import follows -- same "read the producer,
+# not the compiled consumer" discipline as cv_route_muxes et al.).
+#
+# NOT PER-DIE, unlike cv_route_muxes/cv_route_lines/cv_route_drivers/cv_p2r/
+# cv_p2p. Verified against the loader call sites (mux_to_source.py lines
+# 219-240): load_mux_data() takes no chip/die argument, mux_to_source.py's own
+# CLI takes only a data-dir, and libmistral/cv-bmux-data.cc (the compiled
+# output) is built ONCE and linked into mistral as plain file-scope arrays --
+# no per-die selection anywhere in the consumer either. These are block-mux
+# DEFINITIONS: fixed bit positions/encodings for a mux that exists identically
+# in every Cyclone V die (the die only supplies how many of each block exist,
+# via cv_dies/the tile grid -- not what bits a given mux decodes to).
+#
+# BOOTSTRAP/VERIFICATION SOURCE, NOT A PERMANENT DEPENDENCY -- same status as
+# cv_route_muxes (see that table's comment): useful today, not meant to be
+# pluribus's permanent source of Cyclone V block-mux truth long-term. A
+# Quartus-fuzzing campaign covering LAB/M10K/DSP/GPIO/PLL/HSSI muxes is real
+# future work (docs/cyclonev-blockmux-status.md), not attempted this session.
+#
+# TABLE SHAPE: one row per mux_to_source.py `nm` dict (one dict per non-
+# indented line in a *-mux.txt file, AFTER lab_expand() for lab/mlab's 'i'
+# subtype). Follows cv_route_muxes's convention: value->name/number mappings
+# (stype m/n) and the per-span bit-position rows are JSON arrays on the
+# PARENT row, not child tables -- 4,650 source lines total across all 21
+# files (the largest, hip-mux.txt, is 900 lines) is nowhere near route-table
+# scale, but normalising bits/values into child tables would still add
+# thousands of rows for zero query this project currently needs that the
+# JSON arrays don't already serve, so the same convention applies unchanged.
+#
+# `dump_target` is the compiled bm_<dump_target>[] array name a row would
+# land in (e.g. "cmuxvr", "cmuxvg", "lab"), NOT always the source file's base
+# name: cmuxv-mux.txt and cmuxh-mux.txt each feed TWO dump_muxes() calls
+# filtered by subtype ('r'/'R' -> cmuxvr, 'g'/'G' -> cmuxvg) producing two
+# distinct compiled arrays from one file -- dump_target disambiguates that;
+# source_file + subtype still records true provenance.
+#
+# ram_space: "oram" (opt-mux.txt only, device-wide 1D positions),
+# "pram" (17 files, peripheral-instance 1D positions), or "cram" (lab, mlab,
+# m10k, dsp, hps_clocks -- 2D x.y configuration-RAM coordinates, is_2d=True in
+# the loader). bits is a JSON list of `span` rows, each itself a list of
+# `bcount` positions -- a position is an int for oram/pram, a [x,y] pair for
+# cram, matching load_mux_data()'s `w` closure exactly.
+#
+# stype: 'b' (bool), 'm' (mux, named values), 'n' (mux, numeric values),
+# 'r' (RAM -- raw bits, no value table). variant defaults to -1 and is
+# overridden per-subtype only for gpio ({'x':1,'X':0,'s':1}) and pma3
+# ({'t':1,'b':0}) -- see mux_to_source.py's load_mux_data() call arguments,
+# reproduced verbatim in scripts/cyclonev_db_import_blockmux.py, not
+# re-derived.
+#
+# values is a JSON list of [hex_value, name_or_number] pairs (stype m: name
+# is text; stype n: name is itself numeric) for stype m/n rows, else NULL.
+# default_value_idx mirrors the loader's 'def' field: for stype b/r it is the
+# literal default bit value (0, -1 for all-ones "+", or the parsed hex
+# suffix); for stype m/n it is the INDEX into `values` of the row marked with
+# a trailing '!' (NULL if the mux declares no default at all, which is the
+# bcount-underlying "no explicit default" case the loader itself represents
+# as -2 in dump_muxes() -- stored here as NULL rather than copying that sentinel).
+#
+# (dump_target, mux) is NOT unique, confirmed against the real files, not
+# assumed: hssi-mux.txt's "i pcs8g_digi_tx_plane_bonding_consumption" and
+# m10k-mux.txt's "g b_dmy_delay" each appear TWICE under the identical
+# subtype+name with different bit positions (distinct PMA/EMIF-channel
+# instances the source files don't disambiguate by name) -- so even
+# (dump_target, subtype, mux) is not a safe unique key. No UniqueConstraint
+# here; `id` plus the indexes below is the only identity, same as
+# cv_route_muxes/cv_route_lines/etc. already settled for the same reason.
+cv_block_muxes = Table("cv_block_muxes", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("source_file",   Text,    nullable=False),  # e.g. "gpio-mux.txt"
+    Column("dump_target",   Text,    nullable=False),  # e.g. "cmuxvr", "lab"
+    Column("ram_space",     Text,    nullable=False),  # "oram" | "pram" | "cram"
+    Column("subtype",       Text,    nullable=False),  # single-char token, e.g. "i", "g", "r"
+    Column("mux",           Text,    nullable=False),  # mux name, e.g. "tdff0"
+    Column("stype",         Text,    nullable=False),  # "b" | "m" | "n" | "r"
+    Column("bcount",        Integer, nullable=False),
+    Column("span",          Integer, nullable=False),
+    Column("variant",       Integer, nullable=False, server_default="-1"),
+    Column("is_2d",         Boolean, nullable=False, server_default="0"),
+    Column("bits",          JSON,    nullable=False),  # span x bcount positions
+    Column("values",        JSON),                     # [[hex_value, name|num], ...], stype m/n only
+    Column("default_value", Integer),                  # stype b/r literal default; NULL = none declared
+    Column("default_value_idx", Integer),               # stype m/n: index into `values`; NULL = none declared
+)
+Index("idx_cv_block_muxes_file", cv_block_muxes.c.source_file)
+Index("idx_cv_block_muxes_target", cv_block_muxes.c.dump_target)
+Index("idx_cv_block_muxes_mux", cv_block_muxes.c.dump_target, cv_block_muxes.c.mux)
+
 # ── Schema management ─────────────────────────────────────────────────────────
 
 def init(eng=None):
