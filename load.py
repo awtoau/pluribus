@@ -497,7 +497,7 @@ def load_cyclonev(label, config_path, device):
 
         # always-rebuild: drop this label's rows before re-inserting
         for tbl in (schema.net_fanout, schema.arcs, schema.ffs, schema.luts,
-                    schema.nets):
+                    schema.pad_map, schema.nets):
             conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
 
         # ── nets ──────────────────────────────────────────────────────────
@@ -585,8 +585,34 @@ def load_cyclonev(label, config_path, device):
             conn.execute(insert(schema.arcs), arc_rows[i:i+CHUNK])
         print(f"  {len(arc_rows)} routing arcs")
 
+        # ── pad_map (real package-pin recovery, cyclonev_lift.recover_pads) ─
+        # pad_map.pin is Integer NOT NULL; unannotated pads (pin is None in
+        # Design.pads -- no ball in Mistral's pin table, see recover_pads())
+        # are SKIPPED here, not inserted with a fabricated placeholder int --
+        # that would corrupt bga_pin_to_int()'s UNIQUE(bitstream,pin)
+        # guarantee. Their fabric net is still in nets/net_fanout/arcs above.
+        pad_rows = [
+            {
+                "bitstream": bs_id, "pin": p["pin"], "label": p["label"],
+                "row": p["row"], "col": p["col"], "pio": str(p["pio"]),
+                "direction": p["direction"],
+                "net_in": p["net_in"], "net_out": p["net_out"],
+            }
+            for p in design.pads if p["pin"] is not None
+        ]
+        n_pads_skipped = sum(1 for p in design.pads if p["pin"] is None)
+        if pad_rows:
+            conn.execute(insert(schema.pad_map), pad_rows)
+        pad_count = conn.execute(
+            select(func.count()).select_from(schema.pad_map)
+            .where(schema.pad_map.c.bitstream == bs_id)
+        ).scalar()
+        assert_eq("pad_map count in DB", pad_count, len(pad_rows))
+        print(f"  {len(pad_rows)} pad_map rows ({n_pads_skipped} unannotated "
+              f"pads skipped — no package pin name to key on)")
+
     print(f"  loaded: {n_luts} LUTs, {n_ffs} FFs, {len(net_rows)} nets, "
-          f"{len(arc_rows)} arcs ({time.time()-t0:.1f}s)")
+          f"{len(arc_rows)} arcs, {len(pad_rows)} pads ({time.time()-t0:.1f}s)")
     return bs_id
 
 

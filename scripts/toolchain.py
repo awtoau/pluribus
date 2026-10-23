@@ -43,6 +43,7 @@ Usage:
 """
 import glob
 import os
+import re
 import shutil
 import sys
 
@@ -236,6 +237,76 @@ def diamond_root(required=True):
     return None
 
 
+_QUARTUS_GLOBS = (
+    "~/opt/altera/quartus-*/quartus/bin",
+    "/opt/altera/quartus-*/quartus/bin",
+    "/mnt/2tb/opt/altera/quartus-*/quartus/bin",
+)
+
+
+def quartus_bin(required=True):
+    """The Quartus `bin/` directory holding quartus_map/fit/asm/cpf.
+
+    `$PLURIBUS_QUARTUS_BIN` wins.  Otherwise globs the conventional
+    `.../quartus-<version>/quartus/bin` install layout and takes the
+    newest version-sorted match -- an older or newer Quartus install on
+    this machine is picked up with no code change, which is the whole
+    point of the Cyclone V verification harness being able to re-run
+    against "whatever Quartus is here right now" (see
+    docs/cyclonev-verification.md).  Never hardcodes one version path.
+    """
+    env = os.environ.get("PLURIBUS_QUARTUS_BIN")
+    if env:
+        p = _expand(env)
+        if os.path.isdir(p):
+            return p
+        die(f"$PLURIBUS_QUARTUS_BIN is set to {env!r} but that is not a directory")
+    hits = []
+    for pattern in _QUARTUS_GLOBS:
+        hits.extend(glob.glob(_expand(pattern)))
+    hits = [h for h in hits if os.path.isdir(h)
+            and os.path.isfile(os.path.join(h, "quartus_map"))]
+    if hits:
+        # Version-sort on the "quartus-<version>" path segment so a Quartus
+        # upgrade (new directory, old one left in place) picks the newest
+        # without any config change.
+        def _ver_key(path):
+            m = re.search(r"quartus-([\d.]+)", path)
+            if not m:
+                return [0]
+            return [int(p) if p.isdigit() else p for p in m.group(1).split(".")]
+        hits.sort(key=_ver_key, reverse=True)
+        return hits[0]
+    if required:
+        die("cannot find Quartus; set $PLURIBUS_QUARTUS_BIN to the "
+            "quartus/bin directory (e.g. <install>/quartus-25.1/quartus/bin), "
+            f"searched: {', '.join(_QUARTUS_GLOBS)}")
+    return None
+
+
+def mistral_cv(required=True):
+    """The mistral-cv binary (Project Mistral's Cyclone V decompiler).
+
+    `$PLURIBUS_MISTRAL_CV` wins; otherwise the documented build location
+    (`rust`-sibling-repo style fallback, but Mistral is a fixed single
+    checkout here, not a family of sibling repos, so no glob search --
+    there is exactly one conventional build output path).
+    """
+    env = os.environ.get("PLURIBUS_MISTRAL_CV")
+    if env:
+        p = _expand(env)
+        if os.path.isfile(p):
+            return p
+        die(f"$PLURIBUS_MISTRAL_CV is set to {env!r} but that is not a file")
+    cand = "/mnt/2tb/git/mistral/build/mistral-cv/mistral-cv"
+    if os.path.isfile(cand):
+        return cand
+    if required:
+        die("cannot find mistral-cv; set $PLURIBUS_MISTRAL_CV to the built "
+            f"binary (default checked: {cand})")
+    return None
+
+
 def gowin_python(required=False):
     """An interpreter that can import apycula.
 
@@ -332,6 +403,8 @@ def summary():
         "ecpunpack": tool("ecpunpack", "ECPUNPACK"),
         "ecppack": tool("ecppack", "ECPPACK"),
         "yosys": tool("yosys", "YOSYS"),
+        "quartus_bin": quartus_bin(required=False),
+        "mistral_cv": mistral_cv(required=False),
     }
 
 

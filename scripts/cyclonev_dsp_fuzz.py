@@ -38,8 +38,15 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-QUARTUS_BIN = Path("/mnt/2tb/opt/altera/quartus-25.1/quartus/bin")
-MISTRAL_CV = Path("/mnt/2tb/git/mistral/build/mistral-cv/mistral-cv")
+sys.path.insert(0, str(REPO / "scripts"))
+import toolchain
+
+# Resolved via the shared toolchain module (env var, then conventional
+# install globs, newest version wins) rather than a hardcoded path -- see
+# scripts/toolchain.py:quartus_bin()/mistral_cv() and
+# docs/cyclonev-verification.md for re-running against a different install.
+QUARTUS_BIN = Path(toolchain.quartus_bin())
+MISTRAL_CV = Path(toolchain.mistral_cv())
 DEVICE = "5CEBA4U19C8"          # e50f/e50b -- same die as cyclonev_die_probe.py/DJI m2001
 WORK_DIR = REPO / "tmp" / "cyclonev_dsp_fuzz"
 LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_dsp_fuzz.log"
@@ -135,7 +142,14 @@ def check_dsp_inferred(map_report_text: str, logger, name: str) -> bool:
     return found
 
 
-def compile_design(name, spec, work_dir: Path, logger):
+def quartus_compile_design(name, spec, work_dir: Path, logger):
+    """Producer-side half: quartus_map -> fit -> asm -> cpf only, no
+    mistral-cv decompile.  Split out of the old compile_design() (which
+    used to do both halves in one call) so a multi-design harness can run
+    the slow Quartus half across a wide compile pool while a smaller pool
+    drains the fast decompile+extract half -- see cyclonev_verify_all.py.
+    Returns a dict with 'rbf'/'dsp_inferred' or None on failure.
+    """
     d = work_dir / name
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{name}.v").write_text(spec["verilog"])
@@ -167,6 +181,17 @@ def compile_design(name, spec, work_dir: Path, logger):
     if run([str(QUARTUS_BIN / "quartus_cpf"), "-c", str(sof), str(rbf)], d, logger) is None:
         return None
 
+    return {"name": name, "desc": spec["desc"], "dir": d, "rbf": rbf,
+            "dsp_inferred_in_map_report": dsp_inferred}
+
+
+def decompile_and_extract_design(compiled, logger):
+    """Consumer-side half: mistral-cv decomp + extract_dsp_settings on an
+    already-compiled design (the dict quartus_compile_design() returned).
+    Returns the same result shape compile_design() used to return in one
+    shot, or None on failure.
+    """
+    name, d, rbf = compiled["name"], compiled["dir"], compiled["rbf"]
     bt = d / f"{name}.bt"
     decomp_out = run([str(MISTRAL_CV), "decomp", DEVICE, str(rbf), str(bt)], d, logger)
     if decomp_out is None:
@@ -179,11 +204,20 @@ def compile_design(name, spec, work_dir: Path, logger):
 
     return {
         "name": name,
-        "desc": spec["desc"],
-        "dsp_inferred_in_map_report": dsp_inferred,
+        "desc": compiled["desc"],
+        "dsp_inferred_in_map_report": compiled["dsp_inferred_in_map_report"],
         "bt_path": str(bt),
         "dsp_settings": dsp_settings,
     }
+
+
+def compile_design(name, spec, work_dir: Path, logger):
+    """Original single-call entry point (compile + decompile), kept for the
+    standalone CLI below -- now a thin wrapper over the two split halves."""
+    compiled = quartus_compile_design(name, spec, work_dir, logger)
+    if compiled is None:
+        return None
+    return decompile_and_extract_design(compiled, logger)
 
 
 def extract_dsp_settings(bt_path: Path, logger, name: str) -> dict:

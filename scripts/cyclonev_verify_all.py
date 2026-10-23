@@ -1,0 +1,516 @@
+#!/usr/bin/env python3
+"""Consolidated Cyclone V / Mistral verification harness.
+
+Re-derives every Mistral-dependent claim this project makes about Cyclone V
+from scratch, against whatever Quartus install is on this machine RIGHT NOW,
+and checks the result against the numbers already documented in
+docs/cyclonev-lifter-status.md / docs/cyclonev-dsp-fuzz-status.md -- not just
+"did it run", but "does it still say what we published". Re-run this after a
+Quartus upgrade (or with $PLURIBUS_QUARTUS_BIN pointed at an older install) to
+confirm nothing drifted. See docs/cyclonev-verification.md.
+
+Stages
+------
+1. Die probe   -- compile a trivial design for each of the 7 Mistral-covered
+                  Cyclone V dies, record real .rbf sizes (reuses
+                  cyclonev_die_probe.compile_die(), does not copy it).
+2. DSP fuzz    -- compile + decompile the 4 known-operation DSP designs,
+                  compare the recovered DSP.MODE string against the
+                  documented expected value for each (reuses
+                  cyclonev_dsp_fuzz.quartus_compile_design() /
+                  decompile_and_extract_design(), split so Quartus compiles
+                  and Mistral decompiles run in separate thread pools).
+3. Lifter selftest -- parse_config()/recover_netlist() against the real
+                  reference .bt sample, check LUT/FF/net/arc/pad counts
+                  against the documented baseline (reuses
+                  lifters.cyclonev_lift.CycloneVLift directly, same calls
+                  scripts/cyclonev_lift_selftest.py makes).
+4. pad_map DB insert -- load.py's load_cyclonev() into a throwaway SQLite
+                  DB, check the real pad_map row count / direction
+                  breakdown / duplicate-pin count against the selftest's own
+                  ground truth (Part 1 of this session's task).
+
+Threading (stages 1-2 only; 3-4 are single-shot, not Quartus-bound)
+--------------------------------------------------------------------
+Producer/consumer, not a flat worker pool -- deliberately NOT "N threads
+each doing compile-then-decompile for its own slice of work". The slow,
+CPU-bound part is the Quartus compile sequence (quartus_map -> fit -> asm
+-> cpf); the Mistral decompile + comparison step is much cheaper per item.
+Collapsing them into one pool means a thread sits idle decompiling while
+other cores could already be compiling the next design -- wasting the
+parallelism Quartus compiles should get.
+
+  - PRODUCER pool: os.cpu_count() threads (detected, never hardcoded --
+    this machine has 30), each running one full Quartus compile sequence
+    per work item (one die for stage 1, one DSP design for stage 2),
+    pulling the next item off a shared queue.Queue the moment it finishes.
+  - CONSUMER pool: a small fixed pool (4 threads -- decompile + compare is
+    seconds, not minutes, and gains nothing from 30-way parallelism),
+    draining a second queue.Queue of completed compiles as they land.
+  - Same threading.Thread + queue.Queue primitives reach.py already uses
+    for its BFS workers (CountedLock is reach.py's own contention-counting
+    lock wrapper; stage 1/2 have no shared mutable state between threads
+    besides the two queues and a results list under a plain lock, so no
+    lock contention worth instrumenting -- CountedLock is reused anyway for
+    uniformity with the one other place this project threads work out).
+
+Usage
+-----
+    python3.15t scripts/cyclonev_verify_all.py
+    python3.15t scripts/cyclonev_verify_all.py --compile-workers 30 --decompile-workers 4
+    python3.15t scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz  # fast re-check
+    PLURIBUS_QUARTUS_BIN=/opt/altera/quartus-24.1/quartus/bin python3.15t scripts/cyclonev_verify_all.py
+"""
+
+import argparse
+import logging
+import os
+import queue
+import sys
+import threading
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / "scripts"))
+
+import toolchain
+
+import cyclonev_die_probe as die_probe
+import cyclonev_dsp_fuzz as dsp_fuzz
+from lifters.cyclonev_lift import CycloneVLift
+
+LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_verify_all.log"
+
+# ── documented ground truth (docs/cyclonev-lifter-status.md,
+#    docs/cyclonev-dsp-fuzz-status.md) -- a mismatch against these is the
+#    actual point of this script, not just "did Quartus/Mistral crash". ──
+EXPECTED_LIFTER = {
+    "device": "5CEBA4U19C8", "die": "e50f",
+    "n_luts": 33336, "n_ffs": 11502, "n_nets": 144296, "n_arcs": 70007,
+    "n_unparsed_lines": 0,
+}
+EXPECTED_PADMAP = {
+    "n_pads_annotated": 224, "n_pads_unannotated": 48,
+    "n_dup_pins": 0,
+    "direction_breakdown": {"unknown": 71, "in": 146, "bidir": 49, "out": 6},
+}
+# DSP mode mapping (docs/cyclonev-dsp-fuzz-status.md): a design either gets
+# an explicit MODE string, or (mult18x18/multacc18x18) NO MODE line at all
+# because the chip's all-zero default IS that mode -- "none" is itself the
+# documented, confirmed result for those two, not a missing measurement.
+EXPECTED_DSP_MODE = {
+    "mult9x9": "M9X9",
+    "mult18x18": None,       # default encoding, no explicit MODE line (confirmed)
+    "mult27x27": "M27X27",
+    "multacc18x18": None,    # negative result: behaves identically to mult18x18
+}
+REFERENCE_BT = Path("/tmp/m2001_padmap_test.bt")  # produced by this session; see
+# docs/cyclonev-lifter-status.md for the mistral-cv decomp invocation that
+# makes one from scratch if this path doesn't exist.
+
+
+def setup_logging():
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger("cyclonev_verify_all")
+    logger.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    fh = logging.FileHandler(LOG_PATH)
+    fh.setFormatter(fmt)
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(fmt)
+    logger.addHandler(fh)
+    logger.addHandler(sh)
+    return logger
+
+
+class CountedLock:
+    """threading.Lock wrapper that counts acquisitions/contentions -- same
+    class reach.py uses for its BFS worker pool, reused here rather than
+    redefined for the one shared results list each pool appends to."""
+    def __init__(self, name):
+        self.name = name
+        self._lock = threading.Lock()
+        self.acquires = 0
+        self.contentions = 0
+
+    def __enter__(self):
+        if not self._lock.acquire(blocking=False):
+            self.contentions += 1
+            self._lock.acquire()
+        self.acquires += 1
+        return self
+
+    def __exit__(self, *_):
+        self._lock.release()
+
+    def stats(self):
+        pct = (self.contentions / self.acquires * 100) if self.acquires else 0
+        return f"{self.name}: {self.acquires} acq, {self.contentions} contended ({pct:.1f}%)"
+
+
+# ── generic producer/consumer runner for stages 1 and 2 ────────────────────
+
+_SENTINEL = object()  # marks "no more items will ever arrive" on produced_q
+
+
+def run_producer_consumer(work_items, produce_fn, consume_fn,
+                           n_producers, n_consumers, logger, stage_name):
+    """Run `produce_fn(item)` across a wide thread pool (the slow Quartus
+    compile), feed whatever it returns into `consume_fn(result)` on a
+    separate, smaller thread pool (the fast Mistral decompile + compare).
+
+    A producer thread pulls its next item the moment it finishes its own --
+    it never waits on that item's own decompile, which is the whole point:
+    all `n_producers` threads should stay on Quartus continuously while the
+    (fewer) consumer threads drain whatever has piled up. Mirrors reach.py's
+    threading.Thread + queue.Queue worker-pool shape (that file's own
+    docstring: "Workers pull nets from a shared queue").
+
+    Termination: once `work_q` is fully drained, the LAST producer to finish
+    pushes one _SENTINEL per consumer thread onto `produced_q` (a classic
+    poison-pill shutdown) -- a consumer-side "stop once I've personally seen
+    `total` items" counter is wrong here, since `total` only ever arrives
+    once in aggregate across however many consumer threads are draining the
+    SAME queue; earlier versions of this function hung for exactly that
+    reason, each consumer waiting forever for items the other consumers had
+    already taken.
+    """
+    if not work_items:
+        logger.info("[%s] no work items, skipping", stage_name)
+        return [], 0.0
+
+    work_q = queue.Queue()
+    for item in work_items:
+        work_q.put(item)
+    produced_q = queue.Queue()
+    results = []
+    results_lock = CountedLock(f"{stage_name}_results")
+    error_event = threading.Event()
+    n_done_produce = [0]
+    n_done_consume = [0]
+    total = len(work_items)
+    work_q_lock = threading.Lock()
+    remaining = [total]  # items not yet pulled off work_q by any producer
+
+    def producer_worker():
+        while True:
+            try:
+                item = work_q.get(block=False)
+            except queue.Empty:
+                return
+            try:
+                t0 = time.time()
+                produced = produce_fn(item)
+                dt = time.time() - t0
+                with results_lock:
+                    n_done_produce[0] += 1
+                    logger.info("[%s] compile %d/%d done in %.1fs",
+                                stage_name, n_done_produce[0], total, dt)
+                produced_q.put(produced)  # may be None -- consumer skips it
+            except Exception as exc:
+                error_event.set()
+                logger.error("[%s] producer FATAL on %r: %s", stage_name, item, exc)
+                produced_q.put(None)
+            finally:
+                work_q.task_done()
+                with work_q_lock:
+                    remaining[0] -= 1
+                    if remaining[0] == 0:
+                        # Every item has been produced (or failed) -- no more
+                        # will ever land on produced_q. Wake every consumer.
+                        for _ in range(n_consumers):
+                            produced_q.put(_SENTINEL)
+
+    def consumer_worker():
+        while True:
+            produced = produced_q.get(block=True)
+            if produced is _SENTINEL:
+                return
+            if produced is None:
+                continue
+            try:
+                result = consume_fn(produced)
+                with results_lock:
+                    n_done_consume[0] += 1
+                    if result is not None:
+                        results.append(result)
+            except Exception as exc:
+                error_event.set()
+                logger.error("[%s] consumer FATAL on %r: %s", stage_name, produced, exc)
+
+    producers = [threading.Thread(target=producer_worker, name=f"{stage_name}-p{i}",
+                                   daemon=True)
+                 for i in range(n_producers)]
+    consumers = [threading.Thread(target=consumer_worker, name=f"{stage_name}-c{i}",
+                                   daemon=True)
+                 for i in range(n_consumers)]
+    t0 = time.time()
+    for t in producers + consumers:
+        t.start()
+    for t in producers:
+        t.join()
+    for t in consumers:
+        t.join()
+    dt = time.time() - t0
+    logger.info("[%s] %s  (%d items, %d compile-workers, %d decompile-workers, %.1fs wall)",
+                stage_name, results_lock.stats(), total, n_producers, n_consumers, dt)
+    if error_event.is_set():
+        logger.warning("[%s] one or more worker threads hit an exception -- see FATAL lines above",
+                        stage_name)
+    return results, dt
+
+
+# ── stage 1: die probe ──────────────────────────────────────────────────────
+
+def stage_die_probe(work_dir, n_producers, n_consumers, logger):
+    items = list(die_probe.DIES.items())  # [(die_name, part), ...]
+
+    def produce(item):
+        die_name, part = item
+        sigs = die_probe.compile_die(die_name, part, work_dir, logger)
+        return (die_name, part, sigs)
+
+    def consume(produced):
+        die_name, part, sigs = produced
+        return {"die": die_name, "part": part, "ok": bool(sigs), "sigs": sigs or []}
+
+    results, dt = run_producer_consumer(items, produce, consume,
+                                         n_producers, n_consumers, logger, "die_probe")
+    n_ok = sum(1 for r in results if r["ok"])
+    summary_line = f"Die probe: {n_ok}/{len(items)} dies compiled OK ({dt:.1f}s)"
+    logger.info(summary_line)
+    return {"pass": n_ok == len(items), "summary": summary_line, "results": results,
+            "wall_s": dt}
+
+
+# ── stage 2: DSP fuzz ────────────────────────────────────────────────────────
+
+def stage_dsp_fuzz(work_dir, n_producers, n_consumers, logger):
+    items = list(dsp_fuzz.DESIGNS.items())  # [(name, spec), ...]
+
+    def produce(item):
+        name, spec = item
+        return dsp_fuzz.quartus_compile_design(name, spec, work_dir, logger)
+
+    def consume(produced):
+        return dsp_fuzz.decompile_and_extract_design(produced, logger)
+
+    results, dt = run_producer_consumer(items, produce, consume,
+                                         n_producers, n_consumers, logger, "dsp_fuzz")
+
+    checks = []
+    for name, expected_mode in EXPECTED_DSP_MODE.items():
+        res = next((r for r in results if r["name"] == name), None)
+        if res is None:
+            checks.append((name, expected_mode, None, False))
+            continue
+        modes = dsp_fuzz.mode_values(res["dsp_settings"])
+        got_mode = modes[0][2] if modes else None
+        ok = (got_mode == expected_mode)
+        checks.append((name, expected_mode, got_mode, ok))
+        if ok:
+            logger.info("DSP mode %s: previously %s, now: %s — OK",
+                        name, expected_mode, got_mode)
+        else:
+            logger.error("DSP mode %s: previously %s, now: %s — MISMATCH, investigate",
+                         name, expected_mode, got_mode)
+
+    n_confirmed = sum(1 for *_, ok in checks if ok)
+    n_designs_compiled = sum(1 for r in results if r and r.get("dsp_settings") is not None)
+    summary_line = (f"DSP fuzz: {n_confirmed}/{len(checks)} modes confirmed "
+                     f"({len(checks) - n_confirmed} mismatch/missing, "
+                     f"{n_designs_compiled}/{len(items)} designs compiled) ({dt:.1f}s)")
+    logger.info(summary_line)
+    return {"pass": n_confirmed == len(checks), "summary": summary_line,
+            "checks": checks, "wall_s": dt}
+
+
+# ── stage 3: lifter selftest ────────────────────────────────────────────────
+
+def stage_lifter_selftest(bt_path, logger):
+    t0 = time.time()
+    if not bt_path.is_file():
+        summary_line = f"Lifter selftest: SKIPPED — reference .bt not found at {bt_path}"
+        logger.warning(summary_line)
+        return {"pass": False, "summary": summary_line}
+
+    lift = CycloneVLift(EXPECTED_LIFTER["device"])
+    pc = lift.parse_config(str(bt_path))
+    d = lift.recover_netlist(pc)
+    dt = time.time() - t0
+
+    checks = {
+        "n_luts": (len(d.luts), EXPECTED_LIFTER["n_luts"]),
+        "n_ffs": (len(d.ffs), EXPECTED_LIFTER["n_ffs"]),
+        "n_nets": (len(d.all_nets), EXPECTED_LIFTER["n_nets"]),
+        "n_arcs": (d.n_arcs, EXPECTED_LIFTER["n_arcs"]),
+        "n_unparsed_lines": (pc.n_unparsed_lines, EXPECTED_LIFTER["n_unparsed_lines"]),
+    }
+    mismatches = {k: v for k, v in checks.items() if v[0] != v[1]}
+    for k, (got, exp) in checks.items():
+        if got == exp:
+            logger.info("Lifter selftest %s: previously %d, now: %d — OK", k, exp, got)
+        else:
+            logger.error("Lifter selftest %s: previously %d, now: %d — MISMATCH, investigate",
+                         k, exp, got)
+
+    ok = not mismatches
+    summary_line = (f"Lifter selftest: {'PASS' if ok else 'FAIL'} "
+                     f"({len(d.luts)} LUTs, {len(d.ffs)} FFs, {len(d.all_nets)} nets, "
+                     f"{d.n_arcs} arcs, {len(mismatches)} mismatches) ({dt:.1f}s)")
+    logger.info(summary_line)
+    return {"pass": ok, "summary": summary_line, "design": d, "mismatches": mismatches,
+            "wall_s": dt}
+
+
+# ── stage 4: pad_map DB insert check (Part 1 of this session's task) ───────
+
+def stage_padmap_check(bt_path, logger):
+    """Load the reference .bt through load.py's load_cyclonev() path (as a
+    real subprocess, same way the pipeline is always invoked -- see
+    CLAUDE.md's stage list -- rather than importing load.py/db.py into this
+    process, which already imported `db` with whatever PLURIBUS_SQLITE_PATH
+    was set at process start; db.py caches its engine the first time it's
+    touched, so an in-process env var change after that point would not
+    take effect), then check the real pad_map rows against the selftest's
+    own documented ground truth (Part 1 of this session's task). Only
+    depends on the .bt file, not on stage 3's in-memory Design object --
+    runs independently of whether the lifter-selftest stage ran.
+    """
+    import json
+    import sqlite3
+    import subprocess as sp
+    from collections import Counter
+
+    t0 = time.time()
+    if not bt_path.is_file():
+        summary_line = f"Pad map: SKIPPED — reference .bt not found at {bt_path}"
+        logger.warning(summary_line)
+        return {"pass": False, "summary": summary_line}
+
+    db_path = REPO / "tmp" / "cyclonev_verify_all_padmap.db"
+    if db_path.exists():
+        db_path.unlink()  # always-rebuild convention; start clean each run
+    env = dict(os.environ, PLURIBUS_SQLITE_PATH=str(db_path))
+    proc = sp.run(
+        [sys.executable, str(REPO / "load.py"), "--lifter", "cyclonev",
+         "--label", "CYCLONEV_VERIFY_ALL", "--config", str(bt_path),
+         "--device", EXPECTED_LIFTER["device"]],
+        cwd=str(REPO), env=env, capture_output=True, text=True,
+    )
+    for line in proc.stdout.splitlines():
+        logger.info("[load.py] %s", line)
+    if proc.returncode != 0:
+        for line in proc.stderr.splitlines()[-20:]:
+            logger.error("[load.py] %s", line)
+        summary_line = f"Pad map: FAIL — load.py exited {proc.returncode}"
+        logger.error(summary_line)
+        return {"pass": False, "summary": summary_line}
+
+    conn = sqlite3.connect(str(db_path))
+    bs_id = conn.execute(
+        "SELECT id FROM bitstreams WHERE label=?", ("CYCLONEV_VERIFY_ALL",)
+    ).fetchone()[0]
+    rows = conn.execute(
+        "SELECT pin, direction FROM pad_map WHERE bitstream=?", (bs_id,)
+    ).fetchall()
+    conn.close()
+    n_pads = len(rows)
+    pins = [r[0] for r in rows]
+    n_dup = len(pins) - len(set(pins))
+    dir_breakdown = dict(Counter(r[1] for r in rows))
+    dt = time.time() - t0
+
+    checks = {
+        "n_pads_annotated": (n_pads, EXPECTED_PADMAP["n_pads_annotated"]),
+        "n_dup_pins": (n_dup, EXPECTED_PADMAP["n_dup_pins"]),
+    }
+    mismatches = {k: v for k, v in checks.items() if v[0] != v[1]}
+    for k, (got, exp) in checks.items():
+        if got == exp:
+            logger.info("Pad map %s: previously %d, now: %d — OK", k, exp, got)
+        else:
+            logger.error("Pad map %s: previously %d, now: %d — MISMATCH, investigate",
+                         k, exp, got)
+    logger.info("Pad map direction breakdown (annotated subset): %s", dir_breakdown)
+
+    ok = not mismatches
+    summary_line = (f"Pad map: {n_pads}/{EXPECTED_PADMAP['n_pads_annotated']} pins, "
+                     f"{n_dup} duplicates ({'PASS' if ok else 'FAIL'}) ({dt:.1f}s)")
+    logger.info(summary_line)
+    return {"pass": ok, "summary": summary_line, "mismatches": mismatches, "wall_s": dt}
+
+
+# ── main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--compile-workers", type=int, default=os.cpu_count(),
+                     help="producer pool size for Quartus compiles (default: os.cpu_count())")
+    ap.add_argument("--decompile-workers", type=int, default=4,
+                     help="consumer pool size for mistral-cv decompile + compare (default: 4)")
+    ap.add_argument("--reference-bt", type=Path, default=REFERENCE_BT,
+                     help="pre-decompiled reference .bt for stages 3/4 "
+                          "(default: %(default)s)")
+    ap.add_argument("--skip-die-probe", action="store_true")
+    ap.add_argument("--skip-dsp-fuzz", action="store_true")
+    ap.add_argument("--skip-lifter-selftest", action="store_true")
+    ap.add_argument("--skip-padmap", action="store_true")
+    ap.add_argument("--work-dir", type=Path, default=REPO / "tmp" / "cyclonev_verify_all")
+    args = ap.parse_args()
+
+    logger = setup_logging()
+    args.work_dir.mkdir(parents=True, exist_ok=True)
+
+    nogil = not sys._is_gil_enabled()
+    logger.info("NoGIL: %s  (compile_workers=%d, decompile_workers=%d)",
+                nogil, args.compile_workers, args.decompile_workers)
+    if not nogil:
+        logger.warning("GIL is ENABLED — this interpreter is not the free-threaded "
+                        "build (python3.15t); the producer/consumer pools will still "
+                        "run but without the NoGIL throughput this harness assumes.")
+
+    logger.info("Quartus: %s  (toolchain=%s)", die_probe.QUARTUS_BIN, die_probe.TOOLCHAIN)
+    logger.info("mistral-cv: %s", toolchain.mistral_cv(required=False))
+
+    stage_results = {}
+
+    if not args.skip_die_probe:
+        stage_results["die_probe"] = stage_die_probe(
+            args.work_dir / "die_probe", args.compile_workers, args.decompile_workers, logger)
+    else:
+        logger.info("Die probe: SKIPPED (--skip-die-probe)")
+
+    if not args.skip_dsp_fuzz:
+        stage_results["dsp_fuzz"] = stage_dsp_fuzz(
+            args.work_dir / "dsp_fuzz", args.compile_workers, args.decompile_workers, logger)
+    else:
+        logger.info("DSP fuzz: SKIPPED (--skip-dsp-fuzz)")
+
+    if not args.skip_lifter_selftest:
+        stage_results["lifter_selftest"] = stage_lifter_selftest(args.reference_bt, logger)
+    else:
+        logger.info("Lifter selftest: SKIPPED (--skip-lifter-selftest)")
+
+    if not args.skip_padmap:
+        stage_results["padmap"] = stage_padmap_check(args.reference_bt, logger)
+    else:
+        logger.info("Pad map: SKIPPED (--skip-padmap)")
+
+    logger.info("=" * 72)
+    logger.info("COMBINED SUMMARY")
+    all_pass = True
+    for name, res in stage_results.items():
+        logger.info("  %s", res["summary"])
+        all_pass = all_pass and res["pass"]
+    logger.info("OVERALL %s", "PASS" if all_pass else "FAIL")
+    logger.info("Log: %s", LOG_PATH)
+
+    sys.exit(0 if all_pass else 1)
+
+
+if __name__ == "__main__":
+    main()

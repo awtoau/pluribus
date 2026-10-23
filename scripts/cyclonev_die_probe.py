@@ -28,17 +28,46 @@ import datetime
 import hashlib
 import json
 import logging
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import db
 import schema
+import toolchain
 from sqlalchemy import select, insert
 
-QUARTUS_BIN = Path("/mnt/2tb/opt/altera/quartus-25.1/quartus/bin")
-TOOLCHAIN = "quartus-25.1std.0.1129"
+# Resolved via the shared toolchain module (#90-style convention: env var,
+# then conventional install globs, newest version wins) rather than a
+# hardcoded path -- see scripts/toolchain.py:quartus_bin() and
+# docs/cyclonev-verification.md for re-running against a different install.
+QUARTUS_BIN = Path(toolchain.quartus_bin())
+
+
+def _detect_toolchain_version(quartus_bin, logger=None):
+    """Real version string ('25.1std.0.1129') read from quartus_map --version,
+    not guessed from the install directory name -- so a re-run against a
+    different/upgraded Quartus install always records what actually ran."""
+    try:
+        # Waits for: quartus_map --version to print and exit (a version
+        # banner, not a compile). Observed: <1s. Timeout: 30s, a stall
+        # bound for a hung/misinstalled binary, not a measured multiple --
+        # on expiry falls through to the dir-name fallback below, logged.
+        out = subprocess.run([str(quartus_bin / "quartus_map"), "--version"],
+                              capture_output=True, text=True, timeout=30).stdout
+        m = re.search(r"Version\s+(\S+)\s+Build\s+(\S+)", out)
+        if m:
+            return f"quartus-{m.group(1)}.{m.group(2)}"
+    except Exception as exc:
+        if logger:
+            logger.warning("could not detect quartus version: %s", exc)
+    return f"quartus-{quartus_bin.parent.parent.name}"  # fallback: dir name
+
+
+TOOLCHAIN = _detect_toolchain_version(QUARTUS_BIN)
 
 # One representative part per die family (same 7 Mistral ships data for, plus
 # any others worth adding later — Quartus itself supports ~432 Cyclone V parts).
