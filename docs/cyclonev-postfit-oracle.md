@@ -183,3 +183,24 @@ Half mode = `<d source>_<e source>` (T: `D_E` default, `D_F`, `E_0`, `F_0`; B: `
   - `aclr1`, inverted enable / sclr, `sload` signal, MLAB `GIN3`.
   - Clock-tree source of a register clock (CMUX); DSP/M10K internals; Mistral routing-element names vs Mistral nodes.
 - Single device/die and one Quartus version.
+
+## Clock tree (2026-10-24)
+
+Corpus now 236 designs (`c_ram_vnd_logic_16` has an oracle since its rebuild; its 1040 registers were the `ff.clk.domain` regression below). Same compare, 236 designs unless stated.
+
+| field | before | after |
+|---|---|---|
+| ff.clk | 22/2794 (0.8%), faults 2772 (m2772 x0 w0) | 2794/2794 (100.0%), faults 0 |
+| ff.clk.domain | 1754/2794 (62.8%), faults 1040 (m0 x0 w1040) | 2794/2794 (100.0%), faults 0 |
+| pins | 4386/4556 (96.3%), faults 170 (m170 x0 w0) | 4493/4556 (98.6%), faults 63 (m63 x0 w0) |
+| every other field | unchanged | unchanged |
+
+- Split (sorted design list, even / odd index; same rules, nothing tuned per split): ff.clk even 2200/2200, odd 594/594; pins even 3352/3412 (m60), odd 1141/1144 (m3).
+- Corpus clock sources are few: every design clocks from pad K17 (CMUXHG.054.022, inst 2 `INPUT_SEL` 6 = `NCLKPIN_SEL_2`; inst 0/1 in `clock_promotion`/`two_clocks`) or L17 (CMUXCR.054.002 inst 2). The split therefore checks the same CMUX paths twice; PLL inputs, other pins and `HR`/`VR` muxes have no corpus evidence.
+- Chain (lifter `clock_tree_links()`, data `lifters/data/cyclonev_e50f_clocks.json` from `scripts/cyclonev_clock_tree_extract.py`, Mistral `e50f-r`/`e50f-cmux`/`cyclonev.cc`):
+  - Quartus RCF element = Mistral node: `GLOBAL_CLOCK X0Y22 I10` = `GCLK.000.022.0010`, `SPINE_CLOCK X12Y0 I16` = `SCLK.012.000.0016` (counter_en_aclr, c_counter_sv_8: `X39Y0 I11`).
+  - A default SCLK mux gets no `r` line (`cv-rmux.cc`: `dnode.t()==SCLK && default -> continue`). SCLK root source = the one candidate in its `e50f-r` source list whose CMUX instance has an `INPUT_SEL` setting (GCLK list index = instance; RCLK list index = instance for CR/HR/VR). 0 or >1 live candidates = no link, counted in `Design.clock_unresolved`.
+  - CMUX instance input: `INPUT_SEL.<i>` (hex) indexes `cmux{hg,vg,cr,hr,vr}_link_table[i]` -> `CLKPIN_SEL_k` / `NCLKPIN_SEL_k` (label = slot in the CMUX `clkpin`/`nclkpin` list; default label 2k for G muxes, k for CR) or `PLLIN n` (`pllg`/`pllr`). Other kinds (`CLKIN`, `ICLK_SEL`, `SWITCH`) are not resolved.
+  - Pad label: `s GPIO.x.y:<MUX>.<n> ... ; <pin>` names pad n of the tile (2428/2428 against the bi-qualified comments, 0 conflicts); the clock pads K17/L17 carry no `r` arc, only such comments.
+  - Clock links are DSU unions, not `.bt` arcs: one clock reaching several sectors is one net (fixes the `c_ram_vnd_logic_16` 959 + 81 split).
+- Scorecard option: `--split even|odd`.

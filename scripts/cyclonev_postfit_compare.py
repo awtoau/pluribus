@@ -121,9 +121,10 @@ def compare_build(bid, ddir):
     for ln in open(Path(ddir) / "decomp.bt"):
         if ln.startswith("r HMC.") and " ; " in ln:
             hmc_pin[ln.split()[1]] = ln.rsplit(" ; ", 1)[1].strip()
-    dsts = {dst for _s, dst in pc.arcs}
+    all_arcs = list(pc.arcs) + list(getattr(d, "clock_links", ()))   # + clock-tree links (pad -> CMUX -> spine)
+    dsts = {dst for _s, dst in all_arcs}
     roots_src = collections.defaultdict(set)   # DSU root -> primary source nodes
-    for s, _dst in pc.arcs:
+    for s, _dst in all_arcs:
         if s not in dsts:
             roots_src[dsu.find(s)].add(s)
 
@@ -137,7 +138,7 @@ def compare_build(bid, ddir):
             else:
                 key = ("ff", node.x, node.y, node.bi, half, rest[0])
             return by_place.get(key, f"unbridged:{node.to_string()}")
-        if node.block == "GPIO" and node.port == "DATAIN":
+        if node.block == "GPIO" and node.port in ("DATAIN", "COMBOUT"):
             label = pc.pin_annotations.get(("GPIO", node.x, node.y, node.bi))
             if label in label_to_ibuf:
                 return label_to_ibuf[label]

@@ -177,8 +177,10 @@ SCHEMA FIT — ALM-HALF LUT (a-f), UNIFIED INTO `luts`
   DB only for plain posedge D flops (no polarity/clear columns exist).
 """
 
+import json
 import re
 from collections import defaultdict
+from pathlib import Path
 
 # One regex for every node form main.cc's pnode_coords/rnode_coords::to_string
 # can emit: BLOCK.x.y[.bi][:PORT[.pi]], or the 4-field rnode fallback
@@ -194,6 +196,96 @@ _S_LINE_RE = re.compile(r"^s\s+(\S+)\s+(\S+)")
 _I_LINE_RE = re.compile(r"^i\s+(\S+)\s+(\S+)")
 _O_LINE_RE = re.compile(r"^o\s+(\S+)\s+(\S+)")
 _M_LINE_RE = re.compile(r"^m\s+(\S+)")
+
+
+# ---- clock tree (CMUX -> GCLK/RCLK -> SCLK) -------------------------------------------------
+# The .bt lists a clock-mux input only as `s CMUX*:INPUT_SEL.<i>` and omits an SCLK mux at its
+# default value (mistral cv-rmux.cc route_all_active_links), so the pad -> spine connection is
+# not an `r` arc.  Data: lifters/data/cyclonev_e50f_clocks.json (scripts/cyclonev_clock_tree_extract.py).
+# Evidence + scoring: docs/cyclonev-postfit-oracle.md "Clock tree".
+_CLOCK_DATA = []
+_CMUX_G = ("HG", "VG")                 # global muxes: gclk[i] = output of instance i
+_CMUX_R = ("CR", "HR", "VR")           # regional muxes: rclk[i] = output of instance i
+
+
+def _clock_data():
+    if not _CLOCK_DATA:
+        _CLOCK_DATA.append(json.loads(
+            (Path(__file__).resolve().parent / "data" / "cyclonev_e50f_clocks.json").read_text()))
+    return _CLOCK_DATA[0]
+
+
+def _node_name(node):
+    return f"{node.block}.{node.x:03d}.{node.y:03d}.{node.bi:04d}"
+
+
+def _cmux_source(pc, node):
+    """Source node (pad or PLL output) that the configured CMUX instance driving GCLK/RCLK `node`
+    selects, or None (instance unconfigured, or the selected input is not modelled)."""
+    data = _clock_data()
+    name = _node_name(node)
+    for key, ent in data["cmux"].items():
+        for lst, kinds in (("gclk", _CMUX_G), ("rclk", _CMUX_R)):
+            if name not in ent.get(lst, ()):
+                continue
+            inst = ent[lst].index(name)
+            x, y = (int(t) for t in key.split("."))
+            for kind in kinds:
+                kv = pc.settings.get((f"CMUX{kind}", x, y))
+                if kv is None or ("INPUT_SEL", inst) not in kv:
+                    continue
+                sel = int(kv[("INPUT_SEL", inst)], 16)
+                table = data["link"][kind][inst]
+                if sel >= len(table):
+                    return None
+                link, n = table[sel]
+                m = re.match(r"(N?CLKPIN)_SEL(?:_(\d))?$", link)
+                if m:
+                    k = int(m.group(2)) if m.group(2) is not None else n
+                    dflt = 2 * k if kind in _CMUX_G else k
+                    mux = f"{m.group(1)}_SEL_{k}"
+                    slot = int(kv.get((mux, inst), dflt))
+                    pins = ent["nclkpin" if m.group(1) == "NCLKPIN" else "clkpin"]
+                    pad = pins[slot] if slot < len(pins) else None
+                    if pad is None:
+                        return None
+                    return parse_node(pad)
+                if link == "PLLIN":
+                    plls = ent["pllg" if kind in _CMUX_G else "pllr"]
+                    return parse_node(plls[n]) if n < len(plls) and plls[n] else None
+                return None
+    return None
+
+
+def clock_tree_links(pc):
+    """(src, dst) CVNode pairs that join each clock root to its pad / PLL through the CMUX.
+
+    root = a spine node that is an arc source and never an arc sink.  SCLK root: its source is the
+    one candidate (data/e50f-r) whose CMUX instance is configured; 0 or >1 candidates -> no link
+    (ambiguity counted in the second return value).  GCLK/RCLK root: the CMUX input.
+    """
+    data = _clock_data()
+    srcs = {s for s, _d in pc.arcs}
+    dsts = {d for _s, d in pc.arcs}
+    links, unresolved = [], defaultdict(int)
+    todo = sorted((n for n in srcs - dsts if n.block in ("SCLK", "GCLK", "RCLK")), key=str)
+    for node in todo:
+        if node.block == "SCLK":
+            cands = [parse_node(c) for _slot, c in data["sclk"].get(_node_name(node), ())]
+            live = [(c, _cmux_source(pc, c)) for c in cands if c.block in ("GCLK", "RCLK")]
+            live = [(c, pad) for c, pad in live if pad is not None]
+            if len(live) != 1:
+                unresolved["sclk_ambiguous" if live else "sclk_no_active_source"] += 1
+                continue
+            links.append((live[0][0], node))
+            links.append((live[0][1], live[0][0]))
+        else:
+            pad = _cmux_source(pc, node)
+            if pad is None:
+                unresolved["cmux_unresolved"] += 1
+                continue
+            links.append((pad, node))
+    return links, dict(unresolved)
 
 
 class CVNode:
@@ -487,6 +579,8 @@ class Design:
     def __init__(self):
         self.luts = []          # [{name, init, a,b,c,d,e, z, z_used}]
         self.ffs = []
+        self.clock_links = []      # synthetic (src, dst) clock-tree links (pad -> CMUX -> spine)
+        self.clock_unresolved = {}
         self.pads = []           # [{pin, label, row, col, pio, direction, net_in, net_out}]
         self.net_name = {}
         self.all_nets = []
@@ -711,7 +805,7 @@ class CycloneVLift:
         self.family = "cyclonev"
 
     # ---- pin-annotation bookkeeping (shared by r/s/i branches) -------------
-    def _record_pin_annotation(self, pc, nodes, pin):
+    def _record_pin_annotation(self, pc, nodes, pin, setting=False):
         """Associate a trailing '; <pin>' comment with the GPIO node(s) on
         this line.  `nodes` is a 1- or 2-tuple of CVNode (src+dst for an 'r'
         line, or the single node for an 's'/'i' line).
@@ -764,10 +858,13 @@ class CycloneVLift:
             if node.block != "GPIO":
                 pc.n_pin_comments_non_gpio += 1
                 continue
-            if node.bi is None:
+            bi = node.bi
+            if bi is None and setting and node.pi is not None:
+                bi = node.pi        # `s GPIO.x.y:<MUX>.<n>` = pad n of the tile (2428/2428 vs bi'd comments)
+            if bi is None:
                 pc.n_pin_comments_bi_less += 1
                 continue
-            key = (node.block, node.x, node.y, node.bi)
+            key = (node.block, node.x, node.y, bi)
             prev = pc.pin_annotations.get(key)
             if prev is not None and prev != pin:
                 raise PinRecoveryError(
@@ -833,7 +930,7 @@ class CycloneVLift:
                         pc.n_setting_lines += 1
                         pin = _trailing_pin(line, m.end())
                         if pin is not None:
-                            self._record_pin_annotation(pc, (node,), pin)
+                            self._record_pin_annotation(pc, (node,), pin, setting=True)
                         continue
                     if tag == "i":
                         m = _I_LINE_RE.match(line)
@@ -873,6 +970,9 @@ class CycloneVLift:
         d.dsu = dsu = DSU()
 
         for (src, dst) in pc.arcs:
+            dsu.union(src, dst)
+        d.clock_links, d.clock_unresolved = clock_tree_links(pc)
+        for (src, dst) in d.clock_links:
             dsu.union(src, dst)
 
         tile_counts = defaultdict(int)
@@ -1131,6 +1231,10 @@ class CycloneVLift:
                 tile_bi_ports[(node.x, node.y, node.bi)].add(
                     (node.port, node.pi, is_src))
 
+        for (src, _dst) in d.clock_links:      # pad used as a clock input (CMUX clkpin/nclkpin)
+            if src.block == "GPIO" and src.bi is not None:
+                tile_bi_ports[(src.x, src.y, src.bi)].add((src.port, src.pi, True))
+
         for (x, y, bi), ports in sorted(tile_bi_ports.items()):
             pin = pc.pin_annotations.get(("GPIO", x, y, bi))
             if pin is not None:
@@ -1144,7 +1248,7 @@ class CycloneVLift:
             # be both (bidir-capable pin used both ways by different pi
             # taps) or neither (clock/control-only pin -- CLKIN/CLKOUT/OEIN/
             # etc with no DATAIN/DATAOUT at all).
-            has_datain = any(p == "DATAIN" for (p, _pi, _s) in ports)
+            has_datain = any(p in ("DATAIN", "COMBOUT") for (p, _pi, _s) in ports)
             has_dataout = any(p == "DATAOUT" for (p, _pi, _s) in ports)
             if has_datain and has_dataout:
                 direction = "bidir"
@@ -1188,6 +1292,8 @@ class CycloneVLift:
                 (p_pi, p_name) for (p_name, p_pi, _s) in ports if p_name == "DATAOUT")
             net_in = (net_of(CVNode("GPIO", x, y, bi, "DATAIN", datain_taps[0][0]))
                       if datain_taps else None)
+            if net_in is None and any(p == "COMBOUT" for (p, _pi, _s) in ports):
+                net_in = net_of(CVNode("GPIO", x, y, bi, "COMBOUT", None))
             net_out = (net_of(CVNode("GPIO", x, y, bi, "DATAOUT", dataout_taps[0][0]))
                        if dataout_taps else None)
 

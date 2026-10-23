@@ -28,6 +28,9 @@ LOG = REPO / "tmp" / "logs" / "cyclonev_lift_scorecard.log"
 # the design and the limit, skip it (the design is then absent from the scorecard).
 PER_DESIGN_LIMIT_S = int(os.environ.get("SCORECARD_DESIGN_LIMIT_S", "3"))
 
+# Designs with no usable oracle: name -> reason (never dropped silently).
+EXCLUDED = {}
+
 FAMILIES = [
     ("lut function", ["lut_mask", "lut_mask_arith", "lut.extra"]),
     ("lut inputs", ["conn.dataa", "conn.datab", "conn.datac", "conn.datad", "conn.datae",
@@ -98,11 +101,16 @@ def main():
     ap.add_argument("--label", required=True)
     ap.add_argument("--lifter-file", help="score this lifter file instead of lifters/cyclonev_lift.py")
     ap.add_argument("--score-only", action="store_true", help="aggregate the existing postfit_compare")
+    ap.add_argument("--split", choices=("even", "odd"),
+                    help="only the even- / odd-indexed designs of the sorted list (develop on even, hold out odd)")
     a = ap.parse_args()
     if "PLURIBUS_SQLITE_PATH" not in os.environ:
         sys.exit("set PLURIBUS_SQLITE_PATH to the corpus DB copy (never the live one)")
     times = {}
-    designs = sorted(p.parent.name for p in (REPO / "corpus" / "cyclonev").glob("*/decomp.bt"))
+    designs = sorted(p.parent.name for p in (REPO / "corpus" / "cyclonev").glob("*/decomp.bt")
+                     if p.parent.name not in EXCLUDED)
+    if a.split:
+        designs = designs[0::2] if a.split == "even" else designs[1::2]
     if not a.score_only:
         log(f"=== {a.label}: {len(designs)} designs with decomp.bt")
         if a.lifter_file:
