@@ -367,6 +367,72 @@ Raw `.bt` lines checked by hand (`tmp/cyclonev_blockmux_fuzz/labdump_bank_*/`):
 - Any `clr`/`sclr` LUT-logic form in another LAB: not re-probed this pass.
 - `tclk_sel = clk2` on a bank (clk3 probe): still not reached (first-pass reason unchanged).
 
+## cmux (clock-network muxes) -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target cmux --all`. Probes in `CMUX_PROBES`, checks in `CMUX_PRESENCE`.
+- Each probe drives 8 FFs per clock pin. Clock pins from `eda/ibis/5ceba4_u4840.xml`:
+  K7 (8A CLK_0), G10 (8A CLK_1), P9 (3B CLK_0), H10 (7A CLK_2), T15 (4A CLK_3), L17 (5B CLK_2).
+  F8 is a general user I/O.
+- Promotion knob: `set_instance_assignment -name GLOBAL_SIGNAL "<GLOBAL CLOCK|REGIONAL CLOCK|OFF>"`.
+- Mistral prints non-default config only. Verdicts use the presence of a `CMUX<block>` line
+  (config `s` or routing `r`). Assumption: a selected block always prints its `INPUT_SEL`, since
+  every printed value differs from the row default.
+
+CMUX blocks in each probe (`.bt` lines):
+
+| probe | clock pin | setting | blocks present |
+|---|---|---|---|
+| `cm_ded` | K7 | none | CMUXVG.025.045 |
+| `cm_glob` | K7 | GLOBAL CLOCK | CMUXVG.025.045 |
+| `cm_reg` | K7 | REGIONAL CLOCK | CMUXVR.025.045 (CMUXVG absent) |
+| `cm_off` | K7 | OFF | none |
+| `cm_gen` | F8 (general I/O) | none | CMUXVG.025.045 (routing `TDMUX.026.045.0012 -> CMUXVG:CLKIN.2`) |
+| `cm_h10` | H10 (7A) | none | CMUXVG.025.045 |
+| `cm_t15` | T15 (4A) | none | CMUXVG.021.000 |
+| `cm_p9` | P9 (3B) | none | CMUXVG.021.000 |
+| `cm_2ded` | K7 + G10 | none | CMUXVG.025.045 (INPUT_SEL.1 and .3) |
+| `cm_l17` | L17 (5B) | none | CMUXHG.054.022 |
+| `cm_l17_glob` | L17 | GLOBAL CLOCK | CMUXHG.054.022 |
+| `cm_l17_reg` | L17 | REGIONAL CLOCK | CMUXCR.054.002 (no CMUXHR, no CMUXHG) |
+
+Counts (`cv_block_muxes`, one verdict per row). Before this pass: no cmux probe existed, all 72 rows INCONCLUSIVE.
+
+| target | rows | MATCH | MISMATCH | INCONCLUSIVE |
+|---|---|---|---|---|
+| cmuxcr | 10 | 0 | 0 | 10 |
+| cmuxvr | 5 | 1 | 0 | 4 |
+| cmuxvg | 16 | 1 | 0 | 15 |
+| cmuxhr | 10 | 0 | 1 | 9 |
+| cmuxhg | 31 | 1 | 0 | 30 |
+
+Checks (10 presence checks: 8 MATCH, 1 MISMATCH, 1 INCONCLUSIVE):
+- MATCH `cmuxvr.input_sel`: REGIONAL on a vertical pin selects CMUXVR; GLOBAL does not.
+- MATCH `cmuxvg.input_sel`: default and GLOBAL select CMUXVG; REGIONAL does not.
+- MATCH `cmuxhg.input_sel`: 5B pin default and GLOBAL select CMUXHG; REGIONAL does not.
+- MISMATCH `cmuxhr.input_sel` (against the name-based expectation only): L17 with REGIONAL CLOCK
+  gives no CMUXHR. The clock goes through CMUXCR.054.002 instead (`s CMUXCR.054.002:INPUT_SEL.5 8`).
+  Not established that CMUXHR is wrong: it may serve other pins that this pass did not probe.
+- INCONCLUSIVE `cmuxcr.input_sel`: presence only, no naming-based expectation.
+
+Raw `.bt` lines checked by hand (`tmp/cyclonev_blockmux_fuzz/cmux_cm_*/`):
+- `cm_reg`: `s CMUXVR.025.045:INPUT_SEL.4 6`; the file has no `CMUXVG` line.
+- `cm_glob`: `s CMUXVG.025.045:INPUT_SEL.2 00`; `cm_reg` has no `CMUXVG` line.
+- `cm_l17_glob`: `s CMUXHG.054.022:INPUT_SEL.0 02`; `cm_l17_reg` has no `CMUXHG` line.
+
+Observed only (INCONCLUSIVE):
+- `cmuxhg.clkpin_sel_2`: value 5 in `cm_l17` (span 2) and `cm_l17_glob` (span 0).
+- `cmuxcr.clkpin_sel_0`: value 2 in `cm_l17_reg` (span 5).
+- `cmuxhg.testsyn_enout_select`: `PRE_SYNENB` at spans 2 and 0.
+
+Not reached:
+- `cmuxhr.clkpin_sel` / `nclkpin_sel` and `cmuxvr`/`cmuxvg`/`cmuxhg` `clkpin_sel`: no probe printed
+  them. Pin-index to field mapping not established.
+- `enable_register_mode`, `enable_register_power_up`: no Quartus knob identified for the clock-network
+  enable register.
+- `pll_feedback_enable_*`, `feedback_driver_select_*`, `burst_*`, `dynamic_clk_select`,
+  `testsyn_enout_select` as a verdict: need a PLL or DDR/DQS design, not built.
+- `cmuxhr` input_sel for other pins: not probed.
+
 ## Not done
 
 - Other GPIO `m`/`n` muxes (see above).

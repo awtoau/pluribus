@@ -21,6 +21,9 @@ Dump targets (--dump-target):
                       inversions, tmode/bmode).  Probes pin registers to one LAB
                       (LAB_PROBES); checks in LAB_CHECKS; one verdict per row.
   mlab  (cram, `g`/`i`)  same, with the MLAB probe (ramstyle MLAB, 16x1 RAM).
+  cmux  (pram, cmuxcr/vr/vg/hr/hg)  clock-network muxes.  Probes drive clock
+                      pins with GLOBAL_SIGNAL GLOBAL/REGIONAL/OFF (CMUX_PROBES);
+                      presence checks on the decoded CMUX block (CMUX_PRESENCE).
   m10k  (cram, `m`/`n`/`b`)  M10K port widths and true-dual-port mode, from
                       single/simple/true dual-port RAM inferred at each
                       width.  Verdict = decoded value on every M10K tile
@@ -1170,6 +1173,184 @@ def print_row_counts(results: dict, target: str):
     print(f"{target}: {len(rows)} rows -- " + ", ".join(f"{k} {v}" for k, v in counts.items()))
 
 
+# ── cmux path (clock-network muxes) ──────────────────────────────────────────
+# Each probe drives 8 FFs per clock from one or more clock pins.  The clock pin
+# and the GLOBAL_SIGNAL setting are the knobs.  Pins are the dedicated clock
+# inputs from eda/ibis/5ceba4_u4840.xml (CLK_n_P): K7 = 8A CLK_0, G10 = 8A CLK_1,
+# P9 = 3B CLK_0; F8 is a general user I/O (bank 8A).
+CMUX_TARGETS = ["cmuxcr", "cmuxvr", "cmuxvg", "cmuxhr", "cmuxhg"]
+CMUX_CONTROL = "cm_ded"
+CMUX_PROBES = {
+    "cm_ded": [("PIN_K7", None)],                      # dedicated clock pin, no promotion setting
+    "cm_gen": [("PIN_F8", None)],                      # general I/O pin as the clock
+    "cm_glob": [("PIN_K7", "GLOBAL CLOCK")],
+    "cm_reg": [("PIN_K7", "REGIONAL CLOCK")],
+    "cm_off": [("PIN_K7", "OFF")],
+    "cm_2ded": [("PIN_K7", None), ("PIN_G10", None)],  # two dedicated clock pins
+    "cm_p9": [("PIN_P9", None)],                       # dedicated clock pin in 3B
+    # Horizontal-side clock pins: exercise the CMUXH* muxes.
+    "cm_h10": [("PIN_H10", None)],                     # 7A CLK_2
+    "cm_t15": [("PIN_T15", None)],                     # 4A CLK_3
+    "cm_l17": [("PIN_L17", None)],                     # 5B CLK_2
+    "cm_l17_reg": [("PIN_L17", "REGIONAL CLOCK")],
+    "cm_l17_glob": [("PIN_L17", "GLOBAL CLOCK")],
+}
+
+
+def _cmux_verilog(top: str, clocks: list) -> str:
+    n = len(clocks)
+    ports = [f"input c{k}" for k in range(n)] + [f"input [{8*n-1}:0] d", f"output [{8*n-1}:0] q"]
+    body = []
+    for k in range(n):
+        for i in range(8):
+            j = 8 * k + i
+            body.append(f"  reg r{j};")
+            body.append(f"  always @(posedge c{k}) r{j} <= d[{j}];")
+            body.append(f"  assign q[{j}] = r{j};")
+    return f"module {top}({', '.join(ports)});\n" + "\n".join(body) + "\nendmodule\n"
+
+
+def compile_cmux_probe(probe: str, logger):
+    """Quartus + mistral decomp for one clock-network probe.  Returns (error, bt_text)."""
+    clocks = CMUX_PROBES[probe]
+    top = slug(f"cmux_{probe}")
+    d = WORK_DIR / top
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{top}.v").write_text(_cmux_verilog(top, clocks))
+    lines = qsf_header(top)
+    for k, (pin, glob) in enumerate(clocks):
+        lines.append(f"set_location_assignment {pin} -to c{k}")
+        if glob:
+            lines.append(f'set_instance_assignment -name GLOBAL_SIGNAL "{glob}" -to c{k}')
+    (d / f"{top}.qsf").write_text("\n".join(lines) + "\n")
+    (d / f"{top}.qpf").write_text(f'QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "{top}"\n')
+    logger.info("=== %s: probe %s (clocks %s) ===", top, probe, clocks)
+    err = quartus_chain(top, d, logger)
+    if err:
+        return err, ""
+    return mistral_decomp(top, d, logger)
+
+
+_CMUX_LINE_RE = re.compile(r"^([sr]) (CMUX[A-Z]+)\.(\d+)\.(\d+)(?:\.(\d+))?(?::(\S+))?\s*(.*)$")
+
+
+def parse_cmux_lines(bt_text: str) -> list:
+    """Every `s`/`r` line whose tile is a CMUX tile, as dicts (raw kept)."""
+    out = []
+    for line in bt_text.splitlines():
+        m = _CMUX_LINE_RE.match(line)
+        if not m:
+            continue
+        # `INPUT_SEL.3` -> field INPUT_SEL, span 3 (mistral prints the span as a suffix)
+        fm = re.match(r"^(.*?)(?:\.(\d+))?$", m.group(6) or "")
+        out.append({"kind": m.group(1), "block": m.group(2),
+                    "tile": f"{m.group(2)}.{m.group(3)}.{m.group(4)}",
+                    "field": fm.group(1), "idx": fm.group(2) or m.group(5),
+                    "value": m.group(7).strip(), "raw": line})
+    return out
+
+
+# Presence checks: (target, mux, probe, expect_present, basis).  The target's block
+# (CMUXVR etc.) appearing anywhere in the probe's decode is "selected".  Only the
+# routing-select row (`input_sel`) of each block is judged; expect_present None
+# records the observation without a verdict.
+CMUX_PRESENCE = [
+    ("cmuxvr", "input_sel", "cm_reg", True,
+     "REGIONAL on a vertical-side pin: CMUXVR selected (name-based expectation)"),
+    ("cmuxvr", "input_sel", "cm_glob", False,
+     "GLOBAL on the same pin: CMUXVR not selected"),
+    ("cmuxvg", "input_sel", "cm_ded", True,
+     "default promotion of a dedicated pin: CMUXVG selected"),
+    ("cmuxvg", "input_sel", "cm_glob", True,
+     "GLOBAL on the same pin: CMUXVG selected"),
+    ("cmuxvg", "input_sel", "cm_reg", False,
+     "REGIONAL on the same pin: CMUXVG not selected"),
+    ("cmuxhg", "input_sel", "cm_l17", True,
+     "5B dedicated pin: CMUXHG selected"),
+    ("cmuxhg", "input_sel", "cm_l17_glob", True,
+     "5B GLOBAL: CMUXHG selected"),
+    ("cmuxhg", "input_sel", "cm_l17_reg", False,
+     "5B REGIONAL: CMUXHG not selected"),
+    ("cmuxhr", "input_sel", "cm_l17_reg", True,
+     "5B REGIONAL: CMUXHR selected (name-based expectation)"),
+    ("cmuxcr", "input_sel", "cm_l17_reg", None,
+     "5B REGIONAL: CMUXCR present, no naming-based expectation for cmuxcr"),
+]
+
+
+def _cmux_results(target: str, decodes: dict, logger) -> dict:
+    rows = load_rows(target)
+    block = target.upper()
+    results = {}
+    for tgt, mux, probe, expect, basis in CMUX_PRESENCE:
+        if tgt != target:
+            continue
+        dec = decodes.get(probe, {})
+        key = f"{target}.{mux}.{probe}"
+        if "error" in dec:
+            results[key] = {"verdict": "INCONCLUSIVE", "basis": basis, "reason": dec["error"]}
+            continue
+        present = any(ln["block"] == block for ln in dec["lines"])
+        base = {"probe": probe, "basis": basis, "block": block, "present": present,
+                "lines": [ln["raw"] for ln in dec["lines"] if ln["block"] == block]}
+        if expect is None:
+            results[key] = {**base, "verdict": "INCONCLUSIVE",
+                            "reason": f"observed only: {block} {'present' if present else 'absent'}"}
+        else:
+            verdict = "MATCH" if present == expect else "MISMATCH"
+            results[key] = {**base, "verdict": verdict, "expected_present": expect,
+                            "reason": basis if verdict == "MATCH" else
+                            f"{block} {'present' if present else 'absent'}, expected "
+                            f"{'present' if expect else 'absent'}"}
+        logger.info("%s: %s -- %s", key, results[key]["verdict"], results[key]["reason"])
+
+    # Row accounting: every cv_block_muxes row of the target gets one verdict.
+    observed = {}
+    for probe, dec in decodes.items():
+        for ln in dec.get("lines", []):
+            if ln["block"] != block or ln["kind"] != "s":
+                continue
+            observed.setdefault(ln["field"].lower(), {}).setdefault(probe, []).append(
+                f"{ln['block']}.{ln['tile'].split('.', 1)[1]}:{ln['field']}"
+                f"{'.' + ln['idx'] if ln['idx'] else ''} {ln['value']}")
+    row_results = {}
+    for row in rows:
+        mux = row["mux"]
+        mine = [v for k, v in results.items() if k.startswith(f"{target}.{mux}.")]
+        if any(v["verdict"] == "MISMATCH" for v in mine):
+            vd = "MISMATCH"
+        elif any(v["verdict"] == "MATCH" for v in mine):
+            vd = "MATCH"
+        else:
+            vd = "INCONCLUSIVE"
+        if mine:
+            reason = "; ".join(sorted({v.get("reason", "") for v in mine}))
+        elif mux in observed:
+            reason = ("observed only: printed in " + ", ".join(sorted(observed[mux]))
+                      + " (no naming-based expectation)")
+        else:
+            reason = "no probe prints this field"
+        row_results[f"{target}.row.{row['subtype']}.{mux}"] = {
+            "verdict": vd, "reason": reason, "subtype": row["subtype"], "stype": row["stype"]}
+    results.update(row_results)
+    return results
+
+
+def run_cmux_dumps(targets: list, logger) -> dict:
+    """Compile every cmux probe once and decode the CMUX lines of each probe."""
+    decodes = {}
+    for probe in CMUX_PROBES:
+        err, bt = compile_cmux_probe(probe, logger)
+        if err:
+            decodes[probe] = {"error": err}
+            logger.info("%s: compile failed -- %s", probe, err)
+            continue
+        lines = parse_cmux_lines(bt)
+        decodes[probe] = {"lines": lines}
+        logger.info("%s: %d CMUX lines decoded", probe, len(lines))
+    return decodes
+
+
 # ── merge / main ─────────────────────────────────────────────────────────────
 
 def merge_results(new: dict):
@@ -1191,7 +1372,8 @@ def print_gpio_list(rows):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dump-target", default="gpio", choices=["gpio", "opt", "m10k", "lab", "mlab"],
+    ap.add_argument("--dump-target", default="gpio",
+                    choices=["gpio", "opt", "m10k", "lab", "mlab", "cmux"],
                     help="which cv_block_muxes dump target to check (default %(default)s)")
     ap.add_argument("--value", nargs="*", default=[],
                     help="gpio: named value(s) of drive_strength to test (one compile each)")
@@ -1255,6 +1437,22 @@ def main():
                 print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
         print(f"\n=== {args.dump_target} row verdicts ===")
         print_row_counts(results, args.dump_target)
+    elif args.dump_target == "cmux":
+        if not args.all:
+            ap.error("cmux: give --all")
+        logger = setup_logging()
+        decodes = run_cmux_dumps(CMUX_TARGETS, logger)
+        results = {}
+        for target in CMUX_TARGETS:
+            results.update(_cmux_results(target, decodes, logger))
+        merge_results(results)
+        print("\n=== cmux verdicts (checks) ===")
+        for key, r in results.items():
+            if ".row." not in key:
+                print(f"{r['verdict']:13s} {key:44s} {r.get('reason', '')}")
+        print("\n=== cmux row verdicts ===")
+        for target in CMUX_TARGETS:
+            print_row_counts(results, target)
     else:
         if not args.all:
             ap.error("m10k: give --all")
