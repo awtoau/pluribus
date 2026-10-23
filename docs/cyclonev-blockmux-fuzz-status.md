@@ -84,10 +84,8 @@ MATCHes are not the default coinciding.
 
 Row counts from `cv_block_muxes`. "Die" = whether the e50f die has data for it.
 
-- `opt` (19 rows, oram): global config options (start-up clock, etc.). Quartus
-  global settings via QSF. Untested. Promising next.
-- `m10k` (76 rows, cram): RAM modes/widths. Quartus RAM inference with port
-  widths and `ram_style`. Medium. Largest named-value set after GPIO.
+- `opt` (19 rows, oram): tested, see "opt" below.
+- `m10k` (76 rows, cram): tested, see "m10k" below.
 - `lab` (56), `mlab` (61): LAB clock/enable/clear selects. Needs FF enable/clear
   source designs. Medium-hard.
 - `dsp` (60): MODE values covered by `cyclonev_dsp_fuzz.py`. Input/coef muxes
@@ -109,8 +107,138 @@ Row counts from `cv_block_muxes`. "Die" = whether the e50f die has data for it.
 - `cbuf` (14): `b`/`r` only, no named values. Nothing to check.
 - `opt` is in `LOAD_CALLS`, so the import is 22 files, not the 21 in the issue text.
 
+## opt (oram) -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `scripts/cyclonev_blockmux_fuzz.py --dump-target opt --all`. One default build
+plus one build per knob. Mistral's `o` lines print RAW values, and only for
+non-default bits, so an absent line means "default".
+
+Data shape: 2 `n`, 10 `b`, 7 `r` rows (not "m/n" as the issue text says).
+
+| verdict | count | rows |
+|---|---|---|
+| MATCH | 5 | `jtag_id`, `retry_config_on_error_en`, `oct_done_dis`, `nceo_dis`, `allow_device_wide_output_enable_dis` |
+| MISMATCH | 3 | `device_wide_reset_en`, `cvp_conf_done_en`, `release_clears_before_tristates_dis` |
+| INCONCLUSIVE, setting accepted but `.rbf` byte-identical to default | 3 | `compression_dis`, `crc_error_detection_en`, `external_clk_spi` |
+| INCONCLUSIVE, knob applied, no expectation | 1 | `start_up_clock` (`USER_START_UP_CLOCK On`: no bit change) |
+| INCONCLUSIVE, no Quartus knob found / tried | 7 | `idcode`, `crc_divide_order`, `drive_strength`, `cvpcie_mode`, `iocsr_ready_from_csr_done_en`, `opt_a`, `opt_b` |
+
+- MATCH evidence:
+  - `jtag_id` = Quartus assembler `JTAG usercode` in every build (11 probe builds
+    + the run). `USE_CHECKSUM_AS_USERCODE Off` -> `0xFFFFFFFF` on both sides.
+  - `retry_config_on_error_en`: `AUTO_RESTART_CONFIGURATION Off` -> `o RETRY_CONFIG_ON_ERROR_EN 0`.
+    Asm report: "Auto-restart configuration after error  Off".
+  - `oct_done_dis`: `ENABLE_OCT_DONE On` -> `o OCT_DONE_DIS 0`. Asm report: "Enable OCT_DONE On".
+  - `nceo_dis`: `ENABLE_NCEO_OUTPUT On` -> `o NCEO_DIS 0`.
+  - `allow_device_wide_output_enable_dis`: `ENABLE_DEVICE_WIDE_OE On` -> `o ALLOW_..._DIS 0`.
+    Bit 6.5 is also claimed by `start_up_clock` (see overlap below).
+- MISMATCH evidence:
+  - `release_clears_before_tristates_dis`: `RELEASE_CLEARS_BEFORE_TRI_STATES On` -> the
+    printed line is `o CVP_CONF_DONE_EN 0` (bit 6.2), `release_clears...` stays at 1 (bit 6.3).
+    `.rbf` differs by 3 bytes. Either 6.2/6.3 labels are swapped in `opt-mux.txt`, or the
+    Quartus setting drives 6.2. Labels are wrong on one of the two readings.
+  - `cvp_conf_done_en`: default build (`ENABLE_CVP_CONFDONE` Off) decodes 1, name predicts 0.
+    On-build still 1; the `.rbf` changes (93 bytes) somewhere else. Bit 6.2 is not the
+    `ENABLE_CVP_CONFDONE` bit.
+  - `device_wide_reset_en`: `ENABLE_DEVICE_WIDE_RESET On` -> `o DEVICE_WIDE_RESET_EN 0`;
+    default -> 1. Polarity is inverted against the name. Bit 6.4 is also claimed by
+    `start_up_clock` bit 3 (knob build `START_UP_CLOCK 37`, default `3f`).
+- Table overlap (opt-mux.txt): two fields claim one bit each.
+  - 6.4: `device_wide_reset_en` and `start_up_clock` bit 3.
+  - 6.5: `allow_device_wide_output_enable_dis` and `start_up_clock` bit 4.
+- INCONCLUSIVE, bitstream unchanged:
+  - `COMPRESSION_MODE On`: asm report says "Compression mode On", `.rbf` identical to default.
+  - `CRC_ERROR_CHECKING On`: `.rbf` identical; setting not in the asm settings table.
+  - `CLOCK_SOURCE External` + `CONFIGURATION_CLOCK_FREQUENCY "25 MHz"`: asm applied it
+    (`EXTERNAL`, `25 MHZ`); `.rbf` identical; `external_clk_spi` stays 100.
+- Rejected by Quartus (not counted as a Mistral result):
+  - `CVP_MODE Auto` (Error 125036). Legal value not identified.
+  - `DEVICE_INITIALIZATION_CLOCK CLKUSR` (Error 125036).
+- Not attempted: names for `idcode`, `crc_divide_order`, `drive_strength`, `cvpcie_mode`,
+  `iocsr_ready_from_csr_done_en`, `opt_a`, `opt_b`. `opt_b` prints `ffffff40.2dffffff` in every build.
+- Caveat: default-side verdicts depend on an absent line meaning default. Mistral prints nothing
+  for a default value, so absence cannot distinguish "default" from "not decoded".
+
+## m10k (cram) -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `scripts/cyclonev_blockmux_fuzz.py --dump-target m10k --all`. Styles x widths
+(1/2/5/10/20/40, depths 8192/4096/2048/1024/512/256), `(* ramstyle = "M10K" *)` for
+inferred styles, ports left unplaced:
+
+- `sp`: single-port, inferred.
+- `sdp`: simple dual-port, inferred.
+- `tdp`: true dual-port, inferred. Flattens to logic (see TDP below).
+- `tdpip`: true dual-port, explicit `altsyncram` BIDIR_DUAL_PORT.
+
+Checked muxes (expected = the RAM style's width/mode):
+
+| mux | sp | sdp | tdpip |
+|---|---|---|---|
+| `a_data_width` | 6/6 MATCH | 6/6 MATCH | 5 MATCH, 1 MISMATCH (W=40) |
+| `b_data_width` | not checked (port unused) | 6/6 MATCH | 5 MATCH, 1 MISMATCH (W=40) |
+| `true_dual_port` (`b`) | 6/6 MATCH (=0) | 6/6 MATCH (=0) | 6/6 MATCH (=1) |
+
+- `tdp` (inferred TDP): 0 M10K tiles. All 18 `tdp` checks are INCONCLUSIVE.
+
+Observed-only muxes (no Quartus knob; INCONCLUSIVE, decoded values recorded in `results.json`):
+
+- `a/b_fast_write`, `a/b_outclr_en`, `a/b_output_sel`.
+- `sp`/`sdp`: `slow`, `off`, `async` in every design.
+- `tdpip`: fast_write `FAST` (explicit megafunction) vs `SLOW` (inferred). Different RAM
+  construction gives different write mode; still not verdict-ed.
+
+Caveats:
+
+- `a_data_width` = 40 is not a printed-line match. Mistral's default A width is 40, and
+  Mistral never prints a default, so the A=40 result is "absent = default". The
+  `b_data_width` = 40 line *is* printed. A=40 can only ever be seen as absence.
+- Observed only, no Quartus knob (INCONCLUSIVE): `a/b_fast_write`, `a/b_outclr_en`,
+  `a/b_output_sel`. Decoded `slow`, `off`, `async` in every design. The Verilog registers
+  the read data, but Quartus did not put the output register into the M10K (`output_sel` stayed `async`).
+- Other printed `b` flags (`A/B_DATA_FLOW_THRU 1`, `DISABLE_UNUSED 0`): not verdict-ed.
+- `top_*_sel` / `bot_*_sel` (22 `n` rows): never printed (all default), no knob. Not tested.
+- Mistral `RAM.N` lines carry the RAM init content (`ff.ffffffff`). Not checked.
+
+### TDP fit time (measured, 2026-10-23 18:07-18:09)
+
+- First pass used the 60 s fit limit shared with SP/SDP. Every TDP fit hit it (`TIMEOUT`,
+  logged, INCONCLUSIVE). This was a limit that was too low, not a hung fit.
+- Uncapped `quartus_fit` on `m10k_tdp_w1`: 147.2 s wall (`tmp/logs/tdp_fit_timing.log`),
+  host loadavg 15-17 (shared host, other Quartus jobs running).
+- Inferred `tdp` limit set to 450 s (3x that one sample, rounded). One sample only.
+- The inferred-`tdp` rerun was stopped after W=1 (flattened, see below). The `tdpip` runs
+  used the 60 s limit; their fits took 9-15 s.
+
+### TDP: inferred vs explicit
+
+- Inferred `tdp` (two always blocks, one memory array): Quartus flattens it to logic,
+  `Total block memory bits 0`, ~22k ALUTs / 8k registers at W=1 (map report,
+  `tmp/cyclonev_blockmux_fuzz/m10k_tdp_w1/`). No M10K tile decodes. Run 2 was stopped after
+  W=1, so W=2..40 of the inferred idiom were not re-run. Run 1 (60 s limit) timed out on all six.
+  Result: 6 INCONCLUSIVE per check for `tdp`, none is a Mistral result.
+- Explicit `tdpip` (`altsyncram`, `operation_mode BIDIR_DUAL_PORT`, `ram_block_type M10K`,
+  `clock1` tied to `clk`): maps to M10K (`Total block memory bits 10240` at W=20).
+  Quartus accepted it after two fixes (`clock1` must be connected; `clear box` error otherwise).
+
+| check | W=1 | W=2 | W=5 | W=10 | W=20 | W=40 |
+|---|---|---|---|---|---|---|
+| `true_dual_port` = 1 | MATCH | MATCH | MATCH | MATCH | MATCH | MATCH (2 tiles) |
+| `a_data_width` | MATCH | MATCH | MATCH | MATCH | MATCH | MISMATCH |
+| `b_data_width` | MATCH | MATCH | MATCH | MATCH | MATCH | MISMATCH |
+
+- W=40 MISMATCH: two M10K tiles (`M10K.022.002`, `M10K.046.021`), each decoding
+  `A/B_DATA_WIDTH 20`. Per-tile widths sum to 40, which suggests Quartus splits the x40
+  TDP across two x20 blocks. This is an inference from the decode, not checked against
+  Intel's M10K mode table in this session. Recorded as MISMATCH against the one-tile
+  expectation; not counted as a Mistral failure.
+- Caveat for the `a=40` results in SP/SDP: `A_DATA_WIDTH 40` is absent (default), so those
+  are absence matches. `B_DATA_WIDTH 40` is printed (non-default) in SP and SDP.
+
 ## Not done
 
 - Other GPIO `m`/`n` muxes (see above).
 - Raw-bit verification (needs a mistral-cv change).
 - OCT / termination knob (needs the correct QSF names).
+- opt: `start_up_clock`, `external_clk_spi`, `crc_error_detection_en`, `compression_dis`
+  need a different Quartus knob or a bitstream-visible setting.
+- m10k: output-register and fast-write knobs; `top/bot` selects.
