@@ -135,7 +135,7 @@ RMUX_SPAN = [
 ]
 
 
-DEFAULT_MAX_RAM_PCT = 50.0
+DEFAULT_MAX_RAM_PCT = 85.0
 DEFAULT_BATCH_LINES = 100_000
 
 
@@ -147,13 +147,28 @@ def _wait_for_ram(max_ram_pct, log, what):
     (this script's peak memory is bounded by --batch-lines regardless, but
     the gate catches anything that doesn't go as planned without relying on
     that bound alone).
+
+    Default threshold (85%) is set above this host's permanent baseline
+    (~50-58% from an always-on 16GB QEMU VM + VSCode/Chrome), not above this
+    script's own usage (observed peak ~1.4GB, ~2% of 62GB) -- a 50% default
+    stalled indefinitely with nothing to report, since that floor is never
+    reached by anything this script does. Re-logs every 30s while waiting
+    (not just once) so a genuine stall is visible in the log instead of
+    looking identical to a hang -- this is what caught the bug above.
     """
-    first = True
+    start = None
+    last_log = 0.0
     while psutil.virtual_memory().percent >= max_ram_pct:
-        if first:
+        now = time.time()
+        if start is None:
+            start = now
             log.info(f"  RAM at {psutil.virtual_memory().percent:.0f}% >= "
                       f"{max_ram_pct:.0f}% -- pausing before {what}")
-            first = False
+            last_log = now
+        elif now - last_log >= 30.0:
+            log.info(f"  still waiting on RAM ({psutil.virtual_memory().percent:.0f}% >= "
+                      f"{max_ram_pct:.0f}%) for {now - start:.0f}s -- {what}")
+            last_log = now
         time.sleep(2)
 
 
