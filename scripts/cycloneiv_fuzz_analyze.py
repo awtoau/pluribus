@@ -152,37 +152,40 @@ def lut_site(builds, tag, site):
 
 
 def ff_power_up(builds):
-    variants = sorted(n[len("ff_low_"):] for n in builds if n.startswith("ff_low_") and
-                      f"ff_high_{n[len('ff_low_'):]}" in builds)
-    diffs = {v: builds[f"ff_low_{v}"]["ones"] ^ builds[f"ff_high_{v}"]["ones"] for v in variants}
-    out = {"variants": variants, "diff_sizes": {v: len(d) for v, d in diffs.items()}}
-    if "base" not in diffs:
-        return out
-    derived = diffs["base"]
-    out["derived_bits"] = sorted(derived)
-    score = {"matched": 0, "missing": 0, "wrong": 0, "extra": 0}
-    for v in variants:
-        if v == "base":
+    """power_up=high is not a FF bit: Quartus pushes it back (inverting LUT, sload=1, inverted
+    output buffer).  Report the .vo differences and the CRAM diff size; nothing is scored."""
+    lo, hi = builds.get("ff_low_base"), builds.get("ff_high_base")
+    if not lo or not hi:
+        return {}
+    def ff(b):
+        return next(a for a in b["vo"].atoms.values() if a["type"] == "dffeas")
+    def conn(a, port):
+        return [(n, i, c) for p, _b, _d, n, i, c in a["conns"] if p == port]
+    return {"cram_diff_bits": len(lo["ones"] ^ hi["ones"]),
+            "atoms_low": len(lo["vo"].atoms), "atoms_high": len(hi["vo"].atoms),
+            "sload": [conn(ff(lo), "sload"), conn(ff(hi), "sload")],
+            "power_up_param": [ff(lo)["params"].get("power_up"), ff(hi)["params"].get("power_up")]}
+
+
+def site_sweep(builds):
+    """Per site: CRAM diff between the mask-0001 and mask-0002 builds = mask bits 0 and 1."""
+    rows = {}
+    sites = sorted({n[len("site_"):-len("_0001")] for n in builds if n.startswith("site_") and n.endswith("_0001")})
+    for t in sites:
+        b1, b2 = builds.get(f"site_{t}_0001"), builds.get(f"site_{t}_0002")
+        if not b1 or not b2:
             continue
-        for pu in ("low", "high"):
-            vo = builds[f"ff_{pu}_{v}"]["vo"]
-            ff = next(a for a in vo.atoms.values() if a["type"] == "dffeas")
-            truth = ff["params"].get("power_up", "low") == "high"
-            ones = builds[f"ff_{pu}_{v}"]["ones"]
-            ref_low = builds["ff_low_base"]["ones"]
-            if not derived:
-                score["missing"] += 1
-                continue
-            # predicted high when every derived bit differs from the low-base value
-            pred = all((c in ones) != (c in ref_low) for c in derived)
-            same = all((c in ones) == (c in ref_low) for c in derived)
-            if not pred and not same:
-                score["wrong"] += 1
-            else:
-                score["matched" if pred == truth else "wrong"] += 1
-        score["extra"] += len(diffs[v] - derived)
-    out["score"] = score
-    return out
+        site = "LCCOMB_" + t.upper()
+        _, a1 = lut_atom(b1["vo"], site)
+        _, a2 = lut_atom(b2["vo"], site)
+        if a1 is None or a2 is None:
+            rows[site] = {"status": "not placed at site"}
+            continue
+        m1, m2 = mask_of(a1), mask_of(a2)
+        only1, only2 = b1["ones"] - b2["ones"], b2["ones"] - b1["ones"]
+        rows[site] = {"vo_masks": [f"{m1:04x}", f"{m2:04x}"], "only_first": sorted(only1),
+                      "only_second": sorted(only2)}
+    return rows
 
 
 def ff_controls(builds):
@@ -224,12 +227,10 @@ def main():
                  s["matched"], s["matched"], s["missing"], s["extra"], s["wrong"], 100 * s["matched"] / max(tot, 1))
         log.info("  varying bits %d, unexplained %d; map k -> (frame, bit, inverted): %s", r["varying_bits"],
                  r["unexplained_varying_bits"], {k: v for k, v in r["bitmap"].items()})
-    p = res["ff_power_up"]
-    log.info("FF power_up: diff sizes %s; derived bits %s", p.get("diff_sizes"), p.get("derived_bits"))
-    if "score" in p:
-        s = p["score"]
-        log.info("  held-out power_up: matched %d / (matched %d + missing %d + extra %d + wrong %d)",
-                 s["matched"], s["matched"], s["missing"], s["extra"], s["wrong"])
+    log.info("FF power_up high (push-back, not a bit): %s", res["ff_power_up"])
+    res["site_sweep"] = site_sweep(builds)
+    for site, r in res["site_sweep"].items():
+        log.info("site %-22s %s", site, r)
     for n, c in res["ff_controls"].items():
         log.info("FF control %-16s vs base: +%d -%d bits in frames %s", n, c["set"], c["cleared"], c["frames"])
     Path(a.json).parent.mkdir(parents=True, exist_ok=True)

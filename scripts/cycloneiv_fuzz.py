@@ -41,6 +41,10 @@ log = logging.getLogger("cycloneiv_fuzz")
 # Fixed fabric sites for the fuzz cells (smoke_lut placed its LE at X1_Y18; LUT at N even, its FF at N+1).
 LUT_SITES = [("LCCOMB_X1_Y18_N0", "a"), ("LCCOMB_X1_Y18_N2", "b"), ("LCCOMB_X10_Y10_N16", "c")]
 FF_SITE = "FF_X1_Y18_N1"
+# Address sweep: every N at X1_Y18, every Y at X1 N0, every X at Y18 N0 (non-LAB sites fail to fit).
+SWEEP_SITES = sorted({f"LCCOMB_X1_Y18_N{n}" for n in range(0, 32, 2)}
+                     | {f"LCCOMB_X1_Y{y}_N0" for y in range(1, 24)}
+                     | {f"LCCOMB_X{x}_Y18_N0" for x in range(1, 34)})
 FF_LUT_SITE = "LCCOMB_X1_Y18_N0"
 PINS = {"a": "PIN_28", "b": "PIN_30", "c": "PIN_31", "d": "PIN_32", "y": "PIN_42",
         "clk": "PIN_23", "clrn": "PIN_33", "ena": "PIN_34", "sclr": "PIN_38", "sload": "PIN_39",
@@ -89,9 +93,11 @@ def specs():
             out[f"lut_{tag}_{m:04x}"] = {"top": "top", "verilog": v, "qsf": q,
                                          "purpose": f"lut_mask {m:04x} at {site}",
                                          "exercises": ["lut_mask"]}
+    # power_up high only on the base design: Quartus builds it by push-back (inverted D via a new
+    # LUT, sload=1, inverted output) and rejects it with clrn (error 14053) and sclr (no fit).
     for pu in ("low", "high"):
         for k in range(len(FF_PORTS) + 1):
-            for ctrl in ([()] if k == 0 else [(c,) for c in FF_PORTS] if k == 1 else []):
+            for ctrl in ([()] if k == 0 else [(c,) for c in FF_PORTS] if k == 1 and pu == "low" else []):
                 v, q = ff_design(ctrl, pu)
                 nm = "ff_" + pu + ("_" + "_".join(ctrl) if ctrl else "_base")
                 out[nm] = {"top": "top", "verilog": v, "qsf": q,
@@ -100,6 +106,14 @@ def specs():
     v, q = ff_design(FF_PORTS, "low")
     out["ff_low_all"] = {"top": "top", "verilog": v, "qsf": q,
                          "purpose": f"dffeas all controls at {FF_SITE}", "exercises": ["dffeas", *FF_PORTS]}
+    # Site sweep for the LE address model: masks 0001 and 0002 differ only in mask bits 0/1.
+    for site in SWEEP_SITES:
+        for m in (0x0001, 0x0002):
+            v, q = lut_design(m, site)
+            tag = site.replace("LCCOMB_", "").lower()
+            out[f"site_{tag}_{m:04x}"] = {"top": "top", "verilog": v, "qsf": q,
+                                          "purpose": f"site sweep lut_mask {m:04x} at {site}",
+                                          "exercises": ["lut_mask", "le_address"]}
     return out
 
 

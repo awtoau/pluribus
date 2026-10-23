@@ -1,4 +1,0 @@
-top = "top"
-purpose = "dffeas power_up=high controls=['sclr'] at FF_X1_Y18_N1"
-exercises = ["dffeas", "sclr"]
-qsf = ["set_location_assignment LCCOMB_X1_Y18_N0 -to lut", "set_location_assignment FF_X1_Y18_N1 -to r", "set_location_assignment PIN_28 -to a", "set_location_assignment PIN_30 -to b", "set_location_assignment PIN_23 -to clk", "set_location_assignment PIN_38 -to sclr", "set_location_assignment PIN_44 -to q"]
