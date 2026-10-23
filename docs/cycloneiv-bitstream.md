@@ -8,15 +8,17 @@ SFL / SFL-enhanced / PFL `.sof` files shipped in `quartus/common/devinfo/program
 
 | Layer | Status | Evidence level |
 |---|---|---|
-| Container, header, frame CRC, compression | derived; decoder written | identical to oracle, 70 / 70 pairs |
-| Fabric (LE LUT/FF bits, routing, IO) | **not started**: Quartus cannot fit Cyclone IV here | none |
-| Lifter / schema | not written (gated on fabric decode) | — |
+| Container, header, frame CRC, compression | decoder written | identical to oracle, 70 / 70 pairs |
+| LE LUT mask (EP4CE6) | address model for every LAB LE site measured | simulated vs post-fit netlist: fresh held-out 32 / 32 designs, 0 bad outputs |
+| FF, LAB controls, routing, IO | not decoded (diff counts only) | none |
+| Lifter / schema | not written (gated on a verified LE model incl. FF and routing) | none |
 
 ## Feasibility
 
-- Installed Quartus 25.1 Lite has **Cyclone V device support only** (`quartus_sh --tcl_eval get_family_list` -> `{Cyclone V}`).
-  - Cyclone IV needs `cyclone-25.1std.0.1129.qdz` (466 MB; manifest in `sources/README.md`). Lite licenses Cyclone IV E and GX. The download needs an Altera SSO sign-in.
-  - Until it is installed: no `quartus_map/fit/asm` for any EP4C part, so no post-fit `.vo` oracle and no fuzzing.
+- Cyclone IV device support installed on 2026-10-24 (`sources/README.md`, `scripts/quartus_device_install.py`).
+  - `quartus_sh --tcl_eval get_family_list` -> `{Cyclone IV E} {Cyclone V} {Cyclone IV GX}`.
+  - EP4CE6E22C8 builds end to end: map, fit, asm, eda (`.vo`), cpf.
+  - Before that, Lite had Cyclone V only and nothing EP4C could be fitted.
 - `quartus_cpf` needs no device package: it converts every Cyclone III/IV vendor `.sof` (70 `.sof`, 13 dies).
 - Install-side Cyclone IV data: only `programmer/ep4c*_pcf.ddb` and `ep3c*_pcf.ddb` (about 1 KB each).
   - Each holds a zlib-packed type schema (`PGMIO_PCF_ENTRY`, `PGMIO_JTAG_CONSTANTS`, `PGMIO_ERAM_LOCATIONS`, ...) and a payload that does not inflate.
@@ -106,6 +108,82 @@ Measured 2026-10-24 on base `a219aa755`, Quartus 25.1std.0 Lite.
 - Every output passes all checks: header CRC, every CRAM frame CRC, 59-byte postamble.
 - Unit test `tests/test_cycloneiv_decompress.py` uses a synthetic stream built to this format. The vendor-derived pairs are third-party and are not committed.
 
+## Fabric decode, EP4CE6 (2026-10-24)
+
+Every Cyclone IV rule here comes from Cyclone IV oracle runs. No Cyclone V bit position or rule is used.
+
+### Corpus and tools
+- `scripts/cycloneiv_fuzz.py`: generates `corpus/cycloneiv/<name>/` (src + design.toml tracked, outputs gitignored) and builds with Quartus, one process at a time under `heavy_guard`.
+  - Designs instantiate WYSIWYG `cycloneive_lcell_comb` / `dffeas` at fixed `LCCOMB_X*_Y*_N*` / `FF_X*_Y*_N*` sites, with fixed pins.
+  - Device EP4CE6E22C8.
+  - Step times, worst over 302 builds: map 9.3 s, fit 10.1 s, asm 3.3 s, eda 1.6 s, cpf 0.4 s.
+- `scripts/cycloneiv_fuzz_analyze.py`: CRAM bit sets plus the `.vo` oracle. Produces per-site LUT bit maps (trained on one-hot masks), the site sweep and FF diffs. Output `tmp/cycloneiv/fuzz_analysis.json`.
+- `scripts/cycloneiv_le_model.py`: the LE address model, built from the sweeps.
+- `scripts/cycloneiv_sim_check.py` is the **acceptance test**.
+  - Decoded Verilog is simulated with iverilog against the post-fit `.vo` on all 16 vectors plus 64 random ones. Bad outputs are counted per design.
+  - DUT-A uses the vendor `cycloneive_*` cell models, cut from `eda/sim_lib/cycloneive_atoms.v` (the whole file does not compile in iverilog).
+  - `--negative-control` flips one decoded mask bit; every design must then fail.
+  - Limits: the LUT mask is decoded from CRAM. Which pad feeds each LUT input, and the output-buffer inversion, are still taken from the `.vo` (routing and IO are not decoded). So this tests the mask decode end to end (positions, polarity, input order), not a lift.
+- Reused from Cyclone V, as method only:
+  - `cyclonev_vo_parse.Vo`, imported, with Cyclone IV cell types added; `top_module_only` drops the SDF line and the `hard_block` module.
+  - The `cyclonev_corpus_build.py` builder pattern (stall and overall limits, one Quartus at a time).
+  - The `cyclonev_lifted_sim_check.py` testbench pattern.
+  - The `cyclonev_lift_scorecard.py` fields: matched / missing / extra / wrong, with a held-out split.
+
+### LUT mask results
+
+| set | designs | sim: designs with bad outputs | output compares ok / bad / x |
+|---|---|---|---|
+| per-site maps, 3 sites (16 one-hot train + 24/16/16 held-out masks) | 104 | 0 | 8,320 / 0 / 0 |
+| address model, the same 104 | 104 | 0 | 8,320 / 0 / 0 |
+| address model, `ho_*` 16 random sites x 2 masks (became training, see below) | 32 | 4 before fix, 0 after | 2,560 / 0 / 0 after |
+| address model, `ho2_*` fresh held-out, 15 sites x 2 random masks | 32 | **0** | 2,560 / 0 / 0 |
+| negative control (one mask bit flipped), lut_* / ho2_* | 104 / 32 | 104 / 32 (all fail, as required) | |
+
+- Structural sub-check: per-site maps on held-out masks gave matched 384 / 256 / 256, with missing 0, extra 0 and wrong 0 per site. The model predicted all 16 bit positions at the held-out site X10_Y10_N16.
+- Model fixes, both found by held-out failures, and found only that way:
+  - The bit order mirrors for odd LEs of a pair. The first model mispredicted 8/16 bits at X1_Y18_N2.
+  - Lane 7 holds 206 bytes, not 207. 4 `ho_*` designs at rows whose LAB crosses into lane 7 failed in simulation; after the fix, 0.
+
+### LE address model (EP4CE6)
+- Frame bit index `b = byte*8 + lane` (byte in frame data, lane = bit within byte, LSB first).
+- Vertical position `v`: lane 7 bytes 0..205, then lanes 6..0, 207 bytes each.
+- Mask bit `k` of LE (X, Y, N):
+  - `frame = FX[X] - (k >> 1)`: 8 consecutive frames, descending.
+  - `v = VY[Y] + DN[N] + s*dv(k)`, with `dv` = 0, -1, -1, 0 repeating. `s` = -1 when N/2 is odd (mirror).
+  - No inverted bits: a stored 1 is a mask 1.
+- `FX` (frame of mask bit 0): X1..X14 = 81 + 35*(X-1). X16 864, X17 899, X18 938, X19 973. X21..X26 = 1033 + 35*(X-21). X28..X33 = 1536 + 35*(X-28).
+  - Columns 35 frames apart. X17 to X18 is 39.
+  - Non-LAB columns X15, X20 and X27 do not fit an LE. The gaps are 328, 60 and 328 frames.
+- `VY`: rows 70 v apart (lane 7 first). Y1 = 91 ... Y11 = 791, Y17..Y23 = 1211 + 70*(Y-17). X1 rows Y12..Y16 do not fit an LE.
+- `DN` (v offset of LE N/2 = 0..15): 0, -3, -8, -11, -16, -19, -24, -27, -38, -41, -46, -49, -54, -57, -62, -65.
+  - LE pairs sit 3 v apart and pairs 5 v apart, with an extra 6 v gap between LE 7 and LE 8.
+  - That gap is presumably LAB-wide control bits (not decoded).
+- A LAB spans 66 v of a 1655-v frame column (206 + 7 x 207) x 35 frames. 23 rows x 70 v = 1610.
+
+### FF results (no decode yet)
+- `power_up=high` is not a FF bit. Quartus implements it by push-back: an inverting LUT feeds `asdata`, `sload=1`, and the output buffer `.i` is inverted.
+  - It rejects power-up high with CLRN (error 14053) and with SCLR (no fit).
+  - So no FF field is scored. The `ff_high_*` control variants were dropped.
+- Each control changes many bits relative to `ff_low_base`, mixing routing with LAB config:
+  - clrn: +35 / -21 bits
+  - ena: +30 / -13
+  - sclr: +31 / -37
+  - sload: +80 / -52
+  - all: +135 / -105
+- Not attributable without routing decode. Fault table for FF fields: not scored (0 decoded).
+
+### Layout vs Cyclone V (structure only, no values)
+- Cyclone V reference: the Mistral `lab-mux.txt` LUT_MASK position list.
+- Both families:
+  - store LUT bits 2 per frame, in vertically adjacent positions, over consecutive frames;
+  - use alternating (boustrophedon) order: k0/k1 swap orientation each frame step.
+- Differences:
+  - IV pairs are frame-aligned (k0, k1 in one frame; 16 bits in 8 frames, descending).
+  - V pairs straddle frames: frame 2 holds one bit; 16 bits over 10 tile frames, frames 2..6 ascending then 11..7 descending.
+  - IV LEs mirror orientation within an LE pair. IV packs one LAB per 35-frame column x 66 v, with 8 bit-lanes interleaved per frame.
+- The structure lines up at the 2-bits-per-frame snake. The tile geometry does not.
+
 ## The m2001 sample (third-party image, read-only, not in repo)
 
 `scripts/cycloneiv_die_match.py IMAGE` (log `tmp/logs/cycloneiv_die_match.log`).
@@ -125,7 +203,10 @@ Measured 2026-10-24 on base `a219aa755`, Quartus 25.1std.0 Lite.
 
 ## Gaps
 
-- No fabric decode: Cyclone IV device support is not installed (see Feasibility). Once it is, the next step is a fuzz corpus: constants, LUT masks over one fixed LE, FF controls, IO standards. It would be built on the smallest die (EP4CE6, F=210) with the post-fit `.vo` as oracle (`scripts/cyclonev_vo_parse.py` pattern).
+- Fabric not decoded:
+  - FF fields: d / clk / clrn / ena / sclr / sload / asdata.
+  - LAB-wide controls; routing (needed before LUT inputs can come from the bitstream instead of the `.vo`); IO buffers and standards; M9K; multipliers; PLL.
+- Address model covers EP4CE6 LAB LEs only. Rows Y12..Y16 at X1 and the non-LAB columns are unmapped. Other dies untested.
 - Periphery frames 1..r-1: no CRC found in-frame; how they are protected is unknown.
 - Compressed length-field low bits; header lanes 0 and 3, lane 1 bits 0..23 and 36..37.
 - Compressor not written.

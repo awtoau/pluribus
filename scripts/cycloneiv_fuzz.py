@@ -14,6 +14,7 @@ import fnmatch
 import logging
 import os
 import queue
+import random
 import shutil
 import subprocess
 import sys
@@ -31,11 +32,10 @@ import toolchain  # noqa: E402
 DEVICE = "EP4CE6E22C8"
 FAMILY = "Cyclone IV E"
 KEEP = {"src", "design.toml"}
-# Host-process guard: stall = 60 s silent; overall = 3x the cold worst case per step on EP4CE6
-# (measured on the first builds, docs/cycloneiv-bitstream.md), x LIMIT_SCALE.
+# Host-process guard: stall = 60 s silent; overall = 3x the measured worst step time on EP4CE6
+# (docs/cycloneiv-bitstream.md "Fabric decode"); expiry kills the step and fails the design.
 STALL_S = 60
-OVERALL_S = {"quartus_map": 180, "quartus_fit": 300, "quartus_asm": 120, "quartus_eda": 120,
-             "quartus_cpf": 60}
+OVERALL_S = {"quartus_map": 30, "quartus_fit": 32, "quartus_asm": 10, "quartus_eda": 5, "quartus_cpf": 2}
 log = logging.getLogger("cycloneiv_fuzz")
 
 # Fixed fabric sites for the fuzz cells (smoke_lut placed its LE at X1_Y18; LUT at N even, its FF at N+1).
@@ -114,6 +114,22 @@ def specs():
             out[f"site_{tag}_{m:04x}"] = {"top": "top", "verilog": v, "qsf": q,
                                           "purpose": f"site sweep lut_mask {m:04x} at {site}",
                                           "exercises": ["lut_mask", "le_address"]}
+    # Held-out sites for the LE address model: random (X, Y, N) combinations the sweeps never
+    # built together, random masks; scored only by simulation (cycloneiv_sim_check.py --model).
+    # ho: used to find the lane-7 rule (now training); ho2: fresh held-out set after that fix.
+    cols = [x for x in range(1, 34) if x not in (15, 20, 27)]
+    rows = [y for y in range(1, 24) if y not in range(12, 17)]
+    for pre, seed in (("ho", 20261024), ("ho2", 20261025)):
+      rnd = random.Random(seed)
+      for _ in range(16):
+        x, y, n = rnd.choice(cols), rnd.choice(rows), 2 * rnd.randrange(16)
+        site = f"LCCOMB_X{x}_Y{y}_N{n}"
+        for _m in range(2):
+            m = rnd.randrange(1, 0xFFFF)
+            v, q = lut_design(m, site)
+            out[f"{pre}_x{x}_y{y}_n{n}_{m:04x}"] = {"top": "top", "verilog": v, "qsf": q,
+                                                 "purpose": f"held-out lut_mask {m:04x} at {site}",
+                                                 "exercises": ["lut_mask", "le_address", "held_out"]}
     return out
 
 
