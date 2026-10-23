@@ -166,16 +166,15 @@ format reference per project scope — no DJI bytes/netlist committed here):
     constraint, so NULL-everywhere would defeat that per board). Flagged for
     a decision, not guessed at.
 
-SCHEMA FIT — LUT5, UNIFIED INTO `luts`
----------------------------------------
-schema.py's `luts` table is now width-generic: `init` is `String(32)` and a
-5th input column `e` (NULL for every 4-input family) carries a Cyclone V ALM
-half's E0/E1 pin. `recover_netlist()` appends ALM-half LUT5 cells directly to
-`Design.luts` (same row shape every other family uses: name/init/a/b/c/d/e/z),
-with `init` as the 32-char MSB-first binary string `load.py`'s classify_lut()
-expects (converted from the raw `init32` hex here, once, in the lifter — the
-fn classification itself stays in load.py, not duplicated). There is no more
-separate `Design.alm_luts` list.
+SCHEMA FIT — ALM-HALF LUT (a-f), UNIFIED INTO `luts`
+----------------------------------------------------
+- `luts.init` is the 64-char MSB-first table of one ALM half over its six inputs a-f
+  (Quartus data port order); `e`/`f` columns are NULL for the 4-input families.
+- Letter -> source per half mode: docs/cyclonev-postfit-oracle.md, `_port_pins()`.
+  Constant/unrouted letters are "1'b0" and the table is folded so it does not depend on them.
+- Registers: one `ffs` row per physical register (half, slot); control sources are kept in
+  `Design.ffs[i]["ctl"]` (oracle-checked, see `_ff_controls()`); `d/clk/ce` are written to the
+  DB only for plain posedge D flops (no polarity/clear columns exist).
 """
 
 import re
@@ -564,6 +563,91 @@ def _port_pins(half, mode):
             "d": d_src[mode[0]], "e": e_src[mode[2]], "f": "F" + i}
 
 
+_REG_PIN = {("T", False): "E0", ("T", True): "F1", ("B", False): "E1", ("B", True): "F0"}
+
+
+# enable input of clock n: clk0 -> DATAIN.2, clk1 -> DATAIN.3, clk2 -> DATAIN.0 (983/983, one candidate each)
+_ENA_DIN = {"0": 2, "1": 3, "2": 0}
+
+
+def _ff_controls(block, tile_key, kv, alm_idx, h, slot, lut_fed, sink_nodes):
+    """Control sources of register (half h, slot) as {field: source}; a missing key = not recovered.
+
+    source = ("node", CVNode, inverted) | ("lut", (x,y,alm,half)) | ("const", 0|1).
+    `inverted` = the register sees NOT(node), the sense of the Quartus post-fit conn flag.
+    Every rule below is backed by a corpus differential, 0 exceptions, and fuzz doc items 6-8
+    (docs/cyclonev-postfit-oracle.md "Register controls"):
+      clk   : {T,B}CLK_SEL names the register PAIR {T0,B1} / {T1,B0} (crossed, not the half);
+              source = CLK<n>_INV bit (1 = clkb, else clka; Mistral label swapped, fuzz item 6),
+              clka = CLKIN.0 (CLKA_SEL DIN0 -> DATAIN.0), clkb = CLKIN.1 (CLKB_SEL DIN1 -> DATAIN.1);
+              negedge = CLK<n>_SEL == CLKB.
+      ena   : EN<n>_EN == 0 -> constant 1; else DATAIN.{2,3,0} for clk{0,1,2}, active-low iff
+              EN<n>_NINV != 0 (polarity from fuzz item 7; no inverted enable in the corpus).
+      clrn  : ACLR0_SEL == ACLR0 -> constant 1 (idle); else DATAIN.3, `!` iff ACLR0_INV == 1.
+      sclr  : half SCLR_DIS == 1 -> constant 0; else LAB SCLR_SEL (default DATAIN.3, DIN1 -> DATAIN.1),
+              constant 0 when that input is unrouted.
+      sload : constant 1 iff the register is pin-fed, else 0 (no sload signal in the corpus).
+      d     : LUT-fed -> that half's LUT; pin-fed -> E/F pin per {h}EF_SEL, T: E0/F1, B: E1/F0
+              (the F pins are crossed against the LUT halves).
+    """
+    x, y = tile_key[1], tile_key[2]
+    lab = lambda mux: kv.get((mux, None))
+    st = lambda mux: kv.get((mux, alm_idx))
+    tn = lambda port, pi: CVNode(block, x, y, None, port, pi)
+    ctl = {}
+    label = "T" if (h, slot) in (("T", 0), ("B", 1)) else "B"
+    csel = st(f"{label}CLK_SEL")
+    n = csel[3] if csel in ("CLK0", "CLK1", "CLK2") else None
+    if n is not None:
+        use_b = lab(f"CLK{n}_INV") == "1"
+        pick = {(False, None): tn("CLKIN", 0), (False, "DIN0"): tn("DATAIN", 0),
+                (True, None): tn("CLKIN", 1), (True, "DIN1"): tn("DATAIN", 1)}
+        if block == "MLAB":      # MLAB clka mux: CLKA_SEL GIN2 -> DATAIN.0 (c_shiftreg_{sv,v95,vnd}_1, 1 design)
+            pick[(False, "GIN2")] = tn("DATAIN", 0)
+        node = pick.get((use_b, lab("CLKB_SEL" if use_b else "CLKA_SEL")))
+        if node is not None:
+            ctl["clk"] = ("node", node, lab(f"CLK{n}_SEL") == "CLKB")
+        if lab(f"EN{n}_EN") == "0":
+            ctl["ena"] = ("const", 1)
+        else:
+            ctl["ena"] = ("node", tn("DATAIN", _ENA_DIN[n]), lab(f"EN{n}_NINV") != "0")
+    if st(f"{h}CLR_SEL") != "1":                    # aclr1: no corpus evidence, not recovered
+        if lab("ACLR0_SEL") == "ACLR0":
+            ctl["clrn"] = ("const", 1)
+        else:
+            ctl["clrn"] = ("node", tn("DATAIN", 3), lab("ACLR0_INV") == "1")
+    if st(f"{h}SCLR_DIS") == "1":
+        ctl["sclr"] = ("const", 0)
+    elif lab("SCLR_SEL") in (None, "DIN1"):
+        node = tn("DATAIN", 1 if lab("SCLR_SEL") == "DIN1" else 3)
+        # enabled but its input has no routing = nothing drives it: constant 0 (158/158)
+        ctl["sclr"] = ("node", node, lab("SCLR_INV") == "1") if node in sink_nodes else ("const", 0)
+    ctl["sload"] = ("const", 0 if lut_fed else 1)
+    if lut_fed:
+        ctl["d"] = ("lut", (x, y, alm_idx, h))
+    else:
+        pin = CVNode(block, x, y, alm_idx, _REG_PIN[(h, st(f"{h}EF_SEL") == "F")], None)
+        if pin in sink_nodes:
+            ctl["d"] = ("node", pin, False)
+    return ctl
+
+
+def _plain_flop(ctl):
+    """Posedge D flop with no clear/load and an enable that is constant 1 (or absent source)."""
+    clk, clrn, sclr = ctl.get("clk"), ctl.get("clrn"), ctl.get("sclr")
+    return (clk is not None and not clk[2] and "d" in ctl and ctl["d"][2:3] != (True,)
+            and clrn == ("const", 1) and sclr == ("const", 0) and ctl.get("ena") == ("const", 1))
+
+
+def _ctl_net(src, net_of, node_of):
+    kind, val = src[0], src[1]
+    if kind == "const":
+        return f"1'b{val}"
+    if kind == "node":
+        return net_of(val)
+    return net_of(node_of(f"{val[3]}COMB"))
+
+
 def _lut_table(raw, half, mode, mlab, active):
     """64-bit function table (bit v = f(a|b<<1|c<<2|d<<3|e<<4|f<<5)) for one ALM half.
 
@@ -925,14 +1009,23 @@ class CycloneVLift:
                     })
                 for slot in regs_here:
                     q_node = node(f"{h}Q{slot}")
-                    d.ffs.append({
+                    ctl = _ff_controls(block, tile_key, kv, alm_idx, h, slot, p["lut_fed"][slot], sink_nodes)
+                    ff = {
                         "name": f"ff_{block.lower()}_r{tile_key[1]}c{tile_key[2]}_a{alm_idx}_ff{h.lower()}{slot}",
                         "q": net_of(q_node),
-                        "d": None, "clk": None, "ce": None, "lsr": None, "sclr": None, "sload": None,
+                        "d": None, "clk": None, "ce": None, "lsr": None,
                         "dtype": "cyclonev_alm_reg",
                         "block": block, "x": tile_key[1], "y": tile_key[2], "alm": alm_idx,
-                        "half": h, "slot": str(slot), "ctl": {},
-                    })
+                        "half": h, "slot": str(slot), "ctl": ctl,
+                    }
+                    # ffs/verilog.py have no polarity or sync/async-clear columns: only a plain
+                    # posedge D flop (no clear/load, enable high or constant) is written to them;
+                    # every other register keeps d/clk/ce None (undriven in lifted.v, not guessed).
+                    if _plain_flop(ctl):
+                        ff["d"] = _ctl_net(ctl["d"], net_of, node)
+                        ff["clk"] = _ctl_net(ctl["clk"], net_of, node)
+                        ff["ce"] = _ctl_net(ctl["ena"], net_of, node)
+                    d.ffs.append(ff)
 
         d.all_nets = sorted(set(net_name.values()), key=lambda s: int(s[1:]))
         d.n_arcs = len(pc.arcs)

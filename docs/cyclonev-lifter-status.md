@@ -1,5 +1,7 @@
 # Cyclone V lifter — status
 
+> #106 (2026-10-24): LUT/FF recovery was rewritten against the Quartus post-fit oracle. The LUT5 / Q-net-only / 33,336 LUT / 11,502 FF statements below describe the pre-#106 lifter and are superseded by `docs/cyclonev-postfit-oracle.md`.
+
 First slice of a fifth pluribus family: Altera/Intel Cyclone V. Not a
 Lattice-trellis family — different vendor, different fabric (ALM/LAB,
 not PFU/slice). Code: `lifters/cyclonev_lift.py`. Selftest:

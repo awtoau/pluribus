@@ -7,14 +7,15 @@ Quartus's own post-fit netlist is the oracle for the Bluebird acceptance loop (V
 - Device `5CEBA4U19C8` (e50f), Quartus 25.1std.0 Lite (version string is recorded per build in `postfit_builds.toolchain`).
 - Oracle inputs per build: `postfit.vo` (`quartus_eda --simulation --tool=modelsim --format=verilog`), `route_report.txt` (`quartus_sta`).
   - quartus_eda warns this is the "functional simulation netlist" (the only type for this device). It still carries every placed atom, all ports, defparams and `// Location:` comments.
-- Lift under test: `mistral-cv decomp` -> `lifters/cyclonev_lift.py` (unchanged) -> `load.py` + `verilog.py` (`lifted.v`).
+- Lift under test: `mistral-cv decomp` -> `lifters/cyclonev_lift.py` -> `load.py` + `verilog.py` (`lifted.v`). The compare reads the lifter's own `Design.luts` / `Design.ffs`; it holds no LUT mapping.
 - `scripts/cyclonev_postfit_compare.py`, per atom, at the same physical location:
-  - `lut_mask` / `lut_mask_arith`: Quartus `lut_mask` vs Mistral `LUT_MASK.<alm>` under the mapping below (`_arith` = ALM with `ARITH_SEL ADDER`).
-  - `conn.<port>` / `conn_arith.<port>`: for every LUT data input, the atom driving it per Quartus vs per our DSU nets (lifted source node bridged back to a Quartus atom by location).
+  - `lut_mask` / `lut_mask_arith`: the lifted LUT table (wired through its LAB pins) vs Quartus `lut_mask` on every reachable input vector (`_arith` = ALM with `ARITH_SEL ADDER`). `lut.extra`: lifted LUT halves with no Quartus lcell.
+  - `conn.<port>` / `conn_arith.<port>`: for every LUT data input, the atom driving it per Quartus vs the lifted LUT's own pin (or feedback register) via the DSU nets. A LUT the lifter did not emit, or a pin it does not wire, is LIFT_MISSING.
   - `conn.obuf.i`: driver of each output buffer, via the lifter's pad for that package pin.
-  - `ff.present`, `ff.d/clk/clrn/ena/sclr/sload`: register present at that place; driver of each control.
+  - `ff.present`, `ff.extra` (lifted register with no Quartus register), `ff.d/clk/clrn/ena/sclr/sload`: driver + inversion of each control. `ff.d` = `asdata` when Quartus ties `sload` high. Quartus clock-enable buffers are traced through.
+  - `ff.clk` needs the clock tree (CMUX/PLL -> spine), which is not modelled: the lifted source is an unnamed spine node, scored LIFT_MISSING ("unbridged"). Two checks that do not need it: `ff.clk.edge` (polarity) and `ff.clk.domain` (lifted clock-root partition == Quartus clock-net partition, per design).
   - `pin`: package pin + direction vs the lifter's `Design.pads`.
-  - `block.*`: DSP (`cyclonev_mac`), M10K (`cyclonev_ram_block`), clock control (`cyclonev_clkena`) — no lifted model, always `QUARTUS_ONLY`.
+  - `block.*`: DSP (`cyclonev_mac`), M10K (`cyclonev_ram_block`), clock control (`cyclonev_clkena`) -- no lifted model, always `QUARTUS_ONLY`.
 - Verdicts: `MATCH`, `MISMATCH`, `LIFT_MISSING` (lifter has no value), `QUARTUS_ONLY` (no lifted counterpart at all), `LIFT_ONLY`, `UNMODELLED` (ALM mode the LUT mapping does not cover).
 - Connectivity bridge (lifted source node -> Quartus atom), corpus-derived:
   - `LAB.x.y.alm:FF{T|B}{0|1|1L}` -> if `{T|B}DFF{0|1|1L}.alm = NLUT` the LUT of that half, else the register `FF_Xx_Yy_N(6*alm + 3*half + slot)`, half T=0/B=1, slot 1 = `FF?0`, slot 2 = `FF?1`/`FF?1L`.
@@ -80,30 +81,70 @@ How it was proven (`scripts/cyclonev_lut_pinmap_proof.py`, log `tmp/logs/cyclone
   - Arith ALMs match the same model, but `sumout`/carry semantics are not checked (only `combout` masks are compared).
 - The Quartus `!` on a LUT input is not a polarity of the mask. Every routed input carries `!`. An input fed back from the ALM's own register also carries `!`, but the mask then reads the uninverted value (two_clocks `ca[0]~3`: equation `!ca[0]`, mask `FFFF0000FFFF0000` over `e`). The model is in Quartus-mask space and needs no per-pin inversion.
 
-LAB input pins per lcell port (from connectivity: `conn.*` MATCH counts):
+The mapping lives in the lifter (`_lut_table()`, `_port_pins()`); the compare only knows which LAB pin carries which Quartus port (`lab_pin()`).
 
-- `a`->`A`, `b`->`B`; T: `c`->`C`, `d`->`D`; B: `c`->`D`, `d`->`C`; `e`->`E0`/`E1`, `f`->`F0`/`F1` (T/B).
-- In `E_0`/`E_1` the half's `d` comes in on `E0`/`E1` (comparator8 `Equal0~1/~2` resolve only this way).
+Half mode = `<d source>_<e source>` (T: `D_E` default, `D_F`, `E_0`, `F_0`; B: `C_E` default, `C_F`, `E_1`, `F_1`):
 
-## Current verdict counts (whole corpus, 2026-10-23)
+| Quartus port | source |
+|---|---|
+| `a`, `b` | LAB pins `A`, `B` |
+| `c` | T: `C`; B: `D` |
+| `d` | first letter: `D` (T) / `C` (B) = that pin; `E` = `E0`/`E1`; `F` = same-half register feedback |
+| `e` | second letter: `E` = `E0`/`E1`; `F` = same-half register feedback; `0`/`1` = constant (`x5`) |
+| `f` | `F0` (T) / `F1` (B) |
 
-| field | MATCH | MISMATCH | LIFT_MISSING | other |
+- Feedback register = the `{T,B}_FEEDBACK_SEL` slot of the same half (0 -> `FF?0`, 1 -> `FF?1`): 262/262 corpus cells with an `F` letter: the driver of that port is a `dffeas` in the same ALM half, Quartus slot = FEEDBACK_SEL + 1. `F_0`/`F_1` therefore address like `E_0`/`E_1` with `d` taken from feedback; `D_F`/`C_F` differ from `D_E`/`C_E` only in `e`'s source (no LUT difference).
+- Unrouted pins are folded (mask is don't-care there); no `LUT_MASK` line = stored all-ones = constant 0.
+- Ablation table above was measured on the raw-mask model before this moved into the lifter.
+
+## Lifter scorecard (2026-10-24, whole corpus, 235 designs scored of 236)
+
+`scripts/cyclonev_lift_scorecard.py`: matched / (matched + missing + extra + wrong). m = LIFT_MISSING, x = extra (LIFT_ONLY), w = MISMATCH + UNMODELLED. Same compare for both columns; before = lifter at commit 22a87e13f (`--lifter-file`), after = this commit.
+
+| field | before | before faults | after | after faults |
 |---|---|---|---|---|
-| lut_mask | 134 | 0 | 14 | 1 UNMODELLED |
-| lut_mask_arith | 13 | 0 | 0 | |
-| conn.dataa/b/c/d/f | 67/70/73/66/128 | 0/0/0/1/0 | 0 | |
-| conn.datae | 49 | 26 | 1 | |
-| conn_arith.* | 24 | 0 | 0 | |
-| conn.obuf.i | 151 | 0 | 13 | |
-| ff.present | 80 | 0 | 52 | |
-| ff.d/clk/clrn/ena/sclr/sload | 0 | 0 | 132 each | |
-| pin | 321 | 0 | 38 | |
-| block.* | | | | 18 QUARTUS_ONLY |
+| lut function | 0/4234 (0.0%) | 4234 (m656 x1536 w2042) | 2463/2698 (91.3%) | 235 (m235 x0 w0) |
+| lut inputs | 4704/8204 (57.3%) | 3500 (m3500 x0 w0) | 8204/8204 (100.0%) | 0 (m0 x0 w0) |
+| ff.present | 1117/3276 (34.1%) | 2159 (m637 x1522 w0) | 1754/1754 (100.0%) | 0 (m0 x0 w0) |
+| ff.d | 0/1754 (0.0%) | 1754 (m1754 x0 w0) | 1754/1754 (100.0%) | 0 (m0 x0 w0) |
+| ff.clk | 0/1754 (0.0%) | 1754 (m1754 x0 w0) | 22/1754 (1.3%) | 1732 (m1732 x0 w0) |
+| ff.clk.edge | 0/1754 (0.0%) | 1754 (m1754 x0 w0) | 1754/1754 (100.0%) | 0 (m0 x0 w0) |
+| ff.clk.domain | 0/1754 (0.0%) | 1754 (m1754 x0 w0) | 1754/1754 (100.0%) | 0 (m0 x0 w0) |
+| ff.clrn | 0/1754 (0.0%) | 1754 (m1754 x0 w0) | 1754/1754 (100.0%) | 0 (m0 x0 w0) |
+| ff.ena | 0/1754 (0.0%) | 1754 (m1754 x0 w0) | 1754/1754 (100.0%) | 0 (m0 x0 w0) |
+| ff.sclr | 0/1754 (0.0%) | 1754 (m1754 x0 w0) | 1754/1754 (100.0%) | 0 (m0 x0 w0) |
+| ff.sload | 0/1754 (0.0%) | 1754 (m1754 x0 w0) | 1754/1754 (100.0%) | 0 (m0 x0 w0) |
+| pins | 4341/4510 (96.3%) | 169 (m169 x0 w0) | 4341/4510 (96.3%) | 169 (m169 x0 w0) |
+| obuf.i | 1493/1540 (96.9%) | 47 (m47 x0 w0) | 1493/1540 (96.9%) | 47 (m47 x0 w0) |
 
-- `lut_mask LIFT_MISSING` 14 = one `~QUARTUS_CREATED_GND~I` per design: all-zero mask, no `LUT_MASK` line in the bitstream.
-- `conn.datae` MISMATCH: 24 are LUT inputs fed from the ALM's own register (`{T,B}_FEEDBACK_SEL=1`, annotated in `lifted_value`). 2 more (two_clocks `cb[0]~3`, `cb[3]~2`) are register feedback with no arc and no annotation. `conn.datad` 1 is the same feedback case (`F_1`).
-- `conn.obuf.i` LIFT_MISSING: 12 adder12 + 1 lut_random outputs on HMC-path pins (no lifter pad).
-- `pin` LIFT_MISSING 38: 24 adder12 + 1 lut_random HMC-path pins; 13 dedicated clock inputs (`K17`, `L17`) that reach the fabric through clock muxes, not a `GPIO` arc.
+- 236 designs: 235 built OK; `c_ram_vnd_logic_16` failed `quartus_sta` (no oracle). Scored: 235 (a `decomp.bt` exists).
+- `lut function` before counts the old lifter's output (inverted tables on mislabelled halves); the earlier "134 MATCH" was the raw `.bt` mask under the compare's own mapping, not the lifter.
+- Remaining faults:
+  - `lut function` 235 missing: one `~QUARTUS_CREATED_GND~I` per design (constant-0 lcell, no `LUT_MASK` line, output unrouted): no bitstream trace.
+  - `ff.clk` 1732 missing: lifted source is a clock-tree spine node (`SCLK`/`HCLK` root), unnamed on the Quartus side. Needs the CMUX model (INPUT_SEL/CLKPIN_SEL -> pin). Same gap as the 13 dedicated clock pins in `pin`.
+  - `pins` 169, `obuf.i` 47: pads reached through the HMC I/O path and dedicated clock pins (unchanged).
+- Numbers are in-sample: the control rules below were read off this corpus and then scored on it.
+
+## Register controls (corpus differential, all 1754 registers)
+
+`_ff_controls()` in the lifter; every row is a crosstab of Quartus register features vs the bitstream, no exceptions unless stated.
+
+| control | rule | evidence |
+|---|---|---|
+| register present | a non-nlut `FF{h}{0,1,1L}` port is routed, or the half's `F` mode feeds back from it | `ff.present` 1754/1754, 0 extra |
+| D source | LUT-fed iff `{h}PKREG{1-slot}` is clear; pin-fed otherwise | 903 single-register ALMs (`d` from lcell vs `asdata`): 0 exceptions |
+| pin-fed D pin | `{h}EF_SEL`: E -> T `E0`, B `E1`; F -> T `F1`, B `F0` | `ff.d` 1754/1754; the F pins are crossed vs the LUT halves |
+| `sload` | constant 1 iff pin-fed, else 0 | Quartus `sload` const1 <=> `d` const0 + `asdata` pin; no `sload` signal in the corpus |
+| clock select | `{T,B}CLK_SEL` names the pair {T0,B1} / {T1,B0}, not the half | single-register ALMs: T0->TCLK, T1->BCLK, B0->BCLK, B1->TCLK |
+| clock source | `CLK<n>_INV`=1 -> clkb else clka (Mistral label swapped); clka `CLKIN.0` (`CLKA_SEL DIN0` -> `DATAIN.0`), clkb `CLKIN.1` (`CLKB_SEL DIN1` -> `DATAIN.1`) | fuzz item 6 + `ff.clk.domain` 1754/1754 |
+| clock edge | `CLK<n>_SEL`=CLKB -> negedge | fuzz item 6; `ff.clk.edge` 1754/1754 (4 negedge regs, `dual_edge`) |
+| MLAB clka | `CLKA_SEL GIN2` -> `DATAIN.0` | one design (`c_shiftreg_{sv,v95,vnd}_1`), 3 registers |
+| enable | `EN<n>_EN`=0 -> constant 1; else clock n -> `DATAIN.2/3/0` (n=0/1/2) | 771 const + 983 signal, one candidate input each; polarity `EN<n>_NINV`=0 active-high (fuzz item 7; no inverted enable in the corpus) |
+| async clear | `ACLR0_SEL`=ACLR0 -> constant 1; else `DATAIN.3`, `!` iff `ACLR0_INV`=1 | 1663 idle, 87 `sig!`, 4 `sig` |
+| sync clear | half `SCLR_DIS`=1 -> constant 0; else `DATAIN.3` (`SCLR_SEL DIN1` -> `DATAIN.1`); unrouted input -> constant 0 | `SCLR_DIS` follows the half label (no crossing) |
+
+- Not recovered (no evidence): `aclr1` (`{h}CLR_SEL`=1 never on a Quartus register), `CLK*_SEL`/`CLKB_SEL` values other than those above, inverted enable/sclr (`SCLR_INV`), `sload` as a signal, DSP/M10K registers.
+- `ffs` has no polarity or clear columns: only plain posedge D flops get `d/clk/ce` in the DB (others stay undriven in `lifted.v`, as before). Full controls: `Design.ffs[i]["ctl"]`.
 
 ## Routing oracle (`route_report.txt`, `route_hops`)
 
@@ -127,29 +168,18 @@ LAB input pins per lcell port (from connectivity: `conn.*` MATCH counts):
   - `.bt`: `r TD.000.018.0040 GPIO.000.018.2:DATAOUT.0 ; AA2`. Lifter pad `AA2:out` -> `pin MATCH`. Its DSU net reaches `FFB1L` of ALM 0 -> `conn.obuf.i MATCH` (q[0]~reg0).
   - Route: `driver='q[0]~reg0|q'` hops include `LOCAL_LINE_X1_Y19_N0_I1`, `R3_X1_Y19_N0_I1`, `C2_X0_Y17_N0_I11`, `IO_OUTPUT_BUFFER_INPUT_X0_Y18_N79_I0`.
 
-## Lifter findings (`lifters/cyclonev_lift.py` not changed here)
+## Lifter findings (#106)
 
-- LUT polarity: the raw `LUT_MASK` is the inverted function. The lifter emits raw bits as `init`, so every lifted LUT is complemented.
-- LUT halves: the lifter splits lo32 = "bottom" (FFB*), hi32 = "top" (FFT*), inputs A,B,C,D,E0/E1.
-  - Measured: in E_x mode lo32 belongs to the T half (TMODE). The address is a,b,c,d,f with e as region select (L6) or constant (E_x), B sees C/D swapped, MLAB bits are permuted.
-  - The lifted LUT functions are therefore wrong for every mode. Only the raw bits are right.
-- `F0`/`F1` are LUT inputs, not combinational outputs. The lifter uses them as LUT `z`, which collides with routed nets (counter_en_aclr: `alm_lab_r1c19_a7_bottom` drives `AA1`).
-- Combinational outputs leave through `FF*` ports when `{T,B}DFF*=NLUT`. The lifter emits every routed `FF*` port as a register: comparator8 12 and lut_random 16 lifted FFs with 0 Quartus registers, equal to their NLUT setting counts.
-- `FF?1` and `FF?1L` are two outputs of one register; the lifter emits two registers.
-  - Corpus totals: lifted 153 FFs vs 132 Quartus `dffeas`; lifted 212 LUT5 vs 162 lcells.
-- `ff.present LIFT_MISSING` 52: 46 because FF emission is gated on the lifter's (mislabelled) LUT half being non-zero, or the ALM has no LUT_MASK. 6 are registers whose Q leaves by no arc (feedback only).
-- FF d/clk/ena/clr/sclr/sload: all 132 LIFT_MISSING (known gap).
-- Register feedback (`{T,B}_FEEDBACK_SEL`) is not modelled: 24-27 LUT-input mismatches.
-- Pads: no pad for dedicated clock pins or HMC-path pins (38 of 359 Quartus pins).
+- Fixed: LUT polarity, halves, input order, bottom c/d swap, MLAB permutation; `F0`/`F1` are inputs; `NLUT` ports are LUT outputs, not registers; one register per physical register; registers independent of LUT halves; register feedback; absent `LUT_MASK` = constant 0.
+- Not lifted (counted in `Design.unmodelled_halves`): MLAB `RAM`/`ROM` halves and undecoded `BMNONE`.
+- Arithmetic `sumout`/carry is not modelled: arith halves are lifted as their `combout` LUT only; an arith half with a constant table and no output is not emitted.
+- DJI ground sample (`cyclonev_verify_all.py`): 33336/11502/144296 -> 6511/7855/15818 LUTs/FFs/nets. Old: every non-zero 32-bit half incl. unused ones, every routed `FF*` port as a register (nlut pass-throughs, `FF?1`+`FF?1L` twice). Corpus check: lifted FFs 1754 = Quartus 1754.
 
 ## Verified vs assumed
 
-- Verified on this corpus: the LUT model (ablations above), T/B half and FF slot numbering, LAB pin per lcell port, the bridges, every MATCH count above.
+- Verified on this corpus: the LUT model incl. `F_x` modes and feedback, T/B half and FF slot numbering, LAB pin per lcell port, register control rules above, the bridges.
 - Assumed or unverified:
-  - `F_0`/`F_1` LUT addressing.
-  - What `D_F`/`C_F` change.
-  - Arith `sumout`/carry.
-  - `TCLK_SEL`/`BCLK_SEL` vs FF half (in counter_en_aclr, `TCLK_SEL.0` sits on an ALM whose register is half B; not investigated).
-  - DSP/M10K internals.
-  - Mapping of Quartus routing-element names to Mistral nodes.
+  - `D_F`/`C_F` vs `D_E`/`C_E` beyond the `e` source; arith `sumout`/carry.
+  - `aclr1`, inverted enable / sclr, `sload` signal, MLAB `GIN3`.
+  - Clock-tree source of a register clock (CMUX); DSP/M10K internals; Mistral routing-element names vs Mistral nodes.
 - Single device/die and one Quartus version.

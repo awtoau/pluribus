@@ -282,6 +282,7 @@ def compare_build(bid, ddir):
             key = (blk_.upper(), int(x_), int(y_), int(alm_), h_.upper(), s_)
         lifted_ff.setdefault(key, f)
     quartus_ff_keys = set()
+    clk_rows = []        # (atom name, location, quartus clk driver, quartus inverted, lifted root, lifted inverted)
     for a in atoms.values():
         if a["type"] != "dffeas":
             continue
@@ -295,10 +296,51 @@ def compare_build(bid, ddir):
             f["name"] if f else None, "MATCH" if f else "LIFT_MISSING")
         conns = {c["port"]: c for c in by_atom[a["id"]]}
         for p in FF_PORTS:
-            qv = q_ctl(conns[p]) if p in conns else None
+            src = p
+            if p == "d" and conns.get("sload", {}).get("const") == "1" and "asdata" in conns:
+                src = "asdata"          # sload tied high: the effective data input is asdata
+            qv = q_ctl(conns[src]) if src in conns else None
             ctl = f.get("ctl", {}).get(p) if f else None
             lv = lifted_src(ctl) if ctl else None
-            row(a["name"], a["location"], f"ff.{p}", qv, lv, conn_verdict(qv, lv))
+            verdict = conn_verdict(qv, lv)
+            if lv and "unbridged:" in lv:
+                # lifted source is a node we cannot name on the Quartus side (clock tree, CMUX not
+                # modelled): the driver is unrecovered, not contradicted
+                verdict = "LIFT_MISSING"
+            if verdict != "MATCH" and qv and not qv.startswith("const:"):
+                # diagnostic only: LAB control inputs that DO carry the Quartus driver
+                alt = [f"{port}.{pi}" for port, pis in (("CLKIN", (0, 1)), ("DATAIN", (0, 1, 2, 3)))
+                       for pi in pis
+                       if lifted_driver(CVNode(blk, x, y, None, port, pi)) == qv.rstrip("!")]
+                lv = f"{lv} [lab inputs carrying it: {','.join(alt) or 'none'}]"
+                if p == "d":
+                    pins = [q for q in ("A", "B", "C", "D", "E0", "E1", "F0", "F1")
+                            if lifted_driver(CVNode(blk, x, y, alm, q, None)) == qv.rstrip("!")]
+                    bits = " ".join(f"{k}={setting(blk, x, y, k, alm) or '-'}" for k in
+                                    ("TPKREG0", "TPKREG1", "BPKREG0", "BPKREG1", "TEF_SEL", "BEF_SEL"))
+                    lv += f" [alm pins: {','.join(pins) or 'none'}] [{half} slot{slot} {bits}]"
+            row(a["name"], a["location"], f"ff.{p}", qv, lv, verdict)
+        if "clk" in conns and conns["clk"]["const"] is None:
+            qname = q_ctl(conns["clk"]).rstrip("!")
+            ctl = f.get("ctl", {}).get("clk") if f else None
+            clk_rows.append((a["name"], a["location"], qname, bool(conns["clk"]["inverted"]),
+                             lifted_driver(ctl[1]) if ctl and ctl[0] == "node" else None,
+                             bool(ctl[2]) if ctl else None))
+    # Clock tree (CMUX/PLL -> spine) is not modelled, so the strict ff.clk driver cannot bridge to the
+    # pad.  Two weaker checks that do not need it: edge (polarity) and domain (the lifted clock-root
+    # partition equals the Quartus clock-net partition within this design).
+    q2l, l2q = collections.defaultdict(set), collections.defaultdict(set)
+    for _n, _l, qn, _qi, lr, _li in clk_rows:
+        if lr is not None:
+            q2l[qn].add(lr)
+            l2q[lr].add(qn)
+    for name, loc, qn, qi, lr, li in clk_rows:
+        row(name, loc, "ff.clk.edge", "neg" if qi else "pos",
+            None if li is None else "neg" if li else "pos",
+            "LIFT_MISSING" if li is None else "MATCH" if li == qi else "MISMATCH")
+        row(name, loc, "ff.clk.domain", qn, lr,
+            "LIFT_MISSING" if lr is None else
+            "MATCH" if len(q2l[qn]) == 1 and len(l2q[lr]) == 1 else "MISMATCH")
     for key, f in sorted(lifted_ff.items()):
         if key not in quartus_ff_keys:
             row(None, f["name"], "ff.extra", None, f["name"], "LIFT_ONLY")

@@ -22,10 +22,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 LOG = REPO / "tmp" / "logs" / "cyclonev_lift_scorecard.log"
-# Stall guard: a design prints its summary only at the end, so the limit is per design.
-# Baseline cold worst case measured on this box (see tmp/scorecard-*.json "max_design_s");
-# overall = 3x that (host-process backstop, awto-dan#53).
-PER_DESIGN_LIMIT_S = int(os.environ.get("SCORECARD_DESIGN_LIMIT_S", "300"))
+# Per-design limit: the compare prints only at the end, so the limit is per design.
+# Waits for: one compare subprocess (lift + score). Measured worst 0.57 s over 235 designs
+# (tmp/scorecard-final.json max_design_s, loadavg ~9); limit = 3x rounded up. On expiry: log
+# the design and the limit, skip it (the design is then absent from the scorecard).
+PER_DESIGN_LIMIT_S = int(os.environ.get("SCORECARD_DESIGN_LIMIT_S", "3"))
 
 FAMILIES = [
     ("lut function", ["lut_mask", "lut_mask_arith", "lut.extra"]),
@@ -33,7 +34,8 @@ FAMILIES = [
                     "conn.dataf", "conn_arith.dataa", "conn_arith.datab", "conn_arith.datac",
                     "conn_arith.datad", "conn_arith.datae", "conn_arith.dataf"]),
     ("ff.present", ["ff.present", "ff.extra"]),
-    ("ff.d", ["ff.d"]), ("ff.clk", ["ff.clk"]), ("ff.clrn", ["ff.clrn"]),
+    ("ff.d", ["ff.d"]), ("ff.clk", ["ff.clk"]),
+    ("ff.clk.edge", ["ff.clk.edge"]), ("ff.clk.domain", ["ff.clk.domain"]), ("ff.clrn", ["ff.clrn"]),
     ("ff.ena", ["ff.ena"]), ("ff.sclr", ["ff.sclr"]), ("ff.sload", ["ff.sload"]),
     ("pins", ["pin"]),
     ("obuf.i", ["conn.obuf.i"]),

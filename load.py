@@ -547,7 +547,7 @@ def load_cyclonev(label, config_path, device):
         ).scalar()
         assert_eq("LUT count in DB", lut_count, n_luts)
 
-        # ── FFs (Q net only — D/CLK/CE/LSR unresolved, see status doc) ────
+        # ── FFs (D/CLK/CE only for plain posedge D flops, see lifters/cyclonev_lift.py) ──
         bad_ffs = [ff for ff in design.ffs if not ff.get("name") or not ff.get("q")]
         if bad_ffs:
             die(f"{len(bad_ffs)} FFs have missing name or Q: {[f['name'] for f in bad_ffs[:5]]}")
@@ -569,7 +569,7 @@ def load_cyclonev(label, config_path, device):
             q = ff["q"]
             for pin, net in (("D", ff["d"]), ("CLK", ff["clk"]),
                              ("CE", ff["ce"]), ("LSR", ff["lsr"])):
-                if net:
+                if net and not net.startswith("1'b"):
                     fanout_rows.append({"bitstream": bs_id, "net": net, "cell_type": "FF",
                                         "cell": ff["name"], "pin": pin, "out_net": q})
         for lt in design.luts:
