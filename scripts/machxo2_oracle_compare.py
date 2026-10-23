@@ -728,6 +728,19 @@ def main():
     log(f"[compare] done in {time.monotonic() - t0:.1f}s: {summ['status']}")
     for key in ("pips", "net_verdicts", "gkey_verdicts", "site_field_verdicts"):
         log(f"[compare] {key}: {summ[key]}")
+    # Headline: a missing/extra connection is a fault as bad as a wrong one.
+    sf = summ["site_field_verdicts"]
+    clk = {k.split(":")[1]: v for k, v in sf.items() if k.startswith("FF#.lift.clk:")}
+    summ["headline"] = {}
+    for label, c in (("pips", summ["pips"]), ("nets", summ["net_verdicts"]),
+                     ("register clock nets", clk)):
+        tot, ok = sum(c.values()), c.get("MATCH", 0)
+        summ["headline"][label] = {"match": ok, "total": tot, "faults": tot - ok,
+                                   "rate_pct": round(100.0 * ok / tot, 1) if tot else None}
+        log(f"[compare] HEADLINE {label}: {ok}/{tot} = {100.0 * ok / tot:.1f}%  "
+            f"faults (every non-MATCH) = {tot - ok}")
+    with open(os.path.join(args.out, "_compare_summary.json"), "w") as fh:
+        json.dump(summ, fh, indent=1)
 
 
 if __name__ == "__main__":
