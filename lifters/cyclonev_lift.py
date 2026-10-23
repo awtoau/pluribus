@@ -298,6 +298,18 @@ def _trailing_pin(line, match_end):
     carry a second ' ; ', so only 'i' lines need the second-field strip.
     Only the FIRST ';'-field is treated as the pin; anything after a second
     ';' is discarded.
+
+    SECOND FORM, NOT IN THE e50f REFERENCE SAMPLE BUT SEEN FORCING OTHER
+    DIES (cross-die plausibility work, awto-dji#3): an 'i' line with ONLY
+    ONE ' ; ', whose single field is itself an alt-node reference, no pin
+    at all:
+      i HMC.023.000:IOINTDQDOUT.116 0 ; HMC.023.000:PHYDDIODQDOUT.116 GPIO.055.000.2:DATAOUT.0
+    Confirmed this is not die-specific noise: the SAME form appears
+    forcing the confirmed-good e50f sample (m2001) against gt75f. More
+    HMC tiles on a die apparently means more of these no-pin HMC-internal
+    aliases. Detected by: the one field doesn't match _PIN_RE AND contains
+    a ':' (node grammar) -- treated as "no pin on this line", same as no
+    ' ; ' at all, not a grammar-break.
     """
     tail = line[match_end:]
     if " ; " not in tail:
@@ -306,6 +318,11 @@ def _trailing_pin(line, match_end):
     if " ; " in pin:          # 'i' line's second field (alt-node) -- drop it
         pin = pin.split(" ; ", 1)[0].strip()
     if not pin:
+        return None
+    if ":" in pin and not _PIN_RE.match(pin):
+        # Single-field alt-node form (see SECOND FORM above): this whole
+        # token is a BLOCK.x.y.bi:PORT.pi node reference, not a pin at
+        # all -- no board-level pin on this line, not a grammar break.
         return None
     if not _PIN_RE.match(pin):
         # Fail loud rather than silently accept or silently drop: every one
