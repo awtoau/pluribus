@@ -1,0 +1,7 @@
+top = "c_async_reset_sv_8"
+purpose = "register with asynchronous reset [SystemVerilog]"
+exercises = ["dffeas", "aclr"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "async_reset"
+variant = "sv"
+width = 8

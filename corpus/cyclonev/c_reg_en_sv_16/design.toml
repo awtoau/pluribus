@@ -1,0 +1,7 @@
+top = "c_reg_en_sv_16"
+purpose = "register with enable [SystemVerilog]"
+exercises = ["dffeas", "ena"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "reg_en"
+variant = "sv"
+width = 16

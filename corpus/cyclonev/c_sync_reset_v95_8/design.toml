@@ -1,0 +1,7 @@
+top = "c_sync_reset_v95_8"
+purpose = "register with synchronous reset [Verilog-95]"
+exercises = ["dffeas", "sclr"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "sync_reset"
+variant = "v95"
+width = 8

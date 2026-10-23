@@ -1,0 +1,7 @@
+top = "c_subtractor_vnd_4"
+purpose = "a-b with borrow bit [vendor]"
+exercises = ["subtractor", "carry"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "subtractor"
+variant = "vnd"
+width = 4

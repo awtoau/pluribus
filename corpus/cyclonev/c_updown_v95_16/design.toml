@@ -1,0 +1,7 @@
+top = "c_updown_v95_16"
+purpose = "up/down counter [Verilog-95]"
+exercises = ["counter", "carry", "updown"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "updown"
+variant = "v95"
+width = 16

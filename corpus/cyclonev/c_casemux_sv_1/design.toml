@@ -1,0 +1,7 @@
+top = "c_casemux_sv_1"
+purpose = "case mux, 3 inputs on 2-bit select (value 3 unspecified) [SystemVerilog]"
+exercises = ["mux", "case"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "casemux"
+variant = "sv"
+width = 1

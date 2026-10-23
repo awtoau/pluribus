@@ -1,0 +1,7 @@
+top = "c_reg_en_v95_16"
+purpose = "register with enable [Verilog-95]"
+exercises = ["dffeas", "ena"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "reg_en"
+variant = "v95"
+width = 16

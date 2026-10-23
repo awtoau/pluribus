@@ -1,0 +1,7 @@
+top = "c_comb_v95_1"
+purpose = "pure combinational assign logic [Verilog-95]"
+exercises = ["lut", "comb"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "comb"
+variant = "v95"
+width = 1

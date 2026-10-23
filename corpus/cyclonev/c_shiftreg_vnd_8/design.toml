@@ -1,0 +1,7 @@
+top = "c_shiftreg_vnd_8"
+purpose = "serial-in parallel-out shift register [vendor]"
+exercises = ["shiftreg", "dffeas"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "shiftreg"
+variant = "vnd"
+width = 8

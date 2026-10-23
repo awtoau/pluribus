@@ -1,0 +1,7 @@
+top = "c_async_reset_v95_8"
+purpose = "register with asynchronous reset [Verilog-95]"
+exercises = ["dffeas", "aclr"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "async_reset"
+variant = "v95"
+width = 8

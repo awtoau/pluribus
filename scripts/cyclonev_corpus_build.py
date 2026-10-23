@@ -16,6 +16,7 @@ Usage:
   python3.15t scripts/cyclonev_corpus_build.py              # every design
   python3.15t scripts/cyclonev_corpus_build.py --only adder12 mult9x9
   python3.15t scripts/cyclonev_corpus_build.py --skip-quartus  # re-parse/compare existing outputs
+  python3.15t scripts/cyclonev_corpus_build.py --match 'c_*' --jobs 4   # glob, parallel Quartus
 DB: $PLURIBUS_SQLITE_PATH, default corpus/cyclonev/corpus.db.
 Log: tmp/logs/cyclonev_corpus_build.log
 """
@@ -31,6 +32,7 @@ import sys
 import threading
 import time
 import tomllib
+import fnmatch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -54,6 +56,14 @@ OVERALL_S = {"quartus_map": 12, "quartus_fit": 23, "quartus_asm": 6,
              "quartus_eda": 3, "quartus_cpf": 2, "quartus_sta": 4, "decomp": 4,
              "load": 2, "verilog": 2}
 
+# --jobs N: Quartus steps run N at a time; decomp/load/DB steps are serialised (one SQLite
+# writer).  New builds wait while RAM use >= MEM_GATE_PCT (host is shared); logged every 30 s.
+# Per-step OVERALL_S limits are multiplied by the limit scale (default = jobs: slowdown under load).
+MEM_GATE_PCT = 85
+MEM_LOG_S = 30
+DB_LOCK = threading.Lock()
+LIMIT_SCALE = 1
+
 log = logging.getLogger("cyclonev_corpus_build")
 
 
@@ -68,7 +78,7 @@ def setup_logging():
 
 def run(step, cmd, cwd, logdir, env=None):
     """Run one tool; its output -> logdir/<step>.log.  Returns True on rc 0."""
-    overall = OVERALL_S[step]
+    overall = OVERALL_S[step] * LIMIT_SCALE
     logdir.mkdir(parents=True, exist_ok=True)
     log.info("+ [%s] %s", step, " ".join(str(c) for c in cmd))
     t0 = time.monotonic()
@@ -222,6 +232,15 @@ def record_build(name, ddir, spec, srcs, status):
         )).inserted_primary_key[0]
 
 
+def wait_for_memory(name):
+    import psutil
+    t0 = time.monotonic()
+    while psutil.virtual_memory().percent >= MEM_GATE_PCT:
+        log.info("%s: waiting for RAM < %d%% (now %.1f%%, %.0fs waited)", name, MEM_GATE_PCT,
+                 psutil.virtual_memory().percent, time.monotonic() - t0)
+        threading.Event().wait(MEM_LOG_S)
+
+
 def build_one(name, skip_quartus):
     ddir = CORPUS / name
     spec = tomllib.loads((ddir / "design.toml").read_text())
@@ -232,8 +251,16 @@ def build_one(name, skip_quartus):
     t0 = time.monotonic()
     fail = None
     if not skip_quartus:
+        wait_for_memory(name)
         clean(ddir)
-        fail = quartus(ddir, spec, srcs) or decomp_and_lift(ddir, name)
+        fail = quartus(ddir, spec, srcs)
+    with DB_LOCK:
+        return finish_one(name, ddir, spec, srcs, skip_quartus, fail, t0)
+
+
+def finish_one(name, ddir, spec, srcs, skip_quartus, fail, t0):
+    if not skip_quartus and fail is None:
+        fail = decomp_and_lift(ddir, name)
     status = "ok" if fail is None else f"fail:{fail}"
     bid = record_build(name, ddir, spec, srcs, status)
     if fail is None:
@@ -255,15 +282,24 @@ def main():
     ap.add_argument("--only", nargs="*", help="design names (default: all)")
     ap.add_argument("--skip-quartus", action="store_true",
                     help="reuse existing outputs; only re-parse + re-compare")
+    ap.add_argument("--match", help="glob on design names, e.g. 'c_*'")
+    ap.add_argument("--jobs", type=int, default=1, help="parallel builds (default 1)")
+    ap.add_argument("--limit-scale", type=float, help="multiplier on per-step limits (default jobs)")
     args = ap.parse_args()
+    global LIMIT_SCALE
+    LIMIT_SCALE = args.limit_scale or max(1, args.jobs)
     setup_logging()
     import schema
     schema.init()
     names = args.only or sorted(p.name for p in CORPUS.iterdir()
                                 if (p / "design.toml").exists())
+    if args.match:
+        names = [n for n in names if fnmatch.fnmatch(n, args.match)]
     log.info("DB %s; %d designs; NoGIL=%s", os.environ["PLURIBUS_SQLITE_PATH"], len(names),
              not getattr(sys, "_is_gil_enabled", lambda: True)())
-    results = {n: build_one(n, args.skip_quartus) for n in names}
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=args.jobs) as ex:
+        results = dict(zip(names, ex.map(lambda n: build_one(n, args.skip_quartus), names)))
     for n, f in results.items():
         log.info("RESULT %-18s %s", n, "ok" if f is None else f"FAIL at {f}")
     sys.exit(0 if all(f is None for f in results.values()) else 1)

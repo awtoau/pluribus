@@ -1,0 +1,7 @@
+top = "c_ram_v95_4"
+purpose = "64x4 simple-dual-port RAM, registered read [v95]"
+exercises = ["ram", "ram_block"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "ram"
+variant = "v95"
+width = 4

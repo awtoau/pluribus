@@ -1,0 +1,7 @@
+top = "c_decoder_sv_2"
+purpose = "binary-to-one-hot decoder; width = select bits [SystemVerilog]"
+exercises = ["decoder"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "decoder"
+variant = "sv"
+width = 2

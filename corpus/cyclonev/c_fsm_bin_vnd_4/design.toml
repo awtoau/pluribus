@@ -1,0 +1,7 @@
+top = "c_fsm_bin_vnd_4"
+purpose = "4-state FSM, binary [vendor]"
+exercises = ["fsm", "dffeas"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "fsm_bin"
+variant = "vnd"
+width = 4

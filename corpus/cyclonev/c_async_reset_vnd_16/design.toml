@@ -1,0 +1,7 @@
+top = "c_async_reset_vnd_16"
+purpose = "register with asynchronous reset [vendor]"
+exercises = ["dffeas", "aclr"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "async_reset"
+variant = "vnd"
+width = 16

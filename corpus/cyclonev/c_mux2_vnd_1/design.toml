@@ -1,0 +1,7 @@
+top = "c_mux2_vnd_1"
+purpose = "2:1 mux, ?: select [vendor]"
+exercises = ["mux"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "mux2"
+variant = "vnd"
+width = 1

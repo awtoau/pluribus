@@ -1,0 +1,7 @@
+top = "c_sync_reset_sv_4"
+purpose = "register with synchronous reset [SystemVerilog]"
+exercises = ["dffeas", "sclr"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "sync_reset"
+variant = "sv"
+width = 4

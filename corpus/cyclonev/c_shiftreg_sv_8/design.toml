@@ -1,0 +1,7 @@
+top = "c_shiftreg_sv_8"
+purpose = "serial-in parallel-out shift register [SystemVerilog]"
+exercises = ["shiftreg", "dffeas"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005"]
+construct = "shiftreg"
+variant = "sv"
+width = 8
