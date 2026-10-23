@@ -86,7 +86,7 @@ def main():
     ap.add_argument("--board", required=True,
                     help="board directory holding spi_registers.tsv")
     ap.add_argument("--out", default=str(REPO / "scripts/efb_wb_boot.vh"))
-    ap.add_argument("--inst", default="efb_inst",
+    ap.add_argument("--inst", default="dut.efb_inst",
                     help="EFB instance name in the recovered netlist")
     args = ap.parse_args()
     log = setup_logging()

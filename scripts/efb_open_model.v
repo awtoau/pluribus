@@ -1,43 +1,37 @@
-// An IP-FREE stand-in for the MachXO2 EFB, for SIMULATION ONLY.
+// Behavioural stand-in for the MachXO2 EFB (SPI slave + WISHBONE), SIMULATION ONLY.
 //
-// WHY
-// ---
-// The recovered netlist instantiates `EFB` as a (* blackbox *): correct, because
-// the EFB is hard IP whose internals are not in the bitstream.  A blackbox
-// drives nothing, so every fabric net the EFB feeds sits at X and the recovered
-// scope datapath never does anything.  This module replaces it with open logic
-// so the fabric can be exercised.
-//
-// WHAT IT MODELS, AND WHAT IT DOES NOT
-// ------------------------------------
-// The recovered interface is a WISHBONE slave -- 8-bit address, 8-bit data each
-// way, CLK/STB/CYC/WE/ACK -- all 30 ports recovered from the bitstream.  This
-// models exactly that bus, and NOTHING else: no I2C, no timer/counter, no UFM,
-// no PLL config port, no sysCONFIG behaviour.  Those are absent from this design
-// or irrelevant to the datapath.
-//
-// It is NOT a model of the hardened SPI slave.  On MachXO2 the SPI clock and
-// data are on dedicated sysCONFIG pins wired to the EFB in silicon; they never
-// enter the fabric, so nothing about them appears in the bitstream and there is
-// nothing to recover.  Only JSPISCSN (chip-select) is fabric-routed and shows up.
-// Rather than invent a serial front end, the testbench drives the WISHBONE side
-// directly -- same register writes, none of the guesswork.  See
-// scripts/efb_wb_boot.vh.
-//
-// FIDELITY
-// --------
-// Register STORAGE is faithful (a write lands, a read returns it, ACK is one
-// cycle).  Register SEMANTICS are not modelled at all: writing ARM_CAPTURE here
-// stores 0x07, it does not make hard IP start a capture.  Any behaviour observed
-// downstream therefore comes from the RECOVERED FABRIC responding to the bus,
-// which is the whole point of the exercise.
-//
-// The port list mirrors the recovered instantiation exactly; unused inputs are
-// accepted and ignored so the module is a drop-in.
+// RECOVERED vs MODELLED
+// - Recovered from the bitstream: fabric port list, config (parameters, efb_decode.py).
+// - Modelled (MachXO2 EFB register map, TN1205; NOT checked against silicon or the
+//   vendor simulator, which is encrypted):
+//     * WISHBONE classic slave, ACK one cycle after STB&CYC.
+//     * SPI registers 0x54..0x5D (CR0..CR2, BR, CSR, TXDR, SR, RXDR, IRQ, IRQEN).
+//     * Hardened SPI slave front end (mode 0, MSB first), driven by the testbench
+//       through spi_xfer(); the pins are dedicated on silicon, so they are
+//       model-internal here.
+//     * Any other address: plain byte store.
+// - Not modelled: I2C, timer/counter, UFM, PLL port, interrupts; JSPISCSN is ignored
+//   (spi_csn_i is the chip select).
+// SR bits: TIP 7, BUSY 6, TRDY 4, RRDY 3, TOE 2, ROE 1, MDF 0.
 `timescale 1ns/1ps
 
-module EFB (
-    // WISHBONE slave -- the recovered interface
+module EFB #(
+    parameter EFB_I2C1 = "DISABLED",
+    parameter EFB_I2C2 = "DISABLED",
+    parameter EFB_SPI = "DISABLED",
+    parameter EFB_TC = "DISABLED",
+    parameter SPI_MODE = "SLAVE",
+    parameter SPI_CLK_DIVIDER = "1",
+    parameter SPI_WAKEUP = "DISABLED",
+    parameter SPI_LSB_FIRST = "DISABLED",
+    parameter SPI_PHASE_ADJ = "DISABLED",
+    parameter SPI_CLK_INV = "DISABLED",
+    parameter SPI_SLAVE_HANDSHAKE = "DISABLED",
+    parameter SPI_INTR_RXOVR = "DISABLED",
+    parameter SPI_INTR_TXOVR = "DISABLED",
+    parameter SPI_INTR_RXRDY = "DISABLED",
+    parameter SPI_INTR_TXRDY = "DISABLED"
+) (
     input  wire JWBCLKI,
     input  wire JWBRSTI,
     input  wire JWBCYCI,
@@ -50,39 +44,70 @@ module EFB (
     output wire JWBACKO,
     output wire JWBDATO0, JWBDATO1, JWBDATO2, JWBDATO3,
     output wire JWBDATO4, JWBDATO5, JWBDATO6, JWBDATO7,
-    // present in the recovered netlist, accepted and unused here
-    input  wire JSPISCSN,
-    input  wire JWBCUFMIRQ,
-    output wire JSPIIRQO,
-    output wire JI2C1IRQO,
-    output wire JI2C2IRQO,
-    output wire JTCINT,
-    output wire JTCOC
+    input  wire JSPISCSN
 );
-    wire [7:0] adr = {JWBADRI7, JWBADRI6, JWBADRI5, JWBADRI4,
-                      JWBADRI3, JWBADRI2, JWBADRI1, JWBADRI0};
+    wire [7:0] adr  = {JWBADRI7, JWBADRI6, JWBADRI5, JWBADRI4,
+                       JWBADRI3, JWBADRI2, JWBADRI1, JWBADRI0};
     wire [7:0] dati = {JWBDATI7, JWBDATI6, JWBDATI5, JWBDATI4,
                        JWBDATI3, JWBDATI2, JWBDATI1, JWBDATI0};
 
-    // 256 x 8 register file.  The board's map (boards/<board>/spi_registers.tsv)
-    // uses addresses well under 0x100, so a flat file covers every bank.
+    localparam A_CR1 = 8'h55, A_CSR = 8'h58, A_TXDR = 8'h59, A_SR = 8'h5A,
+               A_RXDR = 8'h5B;
+
     reg [7:0] regs [0:255];
     reg [7:0] dato = 8'h00;
     reg       ack  = 1'b0;
 
+    reg [7:0] txdr = 8'h00, rxdr = 8'h00;
+    reg       trdy = 1'b1, rrdy = 1'b0, toe = 1'b0, roe = 1'b0, tip = 1'b0;
+    // testbench-driven SPI pins (dedicated on silicon)
+    reg       spi_sck_i = 1'b0, spi_mosi_i = 1'b0, spi_csn_i = 1'b1;
+    reg       spi_miso_o = 1'b0;
+
+    reg trace;                                  // +efb_trace prints every WB cycle
+    integer wb_reads = 0, wb_writes = 0, spi_bytes = 0;
+    reg [255:0] adr_seen = 256'b0;              // addresses touched by the fabric
+
     integer i;
     initial begin
+        trace = $test$plusargs("efb_trace");
         for (i = 0; i < 256; i = i + 1) regs[i] = 8'h00;
+        regs[A_CR1] = 8'h80;                    // SPE, from the recovered config payload
+        regs[A_CSR] = 8'hFF;
     end
 
-    // Single-cycle WISHBONE classic: ACK follows an accepted STB+CYC.
+    wire [7:0] sr = {tip, tip, 1'b0, trdy, rrdy, toe, roe, 1'b0};
+
+    function [7:0] rd(input [7:0] a);
+        case (a)
+            A_SR:    rd = sr;
+            A_RXDR:  rd = rxdr;
+            A_TXDR:  rd = txdr;
+            default: rd = regs[a];
+        endcase
+    endfunction
+
     always @(posedge JWBCLKI) begin
         if (JWBRSTI === 1'b1) begin
             ack  <= 1'b0;
             dato <= 8'h00;
         end else if ((JWBSTBI === 1'b1) && (JWBCYCI === 1'b1) && !ack) begin
-            if (JWBWEI === 1'b1) regs[adr] <= dati;
-            else                 dato      <= regs[adr];
+            adr_seen[adr] = 1'b1;
+            if (JWBWEI === 1'b1) begin
+                wb_writes = wb_writes + 1;
+                case (adr)
+                    A_TXDR:       begin txdr <= dati; trdy <= 1'b0; end
+                    A_SR, A_RXDR: ;
+                    default:      regs[adr] <= dati;
+                endcase
+                if (trace) $display("WB t=%0t WR a=%h d=%h", $time, adr, dati);
+            end else begin
+                wb_reads = wb_reads + 1;
+                dato <= rd(adr);
+                if (adr == A_RXDR) rrdy <= 1'b0;
+                if (adr == A_SR)   begin toe <= 1'b0; roe <= 1'b0; end
+                if (trace) $display("WB t=%0t RD a=%h d=%h", $time, adr, rd(adr));
+            end
             ack <= 1'b1;
         end else begin
             ack <= 1'b0;
@@ -93,20 +118,41 @@ module EFB (
             JWBDATO3, JWBDATO2, JWBDATO1, JWBDATO0} = dato;
     assign JWBACKO = ack;
 
-    // Peripherals this design does not use: held inactive rather than left X,
-    // so they cannot poison the fabric through an unmodelled path.
-    assign JSPIIRQO  = 1'b0;
-    assign JI2C1IRQO = 1'b0;
-    assign JI2C2IRQO = 1'b0;
-    assign JTCINT    = 1'b0;
-    assign JTCOC     = 1'b0;
+    // One SPI byte, mode 0, MSB first, driven by the testbench.
+    // TX: TXDR if loaded (TRDY=0) else 0x00 (+TOE).  RX: RXDR <= byte, RRDY=1 (+ROE if
+    // the previous byte was never read).
+    task spi_xfer(input [7:0] mosi, output [7:0] miso, input integer sck_half_ns);
+        integer b;
+        reg [7:0] tx, rx;
+        begin
+            tx = trdy ? 8'h00 : txdr;
+            rx = 8'h00;
+            spi_csn_i = 1'b0;
+            tip = 1'b1;
+            for (b = 7; b >= 0; b = b - 1) begin
+                spi_mosi_i = mosi[b];
+                spi_miso_o = tx[b];
+                #(sck_half_ns) spi_sck_i = 1'b1;
+                rx[b] = spi_mosi_i;
+                #(sck_half_ns) spi_sck_i = 1'b0;
+            end
+            tip = 1'b0;
+            miso = tx;
+            if (rrdy) roe = 1'b1;
+            rxdr = rx;
+            rrdy = 1'b1;
+            if (trdy) toe = 1'b1; else trdy = 1'b1;
+            spi_bytes = spi_bytes + 1;
+        end
+    endtask
+    task spi_cs(input level);
+        begin spi_csn_i = level; end
+    endtask
 
-    // Let the testbench poke registers directly, standing in for the MCU's SPI
-    // writes without modelling a serial front end that is not in the bitstream.
     task wb_poke(input [7:0] a, input [7:0] d);
         begin regs[a] = d; end
     endtask
     function [7:0] wb_peek(input [7:0] a);
-        begin wb_peek = regs[a]; end
+        begin wb_peek = rd(a); end
     endfunction
 endmodule

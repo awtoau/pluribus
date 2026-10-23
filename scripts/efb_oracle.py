@@ -116,7 +116,7 @@ def lpf(name):
     body = "BLOCK RESETPATHS;\nBLOCK ASYNCPATHS;\n\n"
     for p, s in pins:
         body += f'LOCATE COMP "{p}" SITE "{s}";\nIOBUF PORT "{p}" IO_TYPE=LVCMOS33;\n\n'
-    if VARIANTS[name].get("SPI_MODE") == "MASTER":
+    if VARIANTS.get(name, {}).get("SPI_MODE") == "MASTER":
         body += "SYSCONFIG MASTER_SPI_PORT=ENABLE;\n"
     return body + 'FREQUENCY PORT "clk" 100.000000 MHz;\n'
 

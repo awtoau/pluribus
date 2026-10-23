@@ -75,6 +75,10 @@ def summarise(label):
         s["gate_pass"] = bool(re.search(r"^PASS", t, re.M))
         for m in re.finditer(r"^\s+(\d+)\s+(\$?\w+)\s*$", t, re.M):
             s[f"cells_{m.group(2)}"] = int(m.group(1))
+    for sj in sorted((REPO / f"tmp/sim/{label}").glob("summary*.json")):
+        for k, v in json.loads(sj.read_text()).items():
+            if k not in ("label", "pll"):
+                s[f"{sj.stem}_{k}"] = v
     vf = REPO / f"out/{label}.v"
     if vf.is_file():
         s["v_sha256"] = hashlib.sha256(vf.read_bytes()).hexdigest()
