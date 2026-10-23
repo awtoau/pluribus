@@ -18,7 +18,7 @@ Installed at `/mnt/2tb/opt/altera/quartus-25.1` (outside the repo — large, ~24
 | `altera/cyclonev-25.1std.0.1129.qdz` | `a7225ec1bd36ccfd6826ea6273df5d21dd95633b` | 1.4 GB | same page — "Cyclone V device support" |
 | `altera/Cyclone_V_Device_Datasheet.pdf` | — | 1.1 MB | [docs.altera.com 683801](https://docs.altera.com/r/docs/683801/current/cyclone-v-device-datasheet/configuration-files) via Digi-Key mirror (the JS reader app doesn't render through automated fetch) |
 | `altera/Cyclone_IV_Device_Handbook_vol1.pdf` | `5dab2b718d3c28bbee51dd299385c17809e454c7` | 8.3 MB, 268 pages | Cyclone IV Device Handbook vol 1, CYIV-5V1-2.2 (May 2013), via [Waveshare mirror](https://files.waveshare.com/upload/7/7f/Cyiv-5v1.pdf). Good copy: contains "Table 8–2. Uncompressed Raw Binary File (.rbf) Sizes for Cyclone IV Devices" |
-| `altera/cyclone-25.1std.0.1129.qdz` | `835d2b1732549294eed625b692d044135499b5e8` | 466 MB | same Quartus page — "Cyclone IV device support". **Not fetched** (2026-10-24: SSO sign-in required, session expired). Needed for any Cyclone IV map/fit; install with `--components cyclone` |
+| `altera/cyclone-25.1std.0.1129.qdz` | `835d2b1732549294eed625b692d044135499b5e8` | 466 MB | same Quartus page — "Cyclone IV device support". Fetched 2026-10-24 (signed-in browser), sha1 verified. Installed with `scripts/quartus_device_install.py` (below) |
 | `altera/Cyclone_V_Device_Handbook_vol1.pdf` | — | 2.5 MB | [docs.altera.com 683375](https://docs.altera.com/r/docs/683375/current/cyclone-v-device-handbook-volume-1-device-interfaces-and-integration/configuration-data-compression), "Configuration Data Compression" section, via Digi-Key mirror |
 
 Both installer files require an Altera account (SSO + email OTP) and a EULA
@@ -36,6 +36,13 @@ chmod +x altera/qinst-lite-linux-25.1std-1129.run
   --download-dir sources/altera --install-dir /mnt/2tb/opt/altera/quartus-25.1 \
   --components quartus,cyclonev --accept-eula --auto-install
 ```
+
+Adding a device package to that install (Cyclone IV, 2026-10-24):
+- `scripts/quartus_device_install.py --qdz-dir <dir holding only the .qdz> --component cyclone --family "Cyclone IV E" --family "Cyclone IV GX"`.
+- It runs the install's own `quartus/common/devinfo/dev_install/dev_install.run` unattended.
+- `--enable-components cyclone` is required. Without it the run exits 0 and installs nothing. The flag is not in `--help`.
+- The installer unzips the `.qdz` into the install root. It adds only `quartus/common/devinfo/cycloneive/` and `cycloneivgx/`.
+- Verify: `quartus_sh --tcl_eval get_family_list` -> `{Cyclone IV E} {Cyclone V} {Cyclone IV GX}`.
 
 The Cyclone V config-data compression scheme is **not** documented in either PDF (the
 handbook section only covers the Quartus GUI toggle) — Mistral's own decompressor
