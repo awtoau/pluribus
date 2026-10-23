@@ -105,6 +105,9 @@ def main():
     ap.add_argument("--data-root", default=None)
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--only")
+    ap.add_argument("--sample", type=int, help="evenly spaced subset of N bitstreams")
+    ap.add_argument("--thirdparty-only", action="store_true",
+                    help="skip the Diamond builds (their drops are in the oracle compare)")
     args = ap.parse_args()
     root = os.path.abspath(args.data_root or data_root())
     out = os.path.join(root, "corpus", "ecp5", "diamond-oracle")
@@ -114,12 +117,15 @@ def main():
     items = []
     for f in sorted(glob.glob(os.path.join(root, "corpus", "ecp5", "*.bit*"))):
         items.append(("thirdparty", os.path.basename(f), f))
-    for f in sorted(glob.glob(os.path.join(out, "*", "oracle.json"))):
+    for f in ([] if args.thirdparty_only else sorted(glob.glob(os.path.join(out, "*", "oracle.json")))):
         o = json.load(open(f))
         if o.get("bit"):
             items.append(("diamond", o["target"], o["bit"]))
     if args.only:
         items = [i for i in items if args.only in i[1]]
+    if args.sample and args.sample < len(items):
+        step = len(items) / args.sample
+        items = [items[int(i * step)] for i in range(args.sample)]
     log(f"[census] {len(items)} bitstreams, {args.workers} workers")
     # group by size so 85F decodes are spread, not bunched
     q = queue.Queue()
