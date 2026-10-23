@@ -80,3 +80,27 @@ Headline (LUT INIT multiset, canonical under input permutation): matched / (matc
 - `--ghosts-as-inputs` (experiment: the 263 undriven internal wires become input ports, synthesis + map only): still 3 registers / 4 LUT4, because cause 2 keeps the outputs constant.
 - Not in the lift at all: the PLL (0 of 1 used; clocks are input ports), so LSE sees the primary clocks as plain pads (#104).
 - Known-source round-trip (`machxo2_roundtrip.py`): proven to cycle 52, diverges at 53 (unchanged since baseline).
+
+## #113: constant-D flip-flops, undriven nets (2026-10-24, label V07)
+
+Before = main 5f2d4bdcd + loud-fault commit. After = branch wt-113.
+
+| | before | after |
+|---|---|---|
+| FFs with constant D | 64 (59 x 1'b0, 5 x 1'b1) | 5 (1'b1, absent paired LUT) |
+| FFs with D fault flagged (`ffs.d_fault`) | 43 (const-0 RESET) | 1 (DPRAM write pin unconnected) |
+| gate no-driver wires / DB undriven nets | 270 / 528 | 271 / 529 |
+| V02 constant-D FFs / no-driver wires | 54 / 231 | 5 / 233 |
+| oracle: pips matched / total | 80,532 / 134,261 | 80,532 / 134,261 |
+| oracle: nets matched / total | 18,325 / 19,498 | 18,325 / 19,498 |
+| oracle: register-clock nets | 1,876 / 2,996 | 1,876 / 2,996 |
+| oracle: register D nets (new headline) | n/a | 2,972 / 2,996 (16 M-unconnected, 8 DPRAM write unconnected) |
+| Diamond rebuild LUT INIT: matched / missing / extra / wrong | 2 / 1255 / 0 / 0 (0.16%) | 4 / 1253 / 0 / 0 (0.32%) |
+| rebuild REGSET enums (orig 1070) | 1 | 5 |
+
+- Root cause of the 59: `const_by_root` treated an all-0 INIT as a constant LUT in DPRAM/RAMW slices; there the INIT word is RAM contents and F is the read port. Every FF and LUT input reading a DPRAM F resolved to 1'b0.
+  - 41 FFs read F directly; 18 read M-routed nets whose root was a DPRAM F. 6 of the 41 also needed F rooted before the DPRAM pass names it.
+  - Not wire canonicalisation, not missing arcs, not the 44,100 ORACLE_ONLY fixed conns.
+- `scripts/undriven_classify.py` on the 287 undriven-and-read nets: 185 global-spine arc dropped (#109), 46 edge H06 hop-3 stub arc dropped by `gkey()`, 45 edge H06 wire with no driver (turnaround), 10 other (5 EBR1-tile `JF`, 2 EBR1-tile `JQ`, 1 bottom-edge pad `JQ`, 1 clock pin, 1 DPRAM read with unconnected write pin).
+- Edge H06 stubs: the Diamond corpus holds one H06 turnaround (`H06W0301 -> H06E0304` at col 1, 4 arcs) and no hop-3 stub arc; no rule beyond the existing col-hops == -1 one is derivable from it. Needs a Diamond build routing hop-3 H06 near the die edge.
+- The rebuild still collapses: output pads stay constant while the clock tree, edge stubs and EBR read outputs are open.

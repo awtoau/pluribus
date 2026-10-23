@@ -17,6 +17,7 @@ Diamond is single-seat: heavy_guard lock + RAM gate.
 """
 import argparse
 import json
+from collections import Counter
 import re
 import sys
 import tomllib
@@ -175,8 +176,21 @@ def main():
     new_cfg.write_text(text)
     import diamond_roundtrip as D
     cmp = D.compare_configs(a.config, new_cfg)
+    # Headline (CLAUDE.md "Scoring faults"): LUT INIT multiset, canonical under input permutation.
+    ca, cb = Counter(), Counter()
+    for k, n in cmp["orig_luts"].items():
+        ca[D.canonical_lut(k)] += n
+    for k, n in cmp["new_luts"].items():
+        cb[D.canonical_lut(k)] += n
+    matched = sum((ca & cb).values())
+    missing, extra = sum(ca.values()) - matched, sum(cb.values()) - matched
+    regs = lambda p: len(re.findall(r"^enum: SLICE\w\.REG\d\.REGSET ", Path(p).read_text(), re.M))
     done("compare", **{k: v for k, v in cmp.items() if k not in ("orig_luts", "new_luts")},
-         orig_lut_count=sum(cmp["orig_luts"].values()), new_lut_count=sum(cmp["new_luts"].values()))
+         orig_lut_count=sum(cmp["orig_luts"].values()), new_lut_count=sum(cmp["new_luts"].values()),
+         headline=f"matched {matched} / (matched {matched} + missing {missing} + extra {extra} + wrong 0)"
+                  f" = {100.0 * matched / (matched + missing + extra) if matched + missing + extra else 0:.2f}%",
+         lut_matched=matched, lut_missing=missing, lut_extra=extra,
+         regset_enums_orig=regs(a.config), regset_enums_new=regs(new_cfg))
     return 0
 
 
