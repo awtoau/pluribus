@@ -24,3 +24,10 @@
 - `scripts/machxo2_roundtrip.py` (known-source scope RTL, not the board bitstream): bounded miter PROVEN to cycle 52, DIVERGES at 53 (first serialised readback bit).
 - cs_n high: PROVEN 80 cycles. DPRAM forced 0: still diverges (readback datapath gap).
 - Board bitstream has no source: no LEC possible. Structural round-trip = lifted Verilog -> Diamond -> decode -> compare (not yet run on the board design).
+
+## Step 2: EFB config + inputs (#100)
+
+- Inputs were already lifted (21 in / 9 out, unchanged). New: oracle comparison of the input side (docs/efb-config.md): 20/(20+0+1+0) pins match Diamond; the 1 fault is WBCLKI (global spine, #109).
+- Board-design inputs with no driver in the lift: JWBCLKI (alias of the spine clock input, driven by testbench), JSPISCSN (on `G_HSBX0201`, #109).
+- EFB instance now carries decoded attributes (`EFB #(.EFB_SPI("ENABLED"), .SPI_MODE("SLAVE"), ...)`); config bits outside the oracle table print UNEXPLAINED (none in V07/V02).
+- Lifter regression: V07 and V02 summaries differ only in `v_bytes`/`v_sha256` (EFB parameter block).
