@@ -221,3 +221,18 @@ Corpus now 236 designs (`c_ram_vnd_logic_16` has an oracle since its rebuild; it
 - After: 2 loops (rows 3 and 4), both with oscillating assignments:
   - Row 3 is the arithmetic gap (step 5 below), not a real inverter loop.
   - Row 4: `TMODE BMNONE` (undecoded, MLAB) next to a `F_1` bottom half whose `F1` pin carries its own output; no Quartus oracle for MLAB `F_1` self-feedback in the corpus.
+
+## Pads (2026-10-24)
+
+| field | before | after |
+|---|---|---|
+| pins | 4493/4556 (98.6%), faults 63 (m63 x0 w0) | 4556/4556 (100.0%), faults 0 |
+| obuf.i | 1509/1556 (97.0%), faults 47 (m47 x0 w0) | 1556/1556 (100.0%), faults 0 |
+
+(Start of the session: pins 4386/4556, 170 missing; the 107 closed before this step were dedicated clock pads and pad comments, see "Clock tree".)
+
+Classification of the 63 pins + 47 obuf.i still missing before this step:
+- 60 pins + 47 obuf.i: pad reached through the HMC (top/bottom edge DDR I/O). Arc `r TD.. HMC.011.045:IOINTDQDOUT.20 ; D13` (fabric -> pin) or `r HMC.011.045:IOINTDQDIN.40 V2.. ; F15` (pin -> fabric); no GPIO arc. Lifter: `pc.hmc_pins` (node -> pin comment, `IOINT*DIN/DOUT` ports), `recover_pads()` makes the pad (DIN = in, DOUT = out, both = bidir), row/col/pio from the tile's GPIO annotation. Compare: `conn.obuf.i` uses the HMC DOUT node when there is no GPIO DATAOUT node.
+- 3 pins (`up`, c_updown_{sv,v95,vnd}_1): unused input, only `USE_WEAK_PULLUP` settings, no arc. A configured pad with no arc -> `in`, no net (3/3 in the corpus are Quartus inputs, 0 outputs; an output always has a DATAOUT or HMC arc).
+- Dedicated clock pins: closed with the clock tree (pad -> CMUX).
+- Not evidence-backed: a pad that is both unrouted and an output (constant-driven output) would be mislabelled `in`; none in the corpus.

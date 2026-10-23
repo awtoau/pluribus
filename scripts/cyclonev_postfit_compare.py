@@ -371,6 +371,8 @@ def compare_build(bid, ddir):
         if p is not None and p["net_out"] is not None:
             nodes = [n for n in dsu.p if n.block == "GPIO" and n.port == "DATAOUT"
                      and pc.pin_annotations.get(("GPIO", n.x, n.y, n.bi)) == label]
+            if not nodes:       # pad reached through the HMC: its DOUT port node
+                nodes = [n for n, pin in pc.hmc_pins.items() if pin == label and n.port.endswith("DOUT")]
             lv = lifted_driver(nodes[0]) if nodes else None
         row(a["name"], a["location"], "conn.obuf.i", qv, lv, conn_verdict(qv, lv))
 

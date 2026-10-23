@@ -345,6 +345,11 @@ def parse_node(text):
     )
 
 
+def _is_hmc_pad_port(port):
+    """HMC data port that is a package pin's fabric side: IOINT<kind>DIN (pin -> fabric) / DOUT."""
+    return bool(port) and port.startswith("IOINT") and port.endswith(("DIN", "DOUT"))
+
+
 def _strip_comment(rest):
     """Split 'value ; pad1 [; pad2]' trailer on the first ' ; '."""
     if " ; " in rest:
@@ -545,6 +550,7 @@ class ParsedConfig:
         # check (224 distinct (tile,bi) keys, each with exactly one pin name
         # across every port/pi/line-kind that annotates it, zero conflicts).
         self.pin_annotations = {}
+        self.hmc_pins = {}                  # HMC IOINT*DIN/DOUT node -> package pin (pad path via the HMC)
         # Pin comments seen on a non-GPIO block (observed: HMC only, hard
         # memory-controller/IO -- explicitly out of scope for this lifter,
         # see module docstring).  Counted, not silently dropped, so a future
@@ -857,6 +863,8 @@ class CycloneVLift:
         for node in nodes:
             if node.block != "GPIO":
                 pc.n_pin_comments_non_gpio += 1
+                if node.block == "HMC" and _is_hmc_pad_port(node.port):
+                    pc.hmc_pins[node] = pin          # I/O routed through the HMC pad path
                 continue
             bi = node.bi
             if bi is None and setting and node.pi is not None:
@@ -1318,6 +1326,53 @@ class CycloneVLift:
                 d.n_pads_multi_datain_tap += 1
             if len(dataout_taps) > 1:
                 d.n_pads_multi_dataout_tap += 1
+
+        # Pads reached through the HMC (top/bottom edge DDR I/O): the arc names an HMC IOINT port and
+        # carries the pin comment; they have no GPIO arc.  DIN = pin -> fabric, DOUT = fabric -> pin.
+        by_label = {p["label"]: p for p in d.pads}
+        gpio_of = {pin: key for key, pin in pc.pin_annotations.items()}
+        hmc = defaultdict(lambda: {"din": [], "dout": []})
+        arc_src = {s for s, _t in pc.arcs}
+        arc_dst = {t for _s, t in pc.arcs}
+        for node, pin in sorted(pc.hmc_pins.items(), key=lambda kv: str(kv[0])):
+            if node.port.endswith("DOUT") and node in arc_dst:
+                hmc[pin]["dout"].append(node)
+            elif node.port.endswith("DIN") and node in arc_src:
+                hmc[pin]["din"].append(node)
+        for pin, ports in sorted(hmc.items()):
+            din = net_of(ports["din"][0]) if ports["din"] else None
+            dout = net_of(ports["dout"][0]) if ports["dout"] else None
+            direction = "bidir" if din and dout else "in" if din else "out"
+            row = by_label.get(pin)
+            if row is not None:                # same pin also seen through a GPIO arc: merge
+                row["net_in"] = row["net_in"] or din
+                row["net_out"] = row["net_out"] or dout
+                continue
+            _blk, gx, gy, gbi = gpio_of.get(pin, (None, None, None, None))
+            first = (ports["din"] or ports["dout"])[0]
+            d.n_pads_annotated += 1
+            d.pads.append({
+                "pin": bga_pin_to_int(pin), "label": pin,
+                "row": gx if gx is not None else first.x, "col": gy if gy is not None else first.y,
+                "pio": gbi if gbi is not None else first.pi,
+                "direction": direction, "net_in": din, "net_out": dout,
+                "n_datain_taps": len(ports["din"]), "n_dataout_taps": len(ports["dout"]),
+            })
+
+        # A configured pad (pin settings, e.g. USE_WEAK_PULLUP) with no arc at all is an unconnected
+        # input: 3/3 such pads in the 236-design corpus are Quartus inputs, 0 outputs (an output has a
+        # DATAOUT/HMC arc).  Direction "in", no net.
+        have = {p["label"] for p in d.pads}
+        for (_b, x, y, bi), pin in sorted(pc.pin_annotations.items()):
+            if pin in have:
+                continue
+            have.add(pin)
+            d.n_pads_annotated += 1
+            d.pads.append({
+                "pin": bga_pin_to_int(pin), "label": pin, "row": x, "col": y, "pio": bi,
+                "direction": "in", "net_in": None, "net_out": None,
+                "n_datain_taps": 0, "n_dataout_taps": 0,
+            })
 
         d.n_pin_comments_non_gpio = pc.n_pin_comments_non_gpio
         return d.pads
