@@ -303,6 +303,70 @@ Checks (lab 14, mlab 12):
 - `write_pulse_length` 500/800/950 and `mcrg/maddg` `vcchg`: no design variant tried.
 - `lut_mask`: out of scope (lifter exercises it).
 
+## lab second pass -- 2026-10-23, Quartus 25.1, 5CEBA4U19C8
+
+Run: `--dump-target lab --all`. Probes `bank_*` in `BANK_PROBE_SPECS`; checks in `LAB_CHECKS`
+(`moved` = differs from `bank_plain` at every span; `ffb`/`fft`/`ffall` = FF-occupied slots).
+
+Counts (`cv_block_muxes`, one verdict per row; a row with any MISMATCH is MISMATCH):
+
+| target | before (first pass) | after (second pass) |
+|---|---|---|
+| lab | 56: MATCH 3, MISMATCH 1, INCONCLUSIVE 52 | 56: MATCH 7, MISMATCH 6, INCONCLUSIVE 43 |
+| mlab | 61: MATCH 5, MISMATCH 0, INCONCLUSIVE 56 | not re-run this pass (baseline re-confirmed) |
+
+- Every bank landed in `LAB.020.020` with FFs in all 10 slots (top `FFT<n>` and bottom `FFB<n>` routing lines).
+- Control: `bank_plain` (16 posedge FFs, nothing shared except the clock).
+- Single-FF `ctrl`/`negclk` probes still print `CLK0_INV 1`.
+
+### Results by probe
+
+| probe | shared control | rows that moved vs control | notes |
+|---|---|---|---|
+| `bank_en` | enable (16) | `EN0_EN` (ctrl `0` -> absent=default `1`), `EN0_NINV` (default `1` -> `0`) | MATCH on `en0_en` is by absence |
+| `bank_en2` | two enables (10+10) | `EN0_EN` as above; `EN1_NINV` default `1` -> `0` | no `EN1_EN` line in either build |
+| `bank_sclr` | sync clear (16) | `TSCLR_DIS` `1` -> `0` on every top FF slot; `BSCLR_DIS` `1` -> `0` on every bottom FF slot | `SCLR_SEL DIN1`, `SLOAD_EN 0` |
+| `bank_sload` | sync load (16) | `TSLOAD_EN` `0` -> `1` on every top FF slot; `BSLOAD_EN` `0` -> `1` on bottom | `SLOAD_SEL DIN2` |
+| `bank_aclr` | async clear (16) | `ACLR0_INV` `0` -> `1`; `ACLR0_SEL` ctrl `ACLR0` -> absent (default `din3`) | |
+| `bank_clr2` | two async clears (10+10) | `ACLR0_INV 1`, `ACLR1_INV 1`; `ACLR0_SEL`/`ACLR1_SEL` absent (default `din3`/`din2`) | |
+| `bank_pn` | posedge 10 + negedge 6 | `CLK0_INV` absent (0); `CLK0_SEL` absent (`clka`); `CLK1_SEL CLKB` | per-slot `TCLK_SEL`/`BCLK_SEL` show CLK0 and CLK1 |
+
+Raw `.bt` lines checked by hand (`tmp/cyclonev_blockmux_fuzz/labdump_bank_*/`):
+- `bank_sclr`: `s LAB.020.020:TSCLR_DIS.6 1` and `.8 1` only. Top FF slots 0-5, 7, 9 have no
+  line, so they decode the default 0. Slots 6 and 8 hold bottom FFs only (`r LAB.020.020.6:FFB0`).
+- `bank_sload`: `TSLOAD_EN.0-5,7,9 1`, no line at 6 and 8. Same set as the top FF slots.
+- `bank_clr2`: `s LAB.020.020:ACLR0_INV 1`, `s LAB.020.020:ACLR1_INV 1`; no `ACLR*_SEL` line.
+- `bank_en`: `s LAB.020.020:EN0_NINV 0`; no `EN0_EN` line.
+
+### MISMATCH (against the naive expectation, not established as Mistral error)
+
+- `clk0_inv` (ctrl, from first pass): `s LAB.020.020:CLK0_INV 1`, expected `0`.
+  - Single FFs print `CLK0_INV 1` for posedge (`ctrl`) and negedge (`negclk`).
+  - 16-FF posedge bank (`bank_plain`) and posedge+negedge mix (`bank_pn`) print no `CLK0_INV` line.
+  - So the bit does not track FF polarity in these builds. Not established what it means.
+- `en0_ninv` (`bank_en`): `s LAB.020.020:EN0_NINV 0`, expected `1` (not inverted, Mistral default).
+  The flip 1 -> 0 happens in exactly the enable builds. Polarity meaning not established.
+- `en1_ninv` (`bank_en2`): `s LAB.020.020:EN1_NINV 0`, expected `1`. Same pattern as EN0.
+- `aclr0_inv` (`bank_aclr`): `s LAB.020.020:ACLR0_INV 1`, expected `0`. Row also MATCHes on `bank_clr2`
+  (`moved`, `ACLR0_INV 1`). The row is MISMATCH because any MISMATCH wins.
+- `aclr0_sel` (`bank_aclr`, `bank_clr2`), `aclr1_sel` (`bank_clr2`): no `*_SEL` line, so default
+  `din3`/`din2`. Naive expectation was `aclr0`/`aclr1` (the clear used). Not what decodes; the
+  `*_INV 1` bits are what moves.
+
+### Observed only (INCONCLUSIVE)
+
+- `clk0_sel`: `CLKB` on the negedge single FF (`negclk`), absent (`clka`) on `bank_pn`.
+- `CLK1_SEL CLKB` appears in `bank_pn` only; the negedge single FF selects it on `CLK0_SEL`.
+  Not checked per FF which clock index the negedge bank uses.
+- `tclk_sel` / `bclk_sel` per slot in `bank_pn`: CLK0 and CLK1 mixed. Not mapped to FF polarity.
+
+### Not reached
+
+- `en1_en`: never printed, `EN1_NINV` carries the only visible change for bank B.
+- `sclr_dis`, `sload_en`: observed `0` / `1`, no independent expectation.
+- Any `clr`/`sclr` LUT-logic form in another LAB: not re-probed this pass.
+- `tclk_sel = clk2` on a bank (clk3 probe): still not reached (first-pass reason unchanged).
+
 ## Not done
 
 - Other GPIO `m`/`n` muxes (see above).
