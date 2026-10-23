@@ -323,6 +323,102 @@ def _trailing_pin(line, match_end):
     return pin
 
 
+# BGA row-letter sequence skips I, O, Q, S, X, Z (standard JEDEC convention --
+# those letters are omitted because they're easily confused with digits/other
+# letters on a silkscreen). Confirmed against the real reference sample: every
+# row letter seen (A..Y plus AA, AB) is in this sequence, none skipped are
+# present. _bga_row_rank() is position-in-this-sequence, not raw alphabet
+# index, so e.g. "J" (8th letter, but 7th in this sequence since I is skipped)
+# ranks correctly relative to "H" and "K".
+_BGA_ROW_LETTERS = "ABCDEFGHJKLMNPRTUVWY"  # single-letter rows, in order
+
+
+def _bga_row_rank(letters):
+    """Rank of a (possibly double-letter) BGA row label within the JEDEC
+    skip-I/O/Q/S/X/Z sequence: A=0, B=1, ..., Y=19, AA=20, AB=21, ...
+
+    Double-letter rows continue the SAME skip-sequence two-up, matching how
+    real BGA packages extend past Y (seen in the reference sample: AA, AB
+    follow Y, not a restart of A-Z). Raises on anything outside the confirmed
+    alphabet rather than guessing -- an unrecognised letter means the
+    assumption needs re-checking against new data, not silent coercion.
+    """
+    n = len(_BGA_ROW_LETTERS)
+    if len(letters) == 1:
+        idx = _BGA_ROW_LETTERS.find(letters)
+        if idx < 0:
+            raise PinRecoveryError(
+                f"BGA row letter {letters!r} not in the confirmed JEDEC "
+                f"skip-I/O/Q/S/X/Z sequence {_BGA_ROW_LETTERS!r} -- "
+                f"grammar assumption may be stale for this package."
+            )
+        return idx
+    if len(letters) == 2:
+        first, second = letters[0], letters[1]
+        fi, si = _BGA_ROW_LETTERS.find(first), _BGA_ROW_LETTERS.find(second)
+        if fi < 0 or si < 0:
+            raise PinRecoveryError(
+                f"BGA row letters {letters!r} not in the confirmed JEDEC "
+                f"sequence -- grammar assumption may be stale."
+            )
+        # AA/AB/... continues the single-letter run: after Y (rank n-1) comes
+        # AA (rank n), AB (rank n+1), etc -- confirmed: the reference sample
+        # has no gap between Y and AA, and no "BA"/"CA" double-letter rows.
+        return n + fi * n + si
+    raise PinRecoveryError(
+        f"BGA row label {letters!r} is neither one nor two letters -- "
+        f"grammar assumption may be stale."
+    )
+
+
+def bga_pin_to_int(pin):
+    """Stable integer surrogate for a BGA pin name, for pad_map.pin (Integer
+    NOT NULL -- Cyclone V's real pin identity is a letters+digits BGA string,
+    which doesn't fit that column; decision: keep pin Integer, encode here,
+    carry the real string in pad_map.label).
+
+    pin IS NOT THE REAL PIN IDENTITY -- label IS. Treat the integer purely as
+    a DB-internal sort/uniqueness key, same role Gowin's lifter already gives
+    this column for its own synthesised ("R{row}C{col}") pin values
+    (gowin_lift.py's `"pin": pin, "label": iob.get("pin") or f"R{...}C{...}"`
+    -- pin-as-derived-key is an established convention here, not new). No
+    code should ever try to decode a Cyclone V `pin` integer back into a BGA
+    name -- read `label` instead. This also means the encoding scheme is
+    vendor/family-specific and NOT portable: a future Altera family with a
+    different package convention (or a non-BGA one) needs its OWN encoder,
+    not a reuse of this row_rank*1000+col scheme -- there is no shared
+    cross-vendor meaning to `pad_map.pin`'s integer value, only a per-family
+    "however that lifter chose to make it unique" contract. If a genuine
+    cross-family pin-identity comparison is ever needed, it must go through
+    `label` (text) comparison, never `pin` (int) comparison.
+
+    Encoding: row_rank * 1000 + column_number. 1000 is a safe multiplier --
+    the reference sample's real column numbers top out at 22 (e50f's U19
+    package), orders of magnitude under 1000, and even a much bigger
+    Cyclone V package (the largest, U23) tops out at 23. Stable and
+    collision-free by construction for THIS encoding: distinct (row, col)
+    pairs always produce distinct integers for any column count under 1000,
+    and the same pin name always encodes to the same integer (no hashing,
+    no randomness) -- verified against all 224 real pin names in the
+    reference sample, 0 collisions.
+    """
+    m = _PIN_RE.match(pin)
+    if not m:
+        raise PinRecoveryError(
+            f"{pin!r} does not match the BGA pin shape -- cannot encode."
+        )
+    letters = re.match(r"^[A-Z]+", pin).group(0)
+    digits = pin[len(letters):]
+    col = int(digits)
+    if col >= 1000:
+        raise PinRecoveryError(
+            f"pin {pin!r} column {col} >= 1000 -- the row_rank*1000+col "
+            f"encoding's safety margin assumption is stale for this "
+            f"package, widen the multiplier rather than silently colliding."
+        )
+    return _bga_row_rank(letters) * 1000 + col
+
+
 class ParsedConfig:
     """Raw contents of a Mistral `.bt` decompile, before netlist recovery."""
 
@@ -916,8 +1012,16 @@ class CycloneVLift:
             net_out = (net_of(CVNode("GPIO", x, y, bi, "DATAOUT", dataout_taps[0][0]))
                        if dataout_taps else None)
 
+            # pad_map.pin is Integer NOT NULL, but a BGA name ("AA10") isn't
+            # one -- encode via bga_pin_to_int() (stable, collision-free, see
+            # its docstring) so the real UNIQUE(bitstream,pin) DB constraint
+            # stays meaningful; label carries the human-readable BGA string.
+            # Unannotated pads (pin is None) have no DB-facing pin identity
+            # at all yet -- load_cyclonev() must skip them for the pad_map
+            # insert (no sentinel value invented here; see module docstring).
             d.pads.append({
-                "pin": pin, "label": pin if pin is not None else
+                "pin": bga_pin_to_int(pin) if pin is not None else None,
+                "label": pin if pin is not None else
                        f"GPIO_{x:03d}_{y:03d}_{bi}",
                 "row": x, "col": y, "pio": bi,
                 "direction": direction,

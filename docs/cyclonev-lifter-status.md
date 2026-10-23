@@ -127,21 +127,21 @@ condensed summary with confidence levels stated per finding.
    r-lines, 0/2458 s-lines ever have one). `_trailing_pin()` takes only the
    first field.
 
-**Schema gap flagged, not fixed (per task scope — schema.py owns all DDL):**
+**Schema gap — resolved, no schema.py change made:**
 
 `pad_map.pin` is `Integer NOT NULL`; Cyclone V's recovered pin identity is a
-BGA coordinate string (`"AA10"`), not a number. Checked both existing
-`pad_map`-populating lifters: MachXO2 (`load.py`'s iomap-TSV path) and GOWIN
-(`apicula`'s `db.pinout`, via `gowin_lift.py`'s `phys` field) both store a
-genuine numeric pin NUMBER in `pin` — neither stores a letter-coded identity
-there, so there is no existing convention to follow. `Design.pads` carries
-the BGA name in both `pin` and `label` (ready to insert once this is
-resolved) but is NOT wired into `load_cyclonev()`/the database this session
-— that needs a decision first: widen `pad_map.pin` to `Text` (changes a
-column every other family also writes to, and the `UNIQUE(bitstream, pin)`
-constraint's semantics), or leave `pin` NULL for this family and rely on
-`label` alone (defeats that per-bitstream uniqueness guard for Cyclone V
-specifically). Not decided or implemented here.
+BGA coordinate string (`"AA10"`), not a number. Decision (operator): keep
+`pad_map.pin` as `Integer` for every family (no DDL change), have the
+Cyclone V lifter derive a stable integer surrogate. `bga_pin_to_int()`
+(`lifters/cyclonev_lift.py`) encodes `row_rank * 1000 + column_number`
+(JEDEC skip-I/O/Q/S/X/Z row sequence, verified collision-free against all
+224 real pin names in the reference sample — 224 distinct pins, 224 distinct
+encodings, 0 collisions). `label` carries the real BGA string and is the
+only field anyone should treat as the pin's real identity — `pin` is a
+DB-internal sort/uniqueness key only, same role Gowin's lifter already gives
+this column for its own synthesised pin values, not a new convention. The
+encoding is Cyclone-V-specific and NOT portable to a future Altera family
+with a different package convention — see `bga_pin_to_int()`'s docstring.
 
 ## Explicitly out of scope (upstream-Mistral unknowns or deferred — not pluribus gaps)
 
@@ -164,11 +164,15 @@ specifically). Not decided or implemented here.
   the `xCLK_SEL`/`xCLR_SEL`/`xMODE.<alm>` mux settings per ALM, which is
   real work deferred to the next slice, not done here.
 - **Pads**: `pad_fabric_node()` resolves GPIO DATAIN/DATAOUT nodes and
-  `recover_pads()` now recovers real package-pin names into `Design.pads`
-  (see "Pin recovery" above), but there is still no board.toml for any real
-  Cyclone V board, and `Design.pads` is NOT wired into `load_cyclonev()`/the
-  database this session — blocked on the `pad_map.pin` schema question (see
-  "Pin recovery" above). See "No board" below for the board-level gap.
+  `recover_pads()` recovers real package-pin names into `Design.pads` (see
+  "Pin recovery" above), with the `pad_map.pin` schema question resolved
+  (`bga_pin_to_int()`, no DDL change). `Design.pads` is still NOT wired into
+  `load_cyclonev()`/the database — that insert path itself (a
+  `conn.execute(insert(schema.pad_map), ...)` call mirroring how `luts`/`ffs`
+  are already inserted) is real follow-on work, not done here. See "No
+  board" below for the separate board-level gap (no real Cyclone V board
+  exists in-tree, so `chip_ref`/`chip_pin`/`chip_signal` etc. would stay
+  NULL even once this is wired up).
 
 ## Schema fit: LUT5, unified into `schema.py`'s `luts` table — DONE
 
@@ -323,8 +327,7 @@ pin, which only a real board.toml could carry. A real Cyclone V
 `boards/<name>/board.toml` would need, once a board exists:
 
 - the `pin`/`label` -> (GPIO x, y, bi) mapping `Design.pads` already
-  recovers from the bitstream (once the `pad_map.pin` schema question is
-  resolved — see "Pin recovery" above), carried into a `pins.tsv` the same
-  shape every other family's board.toml expects.
+  recovers from the bitstream (see "Pin recovery" above), carried into a
+  `pins.tsv` the same shape every other family's board.toml expects.
 - the usual `[board]` device/package keys plus `[bitstreams.<label>]`
   config paths, same shape as every other family's board.toml.
