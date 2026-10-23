@@ -563,6 +563,8 @@ def compare_target(target, out_root):
     vmap_ = {r_["net"]: r_["verdict"] for r_ in res["nets"]}
     gn = defaultdict(lambda: {"nets": 0, "intact": 0, "split": 0})
     for n in O["nets"]:
+        if "PAR_CLOCKSIGNAL" not in n["props"]:
+            continue            # data nets also touch pad-mux wires; only clock nets count here
         byfam = defaultdict(list)
         for w in n["wires"]:
             for fk in gfams(P.split_wire(w)[2]):
