@@ -2,9 +2,13 @@
 """Cyclone V unpack stage: flash image / .rbf -> Mistral `.bt` decompile.
 
 Steps (log: tmp/logs/cyclonev_unpack.log):
-  - strip leading/trailing 0xFF flash padding -> plain .rbf (skipped if the input has none)
+  - locate the `jjjj` sync (bit-shifted `a6a6a6a6` form realigned); keep the 0x80-byte 0xFF
+    preamble + sync (Mistral reads the option RAM at absolute 0x84), drop only padding before it
+  - validate via cyclonev_decompress: sync, option-RAM CRC16, PRAM/CRAM frame CRC16s, postamble;
+    die() naming the failing check (no garbage to the lifter).  Compressed input is expanded.
   - mistral-cv decomp <device> <rbf> <bt>   (the `.bt` is what the cyclonev lifter reads)
 Refuses to overwrite an existing output (same contract as trellis_unpack.py).
+Decision: #114.
 
   python3.15t scripts/cyclonev_unpack.py IN.bin OUT.bt [--device 5CEBA4U19C8] [--rbf KEEP.rbf]
 """
@@ -17,6 +21,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
+import cyclonev_decompress as cd  # noqa: E402
 import toolchain  # noqa: E402
 from db import die  # noqa: E402
 
@@ -25,10 +30,21 @@ from db import die  # noqa: E402
 DECOMP_LIMIT_S = 15
 
 
-def strip_ff(raw: bytes) -> bytes:
-    a = len(raw) - len(raw.lstrip(b"\xff"))
-    b = len(raw.rstrip(b"\xff"))
-    return raw[a:b]
+PREAMBLE = 0x80  # 0xFF bytes before the sync in every quartus_cpf .rbf (sync at 0x80, option RAM 0x84)
+
+
+def normalise(raw: bytes) -> bytes:
+    """Validated, uncompressed .rbf starting at the preamble.  die() on any failed check."""
+    try:
+        n, sh = cd.find_sync(raw)
+        if sh:
+            raw = cd.realign(raw, sh)
+        if n < PREAMBLE:
+            die(f"preamble too short: sync at byte {n}, need {PREAMBLE:#x} 0xFF bytes before it "
+                "(stripped leading 0xFF? Mistral would misread the option RAM, #114)")
+        return cd.decompress(raw[n - PREAMBLE:])
+    except cd.FormatError as e:
+        die(f"not a valid Cyclone V .rbf: {e}")
 
 
 def main():
@@ -49,11 +65,9 @@ def main():
         die(f"refusing to overwrite {a.bt}")
     rbf = a.rbf or a.bt + ".rbf"
     raw = open(a.bin, "rb").read()
-    body = strip_ff(raw)
-    log.info("%s: %d bytes -> %d after 0xFF strip; first bytes %s", a.bin, len(raw),
-             len(body), body[:8].hex())
-    if not body:
-        die("empty image after stripping 0xFF")
+    body = normalise(raw)
+    log.info("%s: %d bytes -> %d validated (preamble kept); first bytes %s", a.bin, len(raw),
+             len(body), body[:4].hex())
     os.makedirs(os.path.dirname(os.path.abspath(rbf)), exist_ok=True)
     open(rbf, "wb").write(body)
     os.makedirs(os.path.dirname(os.path.abspath(a.bt)), exist_ok=True)
