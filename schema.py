@@ -908,6 +908,34 @@ postfit_compare = Table("postfit_compare", metadata,
 )
 Index("idx_postfit_compare_build", postfit_compare.c.build, postfit_compare.c.field)
 
+# Vendor timing-report routes, one row per hop, every reported path kept (no dedupe).
+# Source: quartus_sta report_timing -show_routing (route_report.txt per build).
+route_hops = Table("route_hops", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("build",     Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("analysis",  Text,    nullable=False),   # "setup" | "recovery"
+    Column("path",      Integer, nullable=False),   # Path #N within that analysis
+    Column("from_node", Text),
+    Column("to_node",   Text),
+    Column("part",      Text,    nullable=False),   # "arrival" | "required"
+    Column("hop",       Integer, nullable=False),   # row index within part
+    Column("depth",     Integer, nullable=False),   # 0 = section row, 1 = hop inside it
+    Column("total",     Float),
+    Column("incr",      Float),
+    Column("rf",        Text),                      # RR/RF/FR/FF or NULL
+    Column("type",      Text),                      # RE | IC | CELL | uTco | NULL
+    Column("fanout",    Integer),
+    Column("location",  Text),                      # raw, e.g. LOCAL_LINE_X1_Y19_N0_I1
+    Column("loc_kind",  Text),                      # e.g. LOCAL_LINE, LABCELL, PIN
+    Column("x",         Integer),
+    Column("y",         Integer),
+    Column("n",         Integer),
+    Column("idx",       Integer),                   # the _I<k> routing-element index
+    Column("element",   Text),                      # RE type, or atom|port for IC/CELL
+)
+Index("idx_route_hops_build", route_hops.c.build, route_hops.c.analysis, route_hops.c.path)
+Index("idx_route_hops_loc", route_hops.c.build, route_hops.c.location)
+
 # ── Schema management ─────────────────────────────────────────────────────────
 
 def init(eng=None):

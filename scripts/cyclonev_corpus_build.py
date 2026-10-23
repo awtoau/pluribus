@@ -6,6 +6,7 @@ Per design in corpus/cyclonev/<name>/ (only src/ and design.toml are tracked):
   build.qsf, postfit.vo, bitstream.rbf, *.rpt, build.pin   copies at fixed names
   decomp.bt         mistral-cv decomp of bitstream.rbf
   lifted.v          load.py (cyclonev lifter) + verilog.py on decomp.bt
+  route_report.txt  quartus_sta report_timing -show_routing (quartus/route.tcl)
   compare.json      scripts/cyclonev_postfit_compare.py summary
   logs/<step>.log   each tool's own output
 Rebuild = delete everything except src/ + design.toml, rebuild, replace DB rows.
@@ -49,9 +50,9 @@ PY = shutil.which("python3.15t") or sys.executable
 # Host-process guard (agent-rules): stall = no output line for 60 s -> kill + fail.
 # Overall = 3x the measured cold worst case per step (docs/cyclonev-postfit-oracle.md).
 STALL_S = 60
-OVERALL_S = {"quartus_map": 120, "quartus_fit": 450, "quartus_asm": 60,
-             "quartus_eda": 60, "quartus_cpf": 30, "decomp": 30,
-             "load": 60, "verilog": 60, "compare": 120}
+OVERALL_S = {"quartus_map": 12, "quartus_fit": 23, "quartus_asm": 6,
+             "quartus_eda": 3, "quartus_cpf": 2, "quartus_sta": 4, "decomp": 4,
+             "load": 2, "verilog": 2}
 
 log = logging.getLogger("cyclonev_corpus_build")
 
@@ -107,6 +108,24 @@ def run(step, cmd, cwd, logdir, env=None):
     return True
 
 
+# Routing oracle: every clock gets a 10 ns clock (derive_clocks); all I/O is tied to a
+# virtual clock so pad->reg, reg->pad and pad->pad paths are constrained and reported;
+# -recovery adds async clear/preset paths.  -nworst 10 = up to 10 paths per endpoint.
+ROUTE_TCL = """project_open build -revision build
+create_timing_netlist
+derive_clocks -period 10
+create_clock -name vio -period 10
+set_input_delay -clock vio 0 [all_inputs]
+set_output_delay -clock vio 0 [all_outputs]
+update_timing_netlist
+foreach kind {setup recovery} {
+  report_timing -$kind -npaths 100000 -nworst 10 -detail full_path -show_routing -file route_report.txt -append
+}
+delete_timing_netlist
+project_close
+"""
+
+
 def clean(ddir):
     for p in ddir.iterdir():
         if p.name in KEEP:
@@ -139,7 +158,9 @@ def quartus(ddir, spec, srcs):
              ("quartus_asm", [qb / "quartus_asm", "build"]),
              ("quartus_eda", [qb / "quartus_eda", "build", "--simulation",
                               "--tool=modelsim", "--format=verilog"]),
-             ("quartus_cpf", [qb / "quartus_cpf", "-c", "build.sof", "build.rbf"])]
+             ("quartus_cpf", [qb / "quartus_cpf", "-c", "build.sof", "build.rbf"]),
+             ("quartus_sta", [qb / "quartus_sta", "-t", "route.tcl"])]
+    (qdir / "route.tcl").write_text(ROUTE_TCL)
     for step, cmd in steps:
         if not run(step, cmd, qdir, logs):
             return step
@@ -147,7 +168,8 @@ def quartus(ddir, spec, srcs):
     copies = {"build.qsf": "build.qsf", "simulation/questa/build.vo": "postfit.vo",
               "build.rbf": "bitstream.rbf", "build.map.rpt": "map.rpt",
               "build.fit.rpt": "fit.rpt", "build.asm.rpt": "asm.rpt",
-              "build.eda.rpt": "eda.rpt", "build.pin": "build.pin"}
+              "build.eda.rpt": "eda.rpt", "build.pin": "build.pin",
+              "route_report.txt": "route_report.txt"}
     for src, dst in copies.items():
         shutil.copyfile(qdir / src, ddir / dst)
     return None
@@ -217,7 +239,10 @@ def build_one(name, skip_quartus):
     if fail is None:
         import cyclonev_vo_parse
         import cyclonev_postfit_compare
+        import cyclonev_route_parse
         cyclonev_vo_parse.load_vo(bid, ddir / "postfit.vo")
+        n_hops = cyclonev_route_parse.load_routes(bid, ddir / "route_report.txt")
+        log.info("%s: %d route hops", name, n_hops)
         summary = cyclonev_postfit_compare.compare_build(bid, ddir)
         (ddir / "compare.json").write_text(json.dumps(summary, indent=1, sort_keys=True))
     log.info("%s: %s (%.1fs)", name, status, time.monotonic() - t0)
