@@ -30,6 +30,7 @@ import psutil
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS)
 sys.path.insert(0, os.path.dirname(SCRIPTS))
+import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402
 import diamond_oracle_parse as P  # noqa: E402
 from machxo2_diamond_oracle import REPO, MEM_GATE_PCT, MEM_LOG_EVERY_S  # noqa: E402
@@ -625,6 +626,29 @@ def compare_target(target, targets_dir, out_root):
                                 "diamond_net_rewritten": gk_net,
                                 "verdict": v, "why": why})
 
+    # ---- global-clock families (#109) ------------------------------------
+    fam_nets = defaultdict(set)
+    fam = defaultdict(lambda: {"arcs": 0, "nets_touched": 0, "nets_split": 0,
+                               "regclk_broken": 0})
+    for g in res["gkey"]:
+        if g["branch"] != "global_drop":
+            continue
+        f = fam[re.sub(r"\d", "#", g["name"])]
+        f["arcs"] += 1
+        for nn in (g["diamond_net_other"], dwire_net.get(g["raw"])):
+            if nn:
+                fam_nets[re.sub(r"\d", "#", g["name"])].add(nn)
+    for k, nets in fam_nets.items():
+        fam[k]["nets_touched"] = len(nets)
+        fam[k]["nets_split"] = len(nets & split_nets)
+    for s_ in res["sites"]:
+        for fd in s_["fields"]:
+            if fd["field"].endswith(".lift.clk") and fd["verdict"] != "MATCH":
+                for k, nets in fam_nets.items():
+                    if fd["diamond"] in nets:
+                        fam[k]["regclk_broken"] += 1
+    res["global_families"] = {k: dict(v) for k, v in fam.items()}
+
     # ---- roll-up ------------------------------------------------------------
     fc = Counter()
     for s in res["sites"]:
@@ -660,6 +684,7 @@ def main():
     targets = args.only or sorted(
         t for t in os.listdir(args.out)
         if os.path.exists(os.path.join(args.out, t, "oracle.json")))
+    heavy_guard.wait_available(log, "oracle compare")   # #111: absolute free-RAM gate
     log(f"[compare] {len(targets)} targets, {args.workers} workers")
     q = queue.Queue()
     for t in targets:
@@ -683,7 +708,8 @@ def main():
                 r = compare_target(t, args.targets_dir, args.out)
                 r = {"target": t, "status": "ok", **{k: r[k] for k in (
                     "pips", "pip_detail", "net_verdicts", "site_field_verdicts",
-                    "gkey_verdicts", "normalisation", "wire_classes_missing")}}
+                    "gkey_verdicts", "normalisation", "wire_classes_missing",
+                    "global_families")}}
             except (Exception, SystemExit) as e:  # noqa: BLE001 -- db.die() exits; recorded per target
                 r = {"target": t, "status": "failed", "error": f"{type(e).__name__}: {e}"}
                 log(f"[fail] {t}: {r['error']}")
@@ -709,6 +735,11 @@ def main():
         for r in results:
             acc.update(r.get(key, {}))
         summ[key] = dict(sorted(acc.items()))
+    gf = defaultdict(Counter)
+    for r in results:
+        for k, v in r.get("global_families", {}).items():
+            gf[k].update(v)
+    summ["global_families"] = {k: dict(v) for k, v in sorted(gf.items())}
     det = defaultdict(Counter)
     for r in results:
         for k, v in r.get("pip_detail", {}).items():
@@ -728,6 +759,8 @@ def main():
     log(f"[compare] done in {time.monotonic() - t0:.1f}s: {summ['status']}")
     for key in ("pips", "net_verdicts", "gkey_verdicts", "site_field_verdicts"):
         log(f"[compare] {key}: {summ[key]}")
+    for k, v in summ["global_families"].items():
+        log(f"[compare] global family {k}: {v}")
     # Headline: a missing/extra connection is a fault as bad as a wrong one.
     sf = summ["site_field_verdicts"]
     clk = {k.split(":")[1]: v for k, v in sf.items() if k.startswith("FF#.lift.clk:")}
