@@ -17,7 +17,7 @@ SFL / SFL-enhanced / PFL `.sof` files shipped in `quartus/common/devinfo/program
 - Installed Quartus 25.1 Lite has **Cyclone V device support only** (`quartus_sh --tcl_eval get_family_list` -> `{Cyclone V}`).
   - Cyclone IV needs `cyclone-25.1std.0.1129.qdz` (466 MB; manifest in `sources/README.md`). Lite licenses Cyclone IV E and GX. The download needs an Altera SSO sign-in.
   - Until it is installed: no `quartus_map/fit/asm` for any EP4C part, so no post-fit `.vo` oracle and no fuzzing.
-- `quartus_cpf` needs no device package: it converts every Cyclone III/IV vendor `.sof` (35 `.sof`, 13 dies).
+- `quartus_cpf` needs no device package: it converts every Cyclone III/IV vendor `.sof` (70 `.sof`, 13 dies).
 - Install-side Cyclone IV data: only `programmer/ep4c*_pcf.ddb` and `ep3c*_pcf.ddb` (about 1 KB each).
   - Each holds a zlib-packed type schema (`PGMIO_PCF_ENTRY`, `PGMIO_JTAG_CONSTANTS`, `PGMIO_ERAM_LOCATIONS`, ...) and a payload that does not inflate.
   - They are programmer constants. They carry no fabric or routing data, unlike the Cyclone V device DB.
