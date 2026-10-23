@@ -1,0 +1,4 @@
+top = "comparator8"
+purpose = "8-bit unsigned magnitude/equality comparator, combinational"
+exercises = ["lut", "carry_chain", "combinational_only"]
+qsf = []

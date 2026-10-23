@@ -1,0 +1,4 @@
+top = "ram_inferred"
+purpose = "256x8 simple dual-port sync RAM, inferred into M10K"
+exercises = ["m10k", "ram_block", "inferred_ram"]
+qsf = []

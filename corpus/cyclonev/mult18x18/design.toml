@@ -1,0 +1,4 @@
+top = "mult18x18"
+purpose = "18x18 signed multiply, registered output (scripts/cyclonev_dsp_fuzz.py: default DSP encoding, no MODE line)"
+exercises = ["dsp", "mac", "output_register"]
+qsf = []

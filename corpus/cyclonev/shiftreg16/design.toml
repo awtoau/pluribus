@@ -1,0 +1,4 @@
+top = "shiftreg16"
+purpose = "16-bit shift register with enable, every tap exported (prevents shift-register-to-RAM inference)"
+exercises = ["dffeas", "clock_enable", "ff_to_ff"]
+qsf = []

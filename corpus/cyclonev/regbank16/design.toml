@@ -1,0 +1,5 @@
+top = "regbank16"
+purpose = "16x4 register bank, shared enable and sync clear, mux read port"
+exercises = ["lut", "dffeas", "sync_clear", "clock_enable", "wide_mux"]
+# Keep as registers, not an inferred RAM.
+qsf = ["set_global_assignment -name AUTO_RAM_RECOGNITION OFF"]
