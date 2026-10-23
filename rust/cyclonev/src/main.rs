@@ -7,6 +7,7 @@
 
 mod codec;
 mod db;
+mod rnodes;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -41,6 +42,16 @@ enum Command {
         /// arithmetic, just not the nibble codec itself.
         #[arg(long)]
         assume_compressed: bool,
+    },
+
+    /// Print row counts for one die's 5 routing tables (cv_route_muxes,
+    /// cv_route_lines, cv_route_drivers, cv_p2r, cv_p2p) -- a basic sanity
+    /// check that scripts/cyclonev_db_import_routes.py's data reached the DB
+    /// and is readable from Rust. Does not resolve/decode anything -- see
+    /// rnodes.rs's module doc for why that's out of scope this session.
+    RouteCounts {
+        /// Die name as stored in cv_dies (e.g. "e50f")
+        die: String,
     },
 }
 
@@ -194,6 +205,14 @@ fn main() -> Result<()> {
     match cli.cmd {
         Command::Roundtrip { die, path, assume_compressed } => {
             run_roundtrip(&cli.db, &die, &path, assume_compressed)
+        }
+        Command::RouteCounts { die } => {
+            let counts = rnodes::route_counts(&cli.db, &die)?;
+            println!(
+                "{die}: cv_route_muxes={} cv_route_lines={} cv_route_drivers={} cv_p2r={} cv_p2p={}",
+                counts.muxes, counts.lines, counts.drivers, counts.p2r, counts.p2p
+            );
+            Ok(())
         }
     }
 }

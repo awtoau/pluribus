@@ -57,22 +57,43 @@ generator/pram.cc rather than reverse-engineering cvd-*.cc's binary layout):
   <die>-p2p.txt    (generator/p2p.cc  P2PLoader)
       "SRC_PNODE DST_PNODE\n", each pnode "BLOCKTYPE.x.y[.inst][:porttype[.bit]]".
 
-MULTITHREADING
---------------
-python3.15t, real threading.Thread + queue.Queue, mirroring reach.py's worker
-pattern exactly (CountedLock, work_q.get(timeout=...), error_event, bulk
-insert after join -- not during). Two independent levels of parallel work,
-both real (see docs/cyclonev-rust-port.md for measured wall-clock numbers):
+MULTITHREADING -- AND THE MEMORY INCIDENT THAT RESHAPED IT
+------------------------------------------------------------
+First version of this script threaded BOTH across dies (die_workers=2..4)
+AND parsed each huge file whole into one Python list before inserting a
+single row. Running all 7 dies that way triggered systemd-oomd to kill the
+entire host IDE TWICE (confirmed via journalctl, ~11 minutes apart) -- with
+multiple dies' full parsed row lists (gt300f-r.txt.xz alone is 3.72M lines,
+each row holding a nested JSON-able sources/targets list) live in memory
+concurrently and zero backpressure, worker-count limits don't bound actual
+RAM: that scales with data size, not thread count. Same root cause class as
+the Quartus-compile harness's own earlier crash (scripts/cyclonev_verify_all.py
+'s run_producer_consumer), fixed there with a psutil.virtual_memory() gate --
+reused here, but the real fix for THIS script is structural, not just a gate:
 
-  1. Per-die: importing N dies is N independent units of work -- one thread
-     per die up to --workers.
-  2. Per-file-chunk: e50f's -r.txt.xz (695,446 lines) and -l.txt.xz (625,862
-     lines) are each large enough that splitting one file's lines into
-     --chunk-workers independent byte ranges (split on '\n', which is safe
-     here because every record in every one of these 5 grammars is exactly
-     one line -- confirmed by reading the generator parsers above, none of
-     which carries state across a '\n') and parsing each range in its own
-     thread measurably beats single-threaded parsing of one die's files.
+  1. Dies are processed STRICTLY SEQUENTIALLY, never concurrently. One die's
+     parsed rows are fully inserted and dropped before the next die's parse
+     begins. This is a one-time bootstrap import, not a hot path -- there is
+     no reason to trade memory safety for die-level parallelism here.
+  2. Each large file (-r.txt.xz, -l.txt.xz, -d.txt.xz) is read and inserted
+     in bounded BATCHES (--batch-lines, default 100,000 lines) rather than
+     parsed whole into one list first. A batch is read, chunk-parsed across
+     --chunk-workers threads, inserted, and dropped before the next batch is
+     read -- peak memory is one batch's parsed rows, not one die's.
+  3. Real threading.Thread + queue.Queue, mirroring reach.py's worker
+     pattern, applies WITHIN a batch: splitting a batch's lines across
+     --chunk-workers independent line ranges (safe: every record in all 5
+     grammars is exactly one line, confirmed by reading the generator
+     parsers) and parsing each range in its own thread. Measured on e50f
+     whole-file (pre-redesign baseline, since the batch size exceeded
+     e50f's whole file anyway): routes parse 17s->5.2s on 8 threads, lines
+     parse 17s->8.0s -- see docs/cyclonev-rust-port.md for the full numbers.
+  4. A psutil.virtual_memory().percent gate (--max-ram-pct, default 50%,
+     same default and polling cadence as cyclonev_verify_all.py's gate)
+     blocks before claiming the next batch -- or the next die -- whenever
+     RAM is already over budget. Belt-and-suspenders on top of (1)+(2): even
+     if some future change reintroduces concurrency, nothing claims new work
+     while memory is tight.
 
 Always-rebuild per die (delete + reinsert), db.die() fail-fast on any parse
 mismatch. Logs to ./tmp/logs/cyclonev_db_import_routes.log.
@@ -80,17 +101,18 @@ mismatch. Logs to ./tmp/logs/cyclonev_db_import_routes.log.
 Usage:
     python3.15t scripts/cyclonev_db_import_routes.py --die e50f
     python3.15t scripts/cyclonev_db_import_routes.py --die e50f --chunk-workers 8
-    python3.15t scripts/cyclonev_db_import_routes.py          # all 7 dies, threaded
+    python3.15t scripts/cyclonev_db_import_routes.py          # all 7 dies, sequential
+    python3.15t scripts/cyclonev_db_import_routes.py --max-ram-pct 40 --batch-lines 50000
 """
 import argparse
-import datetime
 import logging
 import lzma
 import os
-import queue
 import sys
 import threading
 import time
+
+import psutil
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
@@ -111,6 +133,28 @@ RMUX_SPAN = [
     175, 175, 175, 76, 76, 76, 76, 175, 175, 119, 119, 76, 76, 76, 76,
     9, 9, 9, 9,  # pattern 6's 4 sub-variants (70..73), same span as pattern 6
 ]
+
+
+DEFAULT_MAX_RAM_PCT = 50.0
+DEFAULT_BATCH_LINES = 100_000
+
+
+def _wait_for_ram(max_ram_pct, log, what):
+    """Block (polling, not busy-waiting) while system RAM is at/above
+    max_ram_pct. Same gate + 2s poll cadence as cyclonev_verify_all.py's
+    run_producer_consumer -- the fix for that script's own IDE-killing OOM,
+    reused here as a circuit breaker on top of the structural batch-size fix
+    (this script's peak memory is bounded by --batch-lines regardless, but
+    the gate catches anything that doesn't go as planned without relying on
+    that bound alone).
+    """
+    first = True
+    while psutil.virtual_memory().percent >= max_ram_pct:
+        if first:
+            log.info(f"  RAM at {psutil.virtual_memory().percent:.0f}% >= "
+                      f"{max_ram_pct:.0f}% -- pausing before {what}")
+            first = False
+        time.sleep(2)
 
 
 def setup_logging():
@@ -407,66 +451,135 @@ def parse_p2p_file(path, log):
     return rows
 
 
-# ── threaded chunk dispatch (mirrors reach.py's worker/queue/lock pattern) ──
+# ── streaming batch dispatch (bounded memory) ───────────────────────────────
+#
+# Replaces the original whole-file-into-one-list design (see the module
+# docstring's MULTITHREADING section for why: it is what let 7 dies' worth
+# of concurrent parsing OOM-kill the host IDE). A file is read as a line
+# iterator -- lzma.open/.open both support that directly, no manual
+# incremental-decompress bookkeeping needed -- and processed BATCH_LINES
+# lines at a time: each batch is split across n_workers threads for parsing
+# (the real, measured NoGIL win), handed to `insert_fn` for an immediate
+# INSERT, and then dropped. Peak memory for one of these files is therefore
+# one batch's parsed rows (tens of thousands), not the whole file's (hundreds
+# of thousands to millions).
 
-def _run_chunked(path, parse_fn, n_workers, log, extra_log=""):
-    """Decompress-or-read path, split into n_workers line-range chunks on
-    real newline boundaries (safe: every record in these grammars is exactly
-    one line), parse each chunk in its own thread, return concatenated rows
-    in original file order.
+def _open_lines(path):
+    if path.endswith(".xz"):
+        return lzma.open(path, "rt", encoding="ascii")
+    return open(path, "r")
+
+
+def run_streamed(path, parse_fn, insert_fn, n_workers, batch_lines, max_ram_pct, log):
+    """Stream `path` in `batch_lines`-line batches; for each batch, split it
+    across `n_workers` threads running `parse_fn`, then call
+    `insert_fn(rows)` once per batch and discard the rows. Returns total row
+    count. Blocks on the RAM gate before starting each batch.
     """
     t0 = time.time()
-    if path.endswith(".xz"):
-        with lzma.open(path, "rb") as f:
-            text = f.read().decode("ascii")
-    else:
-        with open(path, "r") as f:
-            text = f.read()
-    lines = text.split("\n")
-    if lines and lines[-1] == "":
-        lines.pop()
-    n = len(lines)
-    t_read = time.time() - t0
+    total_rows = 0
+    total_lines = 0
+    n_batches = 0
+    t_parse = 0.0
+    t_insert = 0.0
 
-    if n_workers <= 1 or n < n_workers * 1000:
-        rows = parse_fn(lines, path, 0, log)
-        log.info(f"  {os.path.basename(path)}: {n} lines, 1 thread "
-                  f"(single-threaded: too small to chunk), read={t_read:.1f}s{extra_log}")
-        return rows
+    with _open_lines(path) as f:
+        while True:
+            _wait_for_ram(max_ram_pct, log, f"next batch of {os.path.basename(path)}")
 
-    chunk_size = (n + n_workers - 1) // n_workers
-    chunks = [(i, lines[i:i + chunk_size]) for i in range(0, n, chunk_size)]
-    results = [None] * len(chunks)
-    error_event = threading.Event()
+            batch = []
+            for line in f:
+                line = line.rstrip("\n").rstrip("\r")
+                if line:
+                    batch.append(line)
+                if len(batch) >= batch_lines:
+                    break
+            if not batch:
+                break
+            n_batches += 1
 
-    def _worker(idx, offset, chunk_lines):
-        try:
-            results[idx] = parse_fn(chunk_lines, path, offset, log)
-        except SystemExit:
-            error_event.set()
-        except Exception as exc:
-            error_event.set()
-            print(f"FATAL: chunk worker {idx} died: {exc}", file=sys.stderr)
+            tp0 = time.time()
+            if n_workers <= 1 or len(batch) < n_workers * 1000:
+                rows = parse_fn(batch, path, total_lines, log)
+            else:
+                chunk_size = (len(batch) + n_workers - 1) // n_workers
+                chunks = [(i, batch[i:i + chunk_size]) for i in range(0, len(batch), chunk_size)]
+                results = [None] * len(chunks)
+                error_event = threading.Event()
 
-    t1 = time.time()
-    threads = [threading.Thread(target=_worker, args=(idx, off, cl), daemon=True)
-               for idx, (off, cl) in enumerate(chunks)]
-    for t in threads: t.start()
-    for t in threads: t.join()
-    t_parse = time.time() - t1
+                def _worker(idx, offset, chunk_lines):
+                    try:
+                        results[idx] = parse_fn(chunk_lines, path, total_lines + offset, log)
+                    except SystemExit:
+                        error_event.set()
+                    except Exception as exc:
+                        error_event.set()
+                        print(f"FATAL: chunk worker {idx} died: {exc}", file=sys.stderr)
 
-    if error_event.is_set():
-        db.die(f"{path}: one or more chunk-parse threads failed, see FATAL lines above")
+                threads = [threading.Thread(target=_worker, args=(idx, off, cl), daemon=True)
+                           for idx, (off, cl) in enumerate(chunks)]
+                for t in threads: t.start()
+                for t in threads: t.join()
+                if error_event.is_set():
+                    db.die(f"{path}: one or more chunk-parse threads failed, see FATAL lines above")
+                rows = [r for chunk_rows in results for r in chunk_rows]
+            t_parse += time.time() - tp0
 
-    rows = [r for chunk_rows in results for r in chunk_rows]
-    log.info(f"  {os.path.basename(path)}: {n} lines, {len(chunks)} threads, "
-              f"read={t_read:.1f}s parse={t_parse:.1f}s{extra_log}")
-    return rows
+            ti0 = time.time()
+            insert_fn(rows)
+            t_insert += time.time() - ti0
+
+            total_rows += len(rows)
+            total_lines += len(batch)
+            del rows, batch  # drop this batch's rows before the next read
+
+    log.info(f"  {os.path.basename(path)}: {total_lines} lines, {n_batches} batch(es) of "
+              f"<={batch_lines}, {n_workers} threads/batch, "
+              f"parse={t_parse:.1f}s insert={t_insert:.1f}s total={time.time()-t0:.1f}s")
+    return total_rows
 
 
 # ── per-die import ───────────────────────────────────────────────────────
 
-def import_die_routes(mistral_root, die, chunk_workers, log):
+def _json_cols(cols):
+    """Column names whose values are lists and need JSON-encoding on insert."""
+    return {"sources", "targets"} & set(cols)
+
+
+def _make_bulk_insert(conn, table, cols, die_id, lock):
+    """Return a closure that inserts one batch of row-dicts into `table`,
+    serialized through `lock` -- SQLite only allows one writer at a time
+    regardless of thread count, so this just makes that explicit rather than
+    relying on sqlite3's own internal locking to serialize silently.
+    """
+    import json
+    placeholders = ",".join("?" * (len(cols) + 1))
+    sql = f"INSERT INTO {table} (die,{','.join(cols)}) VALUES ({placeholders})"
+    json_cols = _json_cols(cols)
+
+    def _insert(rows):
+        if not rows:
+            return
+        values = [
+            (die_id,) + tuple(
+                json.dumps(r[c]) if c in json_cols else r[c]
+                for c in cols
+            )
+            for r in rows
+        ]
+        with lock:
+            conn.executemany(sql, values)
+            if db.BACKEND == "sqlite":
+                conn.commit()  # commit per batch, not per die -- bounds the WAL too
+
+    return _insert
+
+
+def import_die_routes(mistral_root, die, chunk_workers, batch_lines, max_ram_pct, log):
+    """Import one die's routing tables. Dies are never run concurrently with
+    each other (see module docstring) -- this function assumes it owns the
+    DB connection and memory budget for its full duration.
+    """
     t_die = time.time()
     paths = {
         "r": os.path.join(mistral_root, "data", f"{die}-r.txt.xz"),
@@ -480,138 +593,111 @@ def import_die_routes(mistral_root, die, chunk_workers, log):
             db.die(f"missing {p} ({kind}) — is --mistral-root correct?")
 
     conn = db.connect_threadsafe()
-    cur = conn.execute("SELECT id, tile_sx FROM cv_dies WHERE name = ?", (die,)) \
-        if db.BACKEND != "postgres" else None
     if db.BACKEND == "postgres":
-        import pg8000.native
         row = conn.run("SELECT id, tile_sx FROM cv_dies WHERE name = :d", d=die)
         if not row:
             db.die(f"die {die!r} not found in cv_dies — run scripts/cyclonev_db_import.py first")
         die_id, tile_sx = row[0]
     else:
-        row = cur.fetchone()
+        row = conn.execute("SELECT id, tile_sx FROM cv_dies WHERE name = ?", (die,)).fetchone()
         if not row:
             db.die(f"die {die!r} not found in cv_dies — run scripts/cyclonev_db_import.py first")
         die_id, tile_sx = row
-    conn.close()
 
     ROUTES_WIDTH[0] = tile_sx  # routes.cc's "width" param = tile_sx (generator.cc call site)
 
-    routes = _run_chunked(paths["r"], parse_routes_chunk, chunk_workers, log)
-    lines_ = _run_chunked(paths["l"], parse_lines_chunk, chunk_workers, log)
-    rdriver = _run_chunked(paths["d"], parse_rdriver_chunk, chunk_workers, log)
-    p2r = parse_p2r_file(paths["p2r"], log)
-    p2p = parse_p2p_file(paths["p2p"], log)
+    # Always-rebuild: delete this die's rows from all 5 tables before any
+    # streamed insert begins (so a re-run never sees a partial leftover mix
+    # of old + new rows even if it is interrupted mid-stream).
+    for tbl in ("cv_route_muxes", "cv_route_lines", "cv_route_drivers", "cv_p2r", "cv_p2p"):
+        conn.execute(f"DELETE FROM {tbl} WHERE die = ?", (die_id,))
+    if db.BACKEND == "sqlite":
+        conn.commit()
 
-    log.info(f"{die}: parsed routes={len(routes)} lines={len(lines_)} "
-              f"rdriver={len(rdriver)} p2r={len(p2r)} p2p={len(p2p)}")
+    write_lock = threading.Lock()
+    n_routes = run_streamed(
+        paths["r"], parse_routes_chunk,
+        _make_bulk_insert(conn, "cv_route_muxes",
+                           ["rn_type", "rn_x", "rn_y", "rn_z", "pattern", "fw_pos", "sources"],
+                           die_id, write_lock),
+        chunk_workers, batch_lines, max_ram_pct, log)
 
-    conn = db.connect_threadsafe()
-    try:
-        # Always-rebuild: delete this die's rows from all 5 tables first.
-        for tbl in ("cv_route_muxes", "cv_route_lines", "cv_route_drivers", "cv_p2r", "cv_p2p"):
-            conn.execute(f"DELETE FROM {tbl} WHERE die = ?", (die_id,))
+    _wait_for_ram(max_ram_pct, log, f"{die} lines file")
+    n_lines = run_streamed(
+        paths["l"], parse_lines_chunk,
+        _make_bulk_insert(conn, "cv_route_lines",
+                           ["rn_type", "rn_x", "rn_y", "rn_z", "tc1", "tc2", "r85", "c_farads",
+                            "driver_position", "length", "targets"],
+                           die_id, write_lock),
+        chunk_workers, batch_lines, max_ram_pct, log)
 
-        def _bulk(table, cols, rows):
-            if not rows:
-                return
-            placeholders = ",".join("?" * (len(cols) + 1))
-            sql = f"INSERT INTO {table} (die,{','.join(cols)}) VALUES ({placeholders})"
-            CHUNK = 50_000
-            for i in range(0, len(rows), CHUNK):
-                batch = rows[i:i + CHUNK]
-                conn.executemany(sql, [
-                    (die_id,) + tuple(
-                        __import__("json").dumps(r[c]) if isinstance(r[c], list) else r[c]
-                        for c in cols
-                    )
-                    for r in batch
-                ])
+    _wait_for_ram(max_ram_pct, log, f"{die} rdriver file")
+    n_rdriver = run_streamed(
+        paths["d"], parse_rdriver_chunk,
+        _make_bulk_insert(conn, "cv_route_drivers",
+                           ["rn_type", "rn_x", "rn_y", "rn_z", "driver_left", "driver_right"],
+                           die_id, write_lock),
+        chunk_workers, batch_lines, max_ram_pct, log)
 
-        _bulk("cv_route_muxes",
-              ["rn_type", "rn_x", "rn_y", "rn_z", "pattern", "fw_pos", "sources"], routes)
-        _bulk("cv_route_lines",
-              ["rn_type", "rn_x", "rn_y", "rn_z", "tc1", "tc2", "r85", "c_farads",
-               "driver_position", "length", "targets"], lines_)
-        _bulk("cv_route_drivers",
-              ["rn_type", "rn_x", "rn_y", "rn_z", "driver_left", "driver_right"], rdriver)
-        _bulk("cv_p2r",
-              ["block_type", "block_x", "block_y", "block_instance", "port_type", "port_bit",
-               "rn_type", "rn_x", "rn_y", "rn_z"], p2r)
-        _bulk("cv_p2p",
-              ["src_block_type", "src_block_x", "src_block_y", "src_block_instance",
-               "src_port_type", "src_port_bit", "dst_block_type", "dst_block_x", "dst_block_y",
-               "dst_block_instance", "dst_port_type", "dst_port_bit"], p2p)
-
-        if db.BACKEND == "sqlite":
-            conn.commit()
-    finally:
-        conn.close()
+    # p2r/p2p are tiny (≤~8k rows for the largest die) -- whole-file parse,
+    # no batching needed, but still go through the RAM gate for uniformity.
+    _wait_for_ram(max_ram_pct, log, f"{die} p2r/p2p files")
+    p2r_rows = parse_p2r_file(paths["p2r"], log)
+    p2p_rows = parse_p2p_file(paths["p2p"], log)
+    _make_bulk_insert(conn, "cv_p2r",
+                       ["block_type", "block_x", "block_y", "block_instance", "port_type", "port_bit",
+                        "rn_type", "rn_x", "rn_y", "rn_z"],
+                       die_id, write_lock)(p2r_rows)
+    _make_bulk_insert(conn, "cv_p2p",
+                       ["src_block_type", "src_block_x", "src_block_y", "src_block_instance",
+                        "src_port_type", "src_port_bit", "dst_block_type", "dst_block_x", "dst_block_y",
+                        "dst_block_instance", "dst_port_type", "dst_port_bit"],
+                       die_id, write_lock)(p2p_rows)
+    n_p2r, n_p2p = len(p2r_rows), len(p2p_rows)
+    del p2r_rows, p2p_rows
+    conn.close()
 
     dt = time.time() - t_die
-    log.info(f"{die}: inserted {len(routes)+len(lines_)+len(rdriver)+len(p2r)+len(p2p)} "
-              f"total rows in {dt:.1f}s")
+    log.info(f"{die}: inserted routes={n_routes} lines={n_lines} rdriver={n_rdriver} "
+              f"p2r={n_p2r} p2p={n_p2p} ({n_routes+n_lines+n_rdriver+n_p2r+n_p2p} total) in {dt:.1f}s")
     return dt
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--die", choices=ALL_DIES, help="import a single die (default: all 7)")
+    ap.add_argument("--die", choices=ALL_DIES, help="import a single die (default: all 7, sequential)")
     ap.add_argument("--mistral-root", default=DEFAULT_MISTRAL_ROOT)
     ap.add_argument("--chunk-workers", type=int, default=min(8, os.cpu_count() or 4),
-                     help="threads used to parse EACH large file's lines in parallel (default: 8)")
-    ap.add_argument("--die-workers", type=int, default=min(4, os.cpu_count() or 4),
-                     help="threads used to import DIFFERENT DIES in parallel when --die is omitted")
+                     help="threads used to parse EACH batch's lines in parallel (default: 8)")
+    ap.add_argument("--batch-lines", type=int, default=DEFAULT_BATCH_LINES,
+                     help=f"lines parsed+inserted per batch, bounding peak memory "
+                          f"(default: {DEFAULT_BATCH_LINES})")
+    ap.add_argument("--max-ram-pct", type=float, default=DEFAULT_MAX_RAM_PCT,
+                     help=f"pause claiming new batches/dies while psutil.virtual_memory().percent "
+                          f"is at/above this (default: {DEFAULT_MAX_RAM_PCT})")
     ap.add_argument("--single-threaded", action="store_true",
-                     help="force 1 chunk worker and 1 die worker, for A/B timing comparison")
+                     help="force chunk_workers=1, for A/B timing comparison")
     args = ap.parse_args()
 
     log = setup_logging()
     schema.init()
 
     chunk_workers = 1 if args.single_threaded else args.chunk_workers
-    die_workers = 1 if args.single_threaded else args.die_workers
 
     dies = [args.die] if args.die else ALL_DIES
     log.info(f"NoGIL: {not sys._is_gil_enabled()}  "
-             f"importing {len(dies)} die(s) from {args.mistral_root}, "
-             f"chunk_workers={chunk_workers} die_workers={die_workers if len(dies) > 1 else 1}")
+             f"importing {len(dies)} die(s) from {args.mistral_root} SEQUENTIALLY "
+             f"(chunk_workers={chunk_workers} batch_lines={args.batch_lines} "
+             f"max_ram_pct={args.max_ram_pct})")
 
     t0 = time.time()
-    if len(dies) == 1 or die_workers <= 1:
-        for die in dies:
-            import_die_routes(args.mistral_root, die, chunk_workers, log)
-    else:
-        error_event = threading.Event()
-        results = {}
-
-        def _die_worker(die):
-            try:
-                results[die] = import_die_routes(args.mistral_root, die, chunk_workers, log)
-            except SystemExit:
-                error_event.set()
-            except Exception as exc:
-                error_event.set()
-                print(f"FATAL: die worker {die} died: {exc}", file=sys.stderr)
-
-        work_q = queue.Queue()
-        for d in dies:
-            work_q.put(d)
-
-        def _pool_worker():
-            while True:
-                try:
-                    d = work_q.get_nowait()
-                except queue.Empty:
-                    return
-                _die_worker(d)
-
-        threads = [threading.Thread(target=_pool_worker, daemon=True) for _ in range(die_workers)]
-        for t in threads: t.start()
-        for t in threads: t.join()
-        if error_event.is_set():
-            db.die("one or more die import threads failed — see FATAL lines above")
+    # Dies are deliberately NOT run concurrently -- see module docstring
+    # "MULTITHREADING -- AND THE MEMORY INCIDENT THAT RESHAPED IT".
+    for die in dies:
+        _wait_for_ram(args.max_ram_pct, log, f"starting die {die}")
+        import_die_routes(args.mistral_root, die, chunk_workers, args.batch_lines,
+                           args.max_ram_pct, log)
 
     log.info(f"done in {time.time()-t0:.1f}s")
 
