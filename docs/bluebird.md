@@ -4,6 +4,12 @@
 - Mistral is the starting point only: its data seeds the tables, and each part is replaced once Quartus fuzzing (#103) has verified or corrected it.
 - Acceptance test: full loop — Verilog -> Quartus -> bitstream -> lift -> Verilog -> compare with Quartus's post-fit netlist.
 - Renamed from `rust/cyclonev/` on 2026-10-23.
+- Formats: adopt Project X-Ray's, don't invent (Dan, 2026-10-23). Clones: `/mnt/2tb/git/prjxray` (no db submodule), `/mnt/2tb/git/fasm`.
+  - FASM for the feature-level bitstream text (`fasm/docs/specification/`).
+  - `segbits_<tile_type>.db`: `<feature> <bit>...`, `!` = must be 0. Bit = tile-relative `<dx>_<dy>` (Cyclone V CRAM is x/y, not X-Ray's frame/word).
+  - `tilegrid.json`: per tile type/grid/sites/bits; Cyclone V's CRAM / PRAM / ORAM map onto X-Ray's per-bus `bits` entries.
+  - Correlation: X-Ray `tools/segmatch.cc`, tags from Quartus `.vo` + `-show_routing`.
+  - FASM parser needs `textx` (pure Python) for python3.15t; not installed yet.
 
 ## Mistral's data/*.txt(.xz) is a BOOTSTRAP/VERIFICATION source, not permanent
 
