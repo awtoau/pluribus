@@ -932,6 +932,8 @@ route_hops = Table("route_hops", metadata,
     Column("n",         Integer),
     Column("idx",       Integer),                   # the _I<k> routing-element index
     Column("element",   Text),                      # RE type, or atom|port for IC/CELL
+    Column("section",   Text),                      # enclosing depth-0 row, e.g. "clock path", "data path"
+    Column("driver",    Text),                      # last CELL row before this hop (atom|port): the net being routed
 )
 Index("idx_route_hops_build", route_hops.c.build, route_hops.c.analysis, route_hops.c.path)
 Index("idx_route_hops_loc", route_hops.c.build, route_hops.c.location)

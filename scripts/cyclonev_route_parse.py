@@ -51,10 +51,10 @@ def parse(path):
             props[m.group(1)] = m.group(2)
             continue
         if ln.startswith("; Data Arrival Path"):
-            part, hop = "arrival", 0
+            part, hop, section, driver = "arrival", 0, None, None
             continue
         if ln.startswith("; Data Required Path"):
-            part, hop = "required", 0
+            part, hop, section, driver = "required", 0, None, None
             continue
         if part is None:
             continue
@@ -67,12 +67,16 @@ def parse(path):
             db.die(f"{path}:{i}: unrecognised route row {ln!r}")
         indent, total, incr, rf, typ, fanout, loc, elem = m.groups()
         kind, x, y, n, idx = parse_loc(loc)
-        hops.append(dict(analysis=analysis, path=pnum, from_node=props.get("From Node"),
+        if not indent:
+            section, driver = elem, None
+        hops.append(dict(section=section, driver=driver,analysis=analysis, path=pnum, from_node=props.get("From Node"),
                          to_node=props.get("To Node"), part=part, hop=hop,
                          depth=len(indent) // 2, total=float(total), incr=float(incr),
                          rf=rf or None, type=typ or None, fanout=int(fanout) if fanout else None,
                          location=loc or None, loc_kind=kind, x=x, y=y, n=n, idx=idx,
                          element=elem))
+        if typ == "CELL" and "|" in elem:
+            driver = elem
         hop += 1
     return hops
 
