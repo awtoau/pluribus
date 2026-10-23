@@ -24,15 +24,16 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 
 import db  # noqa: E402
+if os.environ.get("CYCLONEV_LIFTER_FILE"):
+    # score another lifter revision (e.g. the pre-#106 baseline) without touching the tree
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location("lifters.cyclonev_lift", os.environ["CYCLONEV_LIFTER_FILE"])
+    _mod = importlib.util.module_from_spec(_spec)
+    sys.modules["lifters.cyclonev_lift"] = _mod
+    _spec.loader.exec_module(_mod)
 from lifters.cyclonev_lift import CVNode, CycloneVLift  # noqa: E402
 
 PINS = "abcdef"
-# MLAB LUT bits are stored permuted (nextpnr mistral/lab.cc permute_mlab_init; confirmed
-# by the corpus: MLAB halves only match with it applied).
-MLAB_PERM = [0, 1, 4, 5, 8, 9, 12, 13, 29, 28, 25, 24, 21, 20, 17, 16,
-             2, 3, 6, 7, 10, 11, 14, 15, 31, 30, 27, 26, 23, 22, 19, 18,
-             32, 33, 36, 37, 40, 41, 44, 45, 61, 60, 57, 56, 53, 52, 49, 48,
-             34, 35, 38, 39, 42, 43, 46, 47, 63, 62, 59, 58, 55, 54, 51, 50]
 HALF = ("T", "B")              # Quartus lcell (N//3)%2 -> Mistral half (TMODE / BMODE)
 DEFAULT_MODE = {"T": "D_E", "B": "C_E"}
 FF_SLOT = {1: "0", 2: "1"}     # Quartus FF N%3 -> Mistral FF{T,B}<0|1|1L>
@@ -40,51 +41,20 @@ FF_PORTS = ("d", "clk", "clrn", "ena", "sclr", "sload")
 
 
 def lab_pin(half, mode, port):
-    """Mistral LAB input pin carrying lcell input data<port> (corpus-derived, see doc).
-    T: c->C d->D; B: c->D d->C; in E_x/F_x modes d comes from that half's E/F pin."""
+    """LAB source of lcell input data<port>: LAB pin (A B C D E0 E1 F0 F1), "FB"
+    (same-half register feedback) or None (constant).  Mode = <d src>_<e src>:
+    D/C = that pin, E = E pin, F = feedback; e src 0/1 = constant.  Evidence: conn.*
+    MATCH counts, and the feedback register is the FEEDBACK_SEL slot (docs/cyclonev-postfit-oracle.md)."""
     h = "0" if half == "T" else "1"
     if port in "ab":
         return port.upper()
     if port == "c":
         return "C" if half == "T" else "D"
     if port == "d":
-        if mode[0] in "EF":
-            return mode[0] + h
-        return "D" if half == "T" else "C"
-    return port.upper() + h
-
-
-def lut_raw_pos(v, half, mode, used):
-    """Raw LUT_MASK bit for Quartus input vector v (bit k = data<PINS[k]>), or None if v
-    is unreachable (an unused/gnd input set to 1)."""
-    if any((v >> k) & 1 for k, p in enumerate(PINS) if p not in used):
-        return None
-    bit = {p: (v >> k) & 1 for k, p in enumerate(PINS)}
-    if half == "B":                       # bottom half sees datac/datad swapped
-        bit["c"], bit["d"] = bit["d"], bit["c"]
-    if mode in ("E_0", "E_1"):
-        x5 = int(mode[-1])
-    elif mode in ("D_E", "D_F", "C_E", "C_F"):
-        x5 = bit["e"]
-    else:
-        return "unmodelled"
-    j2, j3 = (bit["c"], bit["d"]) if x5 == 0 else (bit["d"], bit["c"])
-    return bit["a"] | bit["b"] << 1 | j2 << 2 | j3 << 3 | bit["f"] << 4 | x5 << 5
-
-
-def lut_matches(q_mask, raw, half, mode, used, mlab):
-    """True/False, or None when the mode is not modelled.  Raw bits are inverted."""
-    for v in range(64):
-        j = lut_raw_pos(v, half, mode, used)
-        if j is None:
-            continue
-        if j == "unmodelled":
-            return None
-        if mlab:
-            j = MLAB_PERM[j]
-        if ((q_mask >> v) & 1) == ((raw >> j) & 1):
-            return False
-    return True
+        return {"D": "D", "C": "C", "E": "E" + h, "F": "FB"}[mode[0]]
+    if port == "e":
+        return {"E": "E" + h, "F": "FB"}.get(mode[2])
+    return "F" + h
 
 
 def load_quartus(bid):
@@ -216,7 +186,7 @@ def compare_build(bid, ddir):
         lt, pins = entry
         pv = {}
         for k, p in enumerate(PINS):
-            if p in used:
+            if p in used and lab_pin(half, mode, p) is not None:
                 pv[lab_pin(half, mode, p)] = (v >> k) & 1
         idx = 0
         for w, letter in enumerate("abcdef"):

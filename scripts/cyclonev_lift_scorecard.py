@@ -68,12 +68,15 @@ def run_designs(designs):
     return times
 
 
-def aggregate():
+def aggregate(designs):
     import sqlite3
     db = os.environ["PLURIBUS_SQLITE_PATH"]
     c = sqlite3.connect(db)
     cnt = collections.defaultdict(collections.Counter)
-    for field, verdict, n in c.execute("select field, verdict, count(*) from postfit_compare group by 1,2"):
+    ph = ",".join("?" * len(designs))
+    for field, verdict, n in c.execute(
+            "select p.field, p.verdict, count(*) from postfit_compare p join postfit_builds b on p.build=b.id "
+            f"where b.design in ({ph}) group by 1,2", designs):
         cnt[field][verdict] += n
     out = {}
     for name, fields in FAMILIES:
@@ -85,23 +88,25 @@ def aggregate():
         out[name] = dict(matched=t["MATCH"], missing=t["LIFT_MISSING"], extra=t["LIFT_ONLY"],
                          wrong=wrong, total=total, faults=total - t["MATCH"],
                          pct=round(100.0 * t["MATCH"] / total, 1) if total else None)
-    n_builds = c.execute("select count(distinct build) from postfit_compare").fetchone()[0]
-    return out, n_builds
+    return out, len(designs)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--label", required=True)
+    ap.add_argument("--lifter-file", help="score this lifter file instead of lifters/cyclonev_lift.py")
     ap.add_argument("--score-only", action="store_true", help="aggregate the existing postfit_compare")
     a = ap.parse_args()
     if "PLURIBUS_SQLITE_PATH" not in os.environ:
         sys.exit("set PLURIBUS_SQLITE_PATH to the corpus DB copy (never the live one)")
     times = {}
+    designs = sorted(p.parent.name for p in (REPO / "corpus" / "cyclonev").glob("*/decomp.bt"))
     if not a.score_only:
-        designs = sorted(p.parent.name for p in (REPO / "corpus" / "cyclonev").glob("*/decomp.bt"))
         log(f"=== {a.label}: {len(designs)} designs with decomp.bt")
+        if a.lifter_file:
+            os.environ["CYCLONEV_LIFTER_FILE"] = str(Path(a.lifter_file).resolve())
         times = run_designs(designs)
-    out, n_builds = aggregate()
+    out, n_builds = aggregate(designs)
     ok_times = [t for t in times.values() if t]
     res = dict(label=a.label, builds=n_builds, max_design_s=max(ok_times) if ok_times else None,
                total_s=sum(ok_times), fields=out)

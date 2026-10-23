@@ -243,7 +243,26 @@ def parse_fpga_nets_tsv(path):
 
 # Bit-weight map, LUT4 (a-d) and LUT5 (a-e, Cyclone V ALM-half) alike.
 # p = a + 2b + 4c + 8d (+16e); shared by every nd branch below.
-_LUT_WEIGHTS = {"a": 1, "b": 2, "c": 4, "d": 8, "e": 16}
+_LUT_WEIGHTS = {"a": 1, "b": 2, "c": 4, "d": 8, "e": 16, "f": 32}
+
+
+_LUT_NAMES = ("a", "b", "c", "d", "e", "f")
+
+
+def _lut_deps(init_str):
+    """Inputs a MSB-first truth table functionally depends on; width from len(init_str)
+    (16 -> a-d, 32 -> a-e, 64 -> a-f).  Same contract as machxo2_lift.lut_dependence."""
+    n = len(init_str)
+    nbits = n.bit_length() - 1
+    if n != (1 << nbits) or nbits > len(_LUT_NAMES):
+        raise ValueError(f"_lut_deps: init string length {n} unsupported")
+    v = int(init_str, 2)
+    dep = set()
+    for i in range(nbits):
+        w = 1 << i
+        if any((p & w) == 0 and ((v >> p) & 1) != ((v >> (p ^ w)) & 1) for p in range(n)):
+            dep.add(_LUT_NAMES[i])
+    return dep
 
 
 def _mux5_tree(v, deps):
@@ -287,7 +306,7 @@ def classify_lut(init_str):
     full_mask = (1 << n) - 1
     if v == 0:         return "CONST0"
     if v == full_mask: return "CONST1"
-    deps = sorted(mx.lut_dependence(init_str))
+    deps = sorted(_lut_deps(init_str))
     nd   = len(deps)
     if nd == 0:
         return "CONST0" if v == 0 else "CONST1"
@@ -327,7 +346,9 @@ def classify_lut(init_str):
         found = _mux5_tree(v, deps)
         if found: return found
         return "COMBO5"
-    raise AssertionError(f"unreachable: nd={nd} for init length {n} (max supported is 5 inputs)")
+    if nd == 6:
+        return "COMBO6"
+    raise AssertionError(f"unreachable: nd={nd} for init length {n} (max supported is 6 inputs)")
 
 
 def resolve_net(design, lift, row, col, wire):
@@ -511,11 +532,11 @@ def load_cyclonev(label, config_path, device):
         ).scalar()
         assert_eq("net count in DB", net_count, n_nets)
 
-        # ── LUTs (LUT5: a,b,c,d,e) ───────────────────────────────────────
+        # ── LUTs (ALM half: a,b,c,d,e,f) ─────────────────────────────────
         lut_rows = [{"bitstream": bs_id, "cell": lt["name"], "init": lt["init"],
                      "a": lt.get("a"), "b": lt.get("b"), "c": lt.get("c"),
-                     "d": lt.get("d"), "e": lt.get("e"), "z": lt.get("z"),
-                     "deps": sorted(mx.lut_dependence(lt["init"])),
+                     "d": lt.get("d"), "e": lt.get("e"), "f": lt.get("f"), "z": lt.get("z"),
+                     "deps": sorted(_lut_deps(lt["init"])),
                      "fn": classify_lut(lt["init"])}
                     for lt in design.luts]
         if lut_rows:
@@ -553,9 +574,9 @@ def load_cyclonev(label, config_path, device):
                                         "cell": ff["name"], "pin": pin, "out_net": q})
         for lt in design.luts:
             z = lt.get("z")
-            for pin in ("a", "b", "c", "d", "e"):
+            for pin in ("a", "b", "c", "d", "e", "f"):
                 net = lt.get(pin)
-                if net:
+                if net and not net.startswith("1'b"):
                     fanout_rows.append({"bitstream": bs_id, "net": net, "cell_type": "LUT",
                                         "cell": lt["name"], "pin": pin.upper(), "out_net": z})
         if fanout_rows:
