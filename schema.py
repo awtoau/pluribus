@@ -604,6 +604,150 @@ cv_pram_strips = Table("cv_pram_strips", metadata,
 )
 Index("idx_cv_pram_die_block", cv_pram_strips.c.die, cv_pram_strips.c.block)
 
+# ── Cyclone V routing-node tables (2026-10-23, 2nd session) ──────────────────
+# Imported by scripts/cyclonev_db_import_routes.py from Mistral's plain-text
+# generator inputs: data/<die>-r.txt.xz (routes), -l.txt.xz (lines), -d.txt.xz
+# (rdriver), -p2r.txt (port-to-rnode), -p2p.txt (port-to-port).
+#
+# BOOTSTRAP/VERIFICATION SOURCE, NOT A PERMANENT DEPENDENCY. These 5 files are
+# Mistral's own curated routing ground truth, borrowed the same way
+# cv_pram_strips borrows -pram.txt. The longer-term, independent source for
+# this same ground truth is pluribus's own Quartus-based fuzzing campaign
+# (compile known test designs that exercise specific routing patterns,
+# decompile, cross-check against the known design -- same method as
+# scripts/cyclonev_dsp_fuzz.py already used for DSP operational modes, and
+# scripts/run_prjtrellis_fuzz.py for the Lattice side), not an indefinite read
+# of another project's data/ tree. That campaign is explicitly NOT attempted
+# this session -- the routing-pattern space is far larger than DSP modes, and
+# it is real future work, not a bug in this import.
+#
+# Rnode/block/port TYPE NAMES are stored as the literal text tokens parsed
+# from the files (e.g. "SCLK", "GCLK", "LAB"), not as integer codes against
+# Mistral's cv-rnodetypes.ipp/cv-blocktypes.ipp enums -- cv-porttypes.ipp in
+# particular is not even a checked-in file: it is generated at Mistral BUILD
+# time by tools/porttypes_to_source.py scanning every die's -p2r.txt/-p2p.txt
+# for port-name tokens, so depending on it would mean building Mistral just to
+# get a name list pluribus can already read out of the same source text.
+#
+# Per-row repeating arrays (route mux sources, line fanout targets) are JSON
+# lists on the parent row, not child tables -- same "TEXT[] -> JSON"
+# convention cv_dies already uses for pram_sizes/x_to_bx. e50f alone has
+# ~695k route rows (avg 17 sources) and ~626k line rows (avg 19 targets); a
+# fully normalised child-table design would add ~24M rows for one die's
+# routing layer with no query this project currently needs that a JSON array
+# on the parent row doesn't already serve.
+
+# One row per data/<die>-r.txt.xz line: the routing mux occupying a
+# destination rnode. `pattern` indexes Mistral's rmux_patterns[74] table
+# (generator/routes.cc) -- 0..69 are the base patterns, 70..73 are pattern 6's
+# four fixed-default sub-variants ("6.0".."6.3" in the text, encoded there as
+# `pat = 70 + patopt`). NULL pattern = a '-' line: a terminal rnode with no
+# mux (82,932/695,446 e50f rows -- e.g. SCLK sector-clock leaves with no
+# further fan-in). `sources` is a JSON list of up to 44 {"slot", "type", "x",
+# "y", "z"} objects -- the mux's selectable inputs, slot-indexed per
+# rmux_patterns[pattern].bits.
+cv_route_muxes = Table("cv_route_muxes", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("die",        Integer, ForeignKey("cv_dies.id", ondelete="CASCADE"), nullable=False),
+    Column("rn_type",     Text,    nullable=False),  # e.g. "SCLK", "DCMUX"
+    Column("rn_x",        Integer, nullable=False),
+    Column("rn_y",        Integer, nullable=False),
+    Column("rn_z",        Integer, nullable=False),
+    Column("pattern",     Integer),                  # NULL = no mux ('-' line)
+    Column("fw_pos",      Integer, nullable=False, server_default="0"),  # cram frame-word position, 0 if no pattern
+    Column("sources",     JSON,    nullable=False, server_default="[]"),
+)
+Index("idx_cv_route_muxes_rn", cv_route_muxes.c.die, cv_route_muxes.c.rn_type, cv_route_muxes.c.rn_x, cv_route_muxes.c.rn_y, cv_route_muxes.c.rn_z)
+
+# One row per data/<die>-l.txt.xz line: a source rnode's electrical line model
+# (tc1/tc2/r85 timing-corner resistances, c_farads already scaled by
+# generator/lines.cc's *1e-15, length in tiles) plus its fan-out. `targets` is
+# a JSON list of up to 64 {"pos", "type", "x", "y", "z", "subslot", "cap"}
+# objects -- a target is EITHER a downstream rnode (type/x/y/z set, cap null)
+# OR a bare capacitance tap (type/x/y/z null, cap set), per lines.cc's
+# "pos:number" vs "pos:TYPE.x.y.z:subslot" grammar branch.
+cv_route_lines = Table("cv_route_lines", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("die",        Integer, ForeignKey("cv_dies.id", ondelete="CASCADE"), nullable=False),
+    Column("rn_type",     Text,    nullable=False),
+    Column("rn_x",        Integer, nullable=False),
+    Column("rn_y",        Integer, nullable=False),
+    Column("rn_z",        Integer, nullable=False),
+    Column("tc1",         Float,   nullable=False),
+    Column("tc2",         Float,   nullable=False),
+    Column("r85",         Float,   nullable=False),
+    Column("c_farads",    Float,   nullable=False),
+    Column("driver_position", Integer, nullable=False, server_default="0"),
+    Column("length",      Integer, nullable=False, server_default="0"),
+    Column("targets",     JSON,    nullable=False, server_default="[]"),
+)
+Index("idx_cv_route_lines_rn", cv_route_lines.c.die, cv_route_lines.c.rn_type, cv_route_lines.c.rn_x, cv_route_lines.c.rn_y, cv_route_lines.c.rn_z)
+
+# One row per data/<die>-d.txt.xz line: the pair of named driver electrical
+# models (generator/drivers.cc driver_type_names, e.g. "gout_labcell_a",
+# "h14_a") assigned to an rnode's left/right half -- same name in both columns
+# when the line gives only one. Electrical driver MODELS themselves
+# (speed/temp/shape tables) live in Mistral's separate driver-models.txt.xz
+# and are out of scope here -- this records only which named driver an rnode
+# uses, not that driver's analog characteristics.
+cv_route_drivers = Table("cv_route_drivers", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("die",        Integer, ForeignKey("cv_dies.id", ondelete="CASCADE"), nullable=False),
+    Column("rn_type",     Text,    nullable=False),
+    Column("rn_x",        Integer, nullable=False),
+    Column("rn_y",        Integer, nullable=False),
+    Column("rn_z",        Integer, nullable=False),
+    Column("driver_left",  Text,   nullable=False),
+    Column("driver_right", Text,   nullable=False),
+)
+Index("idx_cv_route_drivers_rn", cv_route_drivers.c.die, cv_route_drivers.c.rn_type, cv_route_drivers.c.rn_x, cv_route_drivers.c.rn_y, cv_route_drivers.c.rn_z)
+
+# One row per data/<die>-p2r.txt port-instance-bit entry: binds a block port
+# (pnode: block type + x/y + optional instance + port type + optional bit
+# index) to the routing node it connects to. rn_* columns are NULL for a '-'
+# entry (generator/p2r.cc: unconnected bit in an instance/bit range).
+cv_p2r = Table("cv_p2r", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("die",        Integer, ForeignKey("cv_dies.id", ondelete="CASCADE"), nullable=False),
+    Column("block_type",  Text,    nullable=False),  # e.g. "CMUXCR", "LAB"
+    Column("block_x",     Integer, nullable=False),
+    Column("block_y",     Integer, nullable=False),
+    Column("block_instance", Integer),  # NULL if the port has no per-instance range
+    Column("port_type",   Text,    nullable=False),  # e.g. "clkin", "aclr"
+    Column("port_bit",    Integer),     # NULL if the port has no per-bit range
+    Column("rn_type",     Text),
+    Column("rn_x",        Integer),
+    Column("rn_y",        Integer),
+    Column("rn_z",        Integer),
+)
+Index("idx_cv_p2r_block", cv_p2r.c.die, cv_p2r.c.block_type, cv_p2r.c.block_x, cv_p2r.c.block_y)
+Index("idx_cv_p2r_rn",    cv_p2r.c.die, cv_p2r.c.rn_type, cv_p2r.c.rn_x, cv_p2r.c.rn_y, cv_p2r.c.rn_z)
+
+# One row per data/<die>-p2p.txt line: a direct port-to-port connection that
+# bypasses the routing fabric entirely (generator/p2p.cc) -- e.g. a fixed
+# CTRL block output wired straight to a GPIO buffer input.
+# src/dst_port_type is NULL for a bare block+instance reference with no port
+# at all (nodes.cc lookup_p: the ':porttype' suffix is optional -- 272/1755
+# e50f lines are e.g. "DQS16.000.016.0" with no port, PNONE in Mistral's enum).
+cv_p2p = Table("cv_p2p", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("die",        Integer, ForeignKey("cv_dies.id", ondelete="CASCADE"), nullable=False),
+    Column("src_block_type", Text, nullable=False),
+    Column("src_block_x",    Integer, nullable=False),
+    Column("src_block_y",    Integer, nullable=False),
+    Column("src_block_instance", Integer),
+    Column("src_port_type",  Text),
+    Column("src_port_bit",   Integer),
+    Column("dst_block_type", Text, nullable=False),
+    Column("dst_block_x",    Integer, nullable=False),
+    Column("dst_block_y",    Integer, nullable=False),
+    Column("dst_block_instance", Integer),
+    Column("dst_port_type",  Text),
+    Column("dst_port_bit",   Integer),
+)
+Index("idx_cv_p2p_src", cv_p2p.c.die, cv_p2p.c.src_block_type, cv_p2p.c.src_block_x, cv_p2p.c.src_block_y)
+Index("idx_cv_p2p_dst", cv_p2p.c.die, cv_p2p.c.dst_block_type, cv_p2p.c.dst_block_x, cv_p2p.c.dst_block_y)
+
 # ── Schema management ─────────────────────────────────────────────────────────
 
 def init(eng=None):
