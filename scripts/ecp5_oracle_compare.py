@@ -629,8 +629,9 @@ def compare_target(target, out_root):
             fields.append({"field": name, "verdict": verdict,
                            "diamond": diamond, "pluribus": ours})
 
-        if pc.tile_type.get((r, c)) != "PLC2":
-            fld("tile", "MISMATCH", comp["site"], pc.tile_type.get((r, c)))
+        # several tiles share a position (PLC2 + TAP_DRIVE): pc.tile_type keeps the last one
+        if "PLC2" not in C.tile_types(r, c):
+            fld("tile", "MISMATCH", comp["site"], C.tile_types(r, c))
             res["sites"].append({"comp": comp["name"], "site": comp["site"], "fields": fields})
             continue
 
