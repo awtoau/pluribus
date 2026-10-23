@@ -40,7 +40,7 @@ from lifters.ecp5_lift import ECP5Lift  # noqa: E402
 import native_config  # noqa: E402
 
 LOG_PATH = os.path.join(REPO, "tmp", "logs", "ecp5_oracle_compare.log")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 _log_lock = threading.Lock()
 
 
@@ -179,7 +179,24 @@ LUT_INIT_DEFAULT = 0xFFFF       # PLC2 bits.db `.config SLICEA.K0.INIT 111111111
 _GLOBAL_PFX = ("G_", "R_", "L_")
 _SPAN = re.compile(r"^([VH])(\d\d)([NSEW])(\d\d)(\d\d)$")
 _OPP = {"N": "S", "S": "N", "E": "W", "W": "E"}
-_MUXCTRL = re.compile(r"^(CLK|LSR)(\d)(?:_SLICE)?$")
+_MUXCTRL = re.compile(r"^(CLK|LSR)(\d)_SLICE$")   # the pin only; bare CLK1 is the tile wire
+
+
+# Clock-tree wire families (Diamond local names, digit-collapsed by the regexes).
+_GFAM = {k: re.compile(v) for k, v in {
+    "PADMUX": r"^JPADDI[A-D]_PIO$|^JPADDI$|^JINCK$",
+    "JPCLKT": r"^JPCLKT\d+$",
+    "DCC": r"^(CLKI|CLKO)_[TLR]DCC\d$|^[TLR]DCC\dCLKI$",
+    "VPFS": r"^VPFS\d+$",
+    "QPCLK": r"^(LL|LR|UL|UR)PCLK\d$",
+    "HPFE": r"^HPFE\d+$",
+    "HPRX": r"^HPRX\d+$", "VPTX": r"^VPTX\d+$", "HPBX": r"^HPBX\d+$"}.items()}
+
+
+def gfams(local_name):
+    """Clock-tree families a (prefix-stripped) wire name belongs to."""
+    nm = strip_gpfx(local_name)
+    return [k for k, rx in _GFAM.items() if rx.match(nm)]
 
 
 def pat(nm):
@@ -362,6 +379,13 @@ def compare_target(target, out_root):
                 if info["dsu"] is None:
                     info["dropped"] = True      # chip-global name: lift refuses to union
         if not info["exists"]:
+            # clock-tree wires Diamond names at a tile prjtrellis has no wire at: resolve
+            # through the lifter's canonical clock node (DSU only; pips stay not-in-graph)
+            ck = L.clock_key(r, c, "G_" + nm) if ongrid and hasattr(L, "clock_key") else None
+            if ck is not None:
+                info["dsu"] = ck
+                info["clock_node"] = True
+                norm["clock_node"] += 1
             res["wire_classes_missing"][pat(nm)] += 1
         wcache[w] = info
         return info
@@ -503,7 +527,7 @@ def compare_target(target, out_root):
         mapped = 0
         for w in n["wires"]:
             i = wmap(w)
-            if i["exists"]:
+            if i["exists"] or i.get("clock_node"):
                 mapped += 1
                 if i["dsu"] is not None and i["dsu"] in dsu.p:
                     roots.add(dsu.find(i["dsu"]))
@@ -533,6 +557,24 @@ def compare_target(target, out_root):
         if v != "MATCH":
             rec["unmapped_wires"] = [w for w in n["wires"] if not wmap(w)["exists"]][:20]
         res["nets"].append(rec)
+
+    # Diamond nets carrying a clock-tree wire, per family.  intact = lift MATCH AND every
+    # family wire is a DSU node (an unmapped wire is invisible to the MATCH verdict).
+    vmap_ = {r_["net"]: r_["verdict"] for r_ in res["nets"]}
+    gn = defaultdict(lambda: {"nets": 0, "intact": 0, "split": 0})
+    for n in O["nets"]:
+        byfam = defaultdict(list)
+        for w in n["wires"]:
+            for fk in gfams(P.split_wire(w)[2]):
+                byfam[fk].append(w)
+        for fk, ws in byfam.items():
+            ok = vmap_[n["name"]] == "MATCH" and all(
+                wmap(w)["dsu"] is not None and wmap(w)["dsu"] in dsu.p for w in ws)
+            gn[fk]["nets"] += 1
+            gn[fk]["intact"] += ok
+            gn[fk]["split"] += vmap_[n["name"]] == "MISMATCH"
+    res["global_nets"] = {k: dict(v) for k, v in gn.items()}
+    res["global_regclk"] = defaultdict(Counter)
 
     def link_ok(a, b):
         ia, ib = wmap(a), wmap(b)
@@ -776,6 +818,13 @@ def compare_target(target, out_root):
                     prev = (pa, pb)
                 rec["broken_arcs"] = brk
             rec["verdict"], rec["why"] = v, why
+            if dnet is not None and (dnet, leaf) in conn_of:
+                pf = set()
+                for pa, pb in path:
+                    pf.update(gfams(P.split_wire(pa)[2]) + gfams(P.split_wire(pb)[2]))
+                for fk in pf:
+                    res["global_regclk"][fk]["through"] += 1
+                    res["global_regclk"][fk]["broken"] += v != "MATCH"
             res["regclk"].append(rec)
             res["regclk_verdicts"][v] += 1
             fld(f"FF{j}.regclk", v, dnet, rec["lift_clk"])
@@ -791,7 +840,8 @@ def compare_target(target, out_root):
     for k in ("pips", "net_verdicts", "conns", "regclk_verdicts", "normalisation",
               "wire_classes_missing", "clock_shapes"):
         res[k] = dict(res[k])
-    for k in ("pip_detail", "conn_detail", "clock_family", "clock_join", "lift_global_drop"):
+    for k in ("pip_detail", "conn_detail", "clock_family", "clock_join", "lift_global_drop",
+          "global_regclk"):
         res[k] = {kk: dict(v) for kk, v in res[k].items()}
     res["lift"] = {"luts": len(design.luts), "ffs": len(design.ffs),
                    "nets": len(design.all_nets), "config_arcs": len(pc.arcs),
@@ -922,7 +972,7 @@ def main():
                 r = {"target": t, "status": "ok", "device": r["device"],
                      **{k: r[k] for k in SUMMARY_KEYS + (
                          "pip_detail", "conn_detail", "clock_family", "clock_join",
-                         "lift_global_drop")}}
+                         "lift_global_drop", "global_nets", "global_regclk")}}
             except (Exception, SystemExit) as e:  # noqa: BLE001 -- db.die() exits; recorded per target
                 r = {"target": t, "status": "failed", "error": f"{type(e).__name__}: {e}"}
                 log(f"[fail] {t}: {r['error']}")
@@ -948,7 +998,8 @@ def main():
         for r in ok:
             acc.update(r.get(key, {}))
         summ[key] = dict(sorted(acc.items()))
-    for key in ("pip_detail", "conn_detail", "clock_family", "clock_join", "lift_global_drop"):
+    for key in ("pip_detail", "conn_detail", "clock_family", "clock_join", "lift_global_drop",
+                "global_nets", "global_regclk"):
         det = defaultdict(Counter)
         for r in ok:
             for k, v in r.get(key, {}).items():
@@ -967,6 +1018,9 @@ def main():
     for cat, h in summ["headline"].items():
         log(f"[compare] HEADLINE {cat}: {h['matched']} / {h['total']} matched "
             f"({h['rate_pct']}%), {h['faults']} faults {h['by_verdict']}")
+    for key in ("global_nets", "global_regclk"):
+        for k, v in summ[key].items():
+            log(f"[compare] {key} {k}: {v}")
     log(f"[compare] done in {time.monotonic() - t0:.1f}s: {summ['status']}")
     for key in ("pips", "net_verdicts", "conns", "regclk_verdicts", "site_field_verdicts"):
         log(f"[compare] {key}: {summ[key]}")
