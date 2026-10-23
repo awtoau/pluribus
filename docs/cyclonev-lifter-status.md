@@ -25,7 +25,9 @@ against Mistral, not assumed from e50f.
   both ALM halves as LUT5 cells (`Design.luts`, unified — see "Schema fit"
   below) plus any register (FFT0/FFT1/FFT1L/FFB0/FFB1/FFB1L) whose Q
   output is actually routed.
-- `arc_endpoint_sets`, `pad_fabric_node` (GPIO DATAIN/DATAOUT),
+- `arc_endpoint_sets`, `pad_fabric_node` (GPIO DATAIN/DATAOUT — fixed this
+  session, see "Pin recovery" below), `recover_pads` (real package-pin
+  recovery into `Design.pads`, see "Pin recovery" below),
   `load_efb_fixed_conns`/`apply_efb_fixed_conns` (no-ops — no EFB on this
   vendor), `bels_of` (returns `{}` — not needed by this lifter's own
   recovery path, see below).
@@ -48,6 +50,99 @@ committed to this repo):
 - No crash, no `db.die()` escape — this script does not touch the
   database at all (see "No board" below).
 
+## Pin recovery: real package-pin names from Mistral's `.bt` comments
+
+Mistral annotates GPIO-touching `r`/`s`/`i` lines with the real BGA package
+pin name (`; AA10`, UFBGA U19 coordinates) wherever its own pin table covers
+that ball. `lifters/cyclonev_lift.py`'s `_trailing_pin()` extracts it;
+`recover_pads()` turns it into `Design.pads` (pad_map-shaped records:
+pin/label/row/col/pio/direction/net_in/net_out, plus `n_datain_taps`/
+`n_dataout_taps`). `scripts/cyclonev_lift_selftest.py` reports the numbers
+below alongside LUT/FF/net counts. Full edge-case detail lives in
+`cyclonev_lift.py`'s module docstring (PIN RECOVERY section) — this is a
+condensed summary with confidence levels stated per finding.
+
+**Real numbers, same DJI m2001 sample (HIGH confidence — directly measured):**
+
+- 272 distinct GPIO `(tile,bi)` pads seen in real routing; 224 (82.4%) carry
+  a resolved package pin name, 48 do not.
+- 224 distinct pin names recovered, zero appearing on more than one pad row
+  (a clean bijection, enforced live by `PinRecoveryError` — not just checked
+  once offline).
+- Direction breakdown: 146 `in`, 49 `bidir`, 6 `out`, 71 `unknown` (clock/
+  control-only GPIO pins with no DATAIN/DATAOUT routed tap — see module
+  docstring for why "unknown" rather than a guessed in/out).
+- 123/195 annotated DATAIN pads have more than one distinct `DATAIN.pi` tap
+  in real routing, and every one resolves to a DIFFERENT fabric net (0 cases
+  of redundant re-derivation) — a genuine one-pin/several-logical-taps
+  situation `pad_map`'s single `net_in` column cannot fully represent (see
+  "Schema gap" below). 6/55 DATAOUT pads have the same multi-tap shape.
+- 3,721 pin-annotated lines touch a non-GPIO node — all `HMC` (hard memory
+  controller) by direct grep; out of scope for this lifter (no HMC bel
+  model), counted and excluded rather than silently merged into GPIO data.
+
+**Edge cases found and how each is handled (HIGH confidence unless stated):**
+
+1. **Pin identity is `(GPIO tile, bi)`, not port/pi/line-kind.** Checked by
+   grouping every annotated GPIO node by `(x,y,bi)` across every port
+   (DATAIN/DATAOUT/CLKIN/CLKOUT/OEIN/CEIN/CEOUT/ACLR/SCLR/BSLIPMAX) and
+   line kind (`r`/`s`/`i`): exactly one pin name per key, zero conflicts.
+2. **A pre-existing bug in `pad_fabric_node()` was found and fixed.** It
+   built `CVNode("GPIO", row, col, None, port, pio)` — `pio` into the `.pi`
+   slot, `bi` left `None`. Real `.bt` GPIO nodes always carry their
+   block-local sub-index as `bi` (confirmed: zero bi-less
+   `GPIO.x.y:DATAIN/DATAOUT.n` lines exist in the sample); the method now
+   builds `CVNode("GPIO", row, col, pio, port, None)`. Was latent/undetected
+   because nothing exercises this method against real Cyclone V data yet
+   (`load_cyclonev()` bypasses `load.py`'s generic pad-probing core).
+3. **Direction is unambiguous from port name, not arc position.** DATAIN
+   (and BSLIPMAX) are the arc source in 100% of 1,108 occurrences;
+   CLKIN/CLKOUT/DATAOUT/OEIN/CEIN/CEOUT/ACLR/SCLR are the arc sink in 100%
+   of occurrences, with zero exceptions — matches `pad_fabric_node()`'s
+   documented DATAIN=pad→fabric / DATAOUT=fabric→pad convention exactly.
+4. **Unannotated pads are NOT port-kind-correlated** (disproving the a
+   priori hypothesis that they'd be clock-passthrough-only): CLKIN/CLKOUT-
+   only `(tile,bi)` keys are annotated at 86% (61/71), about the same rate
+   as DATAIN/DATAOUT-bearing keys at 81% (163/201). They ARE
+   location-correlated: every GPIO tile at `y` in `{014-017, 029-031, 033}`
+   on both edge columns (`x=000`, `x=054`) is 100% unannotated — 0 of
+   dozens of lines per tile, every bi, every port — while adjacent tiles
+   (`y` 018-021) are ~97% annotated. Read as Mistral's own pinout table
+   having no ball for those whole GPIO banks on this die/package (plausibly
+   unbonded, or a table gap), not a per-port/per-direction effect.
+5. **Differential pairs: pin data confirms per-(tile,bi) ball identity,
+   P/N pairing itself is OPEN, not confirmed.** `USE_PSEUDO_DIFF_OUTPUT.0`/
+   `USE_DIFF_OUTPUT`/`LVDS_BUFFER_USED` settings are per-bi, and keying
+   `Design.pads` on `(tile,bi)` with no special-case code already produces
+   "two independent pad_map rows, one per physical pin" for a plausible
+   pair (e.g. bi=0 "V15" / bi=1 "U15" at `GPIO.044.000`) — the schema-
+   correct answer either way. **MEDIUM/LOW confidence on which bi's form a
+   pair**: Mistral never tags P vs N explicitly, and checking row/column
+   adjacency of same-tile bi-pairs across the whole sample found only a
+   weak pattern (bi(0,1): 20/56 same-row-adjacent-column; bi(2,3): 28/56) —
+   consistent with physically neighbouring balls generally, not specifically
+   proven as differential siblings. Stated as open, not guessed at.
+6. **`i` lines can carry a second `;`-field** (104/790 annotated i-lines):
+   an alternate hard-IP node reference, never a second pin name (0/1610
+   r-lines, 0/2458 s-lines ever have one). `_trailing_pin()` takes only the
+   first field.
+
+**Schema gap flagged, not fixed (per task scope — schema.py owns all DDL):**
+
+`pad_map.pin` is `Integer NOT NULL`; Cyclone V's recovered pin identity is a
+BGA coordinate string (`"AA10"`), not a number. Checked both existing
+`pad_map`-populating lifters: MachXO2 (`load.py`'s iomap-TSV path) and GOWIN
+(`apicula`'s `db.pinout`, via `gowin_lift.py`'s `phys` field) both store a
+genuine numeric pin NUMBER in `pin` — neither stores a letter-coded identity
+there, so there is no existing convention to follow. `Design.pads` carries
+the BGA name in both `pin` and `label` (ready to insert once this is
+resolved) but is NOT wired into `load_cyclonev()`/the database this session
+— that needs a decision first: widen `pad_map.pin` to `Text` (changes a
+column every other family also writes to, and the `UNIQUE(bitstream, pin)`
+constraint's semantics), or leave `pin` NULL for this family and rely on
+`label` alone (defeats that per-bitstream uniqueness guard for Cyclone V
+specifically). Not decided or implemented here.
+
 ## Explicitly out of scope (upstream-Mistral unknowns or deferred — not pluribus gaps)
 
 - **M10K block-RAM contents** — Mistral itself does not decode this;
@@ -68,9 +163,12 @@ committed to this repo):
   net but `d`/`clk`/`ce`/`lsr` are `None`. Resolving them needs decoding
   the `xCLK_SEL`/`xCLR_SEL`/`xMODE.<alm>` mux settings per ALM, which is
   real work deferred to the next slice, not done here.
-- **Pads**: `pad_fabric_node()` resolves GPIO DATAIN/DATAOUT nodes, but
-  there is no board.toml for any real Cyclone V board — see "No board"
-  below.
+- **Pads**: `pad_fabric_node()` resolves GPIO DATAIN/DATAOUT nodes and
+  `recover_pads()` now recovers real package-pin names into `Design.pads`
+  (see "Pin recovery" above), but there is still no board.toml for any real
+  Cyclone V board, and `Design.pads` is NOT wired into `load_cyclonev()`/the
+  database this session — blocked on the `pad_map.pin` schema question (see
+  "Pin recovery" above). See "No board" below for the board-level gap.
 
 ## Schema fit: LUT5, unified into `schema.py`'s `luts` table — DONE
 
@@ -216,11 +314,17 @@ loops) — unchanged from every prior regression check this session.
 
 Per CLAUDE.md, pluribus stores no board data without a real board.toml —
 none exists for any Cyclone V board, so none was added here (DJI's m2001
-is explicitly out of tree — private RE work, not published). A real
-Cyclone V `boards/<name>/board.toml` would need, once a board exists:
+is explicitly out of tree — private RE work, not published). This is
+separate from the pin recovery above: `Design.pads` resolves real
+PACKAGE-pin identity (vendor/engine data — which die ball is which, same
+status as Lattice's `device-db/` pinout tables), but there is still no
+board-level mapping from a *specific populated PCB's* net/signal name to a
+pin, which only a real board.toml could carry. A real Cyclone V
+`boards/<name>/board.toml` would need, once a board exists:
 
-- a **package/pinout table** — pin number -> (GPIO x, y, port-index).
-  Unlike the Lattice `device-db/`, no vendor pinout data for any Cyclone V
-  package ships in this repo; this does not exist yet.
+- the `pin`/`label` -> (GPIO x, y, bi) mapping `Design.pads` already
+  recovers from the bitstream (once the `pad_map.pin` schema question is
+  resolved — see "Pin recovery" above), carried into a `pins.tsv` the same
+  shape every other family's board.toml expects.
 - the usual `[board]` device/package keys plus `[bitstreams.<label>]`
   config paths, same shape as every other family's board.toml.

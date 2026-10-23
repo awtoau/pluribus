@@ -12,6 +12,10 @@ table now has the 5th-input `e` column + 32-char `init`, so LUT5 cells live
 on the same Design.luts list as every other family, not a separate
 Design.alm_luts (the schema fit this selftest used to work around).
 
+Also reports package-pin recovery (Design.pads) -- real BGA pin names
+recovered from Mistral's trailing `; <pin>` comments, see cyclonev_lift.py's
+module docstring PIN RECOVERY section and docs/cyclonev-lifter-status.md.
+
 Usage:
     python3 scripts/cyclonev_lift_selftest.py <path/to/sample.bt>
 
@@ -132,14 +136,51 @@ def main():
 
     # Smoke-test pad_fabric_node / bels_of don't crash (both are genuinely
     # exercised by a real pipeline caller, even though this selftest has no
-    # board/pins to check the result against).
+    # board/pins to check the result against). pad_fabric_node's pio arg is
+    # the block-local bi sub-index (fixed this session -- see its docstring
+    # in cyclonev_lift.py), so this now returns a node shape that really
+    # appears in the .bt (GPIO.x.y.bi:DATAIN, no .pi), not the old bi=None
+    # / pi=pio shape that never matched a real line.
     node = lift.pad_fabric_node(0, 16, 0, "in")
     log.info("  pad_fabric_node(0, 16, 0, 'in') -> %s", node)
     log.info("  bels_of(0, 16) -> %r (expected {}, not implemented this slice)",
               lift.bels_of(0, 16))
 
+    # ---- pin recovery (Design.pads) ----
+    # See cyclonev_lift.py's module docstring PIN RECOVERY section for the
+    # full edge-case writeup this reporting summarises.
+    n_pads = len(d.pads)
+    distinct_pins = {p["pin"] for p in d.pads if p["pin"] is not None}
+    dir_counts = Counter(p["direction"] for p in d.pads)
+    pin_counts = Counter(p["pin"] for p in d.pads if p["pin"] is not None)
+    dup_pins = {pin: c for pin, c in pin_counts.items() if c > 1}
+    log.info("  PIN RECOVERY:")
+    log.info("    GPIO (tile,bi) pads seen in real routing: %d", n_pads)
+    log.info("    of which annotated with a real package pin: %d (%.1f%%)",
+              d.n_pads_annotated, 100 * d.n_pads_annotated / max(1, n_pads))
+    log.info("    unannotated (no ball in Mistral's pin table for this "
+              "tile/bank): %d", d.n_pads_unannotated)
+    log.info("    distinct package pin names recovered: %d", len(distinct_pins))
+    log.info("    pin names appearing on >1 pad row (should be 0 -- "
+              "parser bug if not): %d %s", len(dup_pins),
+              dict(list(dup_pins.items())[:5]) if dup_pins else "")
+    log.info("    direction breakdown: %s", dict(dir_counts))
+    log.info("    pads with >1 distinct DATAIN.pi tap (one pin, several "
+              "fabric destinations -- net_in keeps only the lowest pi, "
+              "see module docstring): %d", d.n_pads_multi_datain_tap)
+    log.info("    pads with >1 distinct DATAOUT.pi tap: %d",
+              d.n_pads_multi_dataout_tap)
+    log.info("    pin comments on non-GPIO (HMC) nodes, out of scope, "
+              "not captured: %d", d.n_pin_comments_non_gpio)
+    if d.pads:
+        annotated_sample = next((p for p in d.pads if p["pin"] is not None), None)
+        log.info("    sample annotated pad: %s", annotated_sample)
+
+    pin_recovery_ok = (d.n_pads_annotated > 0 and len(dup_pins) == 0
+                        and len(distinct_pins) == d.n_pads_annotated)
+
     ok = (pc.n_arc_lines > 0 and len(d.luts) > 0
-          and bad_width == 0 and unparsed_frac <= 0.01)
+          and bad_width == 0 and unparsed_frac <= 0.01 and pin_recovery_ok)
     log.info("OVERALL %s", "PASS" if ok else "FAIL")
     sys.exit(0 if ok else 1)
 
