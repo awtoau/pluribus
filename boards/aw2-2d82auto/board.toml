@@ -23,6 +23,14 @@ top     = "aw2"          # recovered-Verilog top module name
 # they differed in CIB_EBR1/CIB_EBR2, which this board uses.  The two sets of
 # results were never comparable.  Set $TRELLIS_DBROOT to A/B another tree.
 
+# Simulation (scripts/sim_no_ip.py).  PLL output -> HPBX spine track, from the board
+# annotation in nets.tsv (CLKOP 250 MHz -> 0200, CLKOS 125 -> 0000, CLKOS2 62.5 -> 0100).
+# The PLL dividers in the bitstream reproduce exactly these rates (pll_decode.solve_fin).
+[sim.pll_tracks]
+CLKOP  = "BRANCH_HPBX0200"
+CLKOS  = "BRANCH_HPBX0000"
+CLKOS2 = "BRANCH_HPBX0100"
+
 # Paths relative to this board.toml file.
 # pins_tsv: required — pad location + direction annotations.
 # nets_tsv: optional — human net name annotations.

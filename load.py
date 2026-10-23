@@ -1416,8 +1416,8 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                       + ", ".join(f"wid {i} ({n} words)" for i, n in unmatched_live))
 
             # ── efb_config (0x72 EFB peripheral config-register preloads) ─────────
-            # docs/cmd-0x72.md: sel 0x54 = SPI EFB config, 0x5e = TC (timer/counter).
-            _EFB_SEL_KIND = {0x54: "SPI", 0x5e: "TC"}
+            # docs/cmd-0x72.md, docs/efb-config.md: 0x40 I2C1, 0x4a I2C2, 0x54 SPI, 0x5e TC.
+            _EFB_SEL_KIND = {0x40: "I2C1", 0x4a: "I2C2", 0x54: "SPI", 0x5e: "TC"}
             efb_cfg_rows = [
                 {"bitstream": bs_id, "sel": sel,
                  "kind": _EFB_SEL_KIND.get(sel, "unknown"),

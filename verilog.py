@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import clocks
+import efb_decode
 from db import engine, die
 from sqlalchemy import text
 
@@ -790,6 +791,11 @@ def emit_wires(data: dict) -> list[str]:
     return lines
 
 
+def _efb_port(name: str) -> str:
+    """Vendor EFB primitive port name: the fabric wire name (JWBCLKI) minus the leading J."""
+    return name[1:] if name.startswith("J") else name
+
+
 def emit_efb_comment(data: dict) -> list[str]:
     """Comment block describing EFB port connections.
 
@@ -830,7 +836,7 @@ def emit_efb_comment(data: dict) -> list[str]:
         direction = row[2] if len(row) > 2 else None
         wire_name = resolve_net(net, net_name_map, const_net_map)
         arrow = "→" if direction == "out" else "?"
-        lines.append(f"    // EFB.{port_name} {arrow} {wire_name}  (raw net: {net}"
+        lines.append(f"    // EFB.{_efb_port(port_name)} {arrow} {wire_name}  (raw net: {net}"
                      f"{', ' + direction if direction else ''})")
     if efb_ports and n_out == len(efb_ports):
         # Only reachable if the input side regressed (#100 recovered it); say so
@@ -841,7 +847,15 @@ def emit_efb_comment(data: dict) -> list[str]:
     # The instantiation.  Ports carry their recovered direction, so a reader (and
     # yosys) can tell driven from driving without consulting the table above.
     if efb_ports:
-        lines.append("    EFB efb_inst (")
+        attrs, unexplained, notes = efb_decode.decode(efb_config)
+        for note in notes:
+            lines.append(f"    //   {note}")
+        for reg, idx, bits in unexplained:
+            lines.append(f"    //   UNEXPLAINED config bits: {reg} (byte {idx}) 0x{bits:02x}")
+        lines.append("    EFB #(")
+        plist = [f'        .{k}("{v}")' for k, v in attrs.items()]
+        lines.append(",\n".join(plist))
+        lines.append("    ) efb_inst (")
         conns = []
         for row in efb_ports:
             pn, net = row[0], row[1]
@@ -850,10 +864,18 @@ def emit_efb_comment(data: dict) -> list[str]:
         for i, (pn, wire, d) in enumerate(conns):
             comma = "," if i < len(conns) - 1 else ""
             tag = {"in": "// fabric -> EFB", "out": "// EFB -> fabric"}.get(d, "")
-            lines.append(f"        .{pn}({wire}){comma:<2} {tag}")
+            lines.append(f"        .{_efb_port(pn)}({wire}){comma:<2} {tag}")
         lines.append("    );")
     lines.append("")
     return lines
+
+
+# Declared on the blackbox so attribute overrides on the instance elaborate.
+_EFB_PARAM_DEFAULTS = {
+    **{a: "DISABLED" for a in efb_decode.ENABLE_ATTRS},
+    "SPI_MODE": "SLAVE", "SPI_CLK_DIVIDER": "1",
+    **{a: "DISABLED" for a in efb_decode.SPI_ATTR_ORDER},
+}
 
 
 def emit_efb_module(data: dict) -> list[str]:
@@ -880,11 +902,13 @@ def emit_efb_module(data: dict) -> list[str]:
         "// simulation until a behavioural model replaces this stub -- which is honest,",
         "// where driving them to a constant would fake a result.",
         "(* blackbox *)",
-        "module EFB (",
+        "module EFB #(",
+        ",\n".join(f'    parameter {k} = "{v}"' for k, v in _EFB_PARAM_DEFAULTS.items()),
+        ") (",
     ]
-    decls = ([f"    input  wire {p}" for p in ins]
-             + [f"    output wire {p}" for p in outs]
-             + [f"    inout  wire {p}  // direction not recovered" for p in unknown])
+    decls = ([f"    input  wire {_efb_port(p)}" for p in ins]
+             + [f"    output wire {_efb_port(p)}" for p in outs]
+             + [f"    inout  wire {_efb_port(p)}  // direction not recovered" for p in unknown])
     for i, d in enumerate(decls):
         lines.append(d + ("," if i < len(decls) - 1 else ""))
     lines.append(");")
