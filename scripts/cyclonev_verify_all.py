@@ -98,14 +98,17 @@ LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_verify_all.log"
 EXPECTED_LIFTER = {
     "device": "5CEBA4U19C8", "die": "e50f",
     # LUT/FF/net counts re-baselined by the #106 lifter rewrite (old 33336/11502/144296 came from
-    # the wrong lifter); see docs/cyclonev-postfit-oracle.md.
-    "n_luts": 6511, "n_ffs": 7855, "n_nets": 15818, "n_arcs": 70007,
+    # the wrong lifter); 6511/15818 -> 6691/15926: adder sum/cout/shareout rows + carry nets, oracle
+    # arith function 741/741 (docs/cyclonev-postfit-oracle.md "Arithmetic").
+    "n_luts": 6691, "n_ffs": 7855, "n_nets": 15926, "n_arcs": 70007,
     "n_unparsed_lines": 0,
 }
 EXPECTED_PADMAP = {
     "n_pads_annotated": 224, "n_pads_unannotated": 48,
     "n_dup_pins": 0,
-    "direction_breakdown": {"unknown": 71, "in": 146, "bidir": 49, "out": 6},
+    # was {"unknown": 71, "in": 146, "bidir": 49, "out": 6}: HMC-path pads and clock-input pads now carry
+    # a direction; oracle pins 4556/4556, obuf.i 1556/1556 (docs/cyclonev-postfit-oracle.md "Pads").
+    "direction_breakdown": {"unknown": 60, "in": 144, "bidir": 62, "out": 6},
 }
 # DSP mode mapping (docs/cyclonev-dsp-fuzz-status.md): a design either gets
 # an explicit MODE string, or (mult18x18/multacc18x18) NO MODE line at all
