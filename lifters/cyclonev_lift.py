@@ -166,16 +166,15 @@ format reference per project scope — no DJI bytes/netlist committed here):
     constraint, so NULL-everywhere would defeat that per board). Flagged for
     a decision, not guessed at.
 
-SCHEMA FIT — LUT5, UNIFIED INTO `luts`
----------------------------------------
-schema.py's `luts` table is now width-generic: `init` is `String(32)` and a
-5th input column `e` (NULL for every 4-input family) carries a Cyclone V ALM
-half's E0/E1 pin. `recover_netlist()` appends ALM-half LUT5 cells directly to
-`Design.luts` (same row shape every other family uses: name/init/a/b/c/d/e/z),
-with `init` as the 32-char MSB-first binary string `load.py`'s classify_lut()
-expects (converted from the raw `init32` hex here, once, in the lifter — the
-fn classification itself stays in load.py, not duplicated). There is no more
-separate `Design.alm_luts` list.
+SCHEMA FIT — ALM-HALF LUT (a-f), UNIFIED INTO `luts`
+----------------------------------------------------
+- `luts.init` is the 64-char MSB-first table of one ALM half over its six inputs a-f
+  (Quartus data port order); `e`/`f` columns are NULL for the 4-input families.
+- Letter -> source per half mode: docs/cyclonev-postfit-oracle.md, `_port_pins()`.
+  Constant/unrouted letters are "1'b0" and the table is folded so it does not depend on them.
+- Registers: one `ffs` row per physical register (half, slot); control sources are kept in
+  `Design.ffs[i]["ctl"]` (oracle-checked, see `_ff_controls()`); `d/clk/ce` are written to the
+  DB only for plain posedge D flops (no polarity/clear columns exist).
 """
 
 import re
@@ -497,6 +496,7 @@ class Design:
         self.skipped_arcs = 0
         self.tile_counts = {}        # block type -> tile count seen in .bt
         self.n_alms_configured = 0   # LABs/MLABs with >=1 non-default LUT_MASK
+        self.unmodelled_halves = defaultdict(int)   # half mode -> count (RAM/ROM/BMNONE, not lifted)
         # Pad-recovery diagnostics (see recover_pads()) -- populated whenever
         # recover_netlist() calls it, kept on Design so callers/selftest can
         # report them without re-deriving from pc.
@@ -532,25 +532,143 @@ class DSU:
             self.p[ra] = rb
 
 
-# ALM-half input pin names, by half.  Each ALM half is a 5-LUT: the four
-# shared inputs A/B/C/D plus E0 (bottom half) or E1 (top half) — confirmed
-# against the .bt: BMODE.<alm>/TMODE.<alm> name E_1/F_1 feedback sources per
-# half, and LUT_MASK.<alm> is 64 bits (hi32.lo32), i.e. two 32-bit (5-input)
-# truth tables packed together, low half first.
-_ALM_HALF_INPUTS = {
-    "bottom": ("A", "B", "C", "D", "E0"),
-    "top":    ("A", "B", "C", "D", "E1"),
-}
-# ALM output/register port names per half (from the .bt port_type_names seen
-# on LAB/MLAB nodes: F0/F1 combinational, FFB0/FFB1/FFB1L/FFT0/FFT1/FFT1L
-# registered).
-_ALM_HALF_COMB_OUT = {"bottom": "F0", "top": "F1"}
-_ALM_HALF_FF_OUT = {
-    "bottom": ("FFB0", "FFB1", "FFB1L"),
-    "top":    ("FFT0", "FFT1", "FFT1L"),
-}
-
 _LAB_LIKE_BLOCKS = ("LAB", "MLAB")
+
+# Default half modes (a half with no TMODE/BMODE setting line).
+_DEFAULT_MODE = {"T": "D_E", "B": "C_E"}
+
+_MODELLED_MODES = {"T": ("E_0", "F_0", "D_E", "D_F"), "B": ("E_1", "F_1", "C_E", "C_F")}
+
+# MLAB LUT bits are stored permuted (nextpnr mistral/lab.cc permute_mlab_init).
+_MLAB_PERM = [0, 1, 4, 5, 8, 9, 12, 13, 29, 28, 25, 24, 21, 20, 17, 16,
+              2, 3, 6, 7, 10, 11, 14, 15, 31, 30, 27, 26, 23, 22, 19, 18,
+              32, 33, 36, 37, 40, 41, 44, 45, 61, 60, 57, 56, 53, 52, 49, 48,
+              34, 35, 38, 39, 42, 43, 46, 47, 63, 62, 59, 58, 55, 54, 51, 50]
+
+
+def _port_pins(half, mode):
+    """LUT letter (Quartus data port a..f) -> source token for one ALM half.
+
+    Tokens: LAB input pin (A B C D E0 E1 F0 F1), "FB" (register feedback), "0"/"1" (constant).
+    Mode name = <d source>_<e source>: D/C = that pin, E = E pin, F = same-half register
+    feedback; e source 0/1 = constant (5-input modes).
+    Evidence: docs/cyclonev-postfit-oracle.md (conn.* rows, feedback register = FEEDBACK_SEL slot).
+    """
+    i = "0" if half == "T" else "1"
+    d_src = {"D": "D", "C": "C", "E": "E" + i, "F": "FB"}
+    e_src = {"E": "E" + i, "F": "FB", "0": "0", "1": "1"}
+    if mode[0] not in d_src or mode[2] not in e_src:
+        raise ValueError(f"cyclonev lifter: unknown ALM half mode {mode!r}")
+    return {"a": "A", "b": "B", "c": "C" if half == "T" else "D",
+            "d": d_src[mode[0]], "e": e_src[mode[2]], "f": "F" + i}
+
+
+_REG_PIN = {("T", False): "E0", ("T", True): "F1", ("B", False): "E1", ("B", True): "F0"}
+
+
+# enable input of clock n: clk0 -> DATAIN.2, clk1 -> DATAIN.3, clk2 -> DATAIN.0 (983/983, one candidate each)
+_ENA_DIN = {"0": 2, "1": 3, "2": 0}
+
+
+def _ff_controls(block, tile_key, kv, alm_idx, h, slot, lut_fed, sink_nodes):
+    """Control sources of register (half h, slot) as {field: source}; a missing key = not recovered.
+
+    source = ("node", CVNode, inverted) | ("lut", (x,y,alm,half)) | ("const", 0|1).
+    `inverted` = the register sees NOT(node), the sense of the Quartus post-fit conn flag.
+    Every rule below is backed by a corpus differential, 0 exceptions, and fuzz doc items 6-8
+    (docs/cyclonev-postfit-oracle.md "Register controls"):
+      clk   : {T,B}CLK_SEL names the register PAIR {T0,B1} / {T1,B0} (crossed, not the half);
+              source = CLK<n>_INV bit (1 = clkb, else clka; Mistral label swapped, fuzz item 6),
+              clka = CLKIN.0 (CLKA_SEL DIN0 -> DATAIN.0), clkb = CLKIN.1 (CLKB_SEL DIN1 -> DATAIN.1);
+              negedge = CLK<n>_SEL == CLKB.
+      ena   : EN<n>_EN == 0 -> constant 1; else DATAIN.{2,3,0} for clk{0,1,2}, active-low iff
+              EN<n>_NINV != 0 (polarity from fuzz item 7; no inverted enable in the corpus).
+      clrn  : ACLR0_SEL == ACLR0 -> constant 1 (idle); else DATAIN.3, `!` iff ACLR0_INV == 1.
+      sclr  : half SCLR_DIS == 1 -> constant 0; else LAB SCLR_SEL (default DATAIN.3, DIN1 -> DATAIN.1),
+              constant 0 when that input is unrouted.
+      sload : constant 1 iff the register is pin-fed, else 0 (no sload signal in the corpus).
+      d     : LUT-fed -> that half's LUT; pin-fed -> E/F pin per {h}EF_SEL, T: E0/F1, B: E1/F0
+              (the F pins are crossed against the LUT halves).
+    """
+    x, y = tile_key[1], tile_key[2]
+    lab = lambda mux: kv.get((mux, None))
+    st = lambda mux: kv.get((mux, alm_idx))
+    tn = lambda port, pi: CVNode(block, x, y, None, port, pi)
+    ctl = {}
+    label = "T" if (h, slot) in (("T", 0), ("B", 1)) else "B"
+    csel = st(f"{label}CLK_SEL")
+    n = csel[3] if csel in ("CLK0", "CLK1", "CLK2") else None
+    if n is not None:
+        use_b = lab(f"CLK{n}_INV") == "1"
+        pick = {(False, None): tn("CLKIN", 0), (False, "DIN0"): tn("DATAIN", 0),
+                (True, None): tn("CLKIN", 1), (True, "DIN1"): tn("DATAIN", 1)}
+        if block == "MLAB":      # MLAB clka mux: CLKA_SEL GIN2 -> DATAIN.0 (c_shiftreg_{sv,v95,vnd}_1, 1 design)
+            pick[(False, "GIN2")] = tn("DATAIN", 0)
+        node = pick.get((use_b, lab("CLKB_SEL" if use_b else "CLKA_SEL")))
+        if node is not None:
+            ctl["clk"] = ("node", node, lab(f"CLK{n}_SEL") == "CLKB")
+        if lab(f"EN{n}_EN") == "0":
+            ctl["ena"] = ("const", 1)
+        else:
+            ctl["ena"] = ("node", tn("DATAIN", _ENA_DIN[n]), lab(f"EN{n}_NINV") != "0")
+    if st(f"{h}CLR_SEL") != "1":                    # aclr1: no corpus evidence, not recovered
+        if lab("ACLR0_SEL") == "ACLR0":
+            ctl["clrn"] = ("const", 1)
+        else:
+            ctl["clrn"] = ("node", tn("DATAIN", 3), lab("ACLR0_INV") == "1")
+    if st(f"{h}SCLR_DIS") == "1":
+        ctl["sclr"] = ("const", 0)
+    elif lab("SCLR_SEL") in (None, "DIN1"):
+        node = tn("DATAIN", 1 if lab("SCLR_SEL") == "DIN1" else 3)
+        # enabled but its input has no routing = nothing drives it: constant 0 (158/158)
+        ctl["sclr"] = ("node", node, lab("SCLR_INV") == "1") if node in sink_nodes else ("const", 0)
+    ctl["sload"] = ("const", 0 if lut_fed else 1)
+    if lut_fed:
+        ctl["d"] = ("lut", (x, y, alm_idx, h))
+    else:
+        pin = CVNode(block, x, y, alm_idx, _REG_PIN[(h, st(f"{h}EF_SEL") == "F")], None)
+        if pin in sink_nodes:
+            ctl["d"] = ("node", pin, False)
+    return ctl
+
+
+def _plain_flop(ctl):
+    """Posedge D flop with no clear/load and an enable that is constant 1 (or absent source)."""
+    clk, clrn, sclr = ctl.get("clk"), ctl.get("clrn"), ctl.get("sclr")
+    return (clk is not None and not clk[2] and "d" in ctl and ctl["d"][2:3] != (True,)
+            and clrn == ("const", 1) and sclr == ("const", 0) and ctl.get("ena") == ("const", 1))
+
+
+def _ctl_net(src, net_of, node_of):
+    kind, val = src[0], src[1]
+    if kind == "const":
+        return f"1'b{val}"
+    if kind == "node":
+        return net_of(val)
+    return net_of(node_of(f"{val[3]}COMB"))
+
+
+def _lut_table(raw, half, mode, mlab, active):
+    """64-bit function table (bit v = f(a|b<<1|c<<2|d<<3|e<<4|f<<5)) for one ALM half.
+
+    Stored bits are the inverse of the function; the bottom half sees c/d swapped;
+    address = a | b<<1 | j2<<2 | j3<<3 | f<<4 | x5<<5 with x5 = e (E/F e-source) or the mode
+    constant, (j2,j3) = (c,d) if x5 == 0 else (d,c); MLAB bits permuted.
+    Letters not in `active` (unrouted) are folded to 0: the mask is don't-care there.
+    """
+    amask = sum(1 << k for k in range(6) if active["abcdef"[k]])
+    tt = 0
+    for v in range(64):
+        a, b, c, d, e, f = (((v & amask) >> k) & 1 for k in range(6))
+        if half == "B":
+            c, d = d, c
+        x5 = e if mode[2] in "EF" else int(mode[2])
+        j2, j3 = (c, d) if x5 == 0 else (d, c)
+        j = a | b << 1 | j2 << 2 | j3 << 3 | f << 4 | x5 << 5
+        if mlab:
+            j = _MLAB_PERM[j]
+        tt |= (1 - ((raw >> j) & 1)) << v
+    return tt
 
 
 class PinRecoveryError(Exception):
@@ -765,12 +883,7 @@ class CycloneVLift:
         net_name = d.net_name
         counter = [0]
 
-        # Precomputed once: a LAB has 10 ALMs and this set is consulted twice
-        # per ALM-half plus once per register port below. Recomputing
-        # {dsu.find(s) for s in arcs} inside that loop would be O(arcs x alms)
-        # — with ~70k arcs and thousands of ALMs on e50f that is minutes, not
-        # seconds, for no reason: the arc set does not change during recovery.
-        source_roots = {dsu.find(src) for (src, _dst) in pc.arcs}
+        src_nodes = {src for (src, _dst) in pc.arcs}
 
         def net_of(node):
             root = dsu.find(node)
@@ -790,80 +903,129 @@ class CycloneVLift:
             node = CVNode(tile_key[0], tile_key[1], tile_key[2], bi, port, None)
             return net_of(node)
 
-        # ---- ALM LUT-halves (LAB/MLAB only) ----
-        for tile_key, kv in sorted(pc.settings.items()):
+        # ---- ALM halves: LUT function, LUT inputs, registers (LAB/MLAB only) ----
+        # Mapping evidence: docs/cyclonev-postfit-oracle.md, scripts/cyclonev_lut_pinmap_proof.py.
+        sink_nodes = {dst for (_src, dst) in pc.arcs}
+        alm_nodes = defaultdict(set)         # (block,x,y) -> ALM indexes touched by routing
+        for (src, dst) in pc.arcs:
+            for n in (src, dst):
+                if n.block in _LAB_LIKE_BLOCKS and n.bi is not None:
+                    alm_nodes[n.tile_key()].add(n.bi)
+        plans = []                            # (tile_key, alm_idx, {half: plan})
+        for tile_key in sorted(set(pc.settings) | set(alm_nodes)):
             block = tile_key[0]
             if block not in _LAB_LIKE_BLOCKS:
                 continue
-            alm_masks = {}  # alm_idx -> "hi32.lo32" string
-            for (mux, idx), value in kv.items():
-                if mux == "LUT_MASK" and idx is not None:
-                    alm_masks[idx] = value
-            if alm_masks:
+            kv = pc.settings.get(tile_key, {})
+            alms = set(alm_nodes.get(tile_key, ())) | {i for (_m, i) in kv if i is not None}
+            if any(m == "LUT_MASK" for (m, _i) in kv):
                 d.n_alms_configured += 1
-            for alm_idx, mask in sorted(alm_masks.items()):
-                if "." not in mask:
-                    continue  # malformed — skip rather than guess
-                hi32, lo32 = mask.split(".", 1)
-                try:
-                    full = (int(hi32, 16) << 32) | int(lo32, 16)
-                except ValueError:
-                    continue
-                for half, bitshift in (("bottom", 0), ("top", 32)):
-                    init32 = (full >> bitshift) & 0xFFFFFFFF
-                    # Skip an all-zero half: on real designs this is simply
-                    # an unused ALM half (the other half, or neither, is
-                    # packed in), not a constant-0 driver worth emitting —
-                    # same "skip the degenerate case" convention anlogic_lift
-                    # uses for all-0/all-1 LUTs.
-                    if init32 == 0:
+            for alm_idx in sorted(alms):
+                def st(mux, _kv=kv, _i=alm_idx):
+                    return _kv.get((mux, _i))
+                raw = (1 << 64) - 1          # no LUT_MASK line = stored all-ones = constant 0
+                if st("LUT_MASK") and "." in st("LUT_MASK"):
+                    hi32, lo32 = st("LUT_MASK").split(".", 1)
+                    raw = (int(hi32, 16) << 32) | int(lo32, 16)
+                halves = {}
+                for h in "TB":
+                    mode = st(f"{h}MODE") or _DEFAULT_MODE[h]
+                    if mode not in _MODELLED_MODES[h]:
+                        # MLAB RAM/ROM and undecoded patterns (BMNONE): not LUT logic, counted not guessed
+                        d.unmodelled_halves[mode] += 1
                         continue
-                    # Port names are literal strings as the .bt writes them
-                    # ("A", "B", "C", "D", "E0", "E1") — no separate port
-                    # sub-index (.pi) on these pins, confirmed against the
-                    # sample dump, so bel_pin's pi stays None throughout.
-                    inputs = _ALM_HALF_INPUTS[half]
-                    pins = {p: bel_pin(tile_key, alm_idx, p) for p in inputs}
-                    z = bel_pin(tile_key, alm_idx, _ALM_HALF_COMB_OUT[half])
-                    cell = f"alm_{block.lower()}_r{tile_key[1]}c{tile_key[2]}_a{alm_idx}_{half}"
-                    # init32 bit p already = f(p) (straight extraction above,
-                    # no reversal) -- format(..., '032b') is MSB-first text
-                    # whose int(_, 2) round-trips to the same integer, which
-                    # is exactly the convention load.py's classify_lut() /
-                    # lut_dependence() require (#63).
-                    d.luts.append({
-                        "name": cell,
-                        "init": format(init32, "032b"),
-                        "a": pins["A"], "b": pins["B"], "c": pins["C"], "d": pins["D"],
-                        "e": pins["E0"] if half == "bottom" else pins["E1"],
-                        "z": z,
-                        "z_used": dsu.find(
-                            CVNode(block, tile_key[1], tile_key[2], alm_idx,
-                                   _ALM_HALF_COMB_OUT[half], None)
-                        ) in source_roots,
-                    })
+                    node = lambda port, _t=tile_key, _a=alm_idx: CVNode(_t[0], _t[1], _t[2], _a, port, None)
+                    fb_slot = 1 if st(f"{h}_FEEDBACK_SEL") == "1" else 0
+                    pins = _port_pins(h, mode)
+                    # output ports: DFF mux "nlut" = LUT combout, else the register of that slot
+                    nlut_ports, reg_ports = [], {0: [], 1: []}
+                    for rest, slot in (("0", 0), ("1", 1), ("1L", 1)):
+                        port = f"FF{h}{rest}"
+                        if node(port) not in src_nodes:
+                            continue
+                        if (st(f"{h}DFF{rest}") or "REG") == "NLUT":
+                            nlut_ports.append(port)
+                        else:
+                            reg_ports[slot].append(port)
+                    uses_fb = "FB" in pins.values()
+                    present = {s: bool(reg_ports[s]) or (uses_fb and fb_slot == s) for s in (0, 1)}
+                    # register (h,s) is LUT-fed iff the sibling's PKREG bit is clear
+                    # (single-register ALMs: d from lcell <=> {h}PKREG{1-s} = 0, no exceptions)
+                    lut_fed = {s: present[s] and st(f"{h}PKREG{1 - s}") != "1" for s in (0, 1)}
+                    halves[h] = dict(mode=mode, pins=pins, node=node, nlut=nlut_ports,
+                                     regp=reg_ports, present=present, fb_slot=fb_slot, lut_fed=lut_fed)
+                plans.append((tile_key, alm_idx, raw, kv, halves))
 
-                    # ---- registers fed by this half ----
-                    for ff_port in _ALM_HALF_FF_OUT[half]:
-                        q_node = CVNode(block, tile_key[1], tile_key[2], alm_idx, ff_port, None)
-                        q_root = dsu.find(q_node)
-                        if q_root not in source_roots:
-                            continue  # unused register output, skip (same convention as MachXO2 d.used_roots gate)
-                        d.ffs.append({
-                            "name": f"ff_{block.lower()}_r{tile_key[1]}c{tile_key[2]}_a{alm_idx}_{ff_port.lower()}",
-                            "q": net_of(q_node),
-                            # D source, clock, clear/load selects are all
-                            # MUX-encoded in further `s` settings
-                            # (xCLK_SEL/xCLR_SEL/xMODE.<alm> etc) that this
-                            # first slice does not decode — see module
-                            # docstring's out-of-scope list (ALM arithmetic/
-                            # register-mode decode). Recording the Q net
-                            # (which IS a real routing node) without a
-                            # resolved D/CLK is an honest under-connection,
-                            # not a guess.
-                            "d": None, "clk": None, "ce": None, "lsr": None,
-                            "dtype": "cyclonev_alm_reg",
-                        })
+        # the ports of one half carrying the same signal are one net: union before naming
+        for tile_key, alm_idx, raw, kv, halves in plans:
+            for h, p in halves.items():
+                comb = p["node"](f"{h}COMB")
+                for port in p["nlut"]:
+                    dsu.union(comb, p["node"](port))
+                for slot in (0, 1):
+                    q = p["node"](f"{h}Q{slot}")
+                    for port in p["regp"][slot]:
+                        dsu.union(q, p["node"](port))
+        source_roots = {dsu.find(src) for (src, _dst) in pc.arcs}
+
+        for tile_key, alm_idx, raw, kv, halves in plans:
+            block = tile_key[0]
+            is_mlab = block == "MLAB"
+            for h, p in halves.items():
+                node, pins = p["node"], p["pins"]
+                active = {}
+                for letter, tok in pins.items():
+                    if tok in ("0", "1"):
+                        active[letter] = False
+                    elif tok == "FB":
+                        active[letter] = True
+                    else:
+                        active[letter] = node(tok) in sink_nodes
+                table = _lut_table(raw, h, p["mode"], is_mlab, active)
+                arith = kv.get(("ARITH_SEL", alm_idx)) == "ADDER"
+                regs_here = [s for s in (0, 1) if p["present"][s]]
+                used = bool(p["nlut"]) or any(p["lut_fed"].values()) or (arith and table not in (0, (1 << 64) - 1))
+                if used:
+                    nets = {}
+                    for letter, tok in pins.items():
+                        if not active[letter]:
+                            nets[letter] = "1'b0"
+                        elif tok == "FB":
+                            nets[letter] = net_of(node(f"{h}Q{p['fb_slot']}"))
+                        else:
+                            nets[letter] = net_of(node(tok))
+                    d.luts.append({
+                        "name": f"alm_{block.lower()}_r{tile_key[1]}c{tile_key[2]}_a{alm_idx}_"
+                                f"{'top' if h == 'T' else 'bottom'}",
+                        "init": format(table, "064b"),
+                        **nets,
+                        "z": net_of(node(f"{h}COMB")),
+                        "z_used": bool(p["nlut"]),
+                        "block": block, "x": tile_key[1], "y": tile_key[2], "alm": alm_idx,
+                        "half": h, "mode": p["mode"], "pins": dict(pins),
+                        "pin_src": {tok: ("ff", (tile_key[1], tile_key[2], alm_idx, h,
+                                               str(p["fb_slot"])))
+                                    for tok in pins.values() if tok == "FB"},
+                    })
+                for slot in regs_here:
+                    q_node = node(f"{h}Q{slot}")
+                    ctl = _ff_controls(block, tile_key, kv, alm_idx, h, slot, p["lut_fed"][slot], sink_nodes)
+                    ff = {
+                        "name": f"ff_{block.lower()}_r{tile_key[1]}c{tile_key[2]}_a{alm_idx}_ff{h.lower()}{slot}",
+                        "q": net_of(q_node),
+                        "d": None, "clk": None, "ce": None, "lsr": None,
+                        "dtype": "cyclonev_alm_reg",
+                        "block": block, "x": tile_key[1], "y": tile_key[2], "alm": alm_idx,
+                        "half": h, "slot": str(slot), "ctl": ctl,
+                    }
+                    # ffs/verilog.py have no polarity or sync/async-clear columns: only a plain
+                    # posedge D flop (no clear/load, enable high or constant) is written to them;
+                    # every other register keeps d/clk/ce None (undriven in lifted.v, not guessed).
+                    if _plain_flop(ctl):
+                        ff["d"] = _ctl_net(ctl["d"], net_of, node)
+                        ff["clk"] = _ctl_net(ctl["clk"], net_of, node)
+                        ff["ce"] = _ctl_net(ctl["ena"], net_of, node)
+                    d.ffs.append(ff)
 
         d.all_nets = sorted(set(net_name.values()), key=lambda s: int(s[1:]))
         d.n_arcs = len(pc.arcs)
