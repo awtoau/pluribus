@@ -333,3 +333,13 @@ pin, which only a real board.toml could carry. A real Cyclone V
   `pins.tsv` the same shape every other family's board.toml expects.
 - the usual `[board]` device/package keys plus `[bitstreams.<label>]`
   config paths, same shape as every other family's board.toml.
+
+## Pipeline integration (run_pipeline.py)
+
+- `lifter = "cyclonev"` in a board.toml routes `scripts/run_pipeline.py` through: `[unpack]` -> `load` -> `reach`..`reach4` -> `auto_name` -> `patterns` -> `report` -> `chains` -> `verilog` -> `verify`. No `iomap` (pins come from the `.bt`); LEC-vs-prior is skipped (as for gowin).
+- `[unpack]` = `scripts/cyclonev_unpack.py`: strips 0xFF flash padding, runs `mistral-cv decomp`, refuses to overwrite.
+- `config` in `[bitstreams.<label>]` is the `.bt` (regenerable, keep under `tmp/`); `bin` is the flash image or `.rbf`.
+- `pins.tsv` is optional annotation: column 1 is the BGA ball (`AA10`), cols 7/8 function/confidence, 9-11 chip_ref/chip_pin/chip_signal; applied to `pad_map` by `label == ball` (`si_function` carries `"<function> [conf N]"`).
+- `scripts/cyclonev_io_report.py` dumps per-pad features (bank, ports, settings, HMC/DQS16 links, LUT-consumer counts) to a TSV.
+- Known output limits until #106 and the interconnect gap close: FF D/CLK unresolved (all FFs reported stuck-at-reset), `reach3/4`, `auto_name`, `patterns` produce nothing meaningful, `check_verilog` reports combinational loops from LUT outputs wired to their own inputs.
+- Pad arcs are weak evidence of pad use: pad positions bonded in no package carry arcs at the same rate as bonded ones.

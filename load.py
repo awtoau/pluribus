@@ -452,7 +452,31 @@ def load_anlogic(label, config_path, device, package):
 _CYCLONEV_SUPPORTED_DEVICES = {"5CEBA4U19C8"}
 
 
-def load_cyclonev(label, config_path, device):
+def parse_cv_pins_tsv(path):
+    """Cyclone V pins.tsv -> [(ball, function, confidence, chip_ref, chip_pin, chip_signal)].
+
+    Same columns as parse_pins_tsv but column 1 is the BGA ball name ("AA10"), not
+    an int; row/col/pio/dir/label are ignored (the bitstream is the source of those).
+    """
+    rows = []
+    with open(path) as fh:
+        for raw in fh:
+            line = raw.rstrip("\n")
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            p = line.split("\t") + [""] * 11
+            if not re.fullmatch(r"[A-Z]{1,2}\d{1,2}", p[0].strip()):
+                die(f"{path}: pin column must be a BGA ball like 'AA10': {line!r}")
+            try:
+                conf = int(p[7])
+            except ValueError:
+                die(f"{path}: ball {p[0]}: bad confidence {p[7]!r}")
+            rows.append((p[0].strip(), p[6].strip(), conf,
+                         p[8].strip(), p[9].strip(), p[10].strip()))
+    return rows
+
+
+def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
     """Dedicated load path for the Cyclone V (e50f / 5CEBA4U19C8) family.
 
     Same shape as load_anlogic(): the cyclonev backend recovers LUT5 cells,
@@ -496,7 +520,7 @@ def load_cyclonev(label, config_path, device):
         if BACKEND == "sqlite":
             conn.execute(insert(schema.bitstreams).prefix_with("OR REPLACE").values(
                 label=label, filename=os.path.basename(config_path),
-                device=device, package="UNKNOWN", diamond_version=None,
+                device=device, package=package or "UNKNOWN", diamond_version=None,
                 loaded_at=_now))
             bs_id = conn.execute(select(schema.bitstreams.c.id)
                                  .where(schema.bitstreams.c.label == label)).scalar()
@@ -504,12 +528,12 @@ def load_cyclonev(label, config_path, device):
             bs_id = conn.execute(
                 _pg_insert(schema.bitstreams)
                 .values(label=label, filename=os.path.basename(config_path),
-                        device=device, package="UNKNOWN", diamond_version=None,
+                        device=device, package=package or "UNKNOWN", diamond_version=None,
                         loaded_at=_now)
                 .on_conflict_do_update(
                     index_elements=["label"],
                     set_=dict(filename=os.path.basename(config_path),
-                              device=device, package="UNKNOWN", diamond_version=None,
+                              device=device, package=package or "UNKNOWN", diamond_version=None,
                               loaded_at=_now))
                 .returning(schema.bitstreams.c.id)).scalar()
         if bs_id is None:
@@ -631,6 +655,22 @@ def load_cyclonev(label, config_path, device):
         assert_eq("pad_map count in DB", pad_count, len(pad_rows))
         print(f"  {len(pad_rows)} pad_map rows ({n_pads_skipped} unannotated "
               f"pads skipped — no package pin name to key on)")
+
+        # ── board pin annotations (optional): ball -> function / chip_* ────
+        if pins_tsv:
+            n_hit = 0
+            pin_rows = parse_cv_pins_tsv(pins_tsv)
+            for ball, fn, conf, cref, cpin, csig in pin_rows:
+                r = conn.execute(
+                    update(schema.pad_map)
+                    .where(schema.pad_map.c.bitstream == bs_id,
+                           schema.pad_map.c.label == ball)
+                    .values(si_function=f"{fn} [conf {conf}]" if fn else None,
+                            chip_ref=cref or None, chip_pin=cpin or None,
+                            chip_signal=csig or None))
+                n_hit += r.rowcount
+            print(f"  pins.tsv: {len(pin_rows)} rows, {n_hit} matched a pad_map row "
+                  f"({len(pin_rows) - n_hit} balls not used by the bitstream)")
 
     print(f"  loaded: {n_luts} LUTs, {n_ffs} FFs, {len(net_rows)} nets, "
           f"{len(arc_rows)} arcs, {len(pad_rows)} pads ({time.time()-t0:.1f}s)")
@@ -2030,7 +2070,8 @@ def main():
     # layer yet — see load_cyclonev()); dispatch before the pins check below,
     # same way anlogic's dedicated path is exempted from it.
     if lifter == "cyclonev":
-        load_cyclonev(args.label, args.config, device)
+        load_cyclonev(args.label, args.config, device, pins_tsv=pins,
+                      package=args.package or board_cfg.get("package"))
         return
     # Anlogic has no pad-map layer yet, so its dedicated load path ignores pins.
     if not pins and lifter != "anlogic":
