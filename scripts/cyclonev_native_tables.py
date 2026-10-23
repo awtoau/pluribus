@@ -21,7 +21,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 
-TABLES_VERSION = 4
+TABLES_VERSION = 5
 MISTRAL_ROOT = os.environ.get("PLURIBUS_MISTRAL_ROOT", "/mnt/2tb/git/mistral")
 CACHE_DIR = os.path.join(REPO, "tmp", "cyclonev_native")
 log = logging.getLogger("cyclonev_native_tables")
@@ -211,6 +211,15 @@ def parse_inv(die, width, tmap):
     return rows
 
 
+def parse_ones(die, width):
+    out = []
+    for line in _read_text(_data(f"{die}-1.txt")).split("\n"):
+        if line.strip():
+            x, _, y = line.strip().partition(".")
+            out.append(int(x) + int(y) * width)
+    return out
+
+
 def parse_pram(die):
     data = {}
     for line in _read_text(_data(f"{die}-pram.txt")).split("\n"):
@@ -376,7 +385,7 @@ def build(model_name, workers=8):
                         ttype[(x, y)] = tp
                         pos[tp].append((x, y))
     return dict(version=TABLES_VERSION, model=mdl, die=die, geom=g, patterns=pats, rvals=vals, rvhash=vhash, rxy=xy,
-                routes=routes, p2r=p2r, p2p=p2p, inv=inv, fixed=fixed, dqs16=dq, iob=iob, tile_types=ttype, pos=pos,
+                routes=routes, p2r=p2r, p2p=p2p, inv=inv, ones=parse_ones(die, width), fixed=fixed, dqs16=dq, iob=iob, tile_types=ttype, pos=pos,
                 pins=parse_pkg(die, mdl["pkg"]), dcram=parse_dcram(die, width), muxes=block_muxes())
 
 

@@ -581,6 +581,11 @@ class Model:
                     out.append((btype, vt[r][0], name, midx, "n", num))
 
     def settings(self):
+        if getattr(self, "_settings", None) is None:
+            self._settings = self._settings_uncached()
+        return self._settings
+
+    def _settings_uncached(self):
         t, g = self.t, self.g
         S = Solve(self)
         res = []
@@ -701,8 +706,23 @@ class Model:
         for x in active:
             if fe[x]:
                 links.append((fe[x], x))
+        if not self.compat:
+            # LAB clock source taken from fabric (CLKA/CLKB_SEL = DIN): a mux the routing tables do not carry
+            tid = self.tid
+            for st in self.settings():
+                if st[0] in ("LAB", "MLAB") and st[2] in ("CLKA_SEL", "CLKB_SEL") and st[5] in ("DIN0", "DIN1"):
+                    k = 0 if st[2] == "CLKA_SEL" else 1
+                    x, y = st[1]
+                    links.append((nt.rkey(tid["GOUT"], x, y, 80 + k), nt.rkey(tid["TCLK"], x, y, k)))
         self.route_unknown = unknown
         return links
+
+    def forced_ones(self):
+        """Constant-1 CRAM bits (`<die>-1.txt`): claimed as feature class `one`; returns how many are set."""
+        pos = np.array(self.t["ones"], np.int64)
+        if len(pos):
+            self._claim_cram(pos, "one")
+        return int(self.bits.cram[pos].sum()), len(pos)
 
     def inverters(self):
         res = []
@@ -765,6 +785,7 @@ class Model:
 
     # -- the .bt text --
     def bt_lines(self):
+        self.ones_set = self.forced_ones()
         L = [f"m {self.t['model']['name']}"]
         for s in self.options():
             if s[4] == "r":
@@ -916,10 +937,100 @@ class Solve:
         return True
 
 
+# ---- encoder (libmistral rbf_save) ---------------------------------------------------------------
+
+def edcrc_rows(frames, geo):
+    """EDCRC word of each frame row (uint8 (n, cfb))."""
+    nb = 32 * geo.cram_frame_bits
+    contrib, init = edcrc_contrib(nb)
+    k = np.arange(nb)
+    pos = 224 + (31 - k // geo.cram_frame_bits) + 32 * (k % geo.cram_frame_bits)
+    bits = (frames[:, pos >> 3] >> (pos & 7).astype(np.uint8)) & 1
+    calc = np.full(frames.shape[0], init, np.uint32)
+    for j in range(nb):
+        calc[bits[:, j] != 0] ^= contrib[j]
+    return calc
+
+
+# Postamble sizes of Quartus-compressed images (measured on e50f corpus builds; uncompressed use the die values).
+COMPRESSED_POSTAMBLES = {"e50f": (28, 481)}
+
+
+def encode_rbf(tables, bits, compress=None):
+    """Planes -> .rbf bytes, same layout rules as libmistral rbf_save. compress=None: follow the COMPRESSION_DIS bit."""
+    geo, g = bits.geo, tables["geom"]
+    fs, mp, pb = geo.fs, geo.mpram, geo.pram_blocks
+    data = bytearray(geo.oram_frame_bytes + geo.pram_frame_bytes * pb)
+    data[0:0x80] = b"\xff" * 0x80
+    data[0x80:0x84] = b"jjjj"
+    for strip in range(32):
+        for bit in range(40):
+            if (bits.oram[strip] >> bit) & 1:
+                data[0x84 + (strip >> 3) + (bit << 2)] |= 0x80 >> (strip & 7)
+    data[0x124] = data[0x125] = 0
+    ck = crc16(bytes(data[0x84:0x126]))
+    data[0x126], data[0x127] = ck & 0xFF, ck >> 8
+    data[0x128:0x128 + fs * 4 - 0xB8] = b"\xff" * (fs * 4 - 0xB8)
+    for bit in range(31, -1, -1):
+        cnt = geo.pram_sizes[bit]
+        if not cnt:
+            continue
+        i = np.nonzero(bits.pram[bit])[0]
+        base = mp - i - 1
+        idx = geo.oram_frame_bytes + 4 + (bit >> 3) + base * 4 + (base // fs) * 8
+        for ix in idx.tolist():
+            data[ix] |= 1 << (bit & 7)
+    coff = geo.oram_frame_bytes + (pb - 1) * geo.pram_frame_bytes
+    data[coff:coff + 3] = b"\x2a\xc5\x01"
+    coff = geo.oram_frame_bytes
+    for _ in range(pb):
+        c = crc16(bytes(data[coff:coff + geo.pram_frame_bytes - 2]))
+        data[coff + geo.pram_frame_bytes - 2], data[coff + geo.pram_frame_bytes - 1] = c & 0xFF, c >> 8
+        coff += geo.pram_frame_bytes
+    comp_dis = options_compression_dis(tables, bits)
+    do_compress = (not comp_dis) if compress is None else compress
+    sx, cfb = geo.sx, geo.cfb
+    fb = np.zeros((sx, cfb * 8), np.uint8)
+    ys = np.arange(32, geo.sy)
+    yy = ys + geo.offset
+    pos = 224 + (31 ^ (yy // geo.cram_frame_bits)) + 32 * (yy % geo.cram_frame_bits)
+    fb[:, pos] = bits.cram.reshape(geo.sy, sx)[32:, :].T
+    frames = np.packbits(fb, axis=1, bitorder="little")
+    frames[0, 0:3] = (0x84, 0x3E, 0x01)
+    frames[sx - 1, 0:3] = (0x42, 0x9F, 0x00)
+    ed = edcrc_rows(frames, geo)
+    zones, idx = g["noedcrc_zones"], 0
+    for x in range(sx):
+        has = not (idx < len(zones) and x >= zones[idx])
+        if idx < len(zones) and x == zones[idx] + 255:
+            idx += 1
+        frames[x, cfb - 8:cfb - 4] = np.frombuffer(int(ed[x] if has else 0).to_bytes(4, "little"), np.uint8)
+    frames[:, cfb - 2:] = 0
+    c = crc16_rows(frames[:, :cfb - 2])
+    frames[:, cfb - 2] = c & 0xFF
+    frames[:, cfb - 1] = c >> 8
+    raw = frames.tobytes()
+    data += nibble_compress(raw) if do_compress else raw
+    p1, p2n = (COMPRESSED_POSTAMBLES.get(g["name"], (g["postamble_1"], g["postamble_2"])) if do_compress
+               else (g["postamble_1"], g["postamble_2"]))
+    post = bytearray(p1)
+    post[0], post[1] = 0xEC, 0x64
+    data += post
+    c = crc16(bytes(post))
+    data += bytes((c & 0xFF, c >> 8))
+    p2 = bytearray(10)
+    p2[0], p2[1] = 0xAE, 0xFB
+    data += p2
+    c = crc16(bytes(p2))
+    data += bytes((c & 0xFF, c >> 8))
+    data += b"\xff" * p2n
+    return bytes(data)
+
+
 # ---- API ---------------------------------------------------------------------------------------
 
-def decode(data, device="5CEBA4U19C8", overrides=True, claims=False, compat=False):
-    tb = nt.load(device)
+def decode(data, device="5CEBA4U19C8", overrides=True, claims=False, compat=False, tables=None):
+    tb = tables or nt.load(device)
     ov = None
     if overrides:
         import cyclonev_native_overrides as ovm
