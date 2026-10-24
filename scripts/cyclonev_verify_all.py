@@ -29,6 +29,9 @@ Stages
                   DB, check the real pad_map row count / direction
                   breakdown / duplicate-pin count against the selftest's own
                   ground truth (Part 1 of this session's task).
+5. Lifted sim   -- BLOCKING functional gate: re-lift every corpus design, simulate
+                  lifted Verilog vs Quartus build.vo (scripts/cyclonev_lifted_sim_check.py);
+                  prints wrong/missing per design; any failing design fails the run.
 
 Threading (stages 1-2 only; 3-4 are single-shot, not Quartus-bound)
 --------------------------------------------------------------------
@@ -504,6 +507,29 @@ def stage_padmap_check(bt_path, logger):
     return {"pass": ok, "summary": summary_line, "mismatches": mismatches, "wall_s": dt}
 
 
+# ── stage 5: lifted Verilog functional sim (blocking) ──────────────────────
+
+def stage_lifted_sim(logger, jobs):
+    """Re-lift every corpus design and simulate it against Quartus build.vo
+    (scripts/cyclonev_lifted_sim_check.py).  Any covered design with a wrong or
+    missing output sample, or a failed model check, fails the run."""
+    import cyclonev_lifted_sim_check as simcheck
+    t0 = time.time()
+    results = simcheck.run_guarded(simcheck.all_designs(), jobs=jobs, logf=logger.info)
+    ok = simcheck.summary(results, logf=logger.info)
+    for r in results:
+        if r["status"] in ("FAIL", "ERROR"):
+            logger.error("lifted sim %s %s: wrong=%d missing=%d %s", r["status"], r["design"],
+                         r["wrong"], r["missing"], r["reason"])
+    n = {s: sum(1 for r in results if r["status"] == s)
+         for s in ("PASS", "FAIL", "ERROR", "NOT_COVERED", "NOT_BUILT")}
+    summary_line = (f"Lifted sim: {'PASS' if ok else 'FAIL'} — {n['PASS']} pass, {n['FAIL']} fail, "
+                    f"{n['ERROR']} error, {n['NOT_COVERED']} not covered, {n['NOT_BUILT']} not built "
+                    f"({time.time() - t0:.1f}s)")
+    logger.info(summary_line)
+    return {"pass": ok, "summary": summary_line, "results": results}
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -532,6 +558,9 @@ def main():
     ap.add_argument("--skip-dsp-fuzz", action="store_true")
     ap.add_argument("--skip-lifter-selftest", action="store_true")
     ap.add_argument("--skip-padmap", action="store_true")
+    ap.add_argument("--skip-lifted-sim", action="store_true",
+                     help="skip the blocking lifted-vs-Quartus functional sim (stage 5)")
+    ap.add_argument("--sim-jobs", type=int, default=4)
     ap.add_argument("--work-dir", type=Path, default=REPO / "tmp" / "cyclonev_verify_all")
     args = ap.parse_args()
 
@@ -576,6 +605,11 @@ def main():
         stage_results["padmap"] = stage_padmap_check(args.reference_bt, logger)
     else:
         logger.info("Pad map: SKIPPED (--skip-padmap)")
+
+    if not args.skip_lifted_sim:
+        stage_results["lifted_sim"] = stage_lifted_sim(logger, args.sim_jobs)
+    else:
+        logger.info("Lifted sim: SKIPPED (--skip-lifted-sim)")
 
     logger.info("=" * 72)
     logger.info("COMBINED SUMMARY")
