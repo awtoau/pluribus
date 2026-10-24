@@ -962,19 +962,42 @@ class CycloneVLift:
                         "block": block, "x": tile_key[1], "y": tile_key[2], "alm": alm_idx,
                         "half": h, "slot": str(slot), "ctl": ctl,
                     }
-                    # ffs/verilog.py have no polarity or sync/async-clear columns: only a plain
-                    # posedge D flop (no clear/load, enable high or constant) is written to them;
-                    # every other register keeps d/clk/ce None (undriven in lifted.v, not guessed).
-                    if _plain_flop(ctl):
-                        ff["d"] = _ctl_net(ctl["d"], net_of, node)
-                        ff["clk"] = _ctl_net(ctl["clk"], net_of, node)
-                        ff["ce"] = _ctl_net(ctl["ena"], net_of, node)
+                    # Controls go to the existing columns (d, clk, ce, lsr = sclr); polarity and the
+                    # async clear ride in `dtype` (`_ctl_dtype`), read back by verilog.py emit_ffs.
+                    # A control without a recovered source stays None (undriven, not guessed).
+                    ff.update(self._ctl_columns(ctl, net_of, node))
                     d.ffs.append(ff)
 
         d.all_nets = sorted(set(net_name.values()), key=lambda s: int(s[1:]))
         d.n_arcs = len(pc.arcs)
         self.recover_pads(pc, d, net_of)
         return d
+
+    @staticmethod
+    def _ctl_columns(ctl, net_of, node_of):
+        """{d, clk, ce, lsr, dtype} for one register from its recovered controls."""
+        def net(f):
+            src = ctl.get(f)
+            if src is None:
+                return None, False
+            inv = src[0] == "node" and bool(src[2])
+            return _ctl_net(src, net_of, node_of), inv
+        d, dinv = net("d")
+        clk, clkinv = net("clk")
+        ena, enainv = net("ena")
+        sclr, sclrinv = net("sclr")
+        clrn, clrninv = net("clrn")
+        flags = [("dinv", dinv), ("clkinv", clkinv), ("ceinv", enainv), ("lsrinv", sclrinv)]
+        parts = ["cyclonev_alm_reg"] + [f"{k}=1" for k, v in flags if v]
+        if clrn is not None and not clrn.startswith("1'b"):
+            parts.append(f"clr={clrn}")
+            if clrninv:
+                parts.append("clrinv=1")
+        miss = [f for f in ("d", "clk", "ena", "clrn", "sclr") if f not in ctl]
+        if miss:
+            parts.append("miss=" + ",".join(miss))
+        return {"d": d, "clk": clk, "ce": ena,
+                "lsr": None if sclr in (None, "1'b0") else sclr, "dtype": ";".join(parts)}
 
     def _arith_luts(self, key, arith_k, sum_used, cout_active, share_on, raw, h, p, is_mlab,
                     active, comb_table, net_of):

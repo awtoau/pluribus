@@ -173,7 +173,7 @@ def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero,
           if pin_of[(n, i)] in lports]
     lout = {(n, i): p for n, i, _w, p, dr in lw if dr == "output"}
     tb = ["`timescale 1ps/1ps", "module tb;"]
-    tb += [f"  reg [{w-1}:0] {n};" for n, w in ins]
+    tb += [f"  reg [{w-1}:0] {n} = 0;" for n, w in ins]   # defined at t=0: no X->0 edge on a negedge register
     tb += [f"  wire [{w-1}:0] {n}, s_{n};" for n, w in outs]
     tb.append(f"  {design} u_q ({', '.join(f'.{n}({n})' for n in ports)});")
     if with_src:

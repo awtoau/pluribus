@@ -1309,9 +1309,13 @@ def emit_ffs(data: dict) -> list[str]:
     ce_clear_ffs: list[tuple] = []
     active_ffs:   list[tuple] = []
     latch_ffs:    list[tuple] = []   # GOWIN DL/DLC/… transparent latches
+    cv_ffs:       list[tuple] = []   # Cyclone V ALM registers (all controls, see below)
 
     for row in ffs:
         cell, clk, ce, d, q, lsr = row
+        if data.get("is_cyclonev") and str(ff_dtype_map.get(cell, "")).startswith("cyclonev_alm_reg"):
+            cv_ffs.append(row)
+            continue
         if is_latch(cell):
             latch_ffs.append(row)
             continue
@@ -1504,6 +1508,46 @@ def emit_ffs(data: dict) -> list[str]:
                     lines.append(f"        if ({ce_expr}) {reg_ident} <= {d_expr};{hc}")
                 else:
                     lines.append(f"        {reg_ident} <= {d_expr};{hc}")
+            lines.append("    end")
+            lines.append("")
+
+    # ── Cyclone V registers: dffeas semantics ───────────────────────────────
+    # clrn async (clears), else on the clock edge: ena ? (sclr ? 0 : d) : hold.
+    # Controls: ffs.d/clk/ce/lsr(=sclr) + `dtype` flags (lifters/cyclonev_lift.py _ctl_columns).
+    if cv_ffs:
+        from collections import defaultdict as _dd3
+        lines.append(f"    // ── Cyclone V registers ({len(cv_ffs)}) — clrn async, ena, sclr, d ─")
+        groups: dict[tuple, list] = _dd3(list)
+        for cell, clk, ce, d, q, lsr in cv_ffs:
+            flags = dict(p.split("=", 1) if "=" in p else (p, "1")
+                         for p in ff_dtype_map[cell].split(";")[1:])
+            ident = reg_ref(cell)
+            if flags.get("miss") or not clk or not d:
+                lines.append(f"    // {ident}: control not recovered ({flags.get('miss', 'clk/d')}), left undriven")
+                continue
+            neg = flags.get("clkinv") == "1"
+            inv = lambda e, f: f"!{e}" if flags.get(f) == "1" else e
+            en = inv(rn(ce), "ceinv") if ce else "1'b1"
+            sc = inv(rn(lsr), "lsrinv") if lsr else None
+            clr = flags.get("clr")
+            if clr:
+                clr = rn(clr)
+                clr = f"!{clr}" if flags.get("clrinv") == "1" else clr   # expression that is 1 when not cleared
+            dx = inv(rn(d), "dinv")
+            groups[(rn(clk), neg, clr)].append((ident, en, sc, dx))
+        for gi, ((clk_expr, neg, clr), members) in enumerate(sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or ""))):
+            edge = "negedge" if neg else "posedge"
+            sens = f"{edge} {clk_expr}"
+            if clr:
+                lines.append(f"    wire cv_clrn{gi} = {clr};")
+                sens += f" or negedge cv_clrn{gi}"
+            lines.append(f"    // {len(members)} FFs @ {edge} {clk_expr}" + (f", async clear {clr}" if clr else ""))
+            lines.append(f"    always @({sens}) begin")
+            for ident, en, sc, dx in members:
+                body = f"{ident} <= 1'b0" if sc == "1'b1" else (
+                    f"{ident} <= ({sc}) ? 1'b0 : {dx}" if sc else f"{ident} <= {dx}")
+                stmt = body if en == "1'b1" else f"if ({en}) {body}"
+                lines.append((f"        if (!cv_clrn{gi}) {ident} <= 1'b0; else " if clr else "        ") + stmt + ";")
             lines.append("    end")
             lines.append("")
 
