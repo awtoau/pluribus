@@ -2171,6 +2171,10 @@ def emit_hard_cells(data: dict) -> list[str]:
     for h in hard:
         if h.get("unmodelled"):
             lines.append(f"    // {h['name']}: NOT LIFTED -- {h['unmodelled']}")
+            if h.get("decode"):
+                dc = h["decode"]
+                lines.append(f"    // {h['name']} decode: M={dc['m']} N={dc['n']} " +
+                             " ".join(f"C{c}={v}" for c, v in sorted(dc["c"].items(), key=lambda kv: int(kv[0]))))
             continue
         nm_ = h["name"]
         par = dict(h["params"])

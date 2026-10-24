@@ -522,9 +522,9 @@ def stage_lifted_sim(logger, jobs):
             logger.error("lifted sim %s %s: wrong=%d missing=%d %s", r["status"], r["design"],
                          r["wrong"], r["missing"], r["reason"])
     n = {s: sum(1 for r in results if r["status"] == s)
-         for s in ("PASS", "FAIL", "ERROR", "NOT_COVERED", "NOT_BUILT")}
+         for s in ("PASS", "FAIL", "ERROR", "NOT_BUILT")}
     summary_line = (f"Lifted sim: {'PASS' if ok else 'FAIL'} — {n['PASS']} pass, {n['FAIL']} fail, "
-                    f"{n['ERROR']} error, {n['NOT_COVERED']} not covered, {n['NOT_BUILT']} not built "
+                    f"{n['ERROR']} error, {n['NOT_BUILT']} not built "
                     f"({time.time() - t0:.1f}s)")
     logger.info(summary_line)
     return {"pass": ok, "summary": summary_line, "results": results}

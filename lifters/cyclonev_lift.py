@@ -992,6 +992,8 @@ class CycloneVLift:
             elif n.block == "DSP" and n.port:
                 pins[n.tile_key()][(n.bi, n.port, n.pi)] = (net_of(n), n in src_nodes and n not in sink_nodes)
         for tile in sorted(set(pc.settings) | set(pins)):
+            if tile[0] == "FPLL" and pc.settings.get(tile, {}).get(("FPLL_ENABLE", None)) == "1":
+                d.hard.append(hard.fpll_cell(tile, pc.settings[tile]))
             if tile[0] == "DSP" and (pins.get(tile) or pc.settings.get(tile)):
                 d.hard.append(hard.dsp_cell(tile, pc.settings.get(tile, {}), pins.get(tile, {})))
             if tile[0] == "M10K" and (pins.get(tile) or pc.settings.get(tile)):

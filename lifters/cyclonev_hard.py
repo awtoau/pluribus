@@ -191,6 +191,33 @@ def mlab_cell(tile, alm, half, raw, kv, w, perm):
     return rec
 
 
+# ---- FPLL -----------------------------------------------------------------------------------------
+def fpll_cell(tile, kv):
+    """One enabled FPLL tile -> decode record (frequency ratios only; the netlist is NOT lifted).
+
+    f(counter c) = ref * M / N / C with M = M_HI + M_LO, N = N_HI + N_LO, C = DPRIO0_HI.c + DPRIO0_LO.c
+    (a bypassed counter divides by 1; unset hi/lo fields are 1).  Checked against the Quartus defparams
+    of the 3 c_pll_* designs (4 outputs, all matched) by scripts/cyclonev_lifted_sim_check.py.
+    Not decoded: the reference-clock pad (CLKIN_0_SRC value -> pad), the output counter -> clock net
+    binding, phase shift, duty cycle, fractional mode, M/N counters with odd-division duty correction.
+    """
+    x, y = tile[1], tile[2]
+    hx = lambda key, idx=None, d=1: int(kv[(key, idx)], 16) if (key, idx) in kv else d
+    dv = lambda hi, lo, byp: 1 if _kvi(kv, byp) == "1" else hi + lo
+    m = dv(hx("M_CNT_HI_DIV_SETTING"), hx("M_CNT_LO_DIV_SETTING"), "M_CNT_BYPASS_EN")
+    n = dv(hx("N_CNT_HI_DIV_SETTING"), hx("N_CNT_LO_DIV_SETTING"), "N_CNT_BYPASS_EN")
+    cs = {}
+    for c in range(9):
+        if _kvi(kv, f"C{c}_COUT_EN") == "1":
+            byp = kv.get(("DPRIO0_CNT_BYPASS_EN", c)) == "1"
+            cs[c] = 1 if byp else hx("DPRIO0_CNT_HI_DIV", c) + hx("DPRIO0_CNT_LO_DIV", c)
+    return {"name": f"fpll_r{x}c{y}", "kind": "cyclonev_fractional_pll", "x": x, "y": y, "block": "FPLL",
+            "params": {}, "pins": {}, "outs": {},
+            "decode": {"m": m, "n": n, "c": cs, "clkin_0_src": hx("CLKIN_0_SRC", None, 2)},
+            "unmodelled": "PLL netlist: reference-clock pad (CLKIN_0_SRC), output-counter clock nets, "
+                          "phase and duty are not decoded"}
+
+
 # ---- DSP (cyclonev_mac) -------------------------------------------------------------------------
 # Mistral DSP pins: DATAIN.<n> of bank bi (9 bits per bank), RESULT.<k>, CLKIN.<c>.  Which atom port bit
 # a (bank, n) is depends on the operation mode; learned from the corpus by pad correlation (build.vo
