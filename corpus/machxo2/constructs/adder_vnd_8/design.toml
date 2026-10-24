@@ -1,0 +1,8 @@
+top = "top"
+purpose = "a+b with carry out, registered"
+construct = "adder"
+variant = "vnd"
+width = 8
+lang = "verilog-95+lattice"
+io_bits = 26
+io_reduced = false

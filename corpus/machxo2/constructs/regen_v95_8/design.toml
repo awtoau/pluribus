@@ -1,0 +1,8 @@
+top = "top"
+purpose = "register with enable"
+construct = "regen"
+variant = "v95"
+width = 8
+lang = "verilog-95"
+io_bits = 18
+io_reduced = false
