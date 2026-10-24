@@ -2184,12 +2184,14 @@ def emit_hard_cells(data: dict) -> list[str]:
                 par[f"mem_init{i}"] = f'"{chunk:0512x}"'
         outs = h.get("outs") or {}
         width_of = {"portadataout": par.get("port_a_data_width"),
-                    "portbdataout": par.get("port_b_data_width", par.get("data_width"))}
+                    "portbdataout": par.get("port_b_data_width", par.get("data_width")),
+                    "resulta": par.get("result_a_width")}
         conns = []
         for port, bits in h["pins"].items():
             conns.append(f".{port}({{{', '.join(rn(b) for b in reversed(bits))}}})")
         ram = h["kind"] == "cyclonev_ram_block"
-        for port in (("portadataout", "portbdataout") if ram else ("portbdataout",)):
+        mac = h["kind"] == "cyclonev_mac"
+        for port in (("resulta",) if mac else ("portadataout", "portbdataout") if ram else ("portbdataout",)):
             if port in outs and outs[port]:
                 lines.append(f"    wire [{width_of[port] - 1}:0] {nm_}_{port};")
                 conns.append(f".{port}({nm_}_{port})")
@@ -2197,6 +2199,8 @@ def emit_hard_cells(data: dict) -> list[str]:
                 conns.append(f".{port}()")
         if ram:
             conns += [".eccstatus()", ".dftout()"]
+        if mac:
+            conns += [".resultb()", ".scanout()", ".chainout()", ".dftout()"]
         lines.append(f"    {h['kind']} #(" + ", ".join(f".{k}({v})" for k, v in par.items()) + f") {nm_} (")
         lines.append("        " + ",\n        ".join(conns) + ");")
         for port, bitmap in outs.items():

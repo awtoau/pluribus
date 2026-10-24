@@ -74,8 +74,9 @@ module cyclonev_clkena(inclk,ena,outclk,enaout);
 endmodule
 """
 SUPPORTED = {"cyclonev_lcell_comb", "cyclonev_io_ibuf", "cyclonev_io_obuf", "cyclonev_clkena", "dffeas",
-             "cyclonev_ram_block", "cyclonev_mlab_cell"}      # RAM/MLAB: plain vendor models (lnsim extract)
-NOT_COVERED = {"cyclonev_mac": "DSP"}
+             "cyclonev_ram_block", "cyclonev_mlab_cell",     # RAM/MLAB: plain vendor models (lnsim extract)
+             "cyclonev_mac"}                                 # DSP: our model (lifters/data/cyclonev_mac_model.v)
+NOT_COVERED = {}
 STEP_LIMIT_S = 60   # each lift / compile / sim step: < 10 s on a corpus design; 60 s = hung
 PREAMBLE_CLOCKS = 4  # clock pulses per reset level (all-1, all-0) before the model check starts
 JOBS = 4          # designs in parallel; each is a chain of small subprocesses
@@ -167,7 +168,7 @@ def src_files(d):
     return src, libs
 
 
-def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero, invert, with_src):
+def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero, invert, with_src, dsp=False):
     pin_of = {(n, i): pins.get(f"{n}[{i}]") or (pins.get(n) if w == 1 else None)
               for n, w in ins + outs for i in range(w)}
     lw = [(n, i, w, pin_of[(n, i)], ports[n][0]) for n, w in ins + outs for i in range(w)
@@ -186,7 +187,7 @@ def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero,
             inv = "~" if (invert == "all" or p in invert.split(",")) else ""
             tb.append(f"  wire b_{p} = {inv}{n}[{i}];")
     tb.append(f"  {design}_lifted u_l ({', '.join(f'.{p}(b_{p})' for _n, _i, _w, p, _d in lw)});")
-    tb.append("  integer ok = 0, wrong = 0, missing = 0, xq = 0, m_ok = 0, m_wrong = 0, m_x = 0;")
+    tb.append("  integer ok = 0, wrong = 0, missing = 0, xq = 0, m_ok = 0, m_wrong = 0, m_x = 0, ls_ok = 0, ls_wrong = 0;")
     tb.append("  reg mchk = 0;")
     tb.append("  task check; begin")
     for n, w in outs:
@@ -200,6 +201,9 @@ def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero,
                 tb.append(f"    else if (b_{p} !== 1'b0 && b_{p} !== 1'b1) missing = missing + 1;"
                           f" else if ({q} === b_{p}) ok = ok + 1;"
                           f" else begin wrong = wrong + 1; if (!seen_{p}) begin seen_{p} = 1; $display(\"BAD {p}\"); end end")
+            if with_src and dsp and p is not None:       # DSP: lifted vs the design's own RTL (model-independent)
+                tb.append(f"    if (mchk && ^{{b_{p}, s_{n}[{i}]}} !== 1'bx) begin"
+                          f" if (b_{p} === s_{n}[{i}]) ls_ok = ls_ok + 1; else ls_wrong = ls_wrong + 1; end")
             if with_src:
                 tb.append(f"    if (!mchk) ; else if (^{{{q}, s_{n}[{i}]}} === 1'bx) m_x = m_x + 1;"
                           f" else if ({q} === s_{n}[{i}]) m_ok = m_ok + 1; else m_wrong = m_wrong + 1;")
@@ -228,8 +232,8 @@ def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero,
             for n, w in group:
                 tb.append(f"    {n} = {w}'d{0 if n in zero else rnd.getrandbits(w)};")
             tb.append("    #1000; check;")
-    tb.append('    $display("RESULT ok=%0d wrong=%0d missing=%0d xq=%0d model_ok=%0d model_wrong=%0d model_x=%0d",'
-              ' ok, wrong, missing, xq, m_ok, m_wrong, m_x);')
+    tb.append('    $display("RESULT ok=%0d wrong=%0d missing=%0d xq=%0d model_ok=%0d model_wrong=%0d model_x=%0d ls_ok=%0d ls_wrong=%0d",'
+              ' ok, wrong, missing, xq, m_ok, m_wrong, m_x, ls_ok, ls_wrong);')
     tb += ["    $finish;", "  end", "endmodule"]
     return "\n".join(tb) + "\n", sum(1 for k in pin_of if k[0] in dict(outs) and lout.get(k) is None)
 
@@ -238,7 +242,7 @@ def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True)
     """One design -> result dict; status PASS | FAIL | NOT_COVERED | NOT_BUILT | ERROR."""
     d = CORPUS / design
     res = {"design": design, "status": "ERROR", "reason": "", "ok": 0, "wrong": 0, "missing": 0,
-           "xq": 0, "model_ok": 0, "model_wrong": 0, "model_x": 0, "model": "unchecked", "bad_pins": []}
+           "xq": 0, "model_ok": 0, "model_wrong": 0, "model_x": 0, "ls_ok": 0, "ls_wrong": 0, "model": "unchecked", "bad_pins": []}
     vo_path = d / "quartus" / "simulation" / "questa" / "build.vo"
     if not vo_path.is_file() or not (d / "decomp.bt").is_file():
         res.update(status="NOT_BUILT", reason="no build.vo / decomp.bt")
@@ -277,10 +281,13 @@ def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True)
     if re.search(r"^\s*cyclonev_(ram_block|mlab_cell)\s", vo, re.M):
         import cyclonev_lnsim_extract
         base.append(cyclonev_lnsim_extract.extract(out=work / "lnsim_extract.sv", log=lambda m: None))
+    dsp = bool(re.search(r"^\s*cyclonev_mac\s", vo, re.M))
+    if dsp:
+        base.append(REPO / "lifters" / "data" / "cyclonev_mac_model.v")
     compiled = None
     for with_src in ((True, False) if src else (False,)):
         tb, n_unported = testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed,
-                                   set(zero), invert, with_src)
+                                   set(zero), invert, with_src, dsp)
         (work / "tb.v").write_text(tb)
         files = base + ([work / "src_r.v"] + libs if with_src else [])
         r, err = run(["iverilog", "-g2012", "-o", work / "sim.vvp"] + files)
@@ -312,6 +319,8 @@ def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True)
         fail.append("lifted")
     if res["model_wrong"]:
         fail.append("model")
+    if dsp and (not compiled or res["ls_wrong"] or not res["ls_ok"]):
+        fail.append("lifted vs src")        # DSP: the model is ours, so the reference is the design's own RTL
     if not res["ok"]:
         fail.append("nothing compared")
     res["status"] = "FAIL" if fail else "PASS"
@@ -323,7 +332,9 @@ def fmt(r):
     tot = r["ok"] + r["wrong"] + r["missing"]
     return (f"{r['status']:11s} {r['design']:28s} matched {r['ok']}/{tot} wrong={r['wrong']} "
             f"missing={r['missing']} xq={r['xq']} model={r['model']}"
-            f"({r['model_ok']}/{r['model_ok'] + r['model_wrong']}) {r['reason']}"
+            f"({r['model_ok']}/{r['model_ok'] + r['model_wrong']})"
+            + (f" lifted-vs-src={r['ls_ok']}/{r['ls_ok'] + r['ls_wrong']}" if r["ls_ok"] or r["ls_wrong"] else "")
+            + f" {r['reason']}"
             + (f" bad_pins={r['bad_pins'][:8]}" if r["bad_pins"] else ""))
 
 

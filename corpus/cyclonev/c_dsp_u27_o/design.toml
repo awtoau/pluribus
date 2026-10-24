@@ -1,0 +1,7 @@
+top = "c_dsp_u27_o"
+purpose = "unsigned 27x27 multiply, stages o [vendor multstyle dsp]"
+exercises = ["dsp", "mult"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "dsp"
+variant = "u_o"
+width = 27

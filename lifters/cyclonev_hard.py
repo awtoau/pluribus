@@ -189,3 +189,86 @@ def mlab_cell(tile, alm, half, raw, kv, w, perm):
         word |= (1 - ((raw >> perm[(31 - v) + off]) & 1)) << v      # read-address inputs are inverted
     rec["init"] = word
     return rec
+
+
+# ---- DSP (cyclonev_mac) -------------------------------------------------------------------------
+# Mistral DSP pins: DATAIN.<n> of bank bi (9 bits per bank), RESULT.<k>, CLKIN.<c>.  Which atom port bit
+# a (bank, n) is depends on the operation mode; learned from the corpus by pad correlation (build.vo
+# port bit -> pad -> lifted pin), docs/cyclonev-postfit-oracle.md "DSP".
+#   m9x9        : ax[n] = bank0.n   bx[n] = bank1.n   ay[n] = bank2.n   by[n] = bank3.n   (lane 0 only)
+#   m27x27      : ax[0:9]=bank0 ax[9:18]=bank6 ax[18:27]=bank7; ay: banks 2, 8, 9
+#   m18x18_sumof2 (Mistral M18X19_COMBINED): ax/ay as m18x18_full, bx = banks 6,7, by = banks 8,9; by[18] = bank11.8
+#   m18x18_full : ax[9b+n] = bank b.n (b=0,1)   ay[9(b-2)+n] = bank b.n (b=2,3)   ay[18] = bank5.8
+# RESULT.k = resulta[k] in every mode.  CLKIN.c = clk[c].
+_DSP_BANKS = {
+    "m9x9": {"ax": [0], "bx": [1], "ay": [2], "by": [3]},
+    "m18x18_full": {"ax": [0, 1], "ay": [2, 3]},
+    "m18x18_sumof2": {"ax": [0, 1], "ay": [2, 3], "bx": [6, 7], "by": [8, 9]},
+    "m27x27": {"ax": [0, 6, 7], "ay": [2, 8, 9]},
+}
+_DSP_SIGN_EXT = {("m18x18_full", "ay"): 5, ("m18x18_sumof2", "ay"): 5, ("m18x18_sumof2", "by"): 11}
+_DSP_WIDTH = {   # atom port widths Quartus uses per mode: (ax, ay, bx, by)
+    "m9x9": (9, 9, 9, 9),
+    "m18x18_full": (18, 19, 16, 16),
+    "m18x18_sumof2": (18, 19, 18, 19),
+    "m27x27": (27, 27, 16, 16),
+}
+
+
+def dsp_cell(tile, kv, pins):
+    """One DSP tile -> cyclonev_mac record; modes outside the corpus evidence are `unmodelled`."""
+    x, y = tile[1], tile[2]
+    rec = {"name": f"dsp_r{x}c{y}", "kind": "cyclonev_mac", "x": x, "y": y, "block": "DSP",
+           "params": {}, "pins": {}, "outs": {}, "unmodelled": None}
+    raw = _kvi(kv, "MODE")
+    mode = {"M9X9": "m9x9", None: "m18x18_full", "M18X19_COMBINED": "m18x18_sumof2",
+                         "M27X27": "m27x27"}.get(raw)
+    if mode is None:
+        rec["unmodelled"] = f"DSP MODE {raw}: no corpus evidence"
+        return rec
+    wax, way, wbx, wby = _DSP_WIDTH[mode]
+    net = lambda bank, n: pins[(bank, "DATAIN", n)][0] if (bank, "DATAIN", n) in pins else "1'b0"
+
+    def bus(port, width):
+        bits = []
+        for i in range(width):
+            banks = _DSP_BANKS[mode].get(port)
+            if banks and i // 9 < len(banks):
+                bits.append(net(banks[i // 9], i % 9))
+            elif i == 18 and (mode, port) in _DSP_SIGN_EXT:
+                bits.append(net(_DSP_SIGN_EXT[(mode, port)], 8))
+            else:
+                bits.append("1'b0")
+        return bits
+    P = rec["pins"]
+    P["ax"], P["ay"], P["bx"], P["by"] = bus("ax", wax), bus("ay", way), bus("bx", wbx), bus("by", wby)
+    P["az"] = ["1'b0"] * 26
+    P["bz"] = ["1'b0"] * 18
+    P["scanin"] = ["1'b0"] * way
+    P["coefsela"] = P["coefselb"] = ["1'b0"] * 3
+    P["chainin"] = ["1'b0"] * 64
+    for p in ("sub", "negate", "accumulate", "loadconst"):
+        P[p] = ["1'b0"]
+    P["clk"] = [pins[(None, "CLKIN", c)][0] if (None, "CLKIN", c) in pins else "1'b0" for c in range(3)]
+    P["ena"] = ["1'b1"] * 3
+    P["aclr"] = ["1'b0"] * 2
+    on = lambda key: _kvi(kv, key) in ("1", "REG")
+    # Mistral's A/B lane names are swapped against the atom's in the 18x19 mode (corpus: BX/BY registered
+    # and signed <=> atom ax/ay clock "0" and signed true), also in m9x9; sumof2 (COMBINED) follows the atom.
+    lane = {"ax": "AX", "ay": "AY", "bx": "BX", "by": "BY"} if mode == "m18x18_sumof2" else \
+           {"ax": "BX", "ay": "BY", "bx": "AX", "by": "AY"}
+    q = lambda v: '"true"' if v else '"false"'
+    rec["params"] = {
+        "operation_mode": f'"{mode}"', "ax_width": wax, "ay_scan_in_width": way, "bx_width": wbx,
+        "by_width": wby, "result_a_width": 64,
+        "signed_max": q(on(lane["ax"] + "_SIGNED")), "signed_may": q(on(lane["ay"] + "_SIGNED")),
+        "signed_mbx": q(on(lane["bx"] + "_SIGNED")), "signed_mby": q(on(lane["by"] + "_SIGNED")),
+        "ax_clock": '"0"' if on("INREG_CTRL_" + lane["ax"]) else '"none"',
+        "ay_scan_in_clock": '"0"' if on("INREG_CTRL_" + lane["ay"]) else '"none"',
+        "bx_clock": '"0"' if on("INREG_CTRL_" + lane["bx"]) else '"none"',
+        "by_clock": '"0"' if on("INREG_CTRL_" + lane["by"]) else '"none"',
+        "output_clock": '"0"' if on("OREG_CTRL") else '"none"',
+    }
+    rec["outs"] = {"resulta": {pi: pins[(None, "RESULT", pi)][0] for (b, p, pi) in pins
+                                if p == "RESULT" and b is None}}
+    return rec

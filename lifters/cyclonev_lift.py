@@ -987,9 +987,13 @@ class CycloneVLift:
             import cyclonev_hard as hard
         pins = defaultdict(dict)
         for n in src_nodes | sink_nodes:
-            if n.block in ("M10K",) and n.port:
+            if n.block == "M10K" and n.port:
                 pins[n.tile_key()][(n.port, n.pi)] = (net_of(n), n in src_nodes and n not in sink_nodes)
+            elif n.block == "DSP" and n.port:
+                pins[n.tile_key()][(n.bi, n.port, n.pi)] = (net_of(n), n in src_nodes and n not in sink_nodes)
         for tile in sorted(set(pc.settings) | set(pins)):
+            if tile[0] == "DSP" and (pins.get(tile) or pc.settings.get(tile)):
+                d.hard.append(hard.dsp_cell(tile, pc.settings.get(tile, {}), pins.get(tile, {})))
             if tile[0] == "M10K" and (pins.get(tile) or pc.settings.get(tile)):
                 d.hard.append(hard.m10k_cell(tile, pc.settings.get(tile, {}), pins.get(tile, {})))
         for tile_key, alm_idx, h, raw, kv in ram_halves:

@@ -369,6 +369,21 @@ DSP_VARIANTS = (("s", 9, "io"), ("u", 9, ""), ("u", 18, "o"), ("s", 18, "i"), ("
                 ("s", 18, ""), ("s", 27, "o"), ("u", 27, "o"), ("s2", 18, "o"))
 
 
+def pll(n, mult, div, outs):
+    """altera_pll (integer-N, direct mode): refclk -> `outs` outputs, each drives a free-running counter."""
+    ref = 50
+    params = "".join(f', .output_clock_frequency{i}("{ref * mult // div // (i + 1)}.0 MHz"), '
+                     f'.phase_shift{i}("0 ps"), .duty_cycle{i}(50)' for i in range(outs))
+    cnt = "".join(f"  reg [3:0] c{i};\n  always @(posedge oc[{i}]) c{i} <= c{i} + 1;\n" for i in range(outs))
+    q = "{" + ", ".join(f"c{i}" for i in reversed(range(outs))) + "}"
+    return (f"module {n} (input refclk, input rst, output [{4 * outs - 1}:0] q, output locked);\n"
+            f"  wire [{outs - 1}:0] oc;\n{cnt}  assign q = {q};\n"
+            f'  altera_pll #(.fractional_vco_multiplier("false"), .reference_clock_frequency("{ref}.0 MHz"), '
+            f'.operation_mode("direct"), .number_of_clocks({outs}){params}, '
+            f'.pll_type("General"), .pll_subtype("General")) p (.rst(rst), .outclk(oc), .locked(locked), '
+            f'.refclk(refclk), .fboutclk(), .fbclk(1\'b0));\nendmodule\n')
+
+
 # construct -> (generator, widths, variants, purpose, exercises)
 SIMPLE = {
     "counter": (counter, WIDTHS, "free-running up counter", ["counter", "carry"]),
@@ -461,6 +476,15 @@ def main():
             nm, "dsp", f"{sgn}_{regs}", w,
             f"{'signed' if sgn[0] == 's' else 'unsigned'} {w}x{w} multiply{' x2 summed' if '2' in sgn else ''}, "
             f"stages {regs or 'comb'} [vendor multstyle dsp]", ["dsp", "mult"], "vnd"))
+        names.append(nm)
+    for mult, div, outs in ((2, 1, 1), (4, 1, 2), (3, 2, 1)):
+        nm = f"c_pll_vnd_m{mult}d{div}_{outs}"
+        d = CORPUS / nm
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        (d / "src" / f"{nm}.v").write_text(pll(nm, mult, div, outs))
+        (d / "design.toml").write_text(toml(
+            nm, "pll", f"m{mult}d{div}", outs, f"altera_pll 50 MHz x{mult}/{div}, {outs} output(s), counters on outputs [vendor]",
+            ["pll", "fpll"], "vnd"))
         names.append(nm)
     log.info("generated %d designs", len(names))
 
