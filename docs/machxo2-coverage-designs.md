@@ -17,12 +17,19 @@ Lane = input pad -> `FD1S3AX` (LOCATEd slice) -> `FD1S3AX` (LOCATEd slice) -> ou
   - never-exercised types: CENTER6 CENTERC CENTER_EBR_CIB_4K CENTER_EBR_CIB_SP CIB_EBR0_END0 CIB_EBR0_END1 CIB_EBR0_END2_DLL3 CIB_EBR0_END2_DLL45 CIB_EBR2_END1 CIB_EBR2_END1_SP CIB_EBR_DUMMY_END3 DQSDLL_L DQSDLL_R GPLL_R0 LLC0 LLC1 LLC2 LLC3PIC_VREF3 LRC0 LRC1 LRC1PIC2 PIC_B0 PIC_B_DUMMY_VIQ_VREF PIC_L0_DUMMY PIC_L1 PIC_L1_DUMMY PIC_L1_VREF4 PIC_L1_VREF5 PIC_L2 PIC_L2_DUMMY PIC_L2_VREF4 PIC_L2_VREF5 PIC_L3 PIC_L3_VREF4 PIC_L3_VREF5 PIC_LS0 PIC_R1 PIC_R1_DUMMY ULC0 ULC1 ULC2 ULC3PIC URC0 URC1 URC1PIC
   -   PLC                    defined  2515  exercised   615   24.5%
   -   ULC3PIC                defined  2372  exercised     0    0.0%
-- after (existing + new):
-  - designs: 2833; connections defined: 129975; exercised by >=1 design: 3264 (2.5%)
+- after construct dictionary (existing + 208 construct builds):
+  - designs: 2987; connections defined: 129975; exercised by >=1 design: 3298 (2.5%)
+  - arcs in configs missing from the db (should be 0): 0
+  - tile types with routing: 73; never exercised: 39
+  - never-exercised types: CENTER6 CENTERC CENTER_EBR_CIB_4K CENTER_EBR_CIB_SP CIB_EBR0_END1 CIB_EBR0_END2_DLL3 CIB_EBR0_END2_DLL45 CIB_EBR2_END1 CIB_EBR2_END1_SP CIB_EBR_DUMMY_END3 DQSDLL_L DQSDLL_R GPLL_R0 LLC1 LLC2 LLC3PIC_VREF3 LRC1 LRC1PIC2 PIC_B0 PIC_B_DUMMY_VIQ_VREF PIC_L1 PIC_L1_DUMMY PIC_L1_VREF4 PIC_L1_VREF5 PIC_L2 PIC_L2_DUMMY PIC_L2_VREF4 PIC_L2_VREF5 PIC_L3 PIC_L3_VREF4 PIC_L3_VREF5 PIC_R1 PIC_R1_DUMMY ULC0 ULC1 ULC2 ULC3PIC URC1 URC1PIC
+  -   PLC                    defined  2515  exercised  1781   70.8%
+  -   ULC3PIC                defined  2372  exercised     0    0.0%
+- after construct dictionary + coverage designs (existing + new):
+  - designs: 3041; connections defined: 129975; exercised by >=1 design: 4611 (3.5%)
   - arcs in configs missing from the db (should be 0): 0
   - tile types with routing: 73; never exercised: 38
   - never-exercised types: CENTER6 CENTERC CENTER_EBR_CIB_4K CENTER_EBR_CIB_SP CIB_EBR0_END1 CIB_EBR0_END2_DLL3 CIB_EBR0_END2_DLL45 CIB_EBR2_END1 CIB_EBR2_END1_SP CIB_EBR_DUMMY_END3 DQSDLL_L DQSDLL_R GPLL_R0 LLC1 LLC2 LLC3PIC_VREF3 LRC1 LRC1PIC2 PIC_B0 PIC_B_DUMMY_VIQ_VREF PIC_L1 PIC_L1_DUMMY PIC_L1_VREF4 PIC_L1_VREF5 PIC_L2 PIC_L2_DUMMY PIC_L2_VREF4 PIC_L2_VREF5 PIC_L3 PIC_L3_VREF4 PIC_L3_VREF5 PIC_R1 PIC_R1_DUMMY ULC1 ULC2 ULC3PIC URC1 URC1PIC
-  -   PLC                    defined  2515  exercised  1267   50.4%
+  -   PLC                    defined  2515  exercised  1970   78.3%
   -   ULC3PIC                defined  2372  exercised     0    0.0%
 
 ### types present on LCMXO2-1200 only
@@ -34,13 +41,20 @@ Lane = input pad -> `FD1S3AX` (LOCATEd slice) -> `FD1S3AX` (LOCATEd slice) -> ou
   - tile types with routing: 39; never exercised: 11
   - never-exercised types: CENTER6 CIB_EBR0_END0 DQSDLL_L DQSDLL_R LLC0 LRC0 PIC_B0 PIC_L0_DUMMY PIC_LS0 ULC0 URC0
   -   PLC                    defined  2515  exercised   615   24.5%
-- after (existing + new):
+- after construct dictionary (existing + 208 construct builds):
   - restricted to 39 tile types present on LCMXO2-1200
-  - designs: 2833; connections defined: 61693; exercised by >=1 design: 3264 (5.3%)
+  - designs: 2987; connections defined: 61693; exercised by >=1 design: 3298 (5.3%)
+  - arcs in configs missing from the db (should be 0): 0
+  - tile types with routing: 39; never exercised: 5
+  - never-exercised types: CENTER6 DQSDLL_L DQSDLL_R PIC_B0 ULC0
+  -   PLC                    defined  2515  exercised  1781   70.8%
+- after construct dictionary + coverage designs (existing + new):
+  - restricted to 39 tile types present on LCMXO2-1200
+  - designs: 3041; connections defined: 61693; exercised by >=1 design: 4611 (7.5%)
   - arcs in configs missing from the db (should be 0): 0
   - tile types with routing: 39; never exercised: 4
   - never-exercised types: CENTER6 DQSDLL_L DQSDLL_R PIC_B0
-  -   PLC                    defined  2515  exercised  1267   50.4%
+  -   PLC                    defined  2515  exercised  1970   78.3%
 
 ## Oracle comparison of the new designs
 
