@@ -1,0 +1,7 @@
+top = "c_ramdc_vnd_m10k_8"
+purpose = "64x8 dual-clock M10K RAM [vendor ramstyle M10K]"
+exercises = ["ram", "ram_block"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "ramdc"
+variant = "vnd_m10k"
+width = 8

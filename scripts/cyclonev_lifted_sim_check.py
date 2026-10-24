@@ -1,19 +1,22 @@
 #!/usr/bin/env python3.15t
 """Functional gate: simulate our lifted Verilog against the Quartus post-fit netlist (build.vo).
 
-- Q = corpus/cyclonev/<d>/quartus/simulation/questa/build.vo + the models below (vendor
-  cyclonev_atoms.v is encrypted).  dffeas = Altera's own altera_primitives.v.
+- Q = corpus/cyclonev/<d>/quartus/simulation/questa/build.vo on models: our cell models below
+  (lcell, io, clkena), Altera's dffeas (altera_primitives.v), the plain vendor RAM/MLAB models
+  (cyclonev_atoms.v + altera_lnsim.sv, extracted by cyclonev_lnsim_extract.py) and OUR cyclonev_mac
+  (lifters/data/cyclonev_mac_model.v; the vendor DSP atom is encrypted).
 - L = lifted Verilog.  Default: re-lifted from decomp.bt with the CURRENT lifter (load.py +
   verilog.py into tmp/simcheck/), never the corpus lifted.v (it can be stale).
 - S = the design's src/*.v.  Q vs S validates the models (model check); no S sample = unchecked.
+  DSP designs also compare L vs S directly (the DSP model is ours, so Q alone is not independent).
 - Stimulus: reset preamble (data all-1, then all-0, clock pulsed), then seeded random vectors;
-  clock inputs (feed dffeas/clkena) change in a 2nd phase.  Model check counts after the preamble.
+  clock inputs (feed dffeas/clkena/RAM clk0,clk1) change in a 2nd phase.  Model check counts after the preamble.
 - `synthesis full_case` src: RTL sim latches where synthesis does not, so no model check.
 - Scoring per output bit per sample, Q vs L:
   ok | wrong (both 0/1, differ) | missing (Q 0/1, L X/Z or no lifted port) | xq (Q X: not scored).
-  PASS = ok > 0, wrong == 0, missing == 0, model wrong == 0.
-- Not covered (no model; Quartus atom encrypted): RAM (ram_block, mlab_cell), DSP (mac),
-  PLL / other hard IP.  Carry (arith lcell) and registers ARE covered.
+  PASS = ok > 0, wrong == 0, missing == 0, model wrong == 0 (DSP: also L vs S wrong == 0).
+- PLL: vendor PLL atoms are encrypted and the lifter has no PLL netlist: FAIL with that reason; the
+  frequency decode is scored against the Quartus defparams.  An atom with no model is FAIL, not skipped.
 - Blocking stage of scripts/cyclonev_verify_all.py (`lifted_sim`): any FAIL / ERROR fails the run.
 Usage: python3.15t scripts/cyclonev_lifted_sim_check.py [<design> ...] [--all] [--no-relift] [--jobs N]
 Log: tmp/logs/cyclonev_lifted_sim_check.log
@@ -73,8 +76,9 @@ module cyclonev_clkena(inclk,ena,outclk,enaout);
   assign outclk = inclk; assign enaout = ena;
 endmodule
 """
-SUPPORTED = {"cyclonev_lcell_comb", "cyclonev_io_ibuf", "cyclonev_io_obuf", "cyclonev_clkena", "dffeas"}
-NOT_COVERED = {"cyclonev_ram_block": "RAM", "cyclonev_mlab_cell": "RAM", "cyclonev_mac": "DSP"}
+SUPPORTED = {"cyclonev_lcell_comb", "cyclonev_io_ibuf", "cyclonev_io_obuf", "cyclonev_clkena", "dffeas",
+             "cyclonev_ram_block", "cyclonev_mlab_cell",     # RAM/MLAB: plain vendor models (lnsim extract)
+             "cyclonev_mac"}                                 # DSP: our model (lifters/data/cyclonev_mac_model.v)
 STEP_LIMIT_S = 60   # each lift / compile / sim step: < 10 s on a corpus design; 60 s = hung
 PREAMBLE_CLOCKS = 4  # clock pulses per reset level (all-1, all-0) before the model check starts
 JOBS = 4          # designs in parallel; each is a chain of small subprocesses
@@ -112,7 +116,7 @@ def pin_map(pin_text):
 
 def clock_inputs(vo, ins):
     """Input ports whose buffered signal is a register clock (directly or through a clkena)."""
-    clk_nets = set(re.findall(r"\.clk\((\\\S+)\s*\)", vo)) | set(re.findall(r"\.inclk\((\\\S+)\s*\)", vo))
+    clk_nets = set(re.findall(r"\.(?:clk|clk0|clk1|inclk)\((\\\S+)\s*\)", vo))
     out = set()
     for n, w in ins:
         for i in range(w):
@@ -122,10 +126,25 @@ def clock_inputs(vo, ins):
     return out
 
 
+def kind_of(vo):
+    """Design kind from the atoms in build.vo; the first match wins."""
+    if "cyclonev_fractional_pll" in vo:
+        return "PLL"
+    if re.search(r"^cyclonev_mac\s", vo, re.M):
+        return "DSP"
+    if re.search(r"^cyclonev_ram_block\s", vo, re.M):
+        return "M10K"
+    if re.search(r"^cyclonev_mlab_cell\s", vo, re.M):
+        return "MLAB"
+    reg = bool(re.search(r"^dffeas\s", vo, re.M))
+    carry = bool(re.search(r"\.(sumout|cout)\((?!\))", vo))
+    return {(0, 0): "combinational", (0, 1): "carry", (1, 0): "registered", (1, 1): "registered+carry"}[(reg, carry)]
+
+
 def coverage(vo):
     """(covered, reason) from the cell types in build.vo."""
     cells = set(re.findall(r"^\s*(cyclonev_\w+|dffeas\w*)\s", vo, re.M))
-    gaps = sorted({NOT_COVERED.get(c, "PLL" if "pll" in c else c) for c in cells - SUPPORTED})
+    gaps = sorted(cells - SUPPORTED)
     return (not gaps, ",".join(gaps))
 
 
@@ -166,14 +185,14 @@ def src_files(d):
     return src, libs
 
 
-def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero, invert, with_src):
+def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero, invert, with_src, dsp=False):
     pin_of = {(n, i): pins.get(f"{n}[{i}]") or (pins.get(n) if w == 1 else None)
               for n, w in ins + outs for i in range(w)}
     lw = [(n, i, w, pin_of[(n, i)], ports[n][0]) for n, w in ins + outs for i in range(w)
           if pin_of[(n, i)] in lports]
     lout = {(n, i): p for n, i, _w, p, dr in lw if dr == "output"}
     tb = ["`timescale 1ps/1ps", "module tb;"]
-    tb += [f"  reg [{w-1}:0] {n};" for n, w in ins]
+    tb += [f"  reg [{w-1}:0] {n} = 0;" for n, w in ins]   # defined at t=0: no X->0 edge on a negedge register
     tb += [f"  wire [{w-1}:0] {n}, s_{n};" for n, w in outs]
     tb.append(f"  {design} u_q ({', '.join(f'.{n}({n})' for n in ports)});")
     if with_src:
@@ -185,7 +204,7 @@ def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero,
             inv = "~" if (invert == "all" or p in invert.split(",")) else ""
             tb.append(f"  wire b_{p} = {inv}{n}[{i}];")
     tb.append(f"  {design}_lifted u_l ({', '.join(f'.{p}(b_{p})' for _n, _i, _w, p, _d in lw)});")
-    tb.append("  integer ok = 0, wrong = 0, missing = 0, xq = 0, m_ok = 0, m_wrong = 0, m_x = 0;")
+    tb.append("  integer ok = 0, wrong = 0, missing = 0, xq = 0, m_ok = 0, m_wrong = 0, m_x = 0, ls_ok = 0, ls_wrong = 0;")
     tb.append("  reg mchk = 0;")
     tb.append("  task check; begin")
     for n, w in outs:
@@ -199,6 +218,9 @@ def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero,
                 tb.append(f"    else if (b_{p} !== 1'b0 && b_{p} !== 1'b1) missing = missing + 1;"
                           f" else if ({q} === b_{p}) ok = ok + 1;"
                           f" else begin wrong = wrong + 1; if (!seen_{p}) begin seen_{p} = 1; $display(\"BAD {p}\"); end end")
+            if with_src and dsp and p is not None:       # DSP: lifted vs the design's own RTL (model-independent)
+                tb.append(f"    if (mchk && ^{{b_{p}, s_{n}[{i}]}} !== 1'bx) begin"
+                          f" if (b_{p} === s_{n}[{i}]) ls_ok = ls_ok + 1; else ls_wrong = ls_wrong + 1; end")
             if with_src:
                 tb.append(f"    if (!mchk) ; else if (^{{{q}, s_{n}[{i}]}} === 1'bx) m_x = m_x + 1;"
                           f" else if ({q} === s_{n}[{i}]) m_ok = m_ok + 1; else m_wrong = m_wrong + 1;")
@@ -227,25 +249,28 @@ def testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed, zero,
             for n, w in group:
                 tb.append(f"    {n} = {w}'d{0 if n in zero else rnd.getrandbits(w)};")
             tb.append("    #1000; check;")
-    tb.append('    $display("RESULT ok=%0d wrong=%0d missing=%0d xq=%0d model_ok=%0d model_wrong=%0d model_x=%0d",'
-              ' ok, wrong, missing, xq, m_ok, m_wrong, m_x);')
+    tb.append('    $display("RESULT ok=%0d wrong=%0d missing=%0d xq=%0d model_ok=%0d model_wrong=%0d model_x=%0d ls_ok=%0d ls_wrong=%0d",'
+              ' ok, wrong, missing, xq, m_ok, m_wrong, m_x, ls_ok, ls_wrong);')
     tb += ["    $finish;", "  end", "endmodule"]
     return "\n".join(tb) + "\n", sum(1 for k in pin_of if k[0] in dict(outs) and lout.get(k) is None)
 
 
 def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True):
-    """One design -> result dict; status PASS | FAIL | NOT_COVERED | NOT_BUILT | ERROR."""
+    """One design -> result dict; status PASS | FAIL | NOT_BUILT | ERROR."""
     d = CORPUS / design
     res = {"design": design, "status": "ERROR", "reason": "", "ok": 0, "wrong": 0, "missing": 0,
-           "xq": 0, "model_ok": 0, "model_wrong": 0, "model_x": 0, "model": "unchecked", "bad_pins": []}
+           "xq": 0, "model_ok": 0, "model_wrong": 0, "model_x": 0, "kind": "", "ls_ok": 0, "ls_wrong": 0, "pll_ok": 0, "pll_wrong": 0, "model": "unchecked", "bad_pins": []}
     vo_path = d / "quartus" / "simulation" / "questa" / "build.vo"
     if not vo_path.is_file() or not (d / "decomp.bt").is_file():
         res.update(status="NOT_BUILT", reason="no build.vo / decomp.bt")
         return res
     vo = vo_path.read_text()
+    res["kind"] = kind_of(vo)
     covered, gaps = coverage(vo)
+    if "cyclonev_fractional_pll" in vo:
+        return check_pll(design, vo, res, do_relift)
     if not covered:
-        res.update(status="NOT_COVERED", reason=gaps)
+        res.update(status="FAIL", reason=f"no simulation model for {gaps}")
         return res
     work = WORK / design
     work.mkdir(parents=True, exist_ok=True)
@@ -273,10 +298,16 @@ def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True)
     (work / "src_r.v").write_text(re.sub(rf"\bmodule {design}\b", f"module {design}_src",
                                          "".join(p.read_text() + "\n" for p in src), count=1))
     base = [work / "tb.v", vo_path, work / "models.v", PRIMS, work / "lifted_r.v"]
+    if re.search(r"^\s*cyclonev_(ram_block|mlab_cell)\s", vo, re.M):
+        import cyclonev_lnsim_extract
+        base.append(cyclonev_lnsim_extract.extract(out=work / "lnsim_extract.sv", log=lambda m: None))
+    dsp = bool(re.search(r"^\s*cyclonev_mac\s", vo, re.M))
+    if dsp:
+        base.append(REPO / "lifters" / "data" / "cyclonev_mac_model.v")
     compiled = None
     for with_src in ((True, False) if src else (False,)):
         tb, n_unported = testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed,
-                                   set(zero), invert, with_src)
+                                   set(zero), invert, with_src, dsp)
         (work / "tb.v").write_text(tb)
         files = base + ([work / "src_r.v"] + libs if with_src else [])
         r, err = run(["iverilog", "-g2012", "-o", work / "sim.vvp"] + files)
@@ -308,6 +339,8 @@ def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True)
         fail.append("lifted")
     if res["model_wrong"]:
         fail.append("model")
+    if dsp and (not compiled or res["ls_wrong"] or not res["ls_ok"]):
+        fail.append("lifted vs src")        # DSP: the model is ours, so the reference is the design's own RTL
     if not res["ok"]:
         fail.append("nothing compared")
     res["status"] = "FAIL" if fail else "PASS"
@@ -315,11 +348,61 @@ def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True)
     return res
 
 
+def pll_oracle(vo):
+    """{counter index: out/ref frequency ratio} from the Quartus defparams of the PLL atoms."""
+    def mhz(t):
+        v, u = re.match(r"([\d.]+)\s*(\w+)", t).groups()
+        return float(v) * {"mhz": 1.0, "ghz": 1e3, "khz": 1e-3}[u.lower()]
+    ref = mhz(re.search(r"FRACTIONAL_PLL \.reference_clock_frequency = \"([^\"]+)\"", vo).group(1))
+    out = {}
+    for m in re.finditer(r"PLL_OUTPUT_COUNTER \.output_clock_frequency = \"([^\"]+)\"", vo):
+        idx = re.search(r"PLL_OUTPUT_COUNTER \.output_counter_index = (\d+)", vo[m.end():]).group(1)
+        out[int(idx)] = mhz(m.group(1)) / ref
+    return out
+
+
+def check_pll(design, vo, res, do_relift):
+    """PLL designs: the encrypted vendor atoms cannot be simulated and the lifter has no PLL netlist.
+
+    Reported as FAIL with the reason.  The decoded M / N / C counters are scored against the Quartus
+    defparams (frequency ratio per output counter): that is the part the lifter does recover.
+    """
+    work = WORK / design
+    work.mkdir(parents=True, exist_ok=True)
+    lifted_path = work / "lifted.v"
+    if do_relift:
+        err = relift(design, lifted_path)
+        if err:
+            res["reason"] = f"relift {err}"
+            return res
+    text = lifted_path.read_text()
+    m = re.search(r"decode: M=(\d+) N=(\d+)((?: C\d+=\d+)+)", text)
+    oracle = pll_oracle(vo)
+    ok = wrong = 0
+    if m:
+        mm, nn = int(m.group(1)), int(m.group(2))
+        got = {int(c): int(v) for c, v in re.findall(r"C(\d+)=(\d+)", m.group(3))}
+        for idx, ratio in oracle.items():
+            if idx in got and abs(mm / nn / got[idx] - ratio) < 1e-9:
+                ok += 1
+            else:
+                wrong += 1
+        wrong += len(set(got) - set(oracle))
+    else:
+        wrong = len(oracle)
+    res.update(status="FAIL", pll_ok=ok, pll_wrong=wrong, model="pll decode",
+               reason=f"PLL netlist not lifted (refclk pad, output clock nets, phase, duty); "
+                      f"frequency decode {ok}/{ok + wrong} counters match Quartus")
+    return res
+
+
 def fmt(r):
     tot = r["ok"] + r["wrong"] + r["missing"]
     return (f"{r['status']:11s} {r['design']:28s} matched {r['ok']}/{tot} wrong={r['wrong']} "
             f"missing={r['missing']} xq={r['xq']} model={r['model']}"
-            f"({r['model_ok']}/{r['model_ok'] + r['model_wrong']}) {r['reason']}"
+            f"({r['model_ok']}/{r['model_ok'] + r['model_wrong']})"
+            + (f" lifted-vs-src={r['ls_ok']}/{r['ls_ok'] + r['ls_wrong']}" if r["ls_ok"] or r["ls_wrong"] else "")
+            + f" {r['reason']}"
             + (f" bad_pins={r['bad_pins'][:8]}" if r["bad_pins"] else ""))
 
 
@@ -350,17 +433,32 @@ def run_guarded(designs, steps=2000, seed=1, do_relift=True, jobs=JOBS, logf=log
         return run_gate(designs, steps, seed, do_relift, jobs, logf)
 
 
+KINDS = ("combinational", "carry", "registered", "registered+carry", "M10K", "MLAB", "DSP", "PLL")
+
+
 def summary(results, logf=log):
     from collections import Counter
     st = Counter(r["status"] for r in results)
-    nc = Counter(r["reason"] for r in results if r["status"] == "NOT_COVERED")
-    cov = [r for r in results if r["status"] in ("PASS", "FAIL")]
+    cov = [r for r in results if r["status"] in ("PASS", "FAIL") and r["kind"] != "PLL"]
     ok = sum(r["ok"] for r in cov)
     wrong = sum(r["wrong"] for r in cov)
     miss = sum(r["missing"] for r in cov)
-    logf(f"designs: {dict(st)}  not covered by kind: {dict(nc)}")
-    logf(f"samples (covered designs): matched {ok}/{ok + wrong + miss} = "
+    logf(f"designs: {dict(st)}")
+    logf(f"samples (simulated designs): matched {ok}/{ok + wrong + miss} = "
          f"{100 * ok / max(1, ok + wrong + miss):.1f}%  wrong={wrong} missing={miss}")
+    logf("per kind: pass / fail / error / not built (matched / samples; wrong; missing)")
+    for k in KINDS:
+        rs = [r for r in results if r["kind"] == k]
+        if not rs:
+            continue
+        n = Counter(r["status"] for r in rs)
+        o, w, m = (sum(r[f] for r in rs) for f in ("ok", "wrong", "missing"))
+        logf(f"  {k:17s} {n['PASS']:4d} / {n['FAIL']:3d} / {n['ERROR']:3d} / {n['NOT_BUILT']:3d}"
+             f"   {o}/{o + w + m}; wrong {w}; missing {m}")
+    pk = [r for r in results if r["kind"] == "PLL"]
+    if pk:
+        logf(f"  PLL frequency decode: {sum(r['pll_ok'] for r in pk)}/"
+             f"{sum(r['pll_ok'] + r['pll_wrong'] for r in pk)} output counters match Quartus")
     return st.get("FAIL", 0) == 0 and st.get("ERROR", 0) == 0
 
 

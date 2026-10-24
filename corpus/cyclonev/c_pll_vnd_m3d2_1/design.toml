@@ -1,0 +1,7 @@
+top = "c_pll_vnd_m3d2_1"
+purpose = "altera_pll 50 MHz x3/2, 1 output(s), counters on outputs [vendor]"
+exercises = ["pll", "fpll"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "pll"
+variant = "m3d2"
+width = 1
