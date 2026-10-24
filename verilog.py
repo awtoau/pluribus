@@ -462,6 +462,7 @@ def load_data(conn, bs_id: int) -> dict:
         # Family flag — GOWIN devices are GW1N-*/GW2A-*/…  Emitter changes that
         # would perturb the byte-identical MachXO2 output are gated on this.
         "is_gowin":         str(meta[1] or "").upper().startswith("GW"),
+        "is_cyclonev":      str(meta[1] or "").upper().startswith("5C"),
         "ff_dtype_map":     ff_dtype_map,
     }
 
@@ -1081,7 +1082,9 @@ def emit_luts(data: dict) -> list[str]:
     net_name_map = data["net_name_map"]
     const_net_map = data["const_net_map"]
     cell_name_map = data["cell_name_map"]
-    tie_unused   = data.get("is_gowin", False)
+    # Cyclone V: an ALM's A/B pins are shared by both halves, so a half can see its own
+    # output on an input its table ignores; indexing with that X never resolves in sim.
+    tie_unused   = data.get("is_gowin", False) or data.get("is_cyclonev", False)
 
     # Input pads are declared as `input wire PORT_NAME` in the module header.
     # Pad loopback arcs can make a LUT output net share the same DSU root as an
@@ -2120,12 +2123,16 @@ def emit_output_drives(data: dict) -> list[str]:
         base = _sanitise(label)
         port = f"pin{pin}" if (base == "_" or base in seen) else base
         seen.add(port)
-        if direction != "out" or not net_in:
+        if data.get("is_cyclonev") and direction == "out" and not net_in:
+            net_in = net_out    # Cyclone V: net_out is the fabric net; covers a pad-to-pad wire
+        elif direction != "out" or not net_in:
             continue
         # Skip when the driver is itself undriven (fanin=0): the output is
         # genuinely driven off-fabric, and such a shared ghost net may also be a
         # bidir-pad net excluded from declaration — an assign would dangle.
-        if net_stats_map.get(net_in, {}).get("fanin", 1) == 0:
+        elif net_stats_map.get(net_in, {}).get("fanin", 1) == 0:
+            continue
+        if not net_in:
             continue
         driver = resolve_net(net_in, net_name_map, const_net_map)
         if driver in ("NC", "1'b0", "1'b1") or driver == port:
