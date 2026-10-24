@@ -1,0 +1,8 @@
+top = "top"
+purpose = "decoder with enable (width = select bits)"
+construct = "decoder"
+variant = "vnd"
+width = 3
+lang = "verilog-95+lattice"
+io_bits = 13
+io_reduced = false

@@ -1,0 +1,8 @@
+top = "top"
+purpose = "4:1 mux, registered"
+construct = "mux4"
+variant = "v95"
+width = 1
+lang = "verilog-95"
+io_bits = 8
+io_reduced = false

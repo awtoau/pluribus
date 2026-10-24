@@ -1,0 +1,21 @@
+module top (clk, din, q);
+  input [0:0] clk;
+  input [0:0] din;
+  output [15:0] q;
+  FD1S3AX #(.GSR("DISABLED")) f0 (.D(din), .CK(clk), .Q(q[0]));
+  FD1S3AX #(.GSR("DISABLED")) f1 (.D(q[0]), .CK(clk), .Q(q[1]));
+  FD1S3AX #(.GSR("DISABLED")) f2 (.D(q[1]), .CK(clk), .Q(q[2]));
+  FD1S3AX #(.GSR("DISABLED")) f3 (.D(q[2]), .CK(clk), .Q(q[3]));
+  FD1S3AX #(.GSR("DISABLED")) f4 (.D(q[3]), .CK(clk), .Q(q[4]));
+  FD1S3AX #(.GSR("DISABLED")) f5 (.D(q[4]), .CK(clk), .Q(q[5]));
+  FD1S3AX #(.GSR("DISABLED")) f6 (.D(q[5]), .CK(clk), .Q(q[6]));
+  FD1S3AX #(.GSR("DISABLED")) f7 (.D(q[6]), .CK(clk), .Q(q[7]));
+  FD1S3AX #(.GSR("DISABLED")) f8 (.D(q[7]), .CK(clk), .Q(q[8]));
+  FD1S3AX #(.GSR("DISABLED")) f9 (.D(q[8]), .CK(clk), .Q(q[9]));
+  FD1S3AX #(.GSR("DISABLED")) f10 (.D(q[9]), .CK(clk), .Q(q[10]));
+  FD1S3AX #(.GSR("DISABLED")) f11 (.D(q[10]), .CK(clk), .Q(q[11]));
+  FD1S3AX #(.GSR("DISABLED")) f12 (.D(q[11]), .CK(clk), .Q(q[12]));
+  FD1S3AX #(.GSR("DISABLED")) f13 (.D(q[12]), .CK(clk), .Q(q[13]));
+  FD1S3AX #(.GSR("DISABLED")) f14 (.D(q[13]), .CK(clk), .Q(q[14]));
+  FD1S3AX #(.GSR("DISABLED")) f15 (.D(q[14]), .CK(clk), .Q(q[15]));
+endmodule

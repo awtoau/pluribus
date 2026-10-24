@@ -296,6 +296,94 @@ def ram(v, n, w, style=None):
             f"  end\nendmodule\n")
 
 
+def _init_fn(w):
+    return f"(i * 37 + 11) ^ (i >> 2) ^ (i * {w + 5})"      # deterministic, non-trivial content, no zero run
+
+
+def ram_init(v, n, w, style=None):
+    """64 x w simple-dual-port RAM with initial contents (initial block), registered read."""
+    ab = RAM_DEPTH_BITS
+    attr = f'(* ramstyle = "{style}" *) ' if style else ""
+    return (f"module {n} (clk, we, waddr, raddr, din, dout);\n  input clk, we;\n"
+            f"  input {R(ab)} waddr, raddr;\n  input {R(w)} din;\n  output {R(w)} dout;\n"
+            f"  reg {R(w)} dout;\n  {attr}reg {R(w)} mem [0:{2 ** ab - 1}];\n  integer i;\n"
+            f"  initial for (i = 0; i < {2 ** ab}; i = i + 1) mem[i] = {_init_fn(w)};\n"
+            f"  always @(posedge clk) begin\n    if (we) mem[waddr] <= din;\n    dout <= mem[raddr];\n"
+            f"  end\nendmodule\n")
+
+
+def rom(v, n, w, style=None):
+    """128 x w ROM, registered read, contents from an initial block (no write port)."""
+    attr = f'(* ramstyle = "{style}" *) ' if style else ""
+    return (f"module {n} (clk, addr, dout);\n  input clk;\n  input [6:0] addr;\n  output {R(w)} dout;\n"
+            f"  reg {R(w)} dout;\n  {attr}reg {R(w)} mem [0:127];\n  integer i;\n"
+            f"  initial for (i = 0; i < 128; i = i + 1) mem[i] = {_init_fn(w)};\n"
+            f"  always @(posedge clk) dout <= mem[addr];\nendmodule\n")
+
+
+def ram_sp(v, n, w, style=None):
+    """256 x w single-port RAM, read-during-write new data not requested (registered address)."""
+    attr = f'(* ramstyle = "{style}" *) ' if style else ""
+    return (f"module {n} (clk, we, addr, din, dout);\n  input clk, we;\n  input [7:0] addr;\n"
+            f"  input {R(w)} din;\n  output {R(w)} dout;\n  reg {R(w)} dout;\n"
+            f"  {attr}reg {R(w)} mem [0:255];\n"
+            f"  always @(posedge clk) begin\n    if (we) mem[addr] <= din;\n    dout <= mem[addr];\n"
+            f"  end\nendmodule\n")
+
+
+def ram_dc(v, n, w, style=None):
+    """64 x w dual-clock RAM: write on wclk, read on rclk."""
+    ab = RAM_DEPTH_BITS
+    attr = f'(* ramstyle = "{style}" *) ' if style else ""
+    return (f"module {n} (wclk, rclk, we, waddr, raddr, din, dout);\n  input wclk, rclk, we;\n"
+            f"  input {R(ab)} waddr, raddr;\n  input {R(w)} din;\n  output {R(w)} dout;\n"
+            f"  reg {R(w)} dout;\n  {attr}reg {R(w)} mem [0:{2 ** ab - 1}];\n"
+            f"  always @(posedge wclk) if (we) mem[waddr] <= din;\n"
+            f"  always @(posedge rclk) dout <= mem[raddr];\nendmodule\n")
+
+
+def dsp(n, kind, w):
+    """DSP multiplier designs. kind: signedness + register stages (i = input regs, o = output reg)."""
+    sg = "signed " if kind[0] == "s" else ""
+    rin, rout = "i" in kind[1:], "o" in kind[1:]
+    pw = 2 * w
+    if kind.startswith(("s2", "u2")):          # sum of two products (no accumulator)
+        sg = "signed " if kind[0] == "s" else ""
+        return (f'(* multstyle = "dsp" *) module {n} (input clk, input {sg}{R(w)} a, b, c, d, '
+                f'output reg {sg}[{pw}:0] p);\n  always @(posedge clk) p <= a * b + c * d;\nendmodule\n')
+    body = ""
+    if rin:
+        body += (f"  reg {sg}{R(w)} ra, rb;\n  always @(posedge clk) begin ra <= a; rb <= b; end\n")
+    x, y = ("ra", "rb") if rin else ("a", "b")
+    if rout:
+        body += f"  always @(posedge clk) p <= {x} * {y};\n"
+        out = f"output reg {sg}{R(pw)} p"
+    else:
+        body += f"  assign p = {x} * {y};\n"
+        out = f"output {sg}{R(pw)} p"
+    clk = "input clk, " if (rin or rout) else ""
+    return (f'(* multstyle = "dsp" *) module {n} ({clk}input {sg}{R(w)} a, b, {out});\n{body}endmodule\n')
+
+
+DSP_VARIANTS = (("s", 9, "io"), ("u", 9, ""), ("u", 18, "o"), ("s", 18, "i"), ("s", 18, "io"),
+                ("s", 18, ""), ("s", 27, "o"), ("u", 27, "o"), ("s2", 18, "o"))
+
+
+def pll(n, mult, div, outs):
+    """altera_pll (integer-N, direct mode): refclk -> `outs` outputs, each drives a free-running counter."""
+    ref = 50
+    params = "".join(f', .output_clock_frequency{i}("{ref * mult // div // (i + 1)}.0 MHz"), '
+                     f'.phase_shift{i}("0 ps"), .duty_cycle{i}(50)' for i in range(outs))
+    cnt = "".join(f"  reg [3:0] c{i};\n  always @(posedge oc[{i}]) c{i} <= c{i} + 1;\n" for i in range(outs))
+    q = "{" + ", ".join(f"c{i}" for i in reversed(range(outs))) + "}"
+    return (f"module {n} (input refclk, input rst, output [{4 * outs - 1}:0] q, output locked);\n"
+            f"  wire [{outs - 1}:0] oc;\n{cnt}  assign q = {q};\n"
+            f'  altera_pll #(.fractional_vco_multiplier("false"), .reference_clock_frequency("{ref}.0 MHz"), '
+            f'.operation_mode("direct"), .number_of_clocks({outs}){params}, '
+            f'.pll_type("General"), .pll_subtype("General")) p (.rst(rst), .outclk(oc), .locked(locked), '
+            f'.refclk(refclk), .fboutclk(), .fbclk(1\'b0));\nendmodule\n')
+
+
 # construct -> (generator, widths, variants, purpose, exercises)
 SIMPLE = {
     "counter": (counter, WIDTHS, "free-running up counter", ["counter", "carry"]),
@@ -367,6 +455,37 @@ def main():
             names.append(emit("ram", vname, w, ram(kind, nm, w, style),
                               f"64x{w} simple-dual-port RAM, registered read [{vname}]",
                               ["ram", "ram_block"], lang))
+    # memory content / mode designs (sim-gate coverage of RAM init, ROM, single port, dual clock)
+    for c, fn, style, w, purpose in (
+            ("raminit", ram_init, "M10K", 4, "64x4 M10K RAM with initial contents"),
+            ("raminit", ram_init, "M10K", 16, "64x16 M10K RAM with initial contents"),
+            ("raminit", ram_init, "MLAB", 4, "64x4 MLAB RAM with initial contents"),
+            ("rom", rom, "M10K", 8, "128x8 M10K ROM from initial contents, registered read"),
+            ("rom", rom, "MLAB", 8, "128x8 MLAB ROM from initial contents, registered read"),
+            ("ramsp", ram_sp, "M10K", 8, "256x8 single-port M10K RAM, registered read"),
+            ("ramdc", ram_dc, "M10K", 8, "64x8 dual-clock M10K RAM")):
+        names.append(emit(c, "vnd_" + style.lower(), w, fn("vnd", f"c_{c}_vnd_{style.lower()}_{w}", w, style),
+                          f"{purpose} [vendor ramstyle {style}]", ["ram", "ram_block"], "vnd"))
+    for sgn, w, regs in DSP_VARIANTS:
+        kind = sgn + regs
+        nm = f"c_dsp_{sgn}{w}_{regs or 'comb'}"
+        d = CORPUS / nm
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        (d / "src" / f"{nm}.v").write_text(dsp(nm, kind, w))
+        (d / "design.toml").write_text(toml(
+            nm, "dsp", f"{sgn}_{regs}", w,
+            f"{'signed' if sgn[0] == 's' else 'unsigned'} {w}x{w} multiply{' x2 summed' if '2' in sgn else ''}, "
+            f"stages {regs or 'comb'} [vendor multstyle dsp]", ["dsp", "mult"], "vnd"))
+        names.append(nm)
+    for mult, div, outs in ((2, 1, 1), (4, 1, 2), (3, 2, 1)):
+        nm = f"c_pll_vnd_m{mult}d{div}_{outs}"
+        d = CORPUS / nm
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        (d / "src" / f"{nm}.v").write_text(pll(nm, mult, div, outs))
+        (d / "design.toml").write_text(toml(
+            nm, "pll", f"m{mult}d{div}", outs, f"altera_pll 50 MHz x{mult}/{div}, {outs} output(s), counters on outputs [vendor]",
+            ["pll", "fpll"], "vnd"))
+        names.append(nm)
     log.info("generated %d designs", len(names))
 
 

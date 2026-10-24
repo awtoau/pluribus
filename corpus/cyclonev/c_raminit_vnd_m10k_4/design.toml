@@ -1,0 +1,7 @@
+top = "c_raminit_vnd_m10k_4"
+purpose = "64x4 M10K RAM with initial contents [vendor ramstyle M10K]"
+exercises = ["ram", "ram_block"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "raminit"
+variant = "vnd_m10k"
+width = 4

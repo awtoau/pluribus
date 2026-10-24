@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog feature probe: enum_inline"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog-in-.v"
+feature = "enum_inline"
+io_bits = 0
+io_reduced = false

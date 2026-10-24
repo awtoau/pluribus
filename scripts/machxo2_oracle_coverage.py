@@ -35,7 +35,9 @@ def load_db(dbroot):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--corpus", default=os.path.join(REPO, "corpus", "machxo2", "diamond-fuzz"))
+    ap.add_argument("--corpus", nargs="+", default=[os.path.join(REPO, "corpus", "machxo2", "diamond-fuzz")],
+                    help="dirs holding <design>/decoded.config (several allowed)")
+    ap.add_argument("--device", help="restrict to tile types present in this device's tilegrid (e.g. LCMXO2-1200)")
     ap.add_argument("--dbroot", default=os.path.join(REPO, "device-db", "MachXO2"))
     a = ap.parse_args()
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
@@ -45,10 +47,16 @@ def main():
     log = logging.getLogger("cov")
     db = load_db(a.dbroot)
     used, unknown = collections.defaultdict(set), collections.Counter()
-    cfgs = glob.glob(os.path.join(a.corpus, "*", "decoded.config"))
+    cfgs = [f for c in a.corpus for f in glob.glob(os.path.join(c, "*", "decoded.config"))]
     if not cfgs:
         log.error("no decoded.config under %s", a.corpus)
         sys.exit(1)
+    if a.device:
+        import json
+        tg = json.load(open(os.path.join(REPO, "device-db", "MachXO2", a.device, "tilegrid.json")))
+        present = {v["type"] for v in tg.values()}
+        db = {t: v for t, v in db.items() if t in present}
+        log.info("restricted to %d tile types present on %s", len(db), a.device)
     for f in cfgs:
         t = None
         for line in open(f):
@@ -69,6 +77,7 @@ def main():
     typed = [t for t in db if db[t]]
     log.info("tile types with routing: %d; never exercised: %d", len(typed),
              sum(1 for t in typed if not used[t]))
+    log.info("never-exercised types: %s", " ".join(sorted(t for t in typed if not used[t])))
     for n, h, t in sorted(((len(db[t]), len(used[t]), t) for t in typed), reverse=True)[:12]:
         log.info("  %-22s defined %5d  exercised %5d  %5.1f%%", t, n, h, 100 * h / n)
 

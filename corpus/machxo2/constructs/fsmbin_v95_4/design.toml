@@ -1,0 +1,8 @@
+top = "top"
+purpose = "4-state FSM, binary encoding"
+construct = "fsm_bin"
+variant = "v95"
+width = 4
+lang = "verilog-95"
+io_bits = 5
+io_reduced = false

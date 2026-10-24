@@ -1,0 +1,8 @@
+top = "top"
+purpose = "less-than comparator, registered (signed in v01)"
+construct = "lt"
+variant = "vnd"
+width = 8
+lang = "verilog-95+lattice"
+io_bits = 18
+io_reduced = false

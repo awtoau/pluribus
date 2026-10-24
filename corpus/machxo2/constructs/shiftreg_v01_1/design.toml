@@ -1,0 +1,8 @@
+top = "top"
+purpose = "serial-in parallel-out shift register"
+construct = "shiftreg"
+variant = "v01"
+width = 1
+lang = "verilog-2001"
+io_bits = 3
+io_reduced = false
