@@ -272,19 +272,58 @@ Evidence: `scripts/cyclonev_polarity_evidence.py` (236 designs, `build.vo` + `de
 
 ## Functional sim gate (2026-10-24)
 
-`scripts/cyclonev_lifted_sim_check.py --all`; blocking stage 5 of `scripts/cyclonev_verify_all.py` (any FAIL / ERROR fails the run).
+`scripts/cyclonev_lifted_sim_check.py --all`; blocking stage 5 of `scripts/cyclonev_verify_all.py` (any FAIL / ERROR fails the run). There is no "not covered" status: an atom without a model is a FAIL.
 
-- Per design: re-lift `decomp.bt` with the current lifter, iverilog lifted.v vs `build.vo` (+ our cell models, Altera `dffeas`), reset preamble then 2000 seeded random vectors, clocks in a separate phase.
+- Per design: re-lift `decomp.bt` with the current lifter, iverilog lifted.v vs `build.vo`, reset preamble then 2000 seeded random vectors, clocks in a separate phase. Inputs are defined at t=0 (an X-to-0 clock is not a negedge).
+- Models under `build.vo`: our lcell / io / clkena models, Altera `dffeas`, the plain vendor RAM and MLAB models, our `cyclonev_mac`.
 - Per output sample: matched | wrong | missing (lifted X or no port) | Quartus X (not scored). PASS = wrong 0, missing 0, matched > 0, model check not wrong.
-- Model check: same `build.vo` + models vs `src/*.v`: 191 ok, 0 wrong (17 no comparable sample: no reset, src stays X; 4 `full_case` src skipped; 25 RAM/DSP/unbuilt).
-- Not covered (no model, vendor atoms encrypted): RAM (`cyclonev_ram_block`, `cyclonev_mlab_cell`) 22 designs, DSP (`cyclonev_mac`) 2. `c_latch_v95_1` not built in this corpus.
+- Model check: same `build.vo` + models vs `src/*.v`.
+- Result table per kind: `docs/cyclonev-status.md`.
 
-| stage | pass | fail | matched / samples | wrong | missing |
-|---|---|---|---|---|---|
-| before (port-space masks) | 14 | 198 | 2114047 / 3804461 (55.6%) | 1677329 | 13085 |
-| polarity fix | 160 | 52 | 3432695 / 3804461 (90.2%) | 362728 | 9038 |
-| + emitter: pad-to-pad output, tie ignored LUT inputs | 165 | 47 | 3441733 / 3804461 (90.5%) | 362728 | 0 |
+| stage | pass | fail | not covered | matched / samples | wrong | missing |
+|---|---|---|---|---|---|---|
+| before (port-space masks) | 14 | 198 | 24 | 2114047 / 3804461 (55.6%) | 1677329 | 13085 |
+| polarity fix | 160 | 52 | 24 | 3432695 / 3804461 (90.2%) | 362728 | 9038 |
+| + emitter: pad-to-pad output, tie ignored LUT inputs | 165 | 47 | 24 | 3441733 / 3804461 (90.5%) | 362728 | 0 |
+| + register controls (enable, aclr, sclr, negedge) | 212 | 0 | 24 | 3804461 / 3804461 | 0 | 0 |
+| + RAM and MLAB (vendor models), 7 new designs | 241 | 0 | 2 | 4709178 / 4709178 | 0 | 0 |
+| + DSP (own model), 9 new designs, 3 PLL designs | 252 | 3 (PLL) | 0 | 6125789 / 6125789 | 0 | 0 |
 
-- By kind (after): combinational 92 / 92, carry 18 / 18, registered + carry 15 / 15, registered 40 / 87.
-- The 47 failures are all registers with enable (c_reg_en, shiftreg16, c_ram_vnd_logic, fsm), async clear (c_async_reset, counter_en_aclr), sync clear (c_sync_reset, regbank16, fsm) or negedge clock (dual_edge). `_ff_controls()` recovers these (scorecard 2794 / 2794) but `ffs` / `verilog.py` have no columns, so the register is emitted undriven. Not fixed here.
-- No design lost a PASS between stages; no design's wrong + missing rose.
+## Register controls (emitter)
+
+- Lifter writes `ffs.d`, `clk`, `ce`, `lsr` (= sync clear) for every register; polarity flags and the async clear net ride in `ffs.dtype` (`cyclonev_alm_reg;clkinv=1;ceinv=1;lsrinv=1;clr=<net>;clrinv=1;miss=<fields>`). No schema change.
+- `verilog.py` emit_ffs: `clrn` asynchronous clears, else on the clock edge `ena ? (sclr ? 0 : d) : hold` (Altera `PRIM_GDFF_LOW`: sclr is gated by ena). Negedge flops use `negedge`. A register with an unrecovered control (`miss=`) stays undriven and is listed.
+
+## RAM and MLAB (2026-10-24)
+
+Models: `cyclonev_ram_block` / `cyclonev_mlab_cell` in `cyclonev_atoms.v` are plain and wrap `generic_m10k` / `generic_28nm_lc_mlab_cell_impl` in `altera_lnsim.sv` (0 protect pragmas). The earlier "vendor models are encrypted" claim was wrong for RAM and MLAB; only the DSP, PLL and I/O-clock atoms are encrypted.
+
+- iverilog -g2012 fails parsing the whole `altera_lnsim.sv` (line 32252). `scripts/cyclonev_lnsim_extract.py` copies the needed modules (12 of them, verbatim) into `tmp/simcheck/`; those parse and simulate. Verilator was not needed for RAM.
+- Lifter: `lifters/cyclonev_hard.py` -> `Design.hard` -> table `cv_hard_cells` (JSON per atom) -> `verilog.py emit_hard_cells` instantiates the vendor atom with decoded parameters. Rules, each with 0 exceptions over the corpus RAM designs:
+  - M10K widths: A = `A_DATA_WIDTH` (default 40), B = `B_DATA_WIDTH` (default 20). `ADDRB` routed: dual_port x40 (A writes, B reads); `ADDRA` only: single_port, or rom if no `WREN` / `DATAAIN`.
+  - Address: pin = bit + `max(12 - max(abits, 8|9), 0)` (nextpnr `setup_m10ks`); abits = the smallest depth covering the routed pins. Data `DATAAIN.k` / `DATABIN.k` = `portadatain[k]` / `[20+k]`; `DATAAOUT.k` / `DATABOUT.k` = `portbdataout[k]` / `[20+k]` (single port: `portadataout`).
+  - `WREN.0` or `WREN.1` (whichever is routed), `CLKIN.0|.6` = clk0, `CLKIN.1|.7` = clk1 (B side on clock1), `ENABLE.1` = ena0. `A_OUTPUT_SEL`/`B_OUTPUT_SEL` = REG: output clock0. `mixed_port_feed_through_mode` is "old" (not in the bitstream; simulation hint).
+  - Contents: `RAM.<row>` = 40-bit row, inverted, bits permuted (nextpnr `write_m10k_cell`); a row holds 40/width words; row index bits above the design's address range read as 1 (rows 192..255 for 6 address bits). 4 init designs pass.
+  - MLAB (one ALM half in RAM mode = one 32 x 1 cell): read address pins A,B,C,D,F0 of the ALM; data E0 (top) / E1 (bottom); write address F1 of ALMs 2,3,7,6,1; write clock / enable like a register's; contents `NOT raw[perm[(31 - v) + 32*bottom]]` (address inputs are inverted, like LUT inputs). 8 / 8 cells of `c_raminit_vnd_mlab_4` matched by an exhaustive search over bit permutations and complements (unique solution: complement all five).
+- Corpus: `c_raminit_vnd_{m10k_4,m10k_16,mlab_4}`, `c_rom_vnd_{m10k_8,mlab_8}`, `c_ramsp_vnd_m10k_8`, `c_ramdc_vnd_m10k_8` (`scripts/cyclonev_construct_gen.py`). Quartus placed `c_rom_vnd_mlab_8` in an M10K.
+
+## DSP (2026-10-24)
+
+Method: (a) reference = the design's own source RTL, simulated directly; (b) our own `cyclonev_mac` model (`lifters/data/cyclonev_mac_model.v`) from the Cyclone V handbook (vol. 1 ch. 3, `sources/cyclonev-device-handbook.pdf`) and the atom's parameters, validated before use: `build.vo` on our model vs source RTL on all 11 corpus DSP designs (`scripts/cyclonev_dsp_model_check.py`, 0 wrong). The lifted side then runs on the same model and is also compared to the source RTL (model-independent). Questa-Altera Starter Edition (free licence, Dan to request) would run the encrypted atom as a further cross-check; not installed, not requested.
+
+- Modelled: `m9x9` (lane 0), `m18x18_full`, `m27x27`, `m18x18_sumof2`; per-operand input registers; output register. Everything else gives X.
+- Mistral MODE: `M9X9`, absent = `m18x18_full` (18x19), `M27X27`, `M18X19_COMBINED` = `m18x18_sumof2`.
+- Pin -> port bit (pad correlation, `DATAIN.n` of bank bi, `RESULT.k` = `resulta[k]`):
+  - m9x9: ax = bank0, bx = bank1, ay = bank2, by = bank3 (lane 0 evidenced).
+  - m18x18_full: ax = banks 0,1; ay = banks 2,3; `ay[18]` = bank5.8.
+  - m27x27: ax = banks 0,6,7; ay = banks 2,8,9.
+  - sumof2: as m18 plus bx = banks 6,7; by = banks 8,9; `by[18]` = bank11.8.
+- Signedness and registers (Mistral lane names are swapped against the atom's in the single-lane modes): `signed_max/may` = `BX/BY_SIGNED`, `ax/ay_clock` = `INREG_CTRL_BX/BY`, `output_clock` = `OREG_CTRL`; in sumof2 the names follow the atom.
+- Corpus: `mult9x9`, `mult18x18` plus `c_dsp_*` (signed / unsigned 9, 18, 27; input regs, output reg, combinational; sum of two products).
+
+## PLL (2026-10-24)
+
+- Vendor atoms (`cyclonev_fractional_pll`, `cyclonev_pll_output_counter`, `..._refclk_select`, `..._reconfig`) are encrypted: `build.vo` cannot be simulated. `altera_pll` (general) instantiates the plain `generic_pll`; iverilog 13 asserts on it (`eval_tree.cc:570`), verilator 5.046 `--timing` simulates it (100 MHz out of 50 MHz in: 199 edges in 2 us).
+- Corpus: `c_pll_vnd_m2d1_1`, `c_pll_vnd_m4d1_2`, `c_pll_vnd_m3d2_1` (50 MHz in).
+- Decode (`lifters/cyclonev_hard.py fpll_cell`): f = ref * M / N / C, M = `M_CNT_HI+LO`, N = `N_CNT_HI+LO`, C = `DPRIO0_CNT_HI.c + LO.c` of the counters with `Cc_COUT_EN`; unset hi / lo are 1. Matches the Quartus defparams of all 4 output counters (75, 100, 100 and 200 MHz). Quartus's own `FRACTIONAL_PLL` / `PLL_OUTPUT_COUNTER` defparams are a field-level oracle.
+- Not lifted: reference-clock pad (`CLKIN_0_SRC` = 4 in all three; the one refclk pad is H10), output counter -> clock net, phase shift, duty cycle, fractional mode. The gate reports the three designs as FAIL with that reason.

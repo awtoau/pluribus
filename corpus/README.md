@@ -53,7 +53,7 @@ Builder options: `--match 'c_*'` (glob), `--missing` (no DB row yet), `--jobs N`
 
 ## Construct dictionary (`c_<construct>_<variant>_<width>`)
 
-- 222 designs written by `scripts/cyclonev_construct_gen.py` (tracked `src/` + `design.toml`); variants `v95` / `vnd` (Quartus-specific) / `sv`.
+- 242 designs written by `scripts/cyclonev_construct_gen.py` (incl. RAM init / ROM / single-port / dual-clock, DSP and PLL designs) (tracked `src/` + `design.toml`); variants `v95` / `vnd` (Quartus-specific) / `sv`.
 - Extra `design.toml` fields: `construct`, `variant`, `width` (ignored by the builder).
 - Report: `python3.15t scripts/cyclonev_construct_report.py` -> `docs/cyclonev-construct-dictionary.md`.
 
