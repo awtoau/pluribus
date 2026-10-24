@@ -73,8 +73,9 @@ module cyclonev_clkena(inclk,ena,outclk,enaout);
   assign outclk = inclk; assign enaout = ena;
 endmodule
 """
-SUPPORTED = {"cyclonev_lcell_comb", "cyclonev_io_ibuf", "cyclonev_io_obuf", "cyclonev_clkena", "dffeas"}
-NOT_COVERED = {"cyclonev_ram_block": "RAM", "cyclonev_mlab_cell": "RAM", "cyclonev_mac": "DSP"}
+SUPPORTED = {"cyclonev_lcell_comb", "cyclonev_io_ibuf", "cyclonev_io_obuf", "cyclonev_clkena", "dffeas",
+             "cyclonev_ram_block", "cyclonev_mlab_cell"}      # RAM/MLAB: plain vendor models (lnsim extract)
+NOT_COVERED = {"cyclonev_mac": "DSP"}
 STEP_LIMIT_S = 60   # each lift / compile / sim step: < 10 s on a corpus design; 60 s = hung
 PREAMBLE_CLOCKS = 4  # clock pulses per reset level (all-1, all-0) before the model check starts
 JOBS = 4          # designs in parallel; each is a chain of small subprocesses
@@ -112,7 +113,7 @@ def pin_map(pin_text):
 
 def clock_inputs(vo, ins):
     """Input ports whose buffered signal is a register clock (directly or through a clkena)."""
-    clk_nets = set(re.findall(r"\.clk\((\\\S+)\s*\)", vo)) | set(re.findall(r"\.inclk\((\\\S+)\s*\)", vo))
+    clk_nets = set(re.findall(r"\.(?:clk|clk0|clk1|inclk)\((\\\S+)\s*\)", vo))
     out = set()
     for n, w in ins:
         for i in range(w):
@@ -273,6 +274,9 @@ def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True)
     (work / "src_r.v").write_text(re.sub(rf"\bmodule {design}\b", f"module {design}_src",
                                          "".join(p.read_text() + "\n" for p in src), count=1))
     base = [work / "tb.v", vo_path, work / "models.v", PRIMS, work / "lifted_r.v"]
+    if re.search(r"^\s*cyclonev_(ram_block|mlab_cell)\s", vo, re.M):
+        import cyclonev_lnsim_extract
+        base.append(cyclonev_lnsim_extract.extract(out=work / "lnsim_extract.sv", log=lambda m: None))
     compiled = None
     for with_src in ((True, False) if src else (False,)):
         tb, n_unported = testbench(design, ports, pins, lports, ins, outs, clocks, steps, seed,

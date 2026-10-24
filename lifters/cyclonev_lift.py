@@ -430,6 +430,7 @@ class Design:
         self.ffs = []
         self.clock_links = []      # synthetic (src, dst) clock-tree links (pad -> CMUX -> spine)
         self.clock_unresolved = {}
+        self.hard = []           # hard-block cells (lifters/cyclonev_hard.py): M10K, MLAB RAM, DSP, PLL
         self.pads = []           # [{pin, label, row, col, pio, direction, net_in, net_out}]
         self.net_name = {}
         self.all_nets = []
@@ -834,6 +835,7 @@ class CycloneVLift:
                 if n.block in _LAB_LIKE_BLOCKS and n.bi is not None:
                     alm_nodes[n.tile_key()].add(n.bi)
         plans = []                            # (tile_key, alm_idx, {half: plan})
+        ram_halves = []                       # MLAB halves in RAM mode: (tile_key, alm_idx, half, raw, kv)
         for tile_key in sorted(set(pc.settings) | set(alm_nodes)):
             block = tile_key[0]
             if block not in _LAB_LIKE_BLOCKS:
@@ -855,6 +857,8 @@ class CycloneVLift:
                     if mode not in _MODELLED_MODES[h]:
                         # MLAB RAM/ROM and undecoded patterns (BMNONE): not LUT logic, counted not guessed
                         d.unmodelled_halves[mode] += 1
+                        if mode == "RAM":
+                            ram_halves.append((tile_key, alm_idx, h, raw, kv))
                         continue
                     node = lambda port, _t=tile_key, _a=alm_idx: CVNode(_t[0], _t[1], _t[2], _a, port, None)
                     fb_slot = 1 if st(f"{h}_FEEDBACK_SEL") == "1" else 0
@@ -968,10 +972,45 @@ class CycloneVLift:
                     ff.update(self._ctl_columns(ctl, net_of, node))
                     d.ffs.append(ff)
 
+        self._hard_cells(pc, d, net_of, src_nodes, sink_nodes, ram_halves)
         d.all_nets = sorted(set(net_name.values()), key=lambda s: int(s[1:]))
         d.n_arcs = len(pc.arcs)
         self.recover_pads(pc, d, net_of)
         return d
+
+    @staticmethod
+    def _hard_cells(pc, d, net_of, src_nodes, sink_nodes, ram_halves):
+        """M10K / MLAB RAM tiles -> `d.hard` records (lifters/cyclonev_hard.py)."""
+        try:
+            from lifters import cyclonev_hard as hard
+        except ImportError:
+            import cyclonev_hard as hard
+        pins = defaultdict(dict)
+        for n in src_nodes | sink_nodes:
+            if n.block in ("M10K",) and n.port:
+                pins[n.tile_key()][(n.port, n.pi)] = (net_of(n), n in src_nodes and n not in sink_nodes)
+        for tile in sorted(set(pc.settings) | set(pins)):
+            if tile[0] == "M10K" and (pins.get(tile) or pc.settings.get(tile)):
+                d.hard.append(hard.m10k_cell(tile, pc.settings.get(tile, {}), pins.get(tile, {})))
+        for tile_key, alm_idx, h, raw, kv in ram_halves:
+            node = lambda port, _t=tile_key, _a=alm_idx: CVNode(_t[0], _t[1], _t[2], _a, port, None)
+            outs = [p for p in (f"FF{h}0", f"FF{h}1", f"FF{h}1L") if node(p) in src_nodes]
+            if not outs:
+                continue                      # RAM-mode half whose read data goes nowhere
+            pin = lambda k, port, _t=tile_key: CVNode(_t[0], _t[1], _t[2], k, port, None)
+            net_or0 = lambda n: net_of(n) if n in sink_nodes else "1'b0"
+            ctl = _ff_controls(tile_key[0], tile_key, kv, alm_idx, "T", 1, False, sink_nodes)
+            din_pin = "E1" if h == "B" else "E0"
+            d.hard.append(hard.mlab_cell(tile_key, alm_idx, h, raw, kv, {
+                "out": net_of(node(outs[0])),
+                "rd": [net_or0(node(p)) for p in ("A", "B", "C", "D", "F0")],
+                "din": net_or0(node(din_pin)),
+                "wa": [net_or0(pin(k, "F1")) for k in (2, 3, 7, 6, 1)],
+                "clk": _ctl_net(ctl["clk"], net_of, node) if "clk" in ctl else None,
+                "clk_inv": bool(ctl["clk"][2]) if "clk" in ctl else False,
+                "we": _ctl_net(ctl["ena"], net_of, node) if "ena" in ctl else None,
+                "we_inv": bool(ctl["ena"][2]) if "ena" in ctl and ctl["ena"][0] == "node" else False,
+            }, _MLAB_PERM))
 
     @staticmethod
     def _ctl_columns(ctl, net_of, node_of):

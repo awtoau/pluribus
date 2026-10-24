@@ -127,6 +127,15 @@ def load_data(conn, bs_id: int) -> dict:
                     q("SELECT cell, dtype FROM ffs WHERE bitstream=:bs_id")
                     if dtype}
 
+    # Cyclone V hard-block instances (M10K / MLAB RAM ...): JSON records, lifters/cyclonev_hard.py.
+    # Older DBs without the table (other families) yield none.
+    import json as _json
+    try:
+        hard = [dict(_json.loads(d) if isinstance(d, str) else d, name=c, kind=k)
+                for c, k, d in q("SELECT cell, kind, data FROM cv_hard_cells WHERE bitstream=:bs_id ORDER BY cell")]
+    except Exception:
+        hard = []
+
     # ── MachXO2 clock-spine unification (issue #65) ─────────────────────────
     # A single physical clock routed on one BRANCH_HPBX global track is tapped
     # by many per-region local nets that reachability never unions (the global
@@ -464,6 +473,7 @@ def load_data(conn, bs_id: int) -> dict:
         "is_gowin":         str(meta[1] or "").upper().startswith("GW"),
         "is_cyclonev":      str(meta[1] or "").upper().startswith("5C"),
         "ff_dtype_map":     ff_dtype_map,
+        "hard":             hard,
     }
 
 
@@ -2146,6 +2156,56 @@ def emit_fplls(data: dict) -> list[str]:
     return lines
 
 
+def emit_hard_cells(data: dict) -> list[str]:
+    """Vendor-atom instances (cyclonev_ram_block, cyclonev_mlab_cell ...) from `cv_hard_cells`.
+
+    Params and pin nets are decoded from the bitstream (lifters/cyclonev_hard.py); the instance runs on
+    the vendor model.  A record with `unmodelled` is emitted as a comment (a missing block is a fault).
+    """
+    hard = data.get("hard") or []
+    if not hard:
+        return []
+    nm, cm = data["net_name_map"], data["const_net_map"]
+    rn = lambda net: ("!" + resolve_net(net[1:], nm, cm)) if net.startswith("!") else resolve_net(net, nm, cm)
+    lines = ["    // ── Hard blocks (vendor atoms) ─────────────────────────────────────────"]
+    for h in hard:
+        if h.get("unmodelled"):
+            lines.append(f"    // {h['name']}: NOT LIFTED -- {h['unmodelled']}")
+            continue
+        nm_ = h["name"]
+        par = dict(h["params"])
+        init = int(h.get("init") or 0)
+        if init and h["kind"] == "cyclonev_mlab_cell":
+            par["mem_init0"] = f'"{init:x}"'
+        elif init:
+            par["init_file_layout"] = '"port_a"'
+            for i in range(5):
+                chunk = (init >> (2048 * i)) & ((1 << 2048) - 1)
+                par[f"mem_init{i}"] = f'"{chunk:0512x}"'
+        outs = h.get("outs") or {}
+        width_of = {"portadataout": par.get("port_a_data_width"),
+                    "portbdataout": par.get("port_b_data_width", par.get("data_width"))}
+        conns = []
+        for port, bits in h["pins"].items():
+            conns.append(f".{port}({{{', '.join(rn(b) for b in reversed(bits))}}})")
+        ram = h["kind"] == "cyclonev_ram_block"
+        for port in (("portadataout", "portbdataout") if ram else ("portbdataout",)):
+            if port in outs and outs[port]:
+                lines.append(f"    wire [{width_of[port] - 1}:0] {nm_}_{port};")
+                conns.append(f".{port}({nm_}_{port})")
+            else:
+                conns.append(f".{port}()")
+        if ram:
+            conns += [".eccstatus()", ".dftout()"]
+        lines.append(f"    {h['kind']} #(" + ", ".join(f".{k}({v})" for k, v in par.items()) + f") {nm_} (")
+        lines.append("        " + ",\n        ".join(conns) + ");")
+        for port, bitmap in outs.items():
+            for bit, net in sorted(bitmap.items(), key=lambda kv: int(kv[0])):
+                lines.append(f"    assign {rn(net)} = {nm_}_{port}[{int(bit)}];")
+    lines.append("")
+    return lines
+
+
 def emit_output_drives(data: dict) -> list[str]:
     """`assign <output_port> = <fabric driver>;` for output pads (#58).
 
@@ -2453,6 +2513,7 @@ def main():
         emit_trigger_comment(data),
         emit_ebr(data),
         emit_fplls(data),
+        emit_hard_cells(data),
         emit_output_drives(data),
         emit_unresolved_pads_comment(data),
         emit_footer(),

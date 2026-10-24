@@ -1,0 +1,7 @@
+top = "c_ramsp_vnd_m10k_8"
+purpose = "256x8 single-port M10K RAM, registered read [vendor ramstyle M10K]"
+exercises = ["ram", "ram_block"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "ramsp"
+variant = "vnd_m10k"
+width = 8

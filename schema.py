@@ -837,6 +837,18 @@ Index("idx_cv_block_muxes_file", cv_block_muxes.c.source_file)
 Index("idx_cv_block_muxes_target", cv_block_muxes.c.dump_target)
 Index("idx_cv_block_muxes_mux", cv_block_muxes.c.dump_target, cv_block_muxes.c.mux)
 
+# Cyclone V hard-block instances (M10K / MLAB RAM, DSP, PLL): one row per vendor atom.
+# `data` = JSON {kind, params, pins, outs, init, unmodelled}; verilog.py instantiates the
+# vendor primitive from it.  Records: lifters/cyclonev_hard.py.
+cv_hard_cells = Table("cv_hard_cells", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("cell",      Text, nullable=False),
+    Column("kind",      Text, nullable=False),
+    Column("data",      JSON, nullable=False),
+    UniqueConstraint("bitstream", "cell"),
+)
+
 # ── Post-fit oracle corpus (vendor post-fit netlist vs our lift) ─────────────
 # One row per corpus design build; atoms/conns/compare cascade from it.
 # Always-rebuild: scripts/cyclonev_corpus_build.py deletes the build row and
