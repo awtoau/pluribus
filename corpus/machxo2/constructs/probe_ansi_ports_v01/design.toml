@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog feature probe: ansi_ports_v01"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog-in-.v"
+feature = "ansi_ports_v01"
+io_bits = 0
+io_reduced = false

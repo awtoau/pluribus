@@ -29,6 +29,12 @@ OUT_PORTS = {
     "cyclonev_mac": {"resulta", "resultb", "chainout", "scanout", "dftout"},
     "cyclonev_ram_block": {"portadataout", "portbdataout", "eccstatus", "dftout"},
     "cyclonev_mlab_cell": {"portbdataout"},
+    "cyclonev_pll_refclk_select": {"clk0bad", "clk1bad", "clkout", "extswitchbuf", "pllclksel"},
+    "cyclonev_fractional_pll": {"cntnen", "fbclk", "fblvdsout", "lock", "mcntout", "plniotribuf",
+                                "shiftdoneout", "tclk", "mhi", "vcoph"},
+    "cyclonev_pll_reconfig": {"blockselect", "iocsrdataout", "iocsrenbuf", "iocsrrstnbuf", "phasedone",
+                              "shift", "shiftenm", "up", "dout", "dprioout", "shiften"},
+    "cyclonev_pll_output_counter": {"cascadeout", "divclk", "shiftdone0o"},
 }
 CONSTS = {"gnd": "0", "vcc": "1", "unknown": "x"}
 
@@ -234,10 +240,14 @@ class Vo:
             m = _DEFPARAM.match(s)
             if m:
                 name, p, v = ident(m.group(1)), m.group(2), m.group(3).strip()
+                if name == "pll_reconfig_inst_tasks":
+                    continue                # the task holder above, not an atom
                 if name not in self.atoms:
                     db.die(f"{path}:{i}: defparam for unknown atom {name!r}")
                 self.atoms[name]["params"][p] = v[1:-1] if v.startswith('"') else v
                 continue
+            if s == "altera_pll_reconfig_tasks pll_reconfig_inst_tasks();":
+                continue                    # simulation task holder Quartus adds to PLL netlists; no atom
             db.die(f"{path}:{i}: unrecognised line {ln!r}")
         if self.module is None:
             db.die(f"{path}: no module")

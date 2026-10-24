@@ -7,8 +7,7 @@ Re-fetch and verify by hash per entry below.
 ## Altera / Intel FPGA tooling
 
 Oracle toolchain for the Cyclone V lifter work (Mistral cross-check, device-db
-validation) — see `CLAUDE.md` device-db section, `scripts/cyclonev_die_probe.py`, and
-awto-au/awto-dji#3 (the air Lightbridge FPGA die-ID investigation this was built for).
+validation) — see `CLAUDE.md` device-db section and `scripts/cyclonev_die_probe.py`.
 
 Installed at `/mnt/2tb/opt/altera/quartus-25.1` (outside the repo — large, ~24 GB).
 
@@ -40,3 +39,10 @@ The Cyclone V config-data compression scheme is **not** documented in either PDF
 handbook section only covers the Quartus GUI toggle) — Mistral's own decompressor
 (`libmistral/cv-files.cc` `rbf_load()`) is the actual spec, reverse engineered by its
 maintainer, not published anywhere by Altera.
+
+## Cyclone V Device Handbook Vol. 1 (DSP chapter 3)
+
+- File: `sources/cyclonev-device-handbook.pdf` (gitignored), `CV-5V2` rev 2022.07.05.
+- URL: https://media.digikey.com/pdf/Data%20Sheets/Intel%20PDFs/Cyclone_V_Device_Handbook.pdf (via playwrong `pdf`).
+- Good copy: 325 pages; contains "Variable Precision DSP Blocks in Cyclone V Devices" (chapter 3, CV-52003).
+- Use: architecture reference for `scripts/cyclonev_mac_model.v` (own `cyclonev_mac` model; atom is encrypted).

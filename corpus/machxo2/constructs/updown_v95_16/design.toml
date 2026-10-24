@@ -1,0 +1,8 @@
+top = "top"
+purpose = "up/down counter"
+construct = "updown"
+variant = "v95"
+width = 16
+lang = "verilog-95"
+io_bits = 18
+io_reduced = false

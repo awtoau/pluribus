@@ -1,0 +1,8 @@
+top = "top"
+purpose = "case mux with logic-op arms, registered"
+construct = "casemux"
+variant = "v01"
+width = 4
+lang = "verilog-2001"
+io_bits = 15
+io_reduced = false

@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog feature probe: localparam_func"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog-in-.v"
+feature = "localparam_func"
+io_bits = 0
+io_reduced = false

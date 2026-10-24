@@ -1,0 +1,8 @@
+top = "top"
+purpose = "register with enable"
+construct = "regen"
+variant = "vnd"
+width = 16
+lang = "verilog-95+lattice"
+io_bits = 34
+io_reduced = false

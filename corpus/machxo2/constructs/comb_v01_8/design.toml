@@ -1,0 +1,8 @@
+top = "top"
+purpose = "combinational assign logic"
+construct = "comb"
+variant = "v01"
+width = 8
+lang = "verilog-2001"
+io_bits = 32
+io_reduced = false
