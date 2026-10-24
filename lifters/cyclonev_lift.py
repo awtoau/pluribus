@@ -96,6 +96,9 @@ SCHEMA FIT — ALM-HALF LUT (a-f), UNIFIED INTO `luts`
 ----------------------------------------------------
 - `luts.init` is the 64-char MSB-first table of one ALM half over its six inputs a-f
   (Quartus data port order); `e`/`f` columns are NULL for the 4-input families.
+- `init` is the function of the NETS: Quartus `lut_mask` indexes the complemented data inputs
+  (`_complement_inputs`).  A pad output inverter (`i ...DATAOUT 1`) is an explicit NOT row
+  (`io_inverter`), the pad's net_out its output.  Rule + evidence: docs/cyclonev-postfit-oracle.md "Polarity".
 - Letter -> source per half mode: docs/cyclonev-postfit-oracle.md, `_port_pins()`.
   Constant/unrouted letters are "1'b0" and the table is folded so it does not depend on them.
 - Registers: one `ffs` row per physical register (half, slot); control sources are kept in
@@ -588,6 +591,16 @@ def _ctl_net(src, net_of, node_of):
     return net_of(node_of(f"{val[3]}COMB"))
 
 
+def _complement_inputs(tt, inv):
+    """Table over the nets from a table over their complements: bit v -> bit v ^ inv.
+
+    Every routed LUT data input (a..f) sees NOT(net): Quartus marks 11093/11093 routed
+    lcell data ports `!` (scripts/cyclonev_polarity_evidence.py, docs/cyclonev-postfit-oracle.md
+    "Polarity"); cin / sharein are never inverted.
+    """
+    return sum(((tt >> (v ^ inv)) & 1) << v for v in range(64))
+
+
 def _lut_table(raw, half, mode, mlab, active):
     """64-bit function table (bit v = f(a|b<<1|c<<2|d<<3|e<<4|f<<5)) for one ALM half.
 
@@ -906,7 +919,8 @@ class CycloneVLift:
                         active[letter] = True
                     else:
                         active[letter] = node(tok) in sink_nodes
-                table = _lut_table(raw, h, p["mode"], is_mlab, active)
+                table = _complement_inputs(_lut_table(raw, h, p["mode"], is_mlab, active),
+                                           sum(1 << k for k in range(6) if active["abcdef"[k]]))
                 arith_key = (tile_key, 2 * alm_idx + (h == "B"))
                 arith = arith_key in arith_k
                 regs_here = [s for s in (0, 1) if p["present"][s]]
@@ -973,6 +987,7 @@ class CycloneVLift:
         The 64-bit Mistral->Quartus table (`_lut_table`, no folding) is that mask.  Rows use letters
         a,b,c,d as the half's LUT inputs, e = cin, f = dataf (or sharein in shared mode, where dataf
         is unused).  Row roles: sum (name = the plain half name), cout, shareout.
+        Row tables are over the nets: data inputs complemented (`_complement_inputs`).
         """
         tile_key, k = key
         alm_idx, _h, kv, _p = arith_k[key]
@@ -1014,7 +1029,8 @@ class CycloneVLift:
             sum_t |= (cin ^ f0 ^ in2) << v
             cout_t |= ((cin & f0) | (cin & in2) | (f0 & in2)) << v
             shout_t |= f2d << v
-        fold = lambda t: sum(((t >> (v & live)) & 1) << v for v in range(64))
+        inv = live & (0b001111 | (0 if shared else 0b100000))     # data a-d, f inverted; cin / sharein not
+        fold = lambda t: _complement_inputs(sum(((t >> (v & live)) & 1) << v for v in range(64)), inv)
         base = (f"alm_{block.lower()}_r{tile_key[1]}c{tile_key[2]}_a{alm_idx}_"
                 f"{'top' if h == 'T' else 'bottom'}")
         pk = (tile_key[1], tile_key[2], (k - 1) // 2, "B" if (k - 1) % 2 else "T")
@@ -1068,6 +1084,19 @@ class CycloneVLift:
         # "A pad exists here" = GPIO (x,y,bi) keys in routing arcs only (pc.arcs),
         # not settings/inverters: an inverter bit can sit on a port never wired
         # into an arc. bi=None keys are not a single pad and are excluded.
+        def out_net(node, label):
+            """Net the pad drives out: the fabric net, or NOT(it) via an explicit inverter row
+            when the .bt sets this DATAOUT/DOUT inverter (38/38 = Quartus obuf `.i(!...)`)."""
+            net = net_of(node)
+            if pc.inverters.get(node) != 1:
+                return net, False
+            inv = net_of(CVNode(node.block, node.x, node.y, node.bi, node.port + "_INV", node.pi))
+            d.luts.append({"name": f"io_inv_{label}", "init": format(sum(1 << v for v in range(0, 64, 2)), "064b"),
+                           "a": net, "b": "1'b0", "c": "1'b0", "d": "1'b0", "e": "1'b0", "f": "1'b0",
+                           "z": inv, "z_used": True, "io_inverter": True, "pad": label})
+            d.all_nets.append(inv)
+            return inv, True
+
         tile_bi_ports = defaultdict(set)   # (x,y,bi) -> {(port, pi, is_src)}
         for (src, dst) in pc.arcs:
             for node, is_src in ((src, True), (dst, False)):
@@ -1112,8 +1141,9 @@ class CycloneVLift:
                       if datain_taps else None)
             if net_in is None and any(p == "COMBOUT" for (p, _pi, _s) in ports):
                 net_in = net_of(CVNode("GPIO", x, y, bi, "COMBOUT", None))
-            net_out = (net_of(CVNode("GPIO", x, y, bi, "DATAOUT", dataout_taps[0][0]))
-                       if dataout_taps else None)
+            label = pin if pin is not None else f"GPIO_{x:03d}_{y:03d}_{bi}"
+            net_out, out_inv = (out_net(CVNode("GPIO", x, y, bi, "DATAOUT", dataout_taps[0][0]), label)
+                                if dataout_taps else (None, False))
 
             # pad_map.pin is Integer NOT NULL, but a BGA name ("AA10") isn't
             # one -- encode via bga_pin_to_int() (stable, collision-free, see
@@ -1124,11 +1154,10 @@ class CycloneVLift:
             # insert (no sentinel value invented here; see module docstring).
             d.pads.append({
                 "pin": bga_pin_to_int(pin) if pin is not None else None,
-                "label": pin if pin is not None else
-                       f"GPIO_{x:03d}_{y:03d}_{bi}",
+                "label": label,
                 "row": x, "col": y, "pio": bi,
                 "direction": direction,
-                "net_in": net_in, "net_out": net_out,
+                "net_in": net_in, "net_out": net_out, "out_inverted": out_inv,
                 "n_datain_taps": len(datain_taps),
                 "n_dataout_taps": len(dataout_taps),
             })
@@ -1151,12 +1180,15 @@ class CycloneVLift:
                 hmc[pin]["din"].append(node)
         for pin, ports in sorted(hmc.items()):
             din = net_of(ports["din"][0]) if ports["din"] else None
-            dout = net_of(ports["dout"][0]) if ports["dout"] else None
-            direction = "bidir" if din and dout else "in" if din else "out"
             row = by_label.get(pin)
+            if row is not None and row["net_out"]:
+                dout, dout_inv = row["net_out"], row.get("out_inverted", False)
+            else:
+                dout, dout_inv = out_net(ports["dout"][0], pin) if ports["dout"] else (None, False)
+            direction = "bidir" if din and dout else "in" if din else "out"
             if row is not None:                # same pin also seen through a GPIO arc: merge
                 row["net_in"] = row["net_in"] or din
-                row["net_out"] = row["net_out"] or dout
+                row["net_out"], row["out_inverted"] = dout, dout_inv
                 if din and dout or (din and row["direction"] == "out") or (dout and row["direction"] == "in"):
                     row["direction"] = "bidir"
                 elif row["direction"] == "unknown":
@@ -1169,7 +1201,7 @@ class CycloneVLift:
                 "pin": bga_pin_to_int(pin), "label": pin,
                 "row": gx if gx is not None else first.x, "col": gy if gy is not None else first.y,
                 "pio": gbi if gbi is not None else first.pi,
-                "direction": direction, "net_in": din, "net_out": dout,
+                "direction": direction, "net_in": din, "net_out": dout, "out_inverted": dout_inv,
                 "n_datain_taps": len(ports["din"]), "n_dataout_taps": len(ports["dout"]),
             })
 
@@ -1184,7 +1216,7 @@ class CycloneVLift:
             d.n_pads_annotated += 1
             d.pads.append({
                 "pin": bga_pin_to_int(pin), "label": pin, "row": x, "col": y, "pio": bi,
-                "direction": "in", "net_in": None, "net_out": None,
+                "direction": "in", "net_in": None, "net_out": None, "out_inverted": False,
                 "n_datain_taps": 0, "n_dataout_taps": 0,
             })
 

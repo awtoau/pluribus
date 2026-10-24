@@ -171,6 +171,8 @@ def compare_build(bid, ddir):
     # ── lifted LUT / FF indexes (new lifter: metadata keys; old lifter: parse the name) ──
     lifted_lut, lifted_arith = {}, {}
     for lt in d.luts:
+        if lt.get("io_inverter"):                   # pad output inverter: scored by conn.obuf.i
+            continue
         if "half" in lt:
             key = (lt["block"], lt["x"], lt["y"], lt["alm"], lt["half"])
             pins = lt["pins"]
@@ -190,13 +192,14 @@ def compare_build(bid, ddir):
             lt, pins = dict(lt, init=lt["comb_init"]), lt["comb_pins"]
         lifted_lut[key] = (lt, pins)
 
-    def lifted_lut_bit(entry, half, mode, v, used):
-        """Lifted LUT output for Quartus input vector v, wired only through LAB pins."""
+    def lifted_lut_bit(entry, half, mode, v, used, inv):
+        """Lifted LUT output for Quartus input vector v, wired only through LAB pins.
+        Quartus port value = net value ^ its `!` flag (inv[port]); the lifted init is over nets."""
         lt, pins = entry
         pv = {}
         for k, p in enumerate(PINS):
             if p in used and lab_pin(half, mode, p) is not None:
-                pv[lab_pin(half, mode, p)] = (v >> k) & 1
+                pv[lab_pin(half, mode, p)] = ((v >> k) & 1) ^ inv.get(p, 0)
         idx = 0
         for w, letter in enumerate("abcdef"):
             if letter in pins and pv.get(pins[letter], 0):
@@ -277,8 +280,8 @@ def compare_build(bid, ddir):
                 tv = {"CIN": vals["cin"], "SHAREIN": vals["sharein"]}
                 for p_, port_ in (("dataa", "a"), ("datab", "b"), ("datac", "c"), ("datad", "d"), ("dataf", "f")):
                     pin_ = lab_pin(half, mode, port_)
-                    if pin_ is not None:
-                        tv[pin_] = vals[p_]
+                    if pin_ is not None:     # net value = Quartus port value ^ its `!`
+                        tv[pin_] = vals[p_] ^ int(bool(cm[p_]["inverted"])) if p_ in cm else vals[p_]
                 idx = sum(1 << w for w, letter in enumerate("abcdef") if tv.get(lt["pins"].get(letter), 0))
                 ok = ok and int(lt["init"][63 - idx]) == qv_
             row(a["name"], a["location"], f"arith.{role}", qs, lt["init"], "MATCH" if ok else "MISMATCH")
@@ -320,7 +323,9 @@ def compare_build(bid, ddir):
         elif entry is None:
             row(a["name"], a["location"], field, qv, None, "LIFT_MISSING")
         else:
-            ok = all(lifted_lut_bit(entry, half, mode, v, used) == (q_mask >> v) & 1
+            inv = {c["port"][4]: int(bool(c["inverted"])) for c in by_atom[a["id"]]
+                   if c["port"].startswith("data") and c["net"]}
+            ok = all(lifted_lut_bit(entry, half, mode, v, used, inv) == (q_mask >> v) & 1
                      for v in range(64)
                      if not any((v >> k) & 1 for k, p in enumerate(PINS) if p not in used))
             row(a["name"], a["location"], field, qv, entry[0]["init"],
@@ -440,7 +445,7 @@ def compare_build(bid, ddir):
             continue
         cs = {c["port"]: c for c in by_atom[a["id"]]}
         label = pin_net_to_label.get(cs["o"]["net"]) if "o" in cs else None
-        qv = q_drv(cs["i"])
+        qv = q_drv(cs["i"]) + ("!" if cs["i"]["inverted"] else "")
         p = pads.get(label)
         lv = None
         if p is not None and p["net_out"] is not None:
@@ -449,6 +454,8 @@ def compare_build(bid, ddir):
             if not nodes:       # pad reached through the HMC: its DOUT port node
                 nodes = [n for n, pin in pc.hmc_pins.items() if pin == label and n.port.endswith("DOUT")]
             lv = lifted_driver(nodes[0]) if nodes else None
+            if lv is not None and p.get("out_inverted"):
+                lv += "!"
         row(a["name"], a["location"], "conn.obuf.i", qv, lv, conn_verdict(qv, lv))
 
     # ── hard blocks with no lifted model ─────────────────────────────────

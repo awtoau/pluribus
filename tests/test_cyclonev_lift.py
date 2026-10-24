@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lifters.cyclonev_lift import CVNode, _ff_controls, _lut_table, _port_pins  # noqa: E402
+from lifters.cyclonev_lift import CVNode, _complement_inputs, _ff_controls, _lut_table, _port_pins  # noqa: E402
 
 ALL = dict.fromkeys("abcdef", True)
 
@@ -25,6 +25,20 @@ def test_lut_table_independent_of_inactive_inputs():
     tt = _lut_table(0x123456789ABCDEF0, "B", "C_E", False, dict(ALL, b=False, d=False))
     for v in range(64):
         assert (tt >> v) & 1 == (tt >> (v & ~0b001010)) & 1
+
+
+def test_complement_inputs_casemux():
+    # c_casemux_v95_4 Mux3~0 wiring: ports a,b,c,e,f = !s1,!a0,!c0,!s0,!b0; y = s==0 ? a0 : s==1 ? b0 : s==2 ? c0 : 0
+    q = 0
+    for v in range(64):                               # Quartus-convention mask from the source function
+        a, b, c, e, f = (1 - ((v >> k) & 1) for k in (0, 1, 2, 4, 5))   # port value = !net
+        s1, a0, c0, s0, b0 = a, b, c, e, f
+        y = [a0, b0, c0, 0][s1 << 1 | s0]
+        q |= y << v
+    tt = _complement_inputs(q, 0b110111)
+    for v in range(64):
+        s1, a0, c0, s0, b0 = ((v >> k) & 1 for k in (0, 1, 2, 4, 5))
+        assert (tt >> v) & 1 == [a0, b0, c0, 0][s1 << 1 | s0], v
 
 
 def test_port_pins_modes():
