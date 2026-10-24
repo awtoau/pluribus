@@ -109,6 +109,31 @@ from lifters.machxo2_lift import (  # noqa: E402
 )
 
 
+_PLC_ENUM_DEFAULTS = {}
+
+
+def plc_enum_defaults(dbroot):
+    """ECP5 PLC2/bits.db `.config_enum` defaults: {enum_name: value}.
+
+    A decoded .config omits an enum at its default, so a missing key means the default.
+    Sibling of machxo2_lift.plc_enum_defaults (different tile type and path).
+    """
+    d = _PLC_ENUM_DEFAULTS.get(dbroot)
+    if d is None:
+        d = {}
+        path = os.path.join(dbroot, "ECP5", "tiledata", "PLC2", "bits.db")
+        with open(path) as fh:
+            for ln in fh:
+                t = ln.split()
+                if len(t) >= 3 and t[0] == ".config_enum":
+                    d[t[1]] = t[2]
+        if not d:
+            from db import die
+            die(f"no .config_enum entries in {path}")
+        _PLC_ENUM_DEFAULTS[dbroot] = d
+    return d
+
+
 class ECP5Lift:
     """Routing-graph-backed lifter for one ECP5 device."""
 
@@ -120,6 +145,7 @@ class ECP5Lift:
         else:
             from native_trellis import pytrellis_compat as pytrellis
         self._pt = pytrellis
+        self.dbroot = dbroot
         pytrellis.load_database(dbroot)
         self.device = device
         self.chip = pytrellis.Chip(device)
@@ -451,6 +477,7 @@ class ECP5Lift:
             })
 
         # ---- flip-flops ----
+        enum_def = plc_enum_defaults(self.dbroot)   # missing enum key = bits.db default
         plc_tiles = {(r, c) for (r, c, _sl) in pc.slice_enum}
         plc_tiles |= {(r, c) for (r, c, _sl, _k) in pc.lut_init}
         for (r, c) in sorted(plc_tiles):
@@ -499,7 +526,7 @@ class ECP5Lift:
                         "clk": resolve(pins.get("CLK"), "1'b0"),
                         "ce": resolve(pins.get("CE"), "1'b1"),
                         "lsr": resolve(pins.get("LSR"), "1'b0"),
-                        "regset": senum.get(f"REG{j}.REGSET", "RESET"),
+                        "regset": senum.get(f"REG{j}.REGSET", enum_def[f"SLICE{sl}.REG{j}.REGSET"]),
                         "sd": sd,
                         "gsr": senum.get("GSR", "DISABLED"),
                     })

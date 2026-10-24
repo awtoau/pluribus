@@ -63,6 +63,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 
+import heavy_guard
 import toolchain
 
 # Resolution lives in scripts/toolchain.py (#90) rather than in a per-script
@@ -476,6 +477,7 @@ def check_netlist(design, cens):
 # ---------------------------------------------------------------------------
 
 def test_one(rec, log, do_lift=True):
+    heavy_guard.wait_available(log, rec.get("label") or rec.get("local", ""))
     path = os.path.join(REPO, rec["local"]) if "local" in rec else rec["path"]
     label = rec.get("label") or os.path.basename(path)
     out = dict(label=label, source=rec.get("url", "local"),
@@ -718,7 +720,8 @@ def main():
                       indent=2, sort_keys=True)
         os.replace(tmp, args.out)
 
-    with concurrent.futures.ThreadPoolExecutor(args.workers) as ex:
+    with heavy_guard.heavy_lock("ecp5_corpus_test", log), \
+            concurrent.futures.ThreadPoolExecutor(args.workers) as ex:
         futs = [ex.submit(test_one, e, log, not args.no_lift) for e in entries]
         for f in concurrent.futures.as_completed(futs):
             results.append(f.result())

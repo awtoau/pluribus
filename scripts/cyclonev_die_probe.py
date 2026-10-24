@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import db
 import schema
+import heavy_guard
 import toolchain
 from sqlalchemy import select, insert
 
@@ -134,6 +135,7 @@ def compile_die(die_name, part, work_dir: Path, logger):
         f'set_global_assignment -name TOP_LEVEL_ENTITY probe\n'
         f'set_global_assignment -name VERILOG_FILE probe.v\n'
     )
+    heavy_guard.wait_available(logger, die_name)
     logger.info(f"{die_name} ({part}): synthesizing")
     if not run([str(QUARTUS_BIN / "quartus_map"), "probe",
                 f"--family=Cyclone V", f"--part={part}"], d, logger):
@@ -189,6 +191,11 @@ def store_fingerprints(results, logger):
 
 
 def main():
+    with heavy_guard.heavy_lock("cyclonev_die_probe", heavy_guard.stdout_log()):
+        _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target-rbf", type=Path, default=None,
                      help="depacked unknown bitstream to compare against (optional; size comparison only)")

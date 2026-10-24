@@ -25,14 +25,13 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
-import psutil
-
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS)
 sys.path.insert(0, os.path.dirname(SCRIPTS))
 import toolchain  # noqa: E402
 import diamond_oracle_parse as P  # noqa: E402
-from machxo2_diamond_oracle import REPO, MEM_GATE_PCT, MEM_LOG_EVERY_S  # noqa: E402
+from machxo2_diamond_oracle import REPO, _Log  # noqa: E402
+import heavy_guard  # noqa: E402
 
 os.environ.setdefault("TRELLIS_DBROOT", toolchain.trellis_dbroot())
 from lifters import machxo2_lift as ML  # noqa: E402
@@ -679,18 +678,12 @@ def main():
     results, lock, stop = [], threading.Lock(), threading.Event()
 
     def worker():
-        last = 0.0
         while True:
             try:
                 t = q.get_nowait()
             except queue.Empty:
                 return
-            while psutil.virtual_memory().percent >= MEM_GATE_PCT:
-                if time.monotonic() - last >= MEM_LOG_EVERY_S:
-                    log(f"[mem] {psutil.virtual_memory().percent:.0f}% >= "
-                        f"{MEM_GATE_PCT:.0f}%: waiting")
-                    last = time.monotonic()
-                stop.wait(1.0)
+            heavy_guard.wait_available(_Log, "compare")
             try:
                 r = compare_target(t, args.targets_dir, args.out)
                 r = {"target": t, "status": "ok", **{k: r[k] for k in (
@@ -706,10 +699,11 @@ def main():
 
     t0 = time.monotonic()
     ths = [threading.Thread(target=worker) for _ in range(args.workers)]
-    for th in ths:
-        th.start()
-    for th in ths:
-        th.join()
+    with heavy_guard.heavy_lock("machxo2_oracle_compare", _Log):
+        for th in ths:
+            th.start()
+        for th in ths:
+            th.join()
 
     summ = {"targets": len(results),
             "status": dict(Counter(r["status"] for r in results)),

@@ -44,6 +44,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import cyclonev_corpus_build as cb  # noqa: E402
 import cyclonev_rcf_parse as rp  # noqa: E402
+import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402
 
 LOG = REPO / "tmp" / "logs" / "cyclonev_rcf_fuzz.log"
@@ -66,6 +67,7 @@ def setup_logging():
 
 def flow(qb, vdir, logs, with_cdb=True):
     """fit -> asm -> cpf (-> cdb back-annotate).  Returns failing step or None."""
+    heavy_guard.wait_available(log, "rcf_fuzz flow")
     steps = [("quartus_fit", [qb / "quartus_fit", "build", "-c", "build"]),
              ("quartus_asm", [qb / "quartus_asm", "build"]),
              ("quartus_cpf", [qb / "quartus_cpf", "-c", "build.sof", "build.rbf"])]
@@ -305,6 +307,12 @@ def list_targets(rcf, fwd):
 
 
 def main():
+    setup_logging()
+    with heavy_guard.heavy_lock("cyclonev_rcf_fuzz", log):
+        _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--design", required=True)
@@ -315,7 +323,6 @@ def main():
     ap.add_argument("--alts", default="auto", help="'auto' (mined) or idx range e.g. 0-19")
     ap.add_argument("--workers", type=int, default=4)
     a = ap.parse_args()
-    setup_logging()
     import db
     import schema
     from sqlalchemy import delete, insert
@@ -330,6 +337,7 @@ def main():
     base = WORK / a.design / "base"
     # base = quartus project + RCF/locations written by cdb (scratch copy: it rewrites the .qsf)
     fresh_copy(ddir / "quartus", base)
+    heavy_guard.wait_available(log, "rcf_fuzz base cdb")
     if not cb.run("quartus_cdb", [qb / "quartus_cdb", "build", "-c", "build",
                                   "--back_annotate=routing", "--write_settings_files=on"],
                   base, WORK / a.design / "logs_base"):
