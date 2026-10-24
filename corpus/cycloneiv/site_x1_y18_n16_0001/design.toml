@@ -1,0 +1,4 @@
+top = "top"
+purpose = "site sweep lut_mask 0001 at LCCOMB_X1_Y18_N16"
+exercises = ["lut_mask", "le_address"]
+qsf = ["set_location_assignment LCCOMB_X1_Y18_N16 -to lut", "set_location_assignment PIN_28 -to a", "set_location_assignment PIN_30 -to b", "set_location_assignment PIN_31 -to c", "set_location_assignment PIN_32 -to d", "set_location_assignment PIN_42 -to y"]
