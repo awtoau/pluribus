@@ -435,6 +435,11 @@ def compare_target(target, out_root):
                 # not use; match by name pair only.
                 if by_name():
                     v, why = "MATCH", "global_name_pair_only"
+                elif (ia.get("clock_node") or ib.get("clock_node")) and ia["dsu"] is not None \
+                        and ib["dsu"] is not None and ia["dsu"] in dsu.p and ib["dsu"] in dsu.p \
+                        and dsu.find(ia["dsu"]) == dsu.find(ib["dsu"]):
+                    # clock-tree wire the graph has no name for: the lift's rules join them
+                    v, why = "MATCH", "clock_node_same_dsu"
                 else:
                     v, why = "ORACLE_ONLY", ("wire_not_in_graph"
                                              if not (ia["exists"] or ib["exists"])
@@ -923,6 +928,8 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--only", nargs="*")
+    ap.add_argument("--device", help="only targets whose device contains this (12F, 25F, ...): "
+                    "one device per process keeps RSS bounded; a final run without --force re-aggregates")
     ap.add_argument("--force", action="store_true", help="recompute even if compare.json is current")
     args = ap.parse_args()
     root = os.path.abspath(args.data_root or data_root())
@@ -945,6 +952,8 @@ def main():
     for t in targets:
         with open(os.path.join(args.out, t, "oracle.json")) as fh:
             dev_of[t] = json.load(fh)["device"]
+    if args.device:
+        targets = [t for t in targets if args.device in dev_of[t]]
     targets.sort(key=lambda t: (dev_of[t], t))
     log(f"[compare] {len(targets)} targets, {args.workers} workers, out={args.out}")
     q = queue.Queue()
