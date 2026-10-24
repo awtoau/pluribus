@@ -2,4 +2,4 @@ top = "top"
 purpose = "coverage design, profile edgeT"
 profile = "edgeT"
 seed = 303
-lanes = 18
+lanes = 14

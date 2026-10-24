@@ -32,6 +32,51 @@ def cov(corpora, device):
     return [re.sub(r"^\S+ \S+ ", "", ln) for ln in (r.stdout + r.stderr).splitlines() if ln.strip()]
 
 
+RULES = ("h06e_right_mirror", "right_stub_drop", "h06w_left_mirror", "h_right_flip", "h_left_flip",
+         "left_stub_drop", "vspan_offdie_flip", "vspan_offdie_over2_walkback", "vspan_edge_flip")
+V02 = re.compile(r"_V02[NS]0[67]\d\d")
+
+
+def rule_table(dirs, w):
+    """Per gkey branch: verdict counts, distinct Diamond nets split by DISAGREE, why, examples."""
+    agg = defaultdict(lambda: {"v": Counter(), "nets": set(), "why": Counter(), "ex": []})
+    v02 = Counter()
+    for d in dirs:
+        for n in sorted(os.listdir(d)):
+            cj = os.path.join(d, n, "compare.json")
+            if not os.path.exists(cj):
+                continue
+            c = json.load(open(cj))
+            verdict = {x["net"]: x["verdict"] for x in c["nets"]}
+            for g in c["gkey"]:
+                a = agg[g["branch"]]
+                a["v"][g["verdict"]] += 1
+                if g["verdict"] == "DISAGREE":
+                    a["nets"].add((n, g.get("diamond_net_other")))
+                    a["why"][g["why"][:70]] += 1
+                    if len(a["ex"]) < 3:
+                        a["ex"].append(f"{n}: {g['name']} @R{g['tile'][0]}C{g['tile'][1]} (other {g['other']})")
+            oj = json.load(open(os.path.join(d, n, "oracle.json")))
+            for net in oj["nets"]:
+                if any(V02.search(x) for x in net["wires"]):
+                    v02[verdict.get(net["name"], "none")] += 1
+    w("| branch | AGREE | DISAGREE | INCONCLUSIVE | Diamond nets split by DISAGREE |")
+    w("|---|---|---|---|---|")
+    for r in RULES:
+        a = agg.get(r)
+        if a:
+            w(f"| `{r}` | {a['v']['AGREE']} | {a['v']['DISAGREE']} | {a['v']['INCONCLUSIVE']} | {len(a['nets'])} |")
+        else:
+            w(f"| `{r}` | 0 | 0 | 0 | not exercised |")
+    w("")
+    for r in RULES:
+        a = agg.get(r)
+        if a and a["v"]["DISAGREE"]:
+            w(f"- `{r}` DISAGREE why: " + "; ".join(f"{k} x{v}" for k, v in a["why"].most_common(3)))
+            w(f"  - examples: " + " | ".join(a["ex"]))
+    w(f"- `_v02_alias` (identity): nets carrying a V02[NS]06xx/07xx wire: {sum(v02.values())}, net verdicts {dict(v02)}.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dir", default=NEW)
@@ -82,7 +127,10 @@ def main():
     for label, cor, dev in (("all 73 routed tile types in the DB (all devices)", None, None),
                             ("types present on LCMXO2-1200 only", None, "LCMXO2-1200")):
         w(f"### {label}\n")
-        for tag, cs in (("before (2779 existing designs)", [a.old]), ("after (existing + new)", [a.old, a.dir])):
+        con = os.path.join(os.path.dirname(a.dir), "constructs")
+        for tag, cs in (("before (2779 existing designs)", [a.old]),
+                        ("after construct dictionary (existing + 208 construct builds)", [a.old, con]),
+                        ("after construct dictionary + coverage designs (existing + new)", [a.old, con, a.dir])):
             lines = cov(cs, dev)
             w(f"- {tag}:")
             for ln in lines[:6]:
@@ -113,7 +161,10 @@ def main():
         for rule in ("h06e_right_mirror", "right_stub_drop", "h06w_left_mirror"):
             hits = {k: v for k, v in gv.items() if k.startswith(rule + ":")}
             w(f"- `{rule}`: {hits if hits else 'not exercised by any new design (untested)'}")
-        w("- `_v02_alias`: see below.")
+        w("\n#### All rules, constructs + coverage designs combined (per gkey branch)\n")
+        rule_table([os.path.dirname(a.dir) + "/constructs", a.dir], w)
+        w("\n#### Coverage designs only\n")
+        rule_table([a.dir], w)
         by = defaultdict(Counter)
         prof = {n: m.get("profile") for n, m, b, d in rows}
         for n, m, b, d in ok:

@@ -1,9 +1,9 @@
 module top (clk,
-  din_0, din_1, din_2, din_3, din_4, din_5, din_6, din_7, din_8, din_9, din_10, din_11, din_12, din_13, din_14, din_15, din_16, din_17,
-  dout_0, dout_1, dout_2, dout_3, dout_4, dout_5, dout_6, dout_7, dout_8, dout_9, dout_10, dout_11, dout_12, dout_13, dout_14, dout_15, dout_16, dout_17);
+  din_0, din_1, din_2, din_3, din_4, din_5, din_6, din_7, din_8, din_9, din_10, din_11, din_12, din_13,
+  dout_0, dout_1, dout_2, dout_3, dout_4, dout_5, dout_6, dout_7, dout_8, dout_9, dout_10, dout_11, dout_12, dout_13);
   input clk;
-  input din_0, din_1, din_2, din_3, din_4, din_5, din_6, din_7, din_8, din_9, din_10, din_11, din_12, din_13, din_14, din_15, din_16, din_17;
-  output dout_0, dout_1, dout_2, dout_3, dout_4, dout_5, dout_6, dout_7, dout_8, dout_9, dout_10, dout_11, dout_12, dout_13, dout_14, dout_15, dout_16, dout_17;
+  input din_0, din_1, din_2, din_3, din_4, din_5, din_6, din_7, din_8, din_9, din_10, din_11, din_12, din_13;
+  output dout_0, dout_1, dout_2, dout_3, dout_4, dout_5, dout_6, dout_7, dout_8, dout_9, dout_10, dout_11, dout_12, dout_13;
   wire m_0;
   FD1S3AX #(.GSR("DISABLED")) f1_0 (.D(din_0), .CK(clk), .Q(m_0));
   FD1S3AX #(.GSR("DISABLED")) f2_0 (.D(m_0), .CK(clk), .Q(dout_0));
@@ -46,16 +46,4 @@ module top (clk,
   wire m_13;
   FD1S3AX #(.GSR("DISABLED")) f1_13 (.D(din_13), .CK(clk), .Q(m_13));
   FD1S3AX #(.GSR("DISABLED")) f2_13 (.D(m_13), .CK(clk), .Q(dout_13));
-  wire m_14;
-  FD1S3AX #(.GSR("DISABLED")) f1_14 (.D(din_14), .CK(clk), .Q(m_14));
-  FD1S3AX #(.GSR("DISABLED")) f2_14 (.D(m_14), .CK(clk), .Q(dout_14));
-  wire m_15;
-  FD1S3AX #(.GSR("DISABLED")) f1_15 (.D(din_15), .CK(clk), .Q(m_15));
-  FD1S3AX #(.GSR("DISABLED")) f2_15 (.D(m_15), .CK(clk), .Q(dout_15));
-  wire m_16;
-  FD1S3AX #(.GSR("DISABLED")) f1_16 (.D(din_16), .CK(clk), .Q(m_16));
-  FD1S3AX #(.GSR("DISABLED")) f2_16 (.D(m_16), .CK(clk), .Q(dout_16));
-  wire m_17;
-  FD1S3AX #(.GSR("DISABLED")) f1_17 (.D(din_17), .CK(clk), .Q(m_17));
-  FD1S3AX #(.GSR("DISABLED")) f2_17 (.D(m_17), .CK(clk), .Q(dout_17));
 endmodule

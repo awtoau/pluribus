@@ -1,9 +1,9 @@
 module top (clk,
-  din_0, din_1, din_2, din_3, din_4, din_5, din_6, din_7, din_8, din_9, din_10, din_11, din_12, din_13, din_14, din_15, din_16, din_17, din_18, din_19, din_20, din_21, din_22, din_23, din_24, din_25, din_26, din_27, din_28, din_29, din_30, din_31, din_32, din_33, din_34, din_35, din_36, din_37, din_38,
-  dout_0, dout_1, dout_2, dout_3, dout_4, dout_5, dout_6, dout_7, dout_8, dout_9, dout_10, dout_11, dout_12, dout_13, dout_14, dout_15, dout_16, dout_17, dout_18, dout_19, dout_20, dout_21, dout_22, dout_23, dout_24, dout_25, dout_26, dout_27, dout_28, dout_29, dout_30, dout_31, dout_32, dout_33, dout_34, dout_35, dout_36, dout_37, dout_38);
+  din_0, din_1, din_2, din_3, din_4, din_5, din_6, din_7, din_8, din_9, din_10, din_11, din_12, din_13, din_14, din_15, din_16, din_17, din_18, din_19, din_20, din_21, din_22, din_23, din_24, din_25, din_26, din_27, din_28, din_29, din_30, din_31, din_32, din_33, din_34, din_35, din_36,
+  dout_0, dout_1, dout_2, dout_3, dout_4, dout_5, dout_6, dout_7, dout_8, dout_9, dout_10, dout_11, dout_12, dout_13, dout_14, dout_15, dout_16, dout_17, dout_18, dout_19, dout_20, dout_21, dout_22, dout_23, dout_24, dout_25, dout_26, dout_27, dout_28, dout_29, dout_30, dout_31, dout_32, dout_33, dout_34, dout_35, dout_36);
   input clk;
-  input din_0, din_1, din_2, din_3, din_4, din_5, din_6, din_7, din_8, din_9, din_10, din_11, din_12, din_13, din_14, din_15, din_16, din_17, din_18, din_19, din_20, din_21, din_22, din_23, din_24, din_25, din_26, din_27, din_28, din_29, din_30, din_31, din_32, din_33, din_34, din_35, din_36, din_37, din_38;
-  output dout_0, dout_1, dout_2, dout_3, dout_4, dout_5, dout_6, dout_7, dout_8, dout_9, dout_10, dout_11, dout_12, dout_13, dout_14, dout_15, dout_16, dout_17, dout_18, dout_19, dout_20, dout_21, dout_22, dout_23, dout_24, dout_25, dout_26, dout_27, dout_28, dout_29, dout_30, dout_31, dout_32, dout_33, dout_34, dout_35, dout_36, dout_37, dout_38;
+  input din_0, din_1, din_2, din_3, din_4, din_5, din_6, din_7, din_8, din_9, din_10, din_11, din_12, din_13, din_14, din_15, din_16, din_17, din_18, din_19, din_20, din_21, din_22, din_23, din_24, din_25, din_26, din_27, din_28, din_29, din_30, din_31, din_32, din_33, din_34, din_35, din_36;
+  output dout_0, dout_1, dout_2, dout_3, dout_4, dout_5, dout_6, dout_7, dout_8, dout_9, dout_10, dout_11, dout_12, dout_13, dout_14, dout_15, dout_16, dout_17, dout_18, dout_19, dout_20, dout_21, dout_22, dout_23, dout_24, dout_25, dout_26, dout_27, dout_28, dout_29, dout_30, dout_31, dout_32, dout_33, dout_34, dout_35, dout_36;
   wire m_0;
   FD1S3AX #(.GSR("DISABLED")) f1_0 (.D(din_0), .CK(clk), .Q(m_0));
   FD1S3AX #(.GSR("DISABLED")) f2_0 (.D(m_0), .CK(clk), .Q(dout_0));
@@ -115,10 +115,4 @@ module top (clk,
   wire m_36;
   FD1S3AX #(.GSR("DISABLED")) f1_36 (.D(din_36), .CK(clk), .Q(m_36));
   FD1S3AX #(.GSR("DISABLED")) f2_36 (.D(m_36), .CK(clk), .Q(dout_36));
-  wire m_37;
-  FD1S3AX #(.GSR("DISABLED")) f1_37 (.D(din_37), .CK(clk), .Q(m_37));
-  FD1S3AX #(.GSR("DISABLED")) f2_37 (.D(m_37), .CK(clk), .Q(dout_37));
-  wire m_38;
-  FD1S3AX #(.GSR("DISABLED")) f1_38 (.D(din_38), .CK(clk), .Q(m_38));
-  FD1S3AX #(.GSR("DISABLED")) f2_38 (.D(m_38), .CK(clk), .Q(dout_38));
 endmodule

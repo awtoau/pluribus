@@ -2,4 +2,4 @@ top = "top"
 purpose = "coverage design, profile perm"
 profile = "perm"
 seed = 104
-lanes = 39
+lanes = 37

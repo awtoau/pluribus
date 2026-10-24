@@ -2,4 +2,4 @@ top = "top"
 purpose = "coverage design, profile bt"
 profile = "bt"
 seed = 202
-lanes = 18
+lanes = 14

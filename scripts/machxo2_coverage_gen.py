@@ -17,6 +17,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, "corpus", "machxo2", "coverage")
 DB = os.path.join(REPO, "device-db", "MachXO2", "LCMXO2-1200")
 CLK_PIN = "88"  # as in the existing fuzz corpus (top edge)
+JTAG = {"90", "91", "94", "95"}  # TMS TCK TDI TDO: reserved by sysCONFIG (PAD report)
 
 pins = json.load(open(os.path.join(DB, "iodb.json")))["packages"]["TQFP100"]
 grid = json.load(open(os.path.join(DB, "tilegrid.json")))
@@ -41,7 +42,7 @@ def edge(p):
 
 
 def pins_on(e):
-    return sorted(k for k, p in pins.items() if edge(p) == e and k != CLK_PIN)
+    return sorted(k for k, p in pins.items() if edge(p) == e and k != CLK_PIN and k not in JTAG)
 
 
 def site_rc(s):
@@ -90,7 +91,7 @@ def pick(rng, pool, n):
 def main():
     os.makedirs(OUT, exist_ok=True)
     names = []
-    allp = sorted(k for k in pins if k != CLK_PIN)
+    allp = sorted(k for k in pins if k != CLK_PIN and k not in JTAG)
     half = lambda lo: sites_where(lambda r, c: (c <= 11) == lo)
     for k in range(6):
         rng = random.Random(100 + k)
@@ -133,7 +134,9 @@ def main():
         rng = random.Random(400 + r)
         rowsites = sites_where(lambda rr, c: rr == r)
         pl = [k for k in pins_on("L") if pins[k]["row"] == r] or pins_on("L")[:2]
-        n = min(8, len(rowsites))
+        n = min(8, len(rowsites), len(pins_on("L")), len(pins_on("R")))
+        if n < 1:
+            continue
         pr_ = pins_on("R")
         names.append(emit(f"rowline_{r}", "rowline", (pins_on("L") * 3)[:0] or pins_on("L")[:min(n, len(pins_on("L")))],
                           pr_[:min(n, len(pr_))], pick(rng, rowsites, n), pick(rng, rowsites, n), 400 + r))
