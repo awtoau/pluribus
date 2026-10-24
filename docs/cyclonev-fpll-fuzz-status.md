@@ -5,19 +5,15 @@ instantiated vendor IP blocks instead of leaving them as flat gate soup —
 no family has this capability yet.
 
 Script: `scripts/cyclonev_fpll_fuzz.py`, sibling of `scripts/cyclonev_dsp_fuzz.py`.
-Device: `5CEBA4U19C8` (e50f/e50b, same die as the DJI m2001 ground FPGA).
+Device: `5CEBA4U19C8` (e50f/e50b).
 Flow: `quartus_map` -> `quartus_fit` -> `quartus_asm` -> `quartus_cpf -c` ->
 `mistral-cv decomp`, same proven sequence as `cyclonev_dsp_fuzz.py`.
 
-## Headline: the decode works for symmetric (50%-duty) M/N, and plainly
-## does NOT extend to the real m2001 sample
+## Headline: the decode works for symmetric (50%-duty) M/N only
 
-The real sample's 4 FPLL tiles all have `M_CNT_HI_DIV != M_CNT_LO_DIV` or
-`N_CNT_HI_DIV != N_CNT_LO_DIV` — asymmetric fields outside every case this
-fuzz run calibrated (all 6 compiled designs used 50% duty, i.e. `hi==lo`).
-`decode_fpll_tile()` reports `confidence=UNKNOWN` for the real sample's M/N
-counters rather than guess a number. See "Applied to the real sample"
-below for the per-tile detail.
+- All 6 compiled designs used 50% duty (`hi==lo`); asymmetric `hi != lo` counter fields are uncalibrated.
+- `decode_fpll_tile()` reports `confidence=UNKNOWN` for those rather than guess a number.
+- The decode has not been checked against any non-synthetic FPLL configuration.
 
 ## What field names mean — confirmed, not guessed
 
@@ -139,33 +135,11 @@ because Quartus itself does not preserve that literal mapping.
   populated or a different (working) minimal atom wiring, neither
   attempted further given the session's time budget. Not treated as solved.
 
-## Applied to the real m2001 sample (awto-dji, read-only)
+## Applying to another `.bt`
 
-4 FPLL tiles confirmed (re-derived, not trusted from the issue text):
-`FPLL.000.000`, `FPLL.000.037`, `FPLL.054.000`, `FPLL.054.037`.
-
-| Tile | M_CNT hi/lo | M decode | N_CNT hi/lo | N decode | Confidence |
-|---|---|---|---|---|---|
-| `FPLL.000.000` | 0/0 | UNKNOWN (undecodable) | 32/0 | UNKNOWN (asymmetric) | UNKNOWN |
-| `FPLL.000.037` | 0/0, BYPASS_EN=1 | 1 (bypass) | 0/52 | UNKNOWN (asymmetric) | UNKNOWN |
-| `FPLL.054.000` | 0/0, BYPASS_EN=1 | 1 (bypass) | 0/52 | UNKNOWN (asymmetric) | UNKNOWN |
-| `FPLL.054.037` | 0/0 | UNKNOWN (undecodable) | 32/0 | UNKNOWN (asymmetric) | UNKNOWN |
-
-Every tile's N counter is asymmetric (`hi != lo`) — outside every
-calibrated case (all 6 fuzz designs used 50% duty, `hi==lo`). Two tiles'
-M counter is bypassed (calibrated for N, not independently calibrated for
-M — see above); the other two have `M_CNT_HI==M_CNT_LO==0` while NOT
-bypassed, a combination no fuzzed design produced (the decode correctly
-returns `None`/"undecodable" rather than defaulting to some guessed
-divide). **None of the 4 real tiles get a numeric M or N divide value out
-of this decode** — every one reports `confidence=UNKNOWN`. This is the
-honest result: the calibration generalizes to feasible, documentable
-synthetic cases, and does not yet cover the real design's actual counter
-states. `CNT_PH_MUX_PRESET` values ARE present on 3/4 tiles (raw, not
-decoded into degrees — see phase-decode gap above).
-
-Full machine-readable report: `tmp/cyclonev_fpll_fuzz/real_sample_report.json`
-(gitignored, regenerate with `--skip-compile --apply-real <path-to-m2001.bt>`).
+`--apply-real <decomp.bt>` decodes every FPLL tile in a given `.bt` and writes `tmp/cyclonev_fpll_fuzz/real_sample_report.json` (gitignored).
+Per-tile `confidence=UNKNOWN` for any tile outside the calibrated cases (asymmetric counters, `M_CNT_HI==M_CNT_LO==0` without bypass).
+`CNT_PH_MUX_PRESET` is reported raw, not decoded into degrees (phase-decode gap above).
 
 ## `emit_fplls()` in `verilog.py`
 
@@ -218,12 +192,12 @@ raw `.bt` settings is real follow-on work, not attempted this session.
 python3 scripts/cyclonev_fpll_fuzz.py                       # all 6 designs
 python3 scripts/cyclonev_fpll_fuzz.py --only pll_m8_n1_c4
 python3 scripts/cyclonev_fpll_fuzz.py --skip-compile \
-    --apply-real /path/to/m2001.bt                          # real-sample report
+    --apply-real /path/to/decomp.bt                         # per-tile report
 ```
 
 Output: `tmp/cyclonev_fpll_fuzz/mapping.json` (full settings per design),
 `tmp/cyclonev_fpll_fuzz/<design>/<design>.bt` (raw Mistral decompile),
-`tmp/cyclonev_fpll_fuzz/real_sample_report.json` (real-sample decode),
+`tmp/cyclonev_fpll_fuzz/real_sample_report.json` (decode of the given `.bt`),
 `tmp/logs/cyclonev_fpll_fuzz.log` (full run log). All under `tmp/`,
 gitignored per project convention.
 
@@ -241,4 +215,4 @@ gitignored per project convention.
   a working minimal atom wiring.
 - Wire `cyclonev_lift.py` to populate `data["fpll_tiles"]` from a real
   tile's settings so `emit_fplls()` runs against a real pipeline, not just
-  synthetic data and the standalone real-sample report.
+  synthetic data.

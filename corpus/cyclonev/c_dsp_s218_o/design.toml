@@ -1,0 +1,7 @@
+top = "c_dsp_s218_o"
+purpose = "signed 18x18 multiply x2 summed, stages o [vendor multstyle dsp]"
+exercises = ["dsp", "mult"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "dsp"
+variant = "s2_o"
+width = 18

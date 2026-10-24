@@ -542,7 +542,7 @@ def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
 
         # always-rebuild: drop this label's rows before re-inserting
         for tbl in (schema.net_fanout, schema.arcs, schema.ffs, schema.luts,
-                    schema.pad_map, schema.nets):
+                    schema.pad_map, schema.cv_hard_cells, schema.nets):
             conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
 
         # ── nets ──────────────────────────────────────────────────────────
@@ -571,7 +571,15 @@ def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
         ).scalar()
         assert_eq("LUT count in DB", lut_count, n_luts)
 
-        # ── FFs (D/CLK/CE only for plain posedge D flops, see lifters/cyclonev_lift.py) ──
+        # ── hard-block cells (M10K / MLAB RAM ...): the vendor-atom instance records ──
+        hard_rows = [{"bitstream": bs_id, "cell": h["name"], "kind": h["kind"],
+                      "data": {k: (str(v) if k == "init" else v) for k, v in h.items()
+                               if k not in ("name", "kind")}}
+                     for h in design.hard]
+        if hard_rows:
+            conn.execute(insert(schema.cv_hard_cells), hard_rows)
+
+        # ── FFs (controls: d/clk/ce/lsr + dtype flags, see lifters/cyclonev_lift.py) ──
         bad_ffs = [ff for ff in design.ffs if not ff.get("name") or not ff.get("q")]
         if bad_ffs:
             die(f"{len(bad_ffs)} FFs have missing name or Q: {[f['name'] for f in bad_ffs[:5]]}")
@@ -1416,8 +1424,8 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                       + ", ".join(f"wid {i} ({n} words)" for i, n in unmatched_live))
 
             # ── efb_config (0x72 EFB peripheral config-register preloads) ─────────
-            # docs/cmd-0x72.md: sel 0x54 = SPI EFB config, 0x5e = TC (timer/counter).
-            _EFB_SEL_KIND = {0x54: "SPI", 0x5e: "TC"}
+            # docs/cmd-0x72.md, docs/efb-config.md: 0x40 I2C1, 0x4a I2C2, 0x54 SPI, 0x5e TC.
+            _EFB_SEL_KIND = {0x40: "I2C1", 0x4a: "I2C2", 0x54: "SPI", 0x5e: "TC"}
             efb_cfg_rows = [
                 {"bitstream": bs_id, "sel": sel,
                  "kind": _EFB_SEL_KIND.get(sel, "unknown"),

@@ -2,9 +2,9 @@
 """Compile a trivial Verilog design for each Cyclone V die family in Quartus,
 to get real ground-truth .rbf sizes per die (both compressed and uncompressed).
 Used to narrow an unknown Cyclone-V bitstream's die family by size, when the
-bitstream itself carries no IDCODE (confirmed: Mistral's IDCODE field is a
-default-value slot, not extracted from the bitstream; Quartus's get_part_info
-Tcl API has no IDCODE getter either — see awto-dji#3).
+bitstream itself carries no IDCODE (Mistral's IDCODE field is a default-value
+slot, not extracted from the bitstream; Quartus's get_part_info Tcl API has no
+IDCODE getter either).
 
 A near-empty design's .rbf size is dominated by the device's own raw config-RAM
 size, so uncompressed rbf_size works as a size proxy across die families
@@ -14,11 +14,9 @@ byte-for-byte. Only resolves to die-size-class granularity though: several
 part numbers share one die's fabric size (the same limit Mistral's 7-die set
 already has).
 
-leading_ff_len is recorded but is NOT a reliable die signature — confirmed
-(awto-dji#3) it is a quartus_cpf generation-option artifact: default options
-give the same leading_ff_len for every die, while DJI's real m2001 image
-(known e50f) has a different value despite everything else matching. Treat it
-as a raw observation per rbf_mode, not as a cross-die identification feature.
+leading_ff_len is recorded but is NOT a die signature: it is a quartus_cpf
+generation-option artifact (default options give the same value for every die).
+Treat it as a raw observation per rbf_mode.
 
 Usage:
     python3 scripts/cyclonev_die_probe.py --target-rbf /path/to/unknown.depack.bin
@@ -200,7 +198,7 @@ def main():
 def _main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target-rbf", type=Path, default=None,
-                     help="depacked unknown bitstream to compare against (e.g. m1900.depack.bin)")
+                     help="depacked unknown bitstream to compare against (optional; size comparison only)")
     ap.add_argument("--work-dir", type=Path,
                      default=Path("/mnt/2tb/git/pluribus/tmp/cyclonev_die_probe"))
     args = ap.parse_args()
@@ -227,11 +225,9 @@ def _main():
             print(f"{r['die']:8s} {r['part']:16s} rbf_size={r['rbf_size']:>10}")
 
     if args.target_rbf:
-        # target_rbf is a depacked payload (DJI's own leading/trailing-0xFF strip
-        # convention, not a raw quartus_cpf .rbf) -- compare size only against the
-        # compressed-mode results, since that's the format DJI ships. Size alone
-        # narrows to a die-size-class, it does not pick a single die uniquely when
-        # several dies compress to similar sizes for a given design's content.
+        # target_rbf may be a depacked payload (leading/trailing-0xFF stripped), so
+        # compare size only against the compressed-mode results. Size alone narrows
+        # to a die-size class; it does not pick a single die.
         target = args.target_rbf.read_bytes()
         tsize = len(target)
         print(f"\n=== Target: {args.target_rbf.name} (size={tsize}) ===")

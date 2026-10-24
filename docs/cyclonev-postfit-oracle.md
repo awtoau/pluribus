@@ -9,11 +9,11 @@ Quartus's own post-fit netlist is the oracle for the Bluebird acceptance loop (V
   - quartus_eda warns this is the "functional simulation netlist" (the only type for this device). It still carries every placed atom, all ports, defparams and `// Location:` comments.
 - Lift under test: `mistral-cv decomp` -> `lifters/cyclonev_lift.py` -> `load.py` + `verilog.py` (`lifted.v`). The compare reads the lifter's own `Design.luts` / `Design.ffs`; it holds no LUT mapping.
 - `scripts/cyclonev_postfit_compare.py`, per atom, at the same physical location:
-  - `lut_mask` / `lut_mask_arith`: the lifted LUT table (wired through its LAB pins) vs Quartus `lut_mask` on every reachable input vector (`_arith` = ALM with `ARITH_SEL ADDER`). `lut.extra`: lifted LUT halves with no Quartus lcell.
+  - `lut_mask` / `lut_mask_arith`: the lifted LUT table (wired through its LAB pins, over the nets) vs Quartus `lut_mask` on every reachable input vector, each port's `!` applied (`_arith` = ALM with `ARITH_SEL ADDER`). `lut.extra`: lifted LUT halves with no Quartus lcell.
   - `conn.<port>` / `conn_arith.<port>`: for every LUT data input, the atom driving it per Quartus vs the lifted LUT's own pin (or feedback register) via the DSU nets. A LUT the lifter did not emit, or a pin it does not wire, is LIFT_MISSING.
-  - `conn.obuf.i`: driver of each output buffer, via the lifter's pad for that package pin.
+  - `conn.obuf.i`: driver of each output buffer, via the lifter's pad for that package pin, plus `!` (Quartus `.i(!...)` vs the lifter's pad inverter).
   - `ff.present`, `ff.extra` (lifted register with no Quartus register), `ff.d/clk/clrn/ena/sclr/sload`: driver + inversion of each control. `ff.d` = `asdata` when Quartus ties `sload` high. Quartus clock-enable buffers are traced through.
-  - `ff.clk` needs the clock tree (CMUX/PLL -> spine), which is not modelled: the lifted source is an unnamed spine node, scored LIFT_MISSING ("unbridged"). Two checks that do not need it: `ff.clk.edge` (polarity) and `ff.clk.domain` (lifted clock-root partition == Quartus clock-net partition, per design).
+  - `ff.clk`: driver of the clock pin, traced through the lifter's clock-tree links (pad/PLL -> CMUX -> GCLK/RCLK -> SCLK, see "Clock tree"); an unresolved spine node stays LIFT_MISSING ("unbridged"). Also `ff.clk.edge` (polarity) and `ff.clk.domain` (lifted clock-root partition == Quartus clock-net partition, per design).
   - `pin`: package pin + direction vs the lifter's `Design.pads`.
   - `block.*`: DSP (`cyclonev_mac`), M10K (`cyclonev_ram_block`), clock control (`cyclonev_clkena`) -- no lifted model, always `QUARTUS_ONLY`.
 - Verdicts: `MATCH`, `MISMATCH`, `LIFT_MISSING` (lifter has no value), `QUARTUS_ONLY` (no lifted counterpart at all), `LIFT_ONLY`, `UNMODELLED` (ALM mode the LUT mapping does not cover).
@@ -79,7 +79,7 @@ How it was proven (`scripts/cyclonev_lut_pinmap_proof.py`, log `tmp/logs/cyclone
   - `F_0`/`F_1` modes: one instance (counter_en_aclr `q[0]~0`, `BMODE F_1`); it fits no address function of its used pins. Reported `UNMODELLED`.
   - `D_F`/`C_F` vs `D_E`/`C_E`: no LUT difference seen in the data.
   - Arith ALMs match the same model, but `sumout`/carry semantics are not checked (only `combout` masks are compared).
-- The Quartus `!` on a LUT input is not a polarity of the mask. Every routed input carries `!`. An input fed back from the ALM's own register also carries `!`, but the mask then reads the uninverted value (two_clocks `ca[0]~3`: equation `!ca[0]`, mask `FFFF0000FFFF0000` over `e`). The model is in Quartus-mask space and needs no per-pin inversion.
+- The mapping above is in Quartus port space. Every routed input port carries `!` (port = NOT net), so the lifted `init` is complemented on the routed letters (see "Polarity").
 
 The mapping lives in the lifter (`_lut_table()`, `_port_pins()`); the compare only knows which LAB pin carries which Quartus port (`lab_pin()`).
 
@@ -172,8 +172,8 @@ Half mode = `<d source>_<e source>` (T: `D_E` default, `D_F`, `E_0`, `F_0`; B: `
 
 - Fixed: LUT polarity, halves, input order, bottom c/d swap, MLAB permutation; `F0`/`F1` are inputs; `NLUT` ports are LUT outputs, not registers; one register per physical register; registers independent of LUT halves; register feedback; absent `LUT_MASK` = constant 0.
 - Not lifted (counted in `Design.unmodelled_halves`): MLAB `RAM`/`ROM` halves and undecoded `BMNONE`.
-- Arithmetic `sumout`/carry is not modelled: arith halves are lifted as their `combout` LUT only; an arith half with a constant table and no output is not emitted.
-- DJI ground sample (`cyclonev_verify_all.py`): 33336/11502/144296 -> 6511/7855/15818 LUTs/FFs/nets. Old: every non-zero 32-bit half incl. unused ones, every routed `FF*` port as a register (nlut pass-throughs, `FF?1`+`FF?1L` twice). Corpus check: lifted FFs 1754 = Quartus 1754.
+- (superseded, see "Arithmetic") `sumout`/carry was not modelled: arith halves were lifted as their `combout` LUT only.
+- Old lifter: every non-zero 32-bit half incl. unused ones, every routed `FF*` port as a register (nlut pass-throughs, `FF?1`+`FF?1L` twice). Corpus check: lifted FFs 1754 = Quartus 1754.
 
 ## Verified vs assumed
 
@@ -183,3 +183,147 @@ Half mode = `<d source>_<e source>` (T: `D_E` default, `D_F`, `E_0`, `F_0`; B: `
   - `aclr1`, inverted enable / sclr, `sload` signal, MLAB `GIN3`.
   - Clock-tree source of a register clock (CMUX); DSP/M10K internals; Mistral routing-element names vs Mistral nodes.
 - Single device/die and one Quartus version.
+
+## Clock tree (2026-10-24)
+
+Corpus now 236 designs (`c_ram_vnd_logic_16` has an oracle since its rebuild; its 1040 registers were the `ff.clk.domain` regression below). Same compare, 236 designs unless stated.
+
+| field | before | after |
+|---|---|---|
+| ff.clk | 22/2794 (0.8%), faults 2772 (m2772 x0 w0) | 2794/2794 (100.0%), faults 0 |
+| ff.clk.domain | 1754/2794 (62.8%), faults 1040 (m0 x0 w1040) | 2794/2794 (100.0%), faults 0 |
+| pins | 4386/4556 (96.3%), faults 170 (m170 x0 w0) | 4493/4556 (98.6%), faults 63 (m63 x0 w0) |
+| every other field | unchanged | unchanged |
+
+- Split (sorted design list, even / odd index; same rules, nothing tuned per split): ff.clk even 2200/2200, odd 594/594; pins even 3352/3412 (m60), odd 1141/1144 (m3).
+- Corpus clock sources are few: every design clocks from pad K17 (CMUXHG.054.022, inst 2 `INPUT_SEL` 6 = `NCLKPIN_SEL_2`; inst 0/1 in `clock_promotion`/`two_clocks`) or L17 (CMUXCR.054.002 inst 2). The split therefore checks the same CMUX paths twice; PLL inputs, other pins and `HR`/`VR` muxes have no corpus evidence.
+- Chain (lifter `clock_tree_links()`, data `lifters/data/cyclonev_e50f_clocks.json` from `scripts/cyclonev_clock_tree_extract.py`, Mistral `e50f-r`/`e50f-cmux`/`cyclonev.cc`):
+  - Quartus RCF element = Mistral node: `GLOBAL_CLOCK X0Y22 I10` = `GCLK.000.022.0010`, `SPINE_CLOCK X12Y0 I16` = `SCLK.012.000.0016` (counter_en_aclr, c_counter_sv_8: `X39Y0 I11`).
+  - A default SCLK mux gets no `r` line (`cv-rmux.cc`: `dnode.t()==SCLK && default -> continue`). SCLK root source = the one candidate in its `e50f-r` source list whose CMUX instance has an `INPUT_SEL` setting (GCLK list index = instance; RCLK list index = instance for CR/HR/VR). 0 or >1 live candidates = no link, counted in `Design.clock_unresolved`.
+  - CMUX instance input: `INPUT_SEL.<i>` (hex) indexes `cmux{hg,vg,cr,hr,vr}_link_table[i]` -> `CLKPIN_SEL_k` / `NCLKPIN_SEL_k` (label = slot in the CMUX `clkpin`/`nclkpin` list; default label 2k for G muxes, k for CR) or `PLLIN n` (`pllg`/`pllr`). Other kinds (`CLKIN`, `ICLK_SEL`, `SWITCH`) are not resolved.
+  - Pad label: `s GPIO.x.y:<MUX>.<n> ... ; <pin>` names pad n of the tile (2428/2428 against the bi-qualified comments, 0 conflicts); the clock pads K17/L17 carry no `r` arc, only such comments.
+  - Clock links are DSU unions, not `.bt` arcs: one clock reaching several sectors is one net (fixes the `c_ram_vnd_logic_16` 959 + 81 split).
+- Scorecard option: `--split even|odd`.
+
+## Self-feeding LUT latch
+
+- `verilog.py` `_lut_self_latch()` REMOVED (64-char init = Cyclone V only). Self-feeding LUTs are plain combinational-loop `assign`s again.
+- Evidence: corpus design `c_latch_v95_1` (SR latch, gated D latch, `q3 = ~(q3 & x)`), built with Quartus 25.1; structural compare all MATCH (lut_mask 5, conn 16, pins 8).
+- `scripts/cyclonev_lifted_sim_check.py c_latch_v95_1 --zero x` (iverilog, lifted.v vs Quartus `build.vo`): Quartus netlist behaves as the source (q1 set/clear/hold, q2 follows `e`). Lifted: q1 never sets, q2 and q3 stay X.
+- Why the function was wrong: it read (f0,f1) in port space, but every routed LUT port carries `!` in the netlist (port = NOT signal). Hold looks like (1,0) and was refused (q2); the oscillator `q3` looked like (0,1) and was emitted as a hold latch.
+- The same script found the wider polarity gap; fixed, see "Polarity".
+
+## Pads (2026-10-24)
+
+| field | before | after |
+|---|---|---|
+| pins | 4493/4556 (98.6%), faults 63 (m63 x0 w0) | 4556/4556 (100.0%), faults 0 |
+| obuf.i | 1509/1556 (97.0%), faults 47 (m47 x0 w0) | 1556/1556 (100.0%), faults 0 |
+
+(Start of the session: pins 4386/4556, 170 missing; the 107 closed before this step were dedicated clock pads and pad comments, see "Clock tree".)
+
+Classification of the 63 pins + 47 obuf.i still missing before this step:
+- 60 pins + 47 obuf.i: pad reached through the HMC (top/bottom edge DDR I/O). Arc `r TD.. HMC.011.045:IOINTDQDOUT.20 ; D13` (fabric -> pin) or `r HMC.011.045:IOINTDQDIN.40 V2.. ; F15` (pin -> fabric); no GPIO arc. Lifter: `pc.hmc_pins` (node -> pin comment, `IOINT*DIN/DOUT` ports), `recover_pads()` makes the pad (DIN = in, DOUT = out, both = bidir), row/col/pio from the tile's GPIO annotation. Compare: `conn.obuf.i` uses the HMC DOUT node when there is no GPIO DATAOUT node.
+- 3 pins (`up`, c_updown_{sv,v95,vnd}_1): unused input, only `USE_WEAK_PULLUP` settings, no arc. A configured pad with no arc -> `in`, no net (3/3 in the corpus are Quartus inputs, 0 outputs; an output always has a DATAOUT or HMC arc).
+- Dedicated clock pins: closed with the clock tree (pad -> CMUX).
+- Not evidence-backed: a pad that is both unrouted and an output (constant-driven output) would be mislabelled `in`; none in the corpus.
+
+## Constant-0 LUT (`~QUARTUS_CREATED_GND~I`) decision (2026-10-24)
+
+| field | before | after |
+|---|---|---|
+| lut function | 3288/3524 (93.3%), faults 236 (m236 x0 w0) | 3288/3288 (100.0%), faults 0, excluded 236 |
+
+- Decision: oracle-side artifact, excluded from the score with verdict `EXCLUDED` (a row per cell, reason in `lifted_value`), counted in the scorecard `excl` column.
+- Rule (generic, not name-based): a Quartus `cyclonev_lcell_comb` with no lifted counterpart, no input net on any data port and an output net that no atom reads.
+- Evidence (236/236 designs, 236 cells): `lut_mask 64'h0`, all inputs `gnd`, `combout` net has 0 sinks in `postfit_conns`; the bitstream stores constants as unrouted pins (all-ones `LUT_MASK` = absent line), so the cell has no trace and no observable function.
+- Not a lift fault: emitting a LUT with no sink would change no net. A cell that fits the rule but the lifter does emit is still scored.
+- Scope: `combout` masks only; arithmetic `sumout`/`cout` are scored separately (see "Arithmetic"). Function of the emitted Verilog: "Functional sim gate".
+
+## Arithmetic (2026-10-24)
+
+| field | before | after |
+|---|---|---|
+| arith function (sum + cout + shareout) | 0/741 (0.0%), faults 741 (m741 x0 w0) | 741/741 (100.0%), faults 0 |
+| arith cin/share (`conn.cin`, `conn.sharein`) | 0/431 (0.0%), faults 431 (m431 x0 w0) | 431/431 (100.0%), faults 0 |
+| every other field | unchanged | unchanged |
+
+Split (sorted designs, even / odd): arith function 661/661 / 80/80; cin/share 381/381 / 50/50.
+
+- Oracle `arith.*` (compare): Quartus `sumout`/`cout`/`shareout` function from the `cyclonev_lcell_comb` simulation model (Quartus 25.1 `eda/sim_lib/cyclonev_atoms.v`, read as reference, not copied) evaluated on `lut_mask`, vs the lifted row over every vector of the connected inputs (`a b c d f cin sharein`); `conn.cin` / `conn.sharein` = driver atom of the pin vs the lifted source half. Rows exist only where the Quartus net is read.
+  - `f0 = mask[15:0](a,b,c,d)`, `f2 = mask[47:32](a,b,c,dataf)`, `in2 = sharein` if `shared_arith` else `!f2`, `sum = cin^f0^in2`, `cout = maj(cin,f0,in2)`, `shareout = mask[47:32](a,b,c,d)`.
+- Lifter (`_arith_luts()`): `ARITH_SEL ADDER` halves emit up to three rows on the 64-bit Mistral->Quartus table (`_lut_table` with no folding, since `f2` reads the `f=1` region):
+  - `sum` (name = the plain half name, `z` = the NLUT/register net): letters a,b,c,d as before, e = cin, f = dataf (sharein in shared mode, where dataf is unused).
+  - `cout` (`*_cout`) and `shareout` (`*_shout`) rows own new carry nets; emitted only while a later emitted half consumes them.
+  - Chain: halves run T0,B0,T1,B1,... of a tile; cin = cout of the previous half (Quartus lcell N -> N+3: 314/314, sharein 84/84), cin = 0 at the start of an ADDER run. `SHARE=1` <=> `shared_arith on` (93/93; 254/254 off have no `SHARE`).
+- Combout view kept for `lut_mask_arith`: rows carry `comb_init`/`comb_pins`.
+- Not modelled: carry chain across a LAB boundary (cin of the first half of a tile is 0; no corpus chain crosses a LAB), two back-to-back chains in one ADDER run (not distinguishable in the bitstream), `extended_lut` (datag; `extended_lut off` in all 347 arithmetic cells).
+
+## Polarity (2026-10-24)
+
+Evidence: `scripts/cyclonev_polarity_evidence.py` (236 designs, `build.vo` + `decomp.bt`).
+
+- LUT data inputs: every routed `cyclonev_lcell_comb` data port carries `!`: 11093 / 11093, 0 plain (includes LUT->LUT and register feedback). `cin` / `sharein`: never (314 + 84).
+  - Quartus `lut_mask` indexes the complemented nets. Lifter: `init` bit v = mask bit (v XOR routed-letter mask) (`_complement_inputs`); arith rows complement a-d and `dataf`, not `cin` / `sharein`.
+- Pad outputs: `.bt` inverter `i GPIO...:DATAOUT.n 1` (or `i HMC...:<..>DOUT.n 1`) <=> obuf `.i(!...)`: 38 / 38; no inverter <=> plain: 1518 / 1518; 0 exceptions.
+  - Lifter: an explicit NOT row (`io_inv_<pin>`, `io_inverter`), the pad's `net_out` is its output; pad `out_inverted`.
+- Complement experiment (pre-fix lifted.v, every lifted input driven complemented): `c_casemux_v95_4` 8036 / 8036 matched; `c_decoder_v95_3` 12054 / 16072, the 2 bad pins = the 2 inverted obufs.
+- Compare (`cyclonev_postfit_compare.py`) now applies each port's `!`. Pre-fix lifter under it: lut function 253 / 3288 (wrong 3035), arith 356 / 741 (wrong 385), obuf.i 1518 / 1556 (wrong 38). After: 3288 / 3288, 741 / 741, 1556 / 1556. The old compare read 100% on the pre-fix lifter: it scored port-space masks and ignored the `!`.
+
+## Functional sim gate (2026-10-24)
+
+`scripts/cyclonev_lifted_sim_check.py --all`; blocking stage 5 of `scripts/cyclonev_verify_all.py` (any FAIL / ERROR fails the run). There is no "not covered" status: an atom without a model is a FAIL.
+
+- Per design: re-lift `decomp.bt` with the current lifter, iverilog lifted.v vs `build.vo`, reset preamble then 2000 seeded random vectors, clocks in a separate phase. Inputs are defined at t=0 (an X-to-0 clock is not a negedge).
+- Models under `build.vo`: our lcell / io / clkena models, Altera `dffeas`, the plain vendor RAM and MLAB models, our `cyclonev_mac`.
+- Per output sample: matched | wrong | missing (lifted X or no port) | Quartus X (not scored). PASS = wrong 0, missing 0, matched > 0, model check not wrong.
+- Model check: same `build.vo` + models vs `src/*.v`.
+- Result table per kind: `docs/cyclonev-status.md`.
+
+| stage | pass | fail | not covered | matched / samples | wrong | missing |
+|---|---|---|---|---|---|---|
+| before (port-space masks) | 14 | 198 | 24 | 2114047 / 3804461 (55.6%) | 1677329 | 13085 |
+| polarity fix | 160 | 52 | 24 | 3432695 / 3804461 (90.2%) | 362728 | 9038 |
+| + emitter: pad-to-pad output, tie ignored LUT inputs | 165 | 47 | 24 | 3441733 / 3804461 (90.5%) | 362728 | 0 |
+| + register controls (enable, aclr, sclr, negedge) | 212 | 0 | 24 | 3804461 / 3804461 | 0 | 0 |
+| + RAM and MLAB (vendor models), 7 new designs | 241 | 0 | 2 | 4709178 / 4709178 | 0 | 0 |
+| + DSP (own model), 9 new designs, 3 PLL designs | 252 | 3 (PLL) | 0 | 6125789 / 6125789 | 0 | 0 |
+
+## Register controls (emitter)
+
+- Lifter writes `ffs.d`, `clk`, `ce`, `lsr` (= sync clear) for every register; polarity flags and the async clear net ride in `ffs.dtype` (`cyclonev_alm_reg;clkinv=1;ceinv=1;lsrinv=1;clr=<net>;clrinv=1;miss=<fields>`). No schema change.
+- `verilog.py` emit_ffs: `clrn` asynchronous clears, else on the clock edge `ena ? (sclr ? 0 : d) : hold` (Altera `PRIM_GDFF_LOW`: sclr is gated by ena). Negedge flops use `negedge`. A register with an unrecovered control (`miss=`) stays undriven and is listed.
+
+## RAM and MLAB (2026-10-24)
+
+Models: `cyclonev_ram_block` / `cyclonev_mlab_cell` in `cyclonev_atoms.v` are plain and wrap `generic_m10k` / `generic_28nm_lc_mlab_cell_impl` in `altera_lnsim.sv` (0 protect pragmas). The earlier "vendor models are encrypted" claim was wrong for RAM and MLAB; only the DSP, PLL and I/O-clock atoms are encrypted.
+
+- iverilog -g2012 fails parsing the whole `altera_lnsim.sv` (line 32252). `scripts/cyclonev_lnsim_extract.py` copies the needed modules (12 of them, verbatim) into `tmp/simcheck/`; those parse and simulate. Verilator was not needed for RAM.
+- Lifter: `lifters/cyclonev_hard.py` -> `Design.hard` -> table `cv_hard_cells` (JSON per atom) -> `verilog.py emit_hard_cells` instantiates the vendor atom with decoded parameters. Rules, each with 0 exceptions over the corpus RAM designs:
+  - M10K widths: A = `A_DATA_WIDTH` (default 40), B = `B_DATA_WIDTH` (default 20). `ADDRB` routed: dual_port x40 (A writes, B reads); `ADDRA` only: single_port, or rom if no `WREN` / `DATAAIN`.
+  - Address: pin = bit + `max(12 - max(abits, 8|9), 0)` (nextpnr `setup_m10ks`); abits = the smallest depth covering the routed pins. Data `DATAAIN.k` / `DATABIN.k` = `portadatain[k]` / `[20+k]`; `DATAAOUT.k` / `DATABOUT.k` = `portbdataout[k]` / `[20+k]` (single port: `portadataout`).
+  - `WREN.0` or `WREN.1` (whichever is routed), `CLKIN.0|.6` = clk0, `CLKIN.1|.7` = clk1 (B side on clock1), `ENABLE.1` = ena0. `A_OUTPUT_SEL`/`B_OUTPUT_SEL` = REG: output clock0. `mixed_port_feed_through_mode` is "old" (not in the bitstream; simulation hint).
+  - Contents: `RAM.<row>` = 40-bit row, inverted, bits permuted (nextpnr `write_m10k_cell`); a row holds 40/width words; row index bits above the design's address range read as 1 (rows 192..255 for 6 address bits). 4 init designs pass.
+  - MLAB (one ALM half in RAM mode = one 32 x 1 cell): read address pins A,B,C,D,F0 of the ALM; data E0 (top) / E1 (bottom); write address F1 of ALMs 2,3,7,6,1; write clock / enable like a register's; contents `NOT raw[perm[(31 - v) + 32*bottom]]` (address inputs are inverted, like LUT inputs). 8 / 8 cells of `c_raminit_vnd_mlab_4` matched by an exhaustive search over bit permutations and complements (unique solution: complement all five).
+- Corpus: `c_raminit_vnd_{m10k_4,m10k_16,mlab_4}`, `c_rom_vnd_{m10k_8,mlab_8}`, `c_ramsp_vnd_m10k_8`, `c_ramdc_vnd_m10k_8` (`scripts/cyclonev_construct_gen.py`). Quartus placed `c_rom_vnd_mlab_8` in an M10K.
+
+## DSP (2026-10-24)
+
+Method: (a) reference = the design's own source RTL, simulated directly; (b) our own `cyclonev_mac` model (`lifters/data/cyclonev_mac_model.v`) from the Cyclone V handbook (vol. 1 ch. 3, `sources/cyclonev-device-handbook.pdf`) and the atom's parameters, validated before use: `build.vo` on our model vs source RTL on all 11 corpus DSP designs (`scripts/cyclonev_dsp_model_check.py`, 0 wrong). The lifted side then runs on the same model and is also compared to the source RTL (model-independent). Questa-Altera Starter Edition (free licence, Dan to request) would run the encrypted atom as a further cross-check; not installed, not requested.
+
+- Modelled: `m9x9` (lane 0), `m18x18_full`, `m27x27`, `m18x18_sumof2`; per-operand input registers; output register. Everything else gives X.
+- Mistral MODE: `M9X9`, absent = `m18x18_full` (18x19), `M27X27`, `M18X19_COMBINED` = `m18x18_sumof2`.
+- Pin -> port bit (pad correlation, `DATAIN.n` of bank bi, `RESULT.k` = `resulta[k]`):
+  - m9x9: ax = bank0, bx = bank1, ay = bank2, by = bank3 (lane 0 evidenced).
+  - m18x18_full: ax = banks 0,1; ay = banks 2,3; `ay[18]` = bank5.8.
+  - m27x27: ax = banks 0,6,7; ay = banks 2,8,9.
+  - sumof2: as m18 plus bx = banks 6,7; by = banks 8,9; `by[18]` = bank11.8.
+- Signedness and registers (Mistral lane names are swapped against the atom's in the single-lane modes): `signed_max/may` = `BX/BY_SIGNED`, `ax/ay_clock` = `INREG_CTRL_BX/BY`, `output_clock` = `OREG_CTRL`; in sumof2 the names follow the atom.
+- Corpus: `mult9x9`, `mult18x18` plus `c_dsp_*` (signed / unsigned 9, 18, 27; input regs, output reg, combinational; sum of two products).
+
+## PLL (2026-10-24)
+
+- Vendor atoms (`cyclonev_fractional_pll`, `cyclonev_pll_output_counter`, `..._refclk_select`, `..._reconfig`) are encrypted: `build.vo` cannot be simulated. `altera_pll` (general) instantiates the plain `generic_pll`; iverilog 13 asserts on it (`eval_tree.cc:570`), verilator 5.046 `--timing` simulates it (100 MHz out of 50 MHz in: 199 edges in 2 us).
+- Corpus: `c_pll_vnd_m2d1_1`, `c_pll_vnd_m4d1_2`, `c_pll_vnd_m3d2_1` (50 MHz in).
+- Decode (`lifters/cyclonev_hard.py fpll_cell`): f = ref * M / N / C, M = `M_CNT_HI+LO`, N = `N_CNT_HI+LO`, C = `DPRIO0_CNT_HI.c + LO.c` of the counters with `Cc_COUT_EN`; unset hi / lo are 1. Matches the Quartus defparams of all 4 output counters (75, 100, 100 and 200 MHz). Quartus's own `FRACTIONAL_PLL` / `PLL_OUTPUT_COUNTER` defparams are a field-level oracle.
+- Not lifted: reference-clock pad (`CLKIN_0_SRC` = 4 in all three; the one refclk pad is H10), output counter -> clock net, phase shift, duty cycle, fractional mode. The gate reports the three designs as FAIL with that reason.

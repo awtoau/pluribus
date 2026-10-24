@@ -1,0 +1,7 @@
+top = "c_rom_vnd_mlab_8"
+purpose = "128x8 MLAB ROM from initial contents, registered read [vendor ramstyle MLAB]"
+exercises = ["ram", "ram_block"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "rom"
+variant = "vnd_mlab"
+width = 8

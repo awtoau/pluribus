@@ -1,0 +1,8 @@
+top = "top"
+purpose = "a-b with borrow, registered"
+construct = "sub"
+variant = "vnd"
+width = 4
+lang = "verilog-95+lattice"
+io_bits = 14
+io_reduced = false

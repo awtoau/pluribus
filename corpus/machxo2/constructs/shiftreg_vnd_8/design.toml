@@ -1,0 +1,8 @@
+top = "top"
+purpose = "serial-in parallel-out shift register"
+construct = "shiftreg"
+variant = "vnd"
+width = 8
+lang = "verilog-95+lattice"
+io_bits = 10
+io_reduced = false

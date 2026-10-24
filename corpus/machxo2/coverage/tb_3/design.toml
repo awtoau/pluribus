@@ -1,0 +1,5 @@
+top = "top"
+purpose = "coverage design, profile tb"
+profile = "tb"
+seed = 203
+lanes = 14

@@ -13,8 +13,8 @@ Script: `scripts/cyclonev_verify_all.py`. Log: `tmp/logs/cyclonev_verify_all.log
 |---|---|---|
 | Die probe | `scripts/cyclonev_die_probe.py: compile_die()` | all 7 Mistral-covered dies compile |
 | DSP fuzz | `scripts/cyclonev_dsp_fuzz.py: quartus_compile_design()` / `decompile_and_extract_design()` | `docs/cyclonev-dsp-fuzz-status.md`'s MODE mapping (`mult9x9`->`M9X9`, `mult27x27`->`M27X27`, `mult18x18`/`multacc18x18`->no explicit MODE, the documented default-encoding result) |
-| Lifter selftest | `lifters/cyclonev_lift.py: CycloneVLift` directly | `docs/cyclonev-lifter-status.md`'s LUT/FF/net/arc/unparsed-line counts (6511/7855/15818/70007/0; re-baselined by #106, old 33336/11502/144296 came from the wrong lifter) |
-| pad_map DB insert | `load.py: load_cyclonev()` (real subprocess) | the lifter selftest's own pin-recovery ground truth (224 annotated, 0 duplicate pins) |
+| Lifter selftest | `lifters/cyclonev_lift.py: CycloneVLift` directly | `docs/cyclonev-lifter-status.md`'s LUT/FF/net/arc/unparsed-line counts (61/64/139/608/0 on corpus design `regbank16`) |
+| pad_map DB insert | `load.py: load_cyclonev()` (real subprocess) | the lifter selftest's own pin-recovery ground truth (19 annotated, 0 duplicate pins on `regbank16`) |
 
 None of the four stages are copy-pasted logic — each imports and calls the
 existing script's own functions. Nothing here is a second implementation
@@ -54,9 +54,8 @@ toolchain now produces, and the direction of the error is unknown until
 investigated. In particular:
 
 - **A die-identification mismatch (rbf size, header signature) is a
-  serious finding**, not a log line to shrug off. awto-dji#3 already
-  depends on die identification by `.rbf` size being stable across Quartus
-  versions; if the sizes for a die change, something about the compile
+  serious finding**, not a log line to shrug off. Die identification by
+  `.rbf` size assumes sizes are stable across Quartus versions; if the sizes for a die change, something about the compile
   flow or the device's own config-RAM accounting changed, and every size
   comparison done against the old numbers needs re-checking before being
   trusted again. Treat it as its own investigation, not a line item.

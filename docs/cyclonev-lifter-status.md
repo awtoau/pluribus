@@ -1,6 +1,6 @@
 # Cyclone V lifter — status
 
-> #106 (2026-10-24): LUT/FF recovery was rewritten against the Quartus post-fit oracle. The LUT5 / Q-net-only / 33,336 LUT / 11,502 FF statements below describe the pre-#106 lifter and are superseded by `docs/cyclonev-postfit-oracle.md`.
+> #106 (2026-10-24): LUT/FF recovery was rewritten against the Quartus post-fit oracle. The LUT5 / Q-net-only statements below describe the pre-#106 lifter and are superseded by `docs/cyclonev-postfit-oracle.md`.
 
 First slice of a fifth pluribus family: Altera/Intel Cyclone V. Not a
 Lattice-trellis family — different vendor, different fabric (ALM/LAB,
@@ -9,9 +9,9 @@ not PFU/slice). Code: `lifters/cyclonev_lift.py`. Selftest:
 
 ## Scope: one die, e50f (5CEBA4U19C8)
 
-The die behind DJI Lightbridge module m2001. Chosen because it has
-confirmed-working Mistral decode data this session (56,337/443k routes
-resolved). `CycloneVLift.__init__` hard-rejects any other device string —
+The die the Quartus corpus targets (`corpus/cyclonev/`, docs/cyclonev-postfit-oracle.md).
+Validated only on corpus designs built by Quartus for this part.
+`CycloneVLift.__init__` hard-rejects any other device string —
 extending to another Cyclone V die needs its own ALM/LAB geometry check
 against Mistral, not assumed from e50f.
 
@@ -36,21 +36,12 @@ against Mistral, not assumed from e50f.
 - Registered in `lifters/trellis_lift.py`'s `TrellisLift()` dispatcher as
   family `"cyclonev"`.
 
-## Proven (scripts/cyclonev_lift_selftest.py, real DJI m2001 firmware)
+## Verified
 
-Ran against a 360k-line `.bt` decompiled from
-`awto-dji/firmware/.../m2001.depack.bin` (DJI firmware read only for
-format reference per the task scope — no DJI bytes or netlist content
-committed to this repo):
-
-- 0 unparsed lines out of 360,016 (70,007 arcs + 288,416 settings + 1,522
-  inverters + 10 options + 1 model line).
-- 33,336 ALM-half LUT5 cells recovered (1,832 LABs/MLABs with >=1
-  configured ALM).
-- 11,502 registers recovered (Q net only — see "D/CLK unresolved" below).
-- 144,296 distinct nets named.
-- No crash, no `db.die()` escape — this script does not touch the
-  database at all (see "No board" below).
+- Lifter output is judged against the Quartus post-fit oracle on the corpus: `docs/cyclonev-postfit-oracle.md`.
+- `scripts/cyclonev_verify_all.py` (stages 3-4) re-checks LUT/FF/net/arc/pad counts on corpus design `regbank16`; baseline in `EXPECTED_LIFTER` / `EXPECTED_PADMAP`.
+- `scripts/cyclonev_lift_selftest.py <decomp.bt>` does not touch the database (see "No board").
+- A route count or a "decoded" `.bt` is not a quality check: a non-Cyclone-V input also produces a large `.bt` (#114).
 
 ## Pin recovery: real package-pin names from Mistral's `.bt` comments
 
@@ -64,70 +55,23 @@ below alongside LUT/FF/net counts. Full edge-case detail lives in
 `cyclonev_lift.py`'s module docstring (PIN RECOVERY section) — this is a
 condensed summary with confidence levels stated per finding.
 
-**Real numbers, same DJI m2001 sample (HIGH confidence — directly measured):**
+**Corpus evidence (all `corpus/cyclonev/*/decomp.bt`, Quartus-built; re-derive with the grammar notes in `cyclonev_lift.py`):**
 
-- 272 distinct GPIO `(tile,bi)` pads seen in real routing; 224 (82.4%) carry
-  a resolved package pin name, 48 do not.
-- 224 distinct pin names recovered, zero appearing on more than one pad row
-  (a clean bijection, enforced live by `PinRecoveryError` — not just checked
-  once offline).
-- Direction breakdown: 146 `in`, 49 `bidir`, 6 `out`, 71 `unknown` (clock/
-  control-only GPIO pins with no DATAIN/DATAOUT routed tap — see module
-  docstring for why "unknown" rather than a guessed in/out).
-- 123/195 annotated DATAIN pads have more than one distinct `DATAIN.pi` tap
-  in real routing, and every one resolves to a DIFFERENT fabric net (0 cases
-  of redundant re-derivation) — a genuine one-pin/several-logical-taps
-  situation `pad_map`'s single `net_in` column cannot fully represent (see
-  "Schema gap" below). 6/55 DATAOUT pads have the same multi-tap shape.
-- 3,721 pin-annotated lines touch a non-GPIO node — all `HMC` (hard memory
-  controller) by direct grep; out of scope for this lifter (no HMC bel
-  model), counted and excluded rather than silently merged into GPIO data.
+- Pin identity is `(GPIO tile, bi)`: 179 keys, 179 pin names, no conflicts either direction.
+- Ports seen carrying pin comments: DATAIN (always the arc source), DATAOUT and OEIN (always the arc sink).
+- Non-GPIO pin comments are HMC only; counted and excluded.
+- `i` lines carry a second ` ; ` alt-node field (7,081 of the pin-annotated `i` lines); never a second pin name.
+- Not covered by the corpus (unverified): CLKIN/CLKOUT/CEIN/ACLR pin comments, multi-`pi` DATAIN taps per pin, unannotated GPIO banks, differential P/N pairing.
 
-**Edge cases found and how each is handled (HIGH confidence unless stated):**
+**Edge cases and how each is handled:**
 
-1. **Pin identity is `(GPIO tile, bi)`, not port/pi/line-kind.** Checked by
-   grouping every annotated GPIO node by `(x,y,bi)` across every port
-   (DATAIN/DATAOUT/CLKIN/CLKOUT/OEIN/CEIN/CEOUT/ACLR/SCLR/BSLIPMAX) and
-   line kind (`r`/`s`/`i`): exactly one pin name per key, zero conflicts.
-2. **A pre-existing bug in `pad_fabric_node()` was found and fixed.** It
-   built `CVNode("GPIO", row, col, None, port, pio)` — `pio` into the `.pi`
-   slot, `bi` left `None`. Real `.bt` GPIO nodes always carry their
-   block-local sub-index as `bi` (confirmed: zero bi-less
-   `GPIO.x.y:DATAIN/DATAOUT.n` lines exist in the sample); the method now
-   builds `CVNode("GPIO", row, col, pio, port, None)`. Was latent/undetected
-   because nothing exercises this method against real Cyclone V data yet
-   (`load_cyclonev()` bypasses `load.py`'s generic pad-probing core).
-3. **Direction is unambiguous from port name, not arc position.** DATAIN
-   (and BSLIPMAX) are the arc source in 100% of 1,108 occurrences;
-   CLKIN/CLKOUT/DATAOUT/OEIN/CEIN/CEOUT/ACLR/SCLR are the arc sink in 100%
-   of occurrences, with zero exceptions — matches `pad_fabric_node()`'s
-   documented DATAIN=pad→fabric / DATAOUT=fabric→pad convention exactly.
-4. **Unannotated pads are NOT port-kind-correlated** (disproving the a
-   priori hypothesis that they'd be clock-passthrough-only): CLKIN/CLKOUT-
-   only `(tile,bi)` keys are annotated at 86% (61/71), about the same rate
-   as DATAIN/DATAOUT-bearing keys at 81% (163/201). They ARE
-   location-correlated: every GPIO tile at `y` in `{014-017, 029-031, 033}`
-   on both edge columns (`x=000`, `x=054`) is 100% unannotated — 0 of
-   dozens of lines per tile, every bi, every port — while adjacent tiles
-   (`y` 018-021) are ~97% annotated. Read as Mistral's own pinout table
-   having no ball for those whole GPIO banks on this die/package (plausibly
-   unbonded, or a table gap), not a per-port/per-direction effect.
-5. **Differential pairs: pin data confirms per-(tile,bi) ball identity,
-   P/N pairing itself is OPEN, not confirmed.** `USE_PSEUDO_DIFF_OUTPUT.0`/
-   `USE_DIFF_OUTPUT`/`LVDS_BUFFER_USED` settings are per-bi, and keying
-   `Design.pads` on `(tile,bi)` with no special-case code already produces
-   "two independent pad_map rows, one per physical pin" for a plausible
-   pair (e.g. bi=0 "V15" / bi=1 "U15" at `GPIO.044.000`) — the schema-
-   correct answer either way. **MEDIUM/LOW confidence on which bi's form a
-   pair**: Mistral never tags P vs N explicitly, and checking row/column
-   adjacency of same-tile bi-pairs across the whole sample found only a
-   weak pattern (bi(0,1): 20/56 same-row-adjacent-column; bi(2,3): 28/56) —
-   consistent with physically neighbouring balls generally, not specifically
-   proven as differential siblings. Stated as open, not guessed at.
-6. **`i` lines can carry a second `;`-field** (104/790 annotated i-lines):
-   an alternate hard-IP node reference, never a second pin name (0/1610
-   r-lines, 0/2458 s-lines ever have one). `_trailing_pin()` takes only the
-   first field.
+1. **Pin identity is `(GPIO tile, bi)`, not port/pi/line-kind** (corpus evidence above).
+2. **`pad_fabric_node()` builds `CVNode("GPIO", row, col, pio, port, None)`** (`pio` in the `bi` slot); a bi-less DATAIN/DATAOUT node never appears in the corpus.
+3. **Direction is read from the port name**, not arc position (DATAIN = pad->fabric, DATAOUT = fabric->pad).
+4. **Unannotated GPIO tiles** are kept with `pin=None`. Why Mistral's table omits a ball is unverified.
+5. **Differential pairs:** one row per `(tile, bi)`; P/N pairing is open, Mistral does not tag it.
+6. **`i` lines can carry a second `;`-field** (alt-node reference); `_trailing_pin()` takes only the first field.
+7. **Multi-`pi` taps:** `recover_pads()` keeps the lowest `pi` as `net_in`/`net_out` and records `n_datain_taps`/`n_dataout_taps`. Behaviour unverified on the corpus.
 
 **Schema gap — resolved, no schema.py change made:**
 
@@ -136,9 +80,7 @@ BGA coordinate string (`"AA10"`), not a number. Decision (operator): keep
 `pad_map.pin` as `Integer` for every family (no DDL change), have the
 Cyclone V lifter derive a stable integer surrogate. `bga_pin_to_int()`
 (`lifters/cyclonev_lift.py`) encodes `row_rank * 1000 + column_number`
-(JEDEC skip-I/O/Q/S/X/Z row sequence, verified collision-free against all
-224 real pin names in the reference sample — 224 distinct pins, 224 distinct
-encodings, 0 collisions). `label` carries the real BGA string and is the
+(JEDEC skip-I/O/Q/S/X/Z row sequence; injective for any column under 1000). `label` carries the real BGA string and is the
 only field anyone should treat as the pin's real identity — `pin` is a
 DB-internal sort/uniqueness key only, same role Gowin's lifter already gives
 this column for its own synthesised pin values, not a new convention. The
@@ -207,8 +149,7 @@ Previously flagged as deliberate follow-on work; done this session.
   emits LUT5" below. `_evaluate_lut_init` (reach3.py) still raises loudly
   on anything but a 16-char init (untouched — not part of this slice).
 - `scripts/cyclonev_lift_selftest.py` now calls `classify_lut()` /
-  `lut_dependence()` directly on the 33,336 real ALM-half LUT5 cells
-  recovered from the DJI m2001 firmware, confirming the unified path
+  `lut_dependence()` directly on the recovered ALM-half cells, confirming the unified path
   end-to-end without touching the database.
 
 ## Input-format dependency: Mistral `.bt` now, Rust decoder later
@@ -246,20 +187,14 @@ the same way `anlogic` is.
   different vendor's coordinates).
 - Always-rebuild per label, same as every other family.
 
-**Verified end-to-end** against the real DJI m2001 firmware (same sample
-the selftest uses — read-only reference, no bytes committed):
+**Verified end-to-end** on a corpus design (`regbank16`):
 
 ```
-mistral-cv decomp 5CEBA4U19C8 m2001.depack.bin /tmp/m2001_wireup_test.bt
-PLURIBUS_SQLITE_PATH=tmp/cyclonev_test.db python3.15t load.py \
-    --lifter cyclonev --label M2001_TEST \
-    --config /tmp/m2001_wireup_test.bt --device 5CEBA4U19C8
+python3.15t load.py --lifter cyclonev --label REGBANK16 \
+    --config corpus/cyclonev/regbank16/decomp.bt --device 5CEBA4U19C8
 ```
 
-Rows landed in the DB exactly match the selftest's in-memory numbers:
-33,336 LUTs, 11,502 FFs, 144,296 nets, 70,007 arcs, 166,680 net_fanout
-rows. No dedup drift between the selftest's `Design.all_nets` count and
-the DB's `COUNT(*) FROM nets` — same net-naming path, so none expected.
+Rows landed in the DB match the selftest's in-memory counts (61 LUTs, 64 FFs, 139 nets, 608 arcs, 19 pad_map rows; same counts as the `cyclonev_verify_all.py` baseline).
 
 ## verilog.py: emits LUT5
 
@@ -290,37 +225,24 @@ not duplicated:
   a fabricated always block — same under-connect-don't-guess convention as
   the rest of this lifter.
 
-**Verified**: ran `verilog.py` against the M2001_TEST bitstream above —
-`iverilog`: 0 errors, 0 warnings. `yosys`: loads cleanly (post-opt shows
-21,815 wires; no top-level ports since there's no pad layer, expected).
-Spot-checked both LUT5 emission shapes:
+**Verified**: `verilog.py` output for corpus designs (`lifted.v`, `scripts/cyclonev_corpus_relift.py`) goes through `iverilog` with no errors.
+The COMBO5 bit-select form is the common case:
 
 ```verilog
 localparam [31:0] _lut_alm_lab_r10c10_a0_bottom = 32'b00000111000100000010010000000100;
 assign alm_lab_r10c10_a0_bottom = _lut_alm_lab_r10c10_a0_bottom[{n17301, n17300, n17299, n17298, n17297}];
 ```
 
-(COMBO5 bit-select form — the overwhelming majority: 33,202/33,336 real
-ALM-half LUTs in this sample have no clean 1-4-input structured pattern.)
-No real cell in this sample happened to classify as a structured
-MUX/AND/OR tag using `e`, so the structured-fn `e`-substitution and nested
-MUX rule are verified by the exhaustive synthetic check above instead,
-not by a real-corpus example — flag this if a future corpus sample does
-hit one, as an additional real-world data point.
+The structured-fn `e`-substitution and nested MUX rule are verified by the exhaustive synthetic check above, not by a corpus example.
 
 ## Regression check: zero impact on existing families
 
-`scripts/run_pipeline.py --board boards/aw2-2d82auto --label V02`
-(Hantek/MachXO2) re-run after all `load.py`/`verilog.py` changes above:
-identical `2611/1280 (203%) LUTs, 1108 FFs, 4341 nets` fabric line,
-`check_verilog.py` PASS (0 errors, 0 conflicting-driver, 0 combinational
-loops) — unchanged from every prior regression check this session.
+`scripts/run_pipeline.py --board boards/aw2-2d82auto --label V02` (Hantek/MachXO2) re-run after the `load.py`/`verilog.py` changes above: fabric line identical, `check_verilog.py` PASS. Current baseline: CLAUDE.md, "Scoring faults".
 
 ## No board
 
 Per CLAUDE.md, pluribus stores no board data without a real board.toml —
-none exists for any Cyclone V board, so none was added here (DJI's m2001
-is explicitly out of tree — private RE work, not published). This is
+none exists for any Cyclone V board, so none was added here. This is
 separate from the pin recovery above: `Design.pads` resolves real
 PACKAGE-pin identity (vendor/engine data — which die ball is which, same
 status as Lattice's `device-db/` pinout tables), but there is still no
@@ -337,9 +259,8 @@ pin, which only a real board.toml could carry. A real Cyclone V
 ## Pipeline integration (run_pipeline.py)
 
 - `lifter = "cyclonev"` in a board.toml routes `scripts/run_pipeline.py` through: `[unpack]` -> `load` -> `reach`..`reach4` -> `auto_name` -> `patterns` -> `report` -> `chains` -> `verilog` -> `verify`. No `iomap` (pins come from the `.bt`); LEC-vs-prior is skipped (as for gowin).
-- `[unpack]` = `scripts/cyclonev_unpack.py`: strips 0xFF flash padding, runs `mistral-cv decomp`, refuses to overwrite.
+- `[unpack]` = `scripts/cyclonev_unpack.py`: drops flash padding before the preamble (preamble + sync kept), validates sync/CRC16s, runs `mistral-cv decomp`, refuses to overwrite.
 - `config` in `[bitstreams.<label>]` is the `.bt` (regenerable, keep under `tmp/`); `bin` is the flash image or `.rbf`.
 - `pins.tsv` is optional annotation: column 1 is the BGA ball (`AA10`), cols 7/8 function/confidence, 9-11 chip_ref/chip_pin/chip_signal; applied to `pad_map` by `label == ball` (`si_function` carries `"<function> [conf N]"`).
 - `scripts/cyclonev_io_report.py` dumps per-pad features (bank, ports, settings, HMC/DQS16 links, LUT-consumer counts) to a TSV.
-- Known output limits until #106 and the interconnect gap close: FF D/CLK unresolved (all FFs reported stuck-at-reset), `reach3/4`, `auto_name`, `patterns` produce nothing meaningful, `check_verilog` reports combinational loops from LUT outputs wired to their own inputs.
-- Pad arcs are weak evidence of pad use: pad positions bonded in no package carry arcs at the same rate as bonded ones.
+- Output limits: `docs/cyclonev-postfit-oracle.md`.

@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog feature probe: unique_case"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog-in-.v"
+feature = "unique_case"
+io_bits = 0
+io_reduced = false
