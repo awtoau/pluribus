@@ -437,6 +437,7 @@ class MachXO2Lift:
             # Right-edge horizontal span: an off-right-edge E{N}_H##{E|W}{idx}
             # stub (not H06) is the opposite-direction H## wire of the same
             # index at max_col.  Other off-die names take the walk-back below.
+            # Kept: removing it raises net faults (#119, ablation).
             if is_east and col + hops > max_col and col == max_col:
                 hme = re.match(r'^E\d+_H(\d+)([EW])(\d+)$', name)
                 if hme and hme.group(1) != "06":
@@ -447,6 +448,8 @@ class MachXO2Lift:
                         return (gc.loc.x, gc.loc.y, gc.id)
 
             # Symmetric guard for W-direction wires at the left edge.
+            # h_left_flip and the left-stub drop below are kept: removing either
+            # raises net faults (#119, ablation).
             if not is_east and wire[0] == 'W' and col - hops < 0:
                 if col == 0:
                     # General left-edge horizontal span (net_merge_gap defect):
