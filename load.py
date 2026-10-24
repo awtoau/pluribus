@@ -585,7 +585,7 @@ def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
             die(f"{len(bad_ffs)} FFs have missing name or Q: {[f['name'] for f in bad_ffs[:5]]}")
         ff_rows = [{"bitstream": bs_id, "cell": ff["name"], "clk": ff["clk"],
                     "ce": ff["ce"], "d": ff["d"], "q": ff["q"], "lsr": ff["lsr"],
-                    "dtype": ff.get("dtype")}
+                    "dtype": ff.get("dtype"), "d_fault": ff.get("d_fault")}
                    for ff in design.ffs]
         if ff_rows:
             conn.execute(insert(schema.ffs), ff_rows)
@@ -594,6 +594,13 @@ def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
             .where(schema.ffs.c.bitstream == bs_id)
         ).scalar()
         assert_eq("FF count in DB", ff_count, n_ffs)
+        _dflt = [ff for ff in design.ffs if ff.get("d_fault")]
+        if _dflt:
+            _kinds = {}
+            for ff in _dflt:
+                _kinds[ff["d_fault"]] = _kinds.get(ff["d_fault"], 0) + 1
+            print(f"  FAULT: {len(_dflt)}/{n_ffs} FFs have an unresolved D "
+                  f"(tied to 1'b0): {_kinds}")
 
         # ── net_fanout (LUT inputs only — FF d/clk/ce/lsr are all None) ───
         fanout_rows = []
@@ -823,7 +830,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             die(f"{len(bad_ffs)} FFs have missing name or Q: {[f['name'] for f in bad_ffs[:5]]}")
         ff_rows = [{"bitstream": bs_id, "cell": ff["name"], "clk": ff["clk"],
                     "ce": ff["ce"], "d": ff["d"], "q": ff["q"], "lsr": ff["lsr"],
-                    "dtype": ff.get("dtype")}
+                    "dtype": ff.get("dtype"), "d_fault": ff.get("d_fault")}
                    for ff in design.ffs]
         if ff_rows:
             conn.execute(insert(schema.ffs), ff_rows)
@@ -832,6 +839,13 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             .where(schema.ffs.c.bitstream == bs_id)
         ).scalar()
         assert_eq("FF count in DB", ff_count, n_ffs)
+        _dflt = [ff for ff in design.ffs if ff.get("d_fault")]
+        if _dflt:
+            _kinds = {}
+            for ff in _dflt:
+                _kinds[ff["d_fault"]] = _kinds.get(ff["d_fault"], 0) + 1
+            print(f"  FAULT: {len(_dflt)}/{n_ffs} FFs have an unresolved D "
+                  f"(tied to 1'b0): {_kinds}")
 
         # ── LUTs ──────────────────────────────────────────────────────────────
         lut_rows = [{"bitstream": bs_id, "cell": lt["name"], "init": lt["init"],

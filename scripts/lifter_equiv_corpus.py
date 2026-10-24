@@ -423,6 +423,8 @@ def _sanitize_portset(names):
 
 def process_target(name):
     """Full per-target flow.  Returns a result dict (never raises)."""
+    import heavy_guard
+    heavy_guard.wait_available(heavy_guard.stdout_log(), name)
     tdir = os.path.join(TARGETS_DIR, name)
     fuzz_v = os.path.join(tdir, "fuzz.v")
     bit = os.path.join(tdir, "impl1", "fuzz_impl1.bit")
@@ -595,8 +597,10 @@ def main():
     jsonl_path = os.path.join(REPO, "tmp", "lifter_equiv_corpus.jsonl")
     results = []
     with open(jsonl_path, "w") as jf:
-        with ProcessPoolExecutor(max_workers=args.workers,
-                                 initializer=_worker_init) as ex:
+        import heavy_guard
+        with heavy_guard.heavy_lock("lifter_equiv_corpus", heavy_guard.stdout_log()), \
+                ProcessPoolExecutor(max_workers=args.workers,
+                                    initializer=_worker_init) as ex:
             futs = {ex.submit(process_target, t): t for t in targets}
             done = 0
             for fut in as_completed(futs):

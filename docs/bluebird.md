@@ -206,7 +206,7 @@ dies' full parsed row lists live in memory concurrently (gt300f's
 doesn't bound actual RAM, which scales with data size, not thread count.
 Same root-cause class as a separate, unrelated incident that hit this
 session's Quartus-compile verification harness
-(`scripts/cyclonev_verify_all.py`), fixed there with a `psutil` memory gate.
+(`scripts/cyclonev_verify_all.py`), fixed there with `scripts/heavy_guard.py` (available-RAM wait + one-batch lock).
 
 Redesign, verified correct and safe:
 1. **Dies run strictly sequentially**, never concurrently — this is a

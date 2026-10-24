@@ -10,7 +10,9 @@ Waits: lock retry 5 s (other batches run minutes; a poll costs nothing), log eve
 """
 import contextlib
 import fcntl
+import logging
 import os
+import sys
 import threading
 import time
 
@@ -19,6 +21,17 @@ LOCK_PATH = os.path.join(REPO, "tmp", "heavy.lock")
 MIN_AVAILABLE_GB = float(os.environ.get("PLURIBUS_MIN_AVAILABLE_GB", "12"))
 POLL_S = 5
 LOG_S = 30
+
+
+def stdout_log():
+    """Logger for lock waits in scripts that build their own logger later."""
+    lg = logging.getLogger("heavy_guard")
+    if not lg.handlers:
+        h = logging.StreamHandler(sys.stdout)
+        h.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        lg.addHandler(h)
+        lg.setLevel(logging.INFO)
+    return lg
 
 
 def _wait(pred, what, log):

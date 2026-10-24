@@ -48,12 +48,9 @@ parallelism Quartus compiles should get.
     crashed the IDE -- 30 concurrent Quartus processes with no memory
     awareness), each running one full Quartus compile sequence per work
     item (one die for stage 1, one DSP design for stage 2), pulling the
-    next item off a shared queue.Queue the moment it finishes. A memory
-    gate (--max-ram-pct, default 85%) additionally pauses new work being
-    claimed whenever psutil.virtual_memory().percent is at or above that
-    threshold, independent of thread count -- the real fix for the crash,
-    since the worker-count cap alone doesn't bound actual RAM use (that
-    varies per design/die).
+    next item off a shared queue.Queue the moment it finishes.
+    Host safety: scripts/heavy_guard.py (one heavy batch at a time, absolute
+    available-RAM wait before each item, #111).
   - CONSUMER pool: a small fixed pool (4 threads -- decompile + compare is
     seconds, not minutes, and gains nothing from wide parallelism),
     draining a second queue.Queue of completed compiles as they land.
@@ -67,7 +64,7 @@ parallelism Quartus compiles should get.
 Usage
 -----
     python3.15t scripts/cyclonev_verify_all.py
-    python3.15t scripts/cyclonev_verify_all.py --compile-workers 20 --max-ram-pct 85
+    python3.15t scripts/cyclonev_verify_all.py --compile-workers 20
     python3.15t scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz  # fast re-check
     PLURIBUS_QUARTUS_BIN=/opt/altera/quartus-24.1/quartus/bin python3.15t scripts/cyclonev_verify_all.py
 """
@@ -81,12 +78,11 @@ import threading
 import time
 from pathlib import Path
 
-import psutil
-
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 
+import heavy_guard
 import toolchain
 
 import cyclonev_die_probe as die_probe
@@ -169,32 +165,12 @@ _SENTINEL = object()  # marks "no more items will ever arrive" on produced_q
 
 
 def run_producer_consumer(work_items, produce_fn, consume_fn,
-                           n_producers, n_consumers, logger, stage_name,
-                           max_ram_pct=85.0):
+                           n_producers, n_consumers, logger, stage_name):
     """Run `produce_fn(item)` across a wide thread pool (the slow Quartus
     compile), feed whatever it returns into `consume_fn(result)` on a
     separate, smaller thread pool (the fast Mistral decompile + compare).
 
-    MEMORY GATE (max_ram_pct, default 85%): a prior run with
-    --compile-workers defaulted to os.cpu_count() (30 on this machine)
-    crashed the IDE -- 30 concurrent quartus_map/fit/asm processes with no
-    memory awareness, only a worker-COUNT cap, which doesn't bound actual
-    RAM use (that varies per design). Each producer checks real system
-    memory (psutil.virtual_memory().percent) before claiming its next work
-    item and blocks (polling, not busy-waiting -- see the sleep below) while
-    usage is above max_ram_pct, so the thread COUNT can stay high (good for
-    CPU-bound Quartus compiles) while actual concurrent RAM use is capped
-    independent of how many threads exist. This only throttles NEW work
-    being claimed; an in-flight compile is never killed mid-run.
-
-    Default is 85%, not 50% -- this host runs a permanently-resident ~16GB
-    QEMU VM plus VSCode/Chrome, holding a ~50-58% RAM baseline before this
-    script does anything. A 50% default is unreachable in steady state and
-    stalls every producer indefinitely (confirmed: this exact bug, same
-    gate pattern, hung scripts/cyclonev_db_import_routes.py for 20+ minutes
-    with zero log output -- see that script's _wait_for_ram). The gate
-    should bound THIS script's own usage, not reserve half the machine for
-    processes that were never going to free it.
+    Memory: heavy_guard.wait_available before each work item (absolute available RAM).
 
     A producer thread pulls its next item the moment it finishes its own --
     it never waits on that item's own decompile, which is the whole point:
@@ -230,34 +206,10 @@ def run_producer_consumer(work_items, produce_fn, consume_fn,
     remaining = [total]  # items not yet pulled off work_q by any producer
 
     def producer_worker():
-        wait_start = None
-        last_wait_log = 0.0
         while True:
-            # Memory gate: poll every 2s while over budget rather than claim
-            # work and risk the OOM/crash this gate exists to prevent. 2s is
-            # ~1/10th of the fastest observed single quartus_map step this
-            # session (~20s) -- frequent enough not to stall a ready slot for
-            # long once RAM frees up, infrequent enough not to burn CPU on
-            # psutil calls across up to `n_producers` polling threads at once.
-            # Re-logs every 30s while waiting (not just silently polling) --
-            # a gate stuck at an unreachable threshold must be visible in the
-            # log as a stall, not indistinguishable from normal progress.
-            while psutil.virtual_memory().percent >= max_ram_pct:
-                if error_event.is_set():
-                    return  # another thread already failed -- stop waiting
-                now = time.time()
-                if wait_start is None:
-                    wait_start = now
-                    logger.info("[%s] RAM at %.0f%% >= %.0f%% -- pausing new work",
-                                stage_name, psutil.virtual_memory().percent, max_ram_pct)
-                    last_wait_log = now
-                elif now - last_wait_log >= 30.0:
-                    logger.info("[%s] still waiting on RAM (%.0f%% >= %.0f%%) for %.0fs",
-                                stage_name, psutil.virtual_memory().percent, max_ram_pct,
-                                now - wait_start)
-                    last_wait_log = now
-                time.sleep(2)
-            wait_start = None
+            heavy_guard.wait_available(logger, stage_name)
+            if error_event.is_set():
+                return
             try:
                 item = work_q.get(block=False)
             except queue.Empty:
@@ -326,7 +278,7 @@ def run_producer_consumer(work_items, produce_fn, consume_fn,
 
 # ── stage 1: die probe ──────────────────────────────────────────────────────
 
-def stage_die_probe(work_dir, n_producers, n_consumers, logger, max_ram_pct=85.0):
+def stage_die_probe(work_dir, n_producers, n_consumers, logger):
     items = list(die_probe.DIES.items())  # [(die_name, part), ...]
 
     def produce(item):
@@ -339,8 +291,7 @@ def stage_die_probe(work_dir, n_producers, n_consumers, logger, max_ram_pct=85.0
         return {"die": die_name, "part": part, "ok": bool(sigs), "sigs": sigs or []}
 
     results, dt = run_producer_consumer(items, produce, consume,
-                                         n_producers, n_consumers, logger, "die_probe",
-                                         max_ram_pct=max_ram_pct)
+                                         n_producers, n_consumers, logger, "die_probe")
     n_ok = sum(1 for r in results if r["ok"])
     summary_line = f"Die probe: {n_ok}/{len(items)} dies compiled OK ({dt:.1f}s)"
     logger.info(summary_line)
@@ -350,7 +301,7 @@ def stage_die_probe(work_dir, n_producers, n_consumers, logger, max_ram_pct=85.0
 
 # ── stage 2: DSP fuzz ────────────────────────────────────────────────────────
 
-def stage_dsp_fuzz(work_dir, n_producers, n_consumers, logger, max_ram_pct=85.0):
+def stage_dsp_fuzz(work_dir, n_producers, n_consumers, logger):
     items = list(dsp_fuzz.DESIGNS.items())  # [(name, spec), ...]
 
     def produce(item):
@@ -361,8 +312,7 @@ def stage_dsp_fuzz(work_dir, n_producers, n_consumers, logger, max_ram_pct=85.0)
         return dsp_fuzz.decompile_and_extract_design(produced, logger)
 
     results, dt = run_producer_consumer(items, produce, consume,
-                                         n_producers, n_consumers, logger, "dsp_fuzz",
-                                         max_ram_pct=max_ram_pct)
+                                         n_producers, n_consumers, logger, "dsp_fuzz")
 
     checks = []
     for name, expected_mode in EXPECTED_DSP_MODE.items():
@@ -533,6 +483,11 @@ def stage_lifted_sim(logger, jobs):
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
+    with heavy_guard.heavy_lock("cyclonev_verify_all", heavy_guard.stdout_log()):
+        _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
     # Default capped below os.cpu_count() (30 on this machine): a prior run
@@ -546,11 +501,6 @@ def main():
                           "(default: min(20, os.cpu_count()))")
     ap.add_argument("--decompile-workers", type=int, default=4,
                      help="consumer pool size for mistral-cv decompile + compare (default: 4)")
-    ap.add_argument("--max-ram-pct", type=float, default=85.0,
-                     help="pause claiming new compile work while system RAM use is at or "
-                          "above this percent (psutil.virtual_memory().percent); does not "
-                          "kill in-flight work (default: 85.0 -- see run_producer_consumer's "
-                          "docstring for why 50 stalls indefinitely on this host)")
     ap.add_argument("--reference-bt", type=Path, default=REFERENCE_BT,
                      help="pre-decompiled reference .bt for stages 3/4 "
                           "(default: %(default)s)")
@@ -568,10 +518,10 @@ def main():
     args.work_dir.mkdir(parents=True, exist_ok=True)
 
     nogil = not sys._is_gil_enabled()
-    logger.info("NoGIL: %s  (compile_workers=%d, decompile_workers=%d, max_ram_pct=%.1f, "
-                "system RAM now=%.1f%%)",
-                nogil, args.compile_workers, args.decompile_workers, args.max_ram_pct,
-                psutil.virtual_memory().percent)
+    logger.info("NoGIL: %s  (compile_workers=%d, decompile_workers=%d, "
+                "available RAM now=%.1f GB)",
+                nogil, args.compile_workers, args.decompile_workers,
+                heavy_guard.available_gb())
     if not nogil:
         logger.warning("GIL is ENABLED — this interpreter is not the free-threaded "
                         "build (python3.15t); the producer/consumer pools will still "
@@ -585,14 +535,14 @@ def main():
     if not args.skip_die_probe:
         stage_results["die_probe"] = stage_die_probe(
             args.work_dir / "die_probe", args.compile_workers, args.decompile_workers,
-            logger, max_ram_pct=args.max_ram_pct)
+            logger)
     else:
         logger.info("Die probe: SKIPPED (--skip-die-probe)")
 
     if not args.skip_dsp_fuzz:
         stage_results["dsp_fuzz"] = stage_dsp_fuzz(
             args.work_dir / "dsp_fuzz", args.compile_workers, args.decompile_workers,
-            logger, max_ram_pct=args.max_ram_pct)
+            logger)
     else:
         logger.info("DSP fuzz: SKIPPED (--skip-dsp-fuzz)")
 

@@ -74,7 +74,7 @@ python3     scripts/machxo2_fuzz_dictionary.py                                  
 
 - Logs: `tmp/logs/machxo2_diamond_oracle.log`, `tmp/logs/machxo2_oracle_compare.log`.
 - Oracle is resumable: a target is skipped while its `oracle.json` is newer than the NCD and has the current `schema_version`.
-- Memory gate: workers wait while `psutil.virtual_memory().percent >= 85`, logging every 30 s.
+- Host guard: `scripts/heavy_guard.py`; one heavy batch at a time (`tmp/heavy.lock`), each worker waits for >= `PLURIBUS_MIN_AVAILABLE_GB` available RAM (#111). Covers the oracle and the compare.
 - Tool timeout 2.5 s per call: worst observed 0.80 s (16 workers, 3 full runs) x3.
 
 ## Batch result

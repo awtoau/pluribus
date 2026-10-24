@@ -24,11 +24,11 @@ import threading
 import time
 from datetime import datetime, timezone
 
-import psutil
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS)
 import toolchain  # noqa: E402
+import heavy_guard  # noqa: E402
 import diamond_oracle_parse as P  # noqa: E402
 
 
@@ -56,8 +56,6 @@ SCHEMA_VERSION = 1
 # corpus, 3 runs; docs/machxo2-diamond-oracle.md); x3 backstop, rounded up.  The
 # batch logs its max each run.  Expiry: target failed with tool, limit, elapsed.
 TOOL_TIMEOUT_S = 2.5
-MEM_GATE_PCT = 85.0
-MEM_LOG_EVERY_S = 30.0
 
 _log_lock = threading.Lock()
 
@@ -69,6 +67,13 @@ def log(msg):
         print(line, flush=True)
         with open(LOG_PATH, "a") as fh:
             fh.write(line + "\n")
+
+
+class _Log:
+    """heavy_guard wants a logger; route its lines through log()."""
+    @staticmethod
+    def info(fmt, *a):
+        log(fmt % a)
 
 
 def diamond_env():
@@ -192,17 +197,6 @@ def process(target, targets_dir, out_root, env, bindir, force):
             "warnings": oracle["warnings"]}
 
 
-def wait_for_memory(stop):
-    last = 0.0
-    while psutil.virtual_memory().percent >= MEM_GATE_PCT and not stop.is_set():
-        now = time.monotonic()
-        if now - last >= MEM_LOG_EVERY_S:
-            log(f"[mem] {psutil.virtual_memory().percent:.0f}% >= "
-                f"{MEM_GATE_PCT:.0f}%: waiting")
-            last = now
-        stop.wait(1.0)
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--targets-dir",
@@ -240,7 +234,7 @@ def main():
                 t = q.get_nowait()
             except queue.Empty:
                 return
-            wait_for_memory(stop)
+            heavy_guard.wait_available(_Log, "oracle")
             try:
                 r = process(t, args.targets_dir, args.out, env, bindir, args.force)
             except (ToolError, P.FormatError) as e:
@@ -258,10 +252,11 @@ def main():
 
     ths = [threading.Thread(target=worker) for _ in range(args.workers)]
     t0 = time.monotonic()
-    for th in ths:
-        th.start()
-    for th in ths:
-        th.join()
+    with heavy_guard.heavy_lock("machxo2_diamond_oracle", _Log):
+        for th in ths:
+            th.start()
+        for th in ths:
+            th.join()
 
     from collections import Counter
     st = Counter(r["status"] for r in results)

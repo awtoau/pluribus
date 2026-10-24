@@ -30,6 +30,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402  (path set above)
 
 DEF_DBROOT = toolchain.trellis_dbroot()
@@ -69,6 +70,7 @@ def find_builds():
 def verify_one(build_dir, device, dbroot, log):
     """Make the reference pair, then round-trip it.  Returns (name, ok, note)."""
     name = os.path.relpath(build_dir, ECP5_TEST).replace("/", "_")
+    heavy_guard.wait_available(log, name)
     ref = os.path.join("tmp/ecp5-ref", name)
     t0 = time.time()
     try:
@@ -125,7 +127,8 @@ def main():
 
     results = []
     t0 = time.time()
-    with concurrent.futures.ThreadPoolExecutor(args.workers) as ex:
+    with heavy_guard.heavy_lock("ecp5_verify_all", log), \
+            concurrent.futures.ThreadPoolExecutor(args.workers) as ex:
         futs = [ex.submit(verify_one, b, args.device, args.dbroot, log)
                 for b in builds]
         for f in concurrent.futures.as_completed(futs):

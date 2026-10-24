@@ -773,6 +773,12 @@ class MachXO2Lift:
             fkey = pins.get("F")
             if fkey is None:
                 continue
+            # DPRAM / RAMW: the INIT word is RAM contents (all-0 = empty RAM), not
+            # a LUT function; F is the RAM read port, not a constant (#113).  Root
+            # F (it is a real net) but leave it unmapped to a literal.
+            if pc.slice_enum.get((r, c, sl), {}).get("MODE") in ("DPRAM", "RAMW"):
+                dsu.union(fkey, fkey)
+                continue
             dsu.union(fkey, fkey)          # ensure the root exists in the DSU
             const_by_root[dsu.find(fkey)] = "1'b1" if s == {"1"} else "1'b0"
 
@@ -1019,6 +1025,7 @@ class MachXO2Lift:
                     # straight to the paired LUT's F output key.
                     sd = senum.get(f"REG{j}.SD", "1")
                     d_default = "1'b0"
+                    dpram_wr_open = False
                     if ff_d_source(senum, j) == "F":
                         dkey = bels.get(f"SLICE{sl}.K{j}", {}).get("F")
                         # A used register whose paired LUT slot carries no INIT
@@ -1045,6 +1052,14 @@ class MachXO2Lift:
                         if ((r, c, sl, str(j)) not in pc.lut_init
                                 and senum.get("MODE") not in ("DPRAM", "RAMW")):
                             dkey, d_default = None, "1'b1"
+                        # DPRAM read port: F (rooted above) is driven by the RAMW
+                        # write data via the DPRAM pass below; if that write pin is
+                        # unconnected the read data has no driver -> fault.
+                        if senum.get("MODE") == "DPRAM":
+                            rw_pin = {"A": "B1", "B": "D1", "C": "C1", "D": "A1"}[sl]
+                            rw_key = bels.get("SLICEC.RAMW", {}).get(rw_pin)
+                            if rw_key is None or not connected(rw_key):
+                                dpram_wr_open = True
                     else:
                         dkey = pins.get("M")
 
@@ -1053,10 +1068,25 @@ class MachXO2Lift:
                     # feeding D gives 1'b1, not the 1'b0 fall-through default).
                     net_or = resolve
 
+                    # Unresolved D = a missing connection (a fault).  The tie-0
+                    # fallback stays so the netlist still builds; d_fault names
+                    # the cause so it is counted, not hidden (#113).
+                    d_fault = "DPRAM-write-unconnected" if dpram_wr_open else None
+                    if d_default == "1'b0" and (dkey is None or not connected(dkey)):
+                        d_fault = ("F-unconnected" if ff_d_source(senum, j) == "F"
+                                   else "M-unconnected")
+                    q_net = net_of(qkey)    # net numbering follows creation order
+                    d_net = net_or(dkey, d_default)
+                    # RESET register with D = constant 0 never changes; the vendor
+                    # tool drops it, so a materialised one is a lost connection.
+                    if (d_net == "1'b0" and d_fault is None and senum.get(
+                            f"REG{j}.REGSET", enum_def[f"SLICE{sl}.REG{j}.REGSET"]) == "RESET"):
+                        d_fault = "const-0"
                     d.ffs.append({
                         "name": f"ff_r{r}c{c}_{sl}{j}",
-                        "q": net_of(qkey),
-                        "d": net_or(dkey, d_default),
+                        "q": q_net,
+                        "d": d_net,
+                        "d_fault": d_fault,
                         "clk": net_or(pins.get("CLK"), "1'b0"),
                         "ce": net_or(pins.get("CE"), "1'b1"),
                         "lsr": net_or(pins.get("LSR"), "1'b0"),
