@@ -3,7 +3,7 @@
 
 Use after a lifter change so `bitstreams`/`luts`/`ffs` and each `lifted.v` match the lifter.
 One design at a time (no parallel lifts, #111).  Per-step limit: load 3.5 s + verilog ~1 s
-on the DJI-size sample, corpus designs are smaller; 60 s no-progress limit per step.
+on a ~2 MB image; 60 s no-progress limit per step.
 
 Usage: PLURIBUS_SQLITE_PATH=<corpus db> python3.15t scripts/cyclonev_corpus_relift.py [design ...]
 Log: tmp/logs/cyclonev_corpus_relift.log

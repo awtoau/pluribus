@@ -1,0 +1,8 @@
+top = "top"
+purpose = "16-state FSM, one-hot encoding"
+construct = "fsm_oh"
+variant = "vnd"
+width = 16
+lang = "verilog-95+lattice"
+io_bits = 5
+io_reduced = false

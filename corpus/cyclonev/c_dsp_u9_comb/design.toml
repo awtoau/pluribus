@@ -1,0 +1,7 @@
+top = "c_dsp_u9_comb"
+purpose = "unsigned 9x9 multiply, stages comb [vendor multstyle dsp]"
+exercises = ["dsp", "mult"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "dsp"
+variant = "u_"
+width = 9

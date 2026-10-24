@@ -351,20 +351,6 @@ class MachXO2Lift:
     # the opposite-direction wire of the same span/index.  See gkey().
     _VSPAN = re.compile(r'^V(\d+)([NS])(\d+)$')
 
-    @staticmethod
-    def _mirror_e_h06e(name):
-        """Remap an E{N}_H06E{M} wire name to W{N}_H06W{M} for PIC_R tiles.
-
-        In PIC_R0 (right-edge IO) tiles, prjtrellis emits H06 pad-to-bus pips
-        as E{N}_H06E{M}.  The mirrored W{N}_H06W{M} form is safe to pass to
-        globalise_net and returns the correct wire id.  The caller then fixes
-        the canonical column to max_col so DSU unifies with interior arcs that
-        reference the same bus as H06W{M} (local, anchored at max_col)."""
-        m = re.match(r'^E(\d)_H06E(\d+)$', name)
-        if m:
-            return f"W{m.group(1)}_H06W{m.group(2)}"
-        return None
-
     def _v02_alias(self, x, y, wire_id):
         """Identity.  Kept as the single normalisation point for gkey's exits.
 
@@ -393,16 +379,8 @@ class MachXO2Lift:
         origin back into the interior — the canonical key is the same for every
         valid origin of the same wire.
 
-        Right-edge boundary fix: E{N}_H06E{M} wires at PIC_R tiles (col ==
-        max_col) are remapped to W{N}_H06W{M} before globalising, because
-        prjtrellis encodes these pips with the wrong E/W sense for the right
-        boundary.  E{N}_H06E{M} arcs at interior PLC tiles within N columns of
-        the right edge would canonicalise to an off-chip position — their
-        walk-back incorrectly collapses them to the same canonical key as the
-        PIC_R tile's H06E wire, merging unrelated nets.  We detect this case
-        (col + N > max_col at a non-boundary tile) and return None instead of
-        the wrong key, so those stub arcs are silently dropped rather than
-        causing a net-merge bug."""
+        Horizontal-span edge handling is limited to rules Diamond's own routes
+        confirm (docs/machxo2-diamond-oracle.md, #119)."""
         # NOTE: a bare-name rewrite of V02S0601/0701 -> V02N used to live here.
         # It rewrote only the UNPREFIXED spelling, so a hop-prefixed reference to
         # the same wire canonicalised differently and the net split.  Both halves
@@ -456,52 +434,24 @@ class MachXO2Lift:
             max_col  = self.chip.get_max_col()
             max_row  = self.chip.get_max_row()
 
-            # Right-edge guard: E{N}_H06E{M} wires where col+hops > max_col.
-            # At the PIC_R tile (col == max_col): _mirror_e_h06e converts to
-            # W{N}_H06W{M} which globalise_net resolves to (col-N, row, id).
-            # The same physical bus is referenced by interior arcs at the same
-            # right-edge tile as H06W{M} with canonical (col, row, id).
-            # We override the column to max_col (col) so DSU unifies the pad
-            # wire with those downstream routing arcs.
-            # At PLC tiles interior to the boundary (col < max_col): this is a
-            # dead stub whose true canonical falls off-chip; return None to
-            # suppress the arc rather than collapsing it to the PIC_R tile's
-            # canonical (which would wrongly merge pad inputs with FF outputs).
-            if is_east and col + hops > max_col:
-                if col == max_col:
-                    mirrored = self._mirror_e_h06e(name)
-                    if mirrored:
-                        gm = self.rg.globalise_net(row, col, mirrored)
-                        if gm.loc.x >= 0 and gm.loc.y >= 0:
-                            # Anchor at max_col, not col-N, to match H06W{M} local refs.
-                            return (col, gm.loc.y, gm.id)
-                    # General right-edge horizontal span (net_merge_gap defect):
-                    # an off-right-edge E{N}_H##{E|W}{idx} stub is the same
-                    # physical wire as the opposite-direction H## wire of the
-                    # same index at max_col (mirror of the top-edge vertical fix,
-                    # on the column axis).  Columns are 1-based with no dedicated
-                    # left/right PIO tiles, so the stub globalises off-chip; remap
-                    # it onto the interior continuation so the net does not dangle.
-                    hme = re.match(r'^E\d+_H(\d+)([EW])(\d+)$', name)
-                    if hme and hme.group(1) != "06":
-                        flip = "W" if hme.group(2) == "E" else "E"
-                        cname = f"H{hme.group(1)}{flip}{hme.group(3)}"
-                        gc = self.rg.globalise_net(row, max_col, cname)
-                        if gc.loc.x >= 0 and gc.loc.y >= 0:
-                            return (gc.loc.x, gc.loc.y, gc.id)
-                # No valid canonical (off-chip stub or mirror failed).
-                return None
+            # Right-edge horizontal span: an off-right-edge E{N}_H##{E|W}{idx}
+            # stub (not H06) is the opposite-direction H## wire of the same
+            # index at max_col.  Other off-die names take the walk-back below.
+            # Kept: removing it raises net faults (#119, ablation).
+            if is_east and col + hops > max_col and col == max_col:
+                hme = re.match(r'^E\d+_H(\d+)([EW])(\d+)$', name)
+                if hme and hme.group(1) != "06":
+                    flip = "W" if hme.group(2) == "E" else "E"
+                    cname = f"H{hme.group(1)}{flip}{hme.group(3)}"
+                    gc = self.rg.globalise_net(row, max_col, cname)
+                    if gc.loc.x >= 0 and gc.loc.y >= 0:
+                        return (gc.loc.x, gc.loc.y, gc.id)
 
             # Symmetric guard for W-direction wires at the left edge.
+            # h_left_flip and the left-stub drop below are kept: removing either
+            # raises net faults (#119, ablation).
             if not is_east and wire[0] == 'W' and col - hops < 0:
                 if col == 0:
-                    # Symmetric mirror: W{N}_H06W{M} → E{N}_H06E{M}
-                    mirror_m = re.match(r'^W(\d)_H06W(\d+)$', name)
-                    if mirror_m:
-                        mirrored = f"E{mirror_m.group(1)}_H06E{mirror_m.group(2)}"
-                        gm = self.rg.globalise_net(row, col, mirrored)
-                        if gm.loc.x >= 0 and gm.loc.y >= 0:
-                            return (gm.loc.x, gm.loc.y, gm.id)
                     # General left-edge horizontal span (net_merge_gap defect):
                     # an off-left-edge W{N}_H##{E|W}{idx} stub is the same
                     # physical wire as the opposite-direction H## wire of the

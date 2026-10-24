@@ -71,6 +71,7 @@ def run_designs(designs):
         times[d] = dt
         if r.returncode != 0:
             log(f"FAIL {d} rc={r.returncode} after {dt:.1f}s: {r.stderr.strip().splitlines()[-1:]}")
+            times[d] = None
         elif i % 20 == 0 or dt > 30:
             log(f"[{i}/{len(designs)}] {d} {dt:.1f}s")
     return times
@@ -119,6 +120,10 @@ def main():
         if a.lifter_file:
             os.environ["CYCLONEV_LIFTER_FILE"] = str(Path(a.lifter_file).resolve())
         times = run_designs(designs)
+    failed = sorted(d for d, t in times.items() if t is None)
+    if failed:      # their postfit_compare rows are from an earlier run: never score them
+        log(f"FAILED {len(failed)} designs, not scored, run fails: {failed[:10]}")
+        designs = [d for d in designs if d not in failed]
     out, n_builds = aggregate(designs)
     ok_times = [t for t in times.values() if t]
     res = dict(label=a.label, builds=n_builds, max_design_s=max(ok_times) if ok_times else None,
@@ -129,6 +134,7 @@ def main():
     for name, v in out.items():
         log(f"{name:14s} {v['matched']:8d} {v['missing']:8d} {v['extra']:6d} {v['wrong']:6d} "
             f"{v['total']:7d} {v['pct'] if v['pct'] is not None else '-':>6} {v['faults']:7d} {v['excluded']:5d}")
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,9 @@ Stages
                   DB, check the real pad_map row count / direction
                   breakdown / duplicate-pin count against the selftest's own
                   ground truth (Part 1 of this session's task).
+5. Lifted sim   -- BLOCKING functional gate: re-lift every corpus design, simulate
+                  lifted Verilog vs Quartus build.vo (scripts/cyclonev_lifted_sim_check.py);
+                  prints wrong/missing per design; any failing design fails the run.
 
 Threading (stages 1-2 only; 3-4 are single-shot, not Quartus-bound)
 --------------------------------------------------------------------
@@ -97,18 +100,15 @@ LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_verify_all.log"
 #    actual point of this script, not just "did Quartus/Mistral crash". ──
 EXPECTED_LIFTER = {
     "device": "5CEBA4U19C8", "die": "e50f",
-    # LUT/FF/net counts re-baselined by the #106 lifter rewrite (old 33336/11502/144296 came from
-    # the wrong lifter); 6511/15818 -> 6691/15926: adder sum/cout/shareout rows + carry nets, oracle
-    # arith function 741/741 (docs/cyclonev-postfit-oracle.md "Arithmetic").
-    "n_luts": 6691, "n_ffs": 7855, "n_nets": 15926, "n_arcs": 70007,
+    # Counts for REFERENCE_BT (corpus regbank16); lifter correctness is judged by the
+    # Quartus oracle (docs/cyclonev-postfit-oracle.md), these only catch drift.
+    "n_luts": 61, "n_ffs": 64, "n_nets": 139, "n_arcs": 608,
     "n_unparsed_lines": 0,
 }
 EXPECTED_PADMAP = {
-    "n_pads_annotated": 224, "n_pads_unannotated": 48,
+    "n_pads_annotated": 19, "n_pads_unannotated": 0,
     "n_dup_pins": 0,
-    # was {"unknown": 71, "in": 146, "bidir": 49, "out": 6}: HMC-path pads and clock-input pads now carry
-    # a direction; oracle pins 4556/4556, obuf.i 1556/1556 (docs/cyclonev-postfit-oracle.md "Pads").
-    "direction_breakdown": {"unknown": 60, "in": 144, "bidir": 62, "out": 6},
+    "direction_breakdown": {"in": 15, "out": 4},
 }
 # DSP mode mapping (docs/cyclonev-dsp-fuzz-status.md): a design either gets
 # an explicit MODE string, or (mult18x18/multacc18x18) NO MODE line at all
@@ -120,9 +120,8 @@ EXPECTED_DSP_MODE = {
     "mult27x27": "M27X27",
     "multacc18x18": None,    # negative result: behaves identically to mult18x18
 }
-REFERENCE_BT = Path("/tmp/m2001_padmap_test.bt")  # produced by this session; see
-# docs/cyclonev-lifter-status.md for the mistral-cv decomp invocation that
-# makes one from scratch if this path doesn't exist.
+# Quartus-built corpus design (corpus/README.md); `cyclonev_corpus_build.py --only regbank16` makes it.
+REFERENCE_BT = REPO / "corpus" / "cyclonev" / "regbank16" / "decomp.bt"
 
 
 def setup_logging():
@@ -508,6 +507,29 @@ def stage_padmap_check(bt_path, logger):
     return {"pass": ok, "summary": summary_line, "mismatches": mismatches, "wall_s": dt}
 
 
+# ── stage 5: lifted Verilog functional sim (blocking) ──────────────────────
+
+def stage_lifted_sim(logger, jobs):
+    """Re-lift every corpus design and simulate it against Quartus build.vo
+    (scripts/cyclonev_lifted_sim_check.py).  Any covered design with a wrong or
+    missing output sample, or a failed model check, fails the run."""
+    import cyclonev_lifted_sim_check as simcheck
+    t0 = time.time()
+    results = simcheck.run_guarded(simcheck.all_designs(), jobs=jobs, logf=logger.info)
+    ok = simcheck.summary(results, logf=logger.info)
+    for r in results:
+        if r["status"] in ("FAIL", "ERROR"):
+            logger.error("lifted sim %s %s: wrong=%d missing=%d %s", r["status"], r["design"],
+                         r["wrong"], r["missing"], r["reason"])
+    n = {s: sum(1 for r in results if r["status"] == s)
+         for s in ("PASS", "FAIL", "ERROR", "NOT_BUILT")}
+    summary_line = (f"Lifted sim: {'PASS' if ok else 'FAIL'} — {n['PASS']} pass, {n['FAIL']} fail, "
+                    f"{n['ERROR']} error, {n['NOT_BUILT']} not built "
+                    f"({time.time() - t0:.1f}s)")
+    logger.info(summary_line)
+    return {"pass": ok, "summary": summary_line, "results": results}
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -536,6 +558,9 @@ def main():
     ap.add_argument("--skip-dsp-fuzz", action="store_true")
     ap.add_argument("--skip-lifter-selftest", action="store_true")
     ap.add_argument("--skip-padmap", action="store_true")
+    ap.add_argument("--skip-lifted-sim", action="store_true",
+                     help="skip the blocking lifted-vs-Quartus functional sim (stage 5)")
+    ap.add_argument("--sim-jobs", type=int, default=4)
     ap.add_argument("--work-dir", type=Path, default=REPO / "tmp" / "cyclonev_verify_all")
     args = ap.parse_args()
 
@@ -580,6 +605,11 @@ def main():
         stage_results["padmap"] = stage_padmap_check(args.reference_bt, logger)
     else:
         logger.info("Pad map: SKIPPED (--skip-padmap)")
+
+    if not args.skip_lifted_sim:
+        stage_results["lifted_sim"] = stage_lifted_sim(logger, args.sim_jobs)
+    else:
+        logger.info("Lifted sim: SKIPPED (--skip-lifted-sim)")
 
     logger.info("=" * 72)
     logger.info("COMBINED SUMMARY")

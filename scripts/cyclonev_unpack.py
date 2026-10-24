@@ -6,7 +6,8 @@ Steps (log: tmp/logs/cyclonev_unpack.log):
     preamble + sync (Mistral reads the option RAM at absolute 0x84), drop only padding before it
   - validate via cyclonev_decompress: sync, option-RAM CRC16, PRAM/CRAM frame CRC16s, postamble;
     die() naming the failing check (no garbage to the lifter).  Compressed input is expanded.
-  - mistral-cv decomp <device> <rbf> <bt>   (the `.bt` is what the cyclonev lifter reads)
+  - --decoder native (default): scripts/cyclonev_decode.py; --decoder mistral: mistral-cv decomp <device> <rbf> <bt>
+    (the `.bt` is what the cyclonev lifter reads); --crosscheck runs the other one and logs the diff
 Refuses to overwrite an existing output (same contract as trellis_unpack.py).
 Decision: #114.
 
@@ -53,6 +54,9 @@ def main():
     ap.add_argument("bt")
     ap.add_argument("--device", default="5CEBA4U19C8")
     ap.add_argument("--rbf", help="where to keep the stripped .rbf (default: <bt>.rbf)")
+    ap.add_argument("--decoder", choices=("native", "mistral"), default="native",
+                    help="native: scripts/cyclonev_decode.py (docs/cyclonev-native-decoder.md); mistral: mistral-cv")
+    ap.add_argument("--crosscheck", action="store_true", help="also run the other decoder; log the .bt line-set diff")
     a = ap.parse_args()
 
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
@@ -71,14 +75,34 @@ def main():
     os.makedirs(os.path.dirname(os.path.abspath(rbf)), exist_ok=True)
     open(rbf, "wb").write(body)
     os.makedirs(os.path.dirname(os.path.abspath(a.bt)), exist_ok=True)
-    try:
-        r = subprocess.run([toolchain.mistral_cv(), "decomp", a.device, rbf, a.bt],
-                           capture_output=True, text=True, timeout=DECOMP_LIMIT_S)
-    except subprocess.TimeoutExpired:
-        die(f"mistral-cv decomp exceeded {DECOMP_LIMIT_S}s")
-    log.info("mistral-cv rc=%d\n%s%s", r.returncode, r.stdout[-1500:], r.stderr[-1500:])
-    if r.returncode != 0:
-        die(f"mistral-cv decomp failed rc={r.returncode}")
+    def run_mistral(out):
+        try:
+            r = subprocess.run([toolchain.mistral_cv(), "decomp", a.device, rbf, out],
+                               capture_output=True, text=True, timeout=DECOMP_LIMIT_S)
+        except subprocess.TimeoutExpired:
+            die(f"mistral-cv decomp exceeded {DECOMP_LIMIT_S}s")
+        log.info("mistral-cv rc=%d\n%s%s", r.returncode, r.stdout[-1500:], r.stderr[-1500:])
+        if r.returncode != 0:
+            die(f"mistral-cv decomp failed rc={r.returncode}")
+
+    def run_native(out):
+        import cyclonev_decode as nd
+        import cyclonev_native_tables as nt
+        try:
+            m = nd.decode(body, a.device)
+        except (nt.TableError, nd.ContainerError) as e:
+            die(f"native decoder: {e} (use --decoder mistral)")
+        lines = m.bt_lines()
+        open(out, "w").write("\n".join(lines) + "\n")
+        log.info("native decode: %d lines, %d unresolved route values", len(lines), len(m.route_unknown))
+
+    (run_native if a.decoder == "native" else run_mistral)(a.bt)
+    if a.crosscheck:
+        import cyclonev_bt_diff as bd
+        other = a.bt + (".mistral" if a.decoder == "native" else ".native")
+        (run_mistral if a.decoder == "native" else run_native)(other)
+        for k, (oa, ob, na, nb) in bd.diff(bd.read(a.bt), bd.read(other)).items():
+            log.info("crosscheck [%s] chosen=%d other=%d only_chosen=%d only_other=%d", k, na, nb, len(oa), len(ob))
     log.info("wrote %s (%d bytes)", a.bt, os.path.getsize(a.bt))
 
 

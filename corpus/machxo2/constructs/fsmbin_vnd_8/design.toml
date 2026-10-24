@@ -1,0 +1,8 @@
+top = "top"
+purpose = "8-state FSM, binary encoding"
+construct = "fsm_bin"
+variant = "vnd"
+width = 8
+lang = "verilog-95+lattice"
+io_bits = 5
+io_reduced = false

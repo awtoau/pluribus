@@ -1,0 +1,8 @@
+top = "top"
+purpose = "a+b with carry out, registered"
+construct = "adder"
+variant = "v01"
+width = 1
+lang = "verilog-2001"
+io_bits = 5
+io_reduced = false

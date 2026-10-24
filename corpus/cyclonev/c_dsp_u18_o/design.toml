@@ -1,0 +1,7 @@
+top = "c_dsp_u18_o"
+purpose = "unsigned 18x18 multiply, stages o [vendor multstyle dsp]"
+exercises = ["dsp", "mult"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
+construct = "dsp"
+variant = "u_o"
+width = 18

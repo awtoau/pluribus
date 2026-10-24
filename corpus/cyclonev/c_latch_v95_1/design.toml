@@ -1,0 +1,7 @@
+top = "c_latch_v95_1"
+purpose = "self-feeding LUTs: SR latch, D latch, oscillating loop [Verilog-95]"
+exercises = ["latch", "lut_self_feedback"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_1995"]
+construct = "latch"
+variant = "v95"
+width = 1
