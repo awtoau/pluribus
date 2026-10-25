@@ -102,7 +102,8 @@ EXPECTED_LIFTER = {
     "device": "5CEBA4U19C8", "die": "e50f",
     # Counts for REFERENCE_BT (corpus regbank16); lifter correctness is judged by the
     # Quartus oracle (docs/cyclonev-postfit-oracle.md), these only catch drift.
-    "n_luts": 61, "n_ffs": 64, "n_nets": 139, "n_arcs": 608,
+    # n_nets 140 = 61 LUT outputs + 64 FF Q + 15 input pads (the clkena output is the clock pad net).
+    "n_luts": 61, "n_ffs": 64, "n_nets": 140, "n_arcs": 608,
     "n_unparsed_lines": 0,
 }
 EXPECTED_PADMAP = {
