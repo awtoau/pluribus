@@ -370,6 +370,30 @@ class MachXO2Lift:
         """
         return (x, y, wire_id)
 
+    # Chip-global clock families upstream never keys (RoutingGraph.cpp:509,
+    # get_global_type_from_name: regexes commented out).  Name is unique per chip
+    # -> one node at the CENTER mux tile.  Evidence: docs/machxo2-diamond-oracle.md.
+    _CENTER_FAMILIES = {
+        "JLPLLCLK": re.compile(r"G_JLPLLCLK\d"),
+        "JTCDIVX": re.compile(r"G_JTCDIVX\d"),
+        "JBCDIVX": re.compile(r"G_JBCDIVX\d"),
+        "JPCLKT": re.compile(r"G_JPCLKT\d\d"),
+        "JECSOUT": re.compile(r"G_JECSOUT\d_ECLKBRIDGECS"),
+        "EBRG": re.compile(r"G_EBRG\dCLK\d"),
+        "ECLKCIB": re.compile(r"G_J?ECLKCIB[TB]\d"),
+        "ECLKBRIDGE": re.compile(r"G_CLK\d_\d_ECLKBRIDGECS"),
+    }
+
+    def _global_family_key(self, row, col, name):
+        if not name.startswith("G_"):
+            return None
+        for rx in self._CENTER_FAMILIES.values():
+            if rx.fullmatch(name):
+                from native_trellis.geometry import CENTER_MAP
+                crow, ccol = CENTER_MAP[(self.chip.get_max_row(), self.chip.get_max_col())]
+                return (ccol, crow, name)
+        return None
+
     def gkey(self, row, col, name):
         """Canonical node key, or None if the name globalises to an invalid
         (-1,-1) location (chip-global clock/spine longlines).
@@ -422,6 +446,10 @@ class MachXO2Lift:
                             return self._v02_alias(gc.loc.x, gc.loc.y, gc.id)
             # Main return
             return self._v02_alias(g.loc.x, g.loc.y, g.id)
+
+        gf = self._global_family_key(row, col, name)
+        if gf is not None:
+            return gf
 
         # Walk-back recovery for segment longlines near chip boundaries.
         m = (self._SEG_EAST.match(name)  or self._SEG_WEST.match(name) or
@@ -733,6 +761,8 @@ class MachXO2Lift:
         # or reads simply leaves an inert net behind.
         d.plc_ofx_applied = self.apply_plc_fixed_conns(
             dsu, self.load_plc_ofx_conns(), plc_tiles)
+
+        d.clock_fc_applied = self.apply_clock_fixed_conns(dsu)
 
         d.used_roots = {dsu.find(k) for k in src_keys}
 
@@ -1406,6 +1436,55 @@ class MachXO2Lift:
     def load_plc_ofx_conns(self, dbroot=None):
         """`.fixed_conn` pairs of PLC/bits.db that wire the wide-mux tree."""
         return self._load_plc_conns(self._OFX_RE, dbroot)
+
+    _OSC = re.compile(r"^G_J?OSC")
+    _GLOBAL_NAME = re.compile(r"^(G|L|R|U|D|BRANCH)_")
+    _DCC_IN = re.compile(r"^G_CLKI(\d)_DCC$")
+
+    def apply_clock_fixed_conns(self, dsu):
+        """Union the device-DB `.fixed_conn`s of the clock tree (#109):
+        - every conn naming a G_/L_/R_/U_/D_/BRANCH_ global, except the oscillator
+          (its fixed fan-out to the PLL ref pins fused unrelated nets, pllrefcs);
+        - other non-PLC conns (PLL out -> fabric, pad INCK -> INECK) only when both
+          ends are already DSU nodes, so no new nodes are created for them;
+        - DCC buffer CLKIn -> CLKOn (not in the DB; Diamond routes it).
+        Returns the number of unions applied."""
+        nat = getattr(self.chip, "_native", None)
+        if nat is None:
+            return 0
+        from native_trellis import tiledb
+        applied = 0
+        local, dcc = [], []
+        for tname, (row, col) in nat.geom.tile_rc.items():
+            ttype = nat.geom.tile_type[tname]
+            _muxes, fixed = tiledb.load_tiletype(nat.db_root, nat.family, ttype)
+            for sink, src in fixed:
+                if self._OSC.match(sink) or self._OSC.match(src):
+                    continue
+                isg = self._GLOBAL_NAME.match(sink) or self._GLOBAL_NAME.match(src)
+                if not isg and ttype == "PLC":
+                    continue
+                ks, kd = self.gkey(row, col, sink), self.gkey(row, col, src)
+                if ks is None or kd is None:
+                    continue
+                if not isg:
+                    local.append((ks, kd))
+                    continue
+                dsu.union(ks, kd)
+                applied += 1
+                for nm, k in ((src, kd), (sink, ks)):
+                    m = self._DCC_IN.match(nm)
+                    if m:
+                        dcc.append((k, self.gkey(row, col, f"G_CLKO{m.group(1)}_DCC")))
+        for ki, ko in dcc:
+            if ko is not None:
+                dsu.union(ki, ko)
+                applied += 1
+        for ks, kd in local:
+            if ks in dsu.p and kd in dsu.p:
+                dsu.union(ks, kd)
+                applied += 1
+        return applied
 
     def apply_plc_fixed_conns(self, dsu, plc_conns, plc_tiles):
         """Union the PLC slice-output fast connections into the DSU.

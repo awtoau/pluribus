@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS)
 sys.path.insert(0, os.path.dirname(SCRIPTS))
+import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402
 import diamond_oracle_parse as P  # noqa: E402
 from machxo2_diamond_oracle import REPO, _Log  # noqa: E402
@@ -261,6 +262,14 @@ _PAD_INTERNAL = re.compile(r"^(JPADD[IO][A-D](_PIO)?|PADD[IO][A-D]_PIO|JDI[A-D]|
 _tls = threading.local()
 
 
+_GFAM = {k: re.compile(v) for k, v in {
+    "JLPLLCLK": r"^JLPLLCLK\d$", "JTCDIVX": r"^JTCDIVX\d$", "JBCDIVX": r"^JBCDIVX\d$",
+    "JPCLKT": r"^JPCLKT\d\d$", "JECSOUT": r"^JECSOUT\d_ECLKBRIDGECS$",
+    "EBRG": r"^EBRG\dCLK\d$", "ECLKCIB": r"^J?ECLKCIB[TB]\d$", "TECLK": r"^TECLK\d$", "ECLKBRIDGE": r"^CLK\d_\d_ECLKBRIDGECS$",
+    "VPRX": r"^VPRX\d\d00$|^VPRXCLKI\d$", "HPSX": r"^HPSX\d\d00$",
+    "VPTX": r"^VPTX\d\d00$", "HPBX": r"^HPBX\d\d00$", "DCC": r"^CLK[IO]\d[TB]?_DCC$"}.items()}
+
+
 def ctx():
     if not hasattr(_tls, "c"):
         _tls.c = Ctx()
@@ -357,6 +366,20 @@ def compare_target(target, targets_dir, out_root):
                 norm["strip_SLICE"] += 1
             info["dsu"] = L.gkey(r, c, dn)
         else:
+            # Diamond names a global wire at a tile where prjtrellis has no such wire
+            # (VPRX/HPSX/VPTX/HPBX, centre-mux wires): resolve it through gkey() of
+            # the prefixed spelling.  dsu only: it is not a graph wire, so pips stay
+            # `wire_not_in_graph`.
+            if ongrid:
+                for pfx in ("G_", "BRANCH_"):
+                    try:
+                        k = L.gkey(r, c, pfx + nm)
+                    except AssertionError:     # BRANCH_ with no carrying column
+                        k = None
+                    if k is not None:
+                        info["dsu"] = k
+                        norm[f"gkey_global_{pfx}"] += 1
+                        break
             res["wire_classes_missing"][re.sub(r"\d", "#", nm)] += 1
             for dc in (1, -1):
                 if 0 <= c + dc <= C.max_col and 0 <= r <= C.max_row \
@@ -438,7 +461,7 @@ def compare_target(target, targets_dir, out_root):
         mapped = 0
         for w in n["wires"]:
             i = wmap(w)
-            if i["exists"]:
+            if i["exists"] or i["dsu"] is not None:
                 mapped += 1
                 if i["dsu"] is not None and i["dsu"] in dsu.p:
                     roots.add(dsu.find(i["dsu"]))
@@ -465,6 +488,26 @@ def compare_target(target, targets_dir, out_root):
         if v != "MATCH":
             rec["unmapped_wires"] = [w for w in n["wires"] if not wmap(w)["exists"]][:20]
         res["nets"].append(rec)
+    # nets carrying a global-clock wire: "intact" = lift MATCH AND every global wire is a DSU
+    # node.  An unmapped wire is invisible to the MATCH verdict, so this is the strict count.
+    vmap = {r_["net"]: r_["verdict"] for r_ in res["nets"]}
+    gn = defaultdict(lambda: {"nets": 0, "intact": 0})
+    for n in O["nets"]:
+        fams_ = set()
+        gws = []
+        for w in n["wires"]:
+            for fk, frx in _GFAM.items():
+                if frx.match(P.split_wire(w)[2]):
+                    fams_.add(fk)
+                    gws.append(w)
+        if not gws:
+            continue
+        ok = vmap[n["name"]] == "MATCH" and all(
+            (lambda k: k is not None and k in dsu.p)(wmap(w)["dsu"]) for w in gws)
+        for fk in fams_:
+            gn[fk]["nets"] += 1
+            gn[fk]["intact"] += ok
+    res["global_nets"] = dict(gn)
     dnet_to_lift = {}
     for name, (roots, _m) in net_roots.items():
         if len(roots) == 1:
@@ -636,6 +679,29 @@ def compare_target(target, targets_dir, out_root):
                                 "diamond_net_rewritten": gk_net,
                                 "verdict": v, "why": why})
 
+    # ---- global-clock families (#109) ------------------------------------
+    fam_nets = defaultdict(set)
+    fam = defaultdict(lambda: {"arcs": 0, "nets_touched": 0, "nets_split": 0,
+                               "regclk_broken": 0})
+    for g in res["gkey"]:
+        if g["branch"] != "global_drop":
+            continue
+        f = fam[re.sub(r"\d", "#", g["name"])]
+        f["arcs"] += 1
+        for nn in (g["diamond_net_other"], dwire_net.get(g["raw"])):
+            if nn:
+                fam_nets[re.sub(r"\d", "#", g["name"])].add(nn)
+    for k, nets in fam_nets.items():
+        fam[k]["nets_touched"] = len(nets)
+        fam[k]["nets_split"] = len(nets & split_nets)
+    for s_ in res["sites"]:
+        for fd in s_["fields"]:
+            if fd["field"].endswith(".lift.clk") and fd["verdict"] != "MATCH":
+                for k, nets in fam_nets.items():
+                    if fd["diamond"] in nets:
+                        fam[k]["regclk_broken"] += 1
+    res["global_families"] = {k: dict(v) for k, v in fam.items()}
+
     # ---- roll-up ------------------------------------------------------------
     fc = Counter()
     for s in res["sites"]:
@@ -671,6 +737,9 @@ def main():
     targets = args.only or sorted(
         t for t in os.listdir(args.out)
         if os.path.exists(os.path.join(args.out, t, "oracle.json")))
+    class _L:      # heavy_guard wants a logger
+        info = staticmethod(lambda fmt, *a: log(fmt % a))
+    heavy_guard.wait_available(_L, "oracle compare")   # #111: absolute free-RAM gate
     log(f"[compare] {len(targets)} targets, {args.workers} workers")
     q = queue.Queue()
     for t in targets:
@@ -688,7 +757,8 @@ def main():
                 r = compare_target(t, args.targets_dir, args.out)
                 r = {"target": t, "status": "ok", **{k: r[k] for k in (
                     "pips", "pip_detail", "net_verdicts", "site_field_verdicts",
-                    "gkey_verdicts", "normalisation", "wire_classes_missing")}}
+                    "gkey_verdicts", "normalisation", "wire_classes_missing",
+                    "global_families", "global_nets")}}
             except (Exception, SystemExit) as e:  # noqa: BLE001 -- db.die() exits; recorded per target
                 r = {"target": t, "status": "failed", "error": f"{type(e).__name__}: {e}"}
                 log(f"[fail] {t}: {r['error']}")
@@ -715,6 +785,16 @@ def main():
         for r in results:
             acc.update(r.get(key, {}))
         summ[key] = dict(sorted(acc.items()))
+    gf = defaultdict(Counter)
+    for r in results:
+        for k, v in r.get("global_families", {}).items():
+            gf[k].update(v)
+    summ["global_families"] = {k: dict(v) for k, v in sorted(gf.items())}
+    gnn = defaultdict(Counter)
+    for r in results:
+        for k, v in r.get("global_nets", {}).items():
+            gnn[k].update(v)
+    summ["global_nets"] = {k: dict(v) for k, v in sorted(gnn.items())}
     det = defaultdict(Counter)
     for r in results:
         for k, v in r.get("pip_detail", {}).items():
@@ -734,6 +814,10 @@ def main():
     log(f"[compare] done in {time.monotonic() - t0:.1f}s: {summ['status']}")
     for key in ("pips", "net_verdicts", "gkey_verdicts", "site_field_verdicts"):
         log(f"[compare] {key}: {summ[key]}")
+    for k, v in summ["global_nets"].items():
+        log(f"[compare] global-wire nets {k}: {v}")
+    for k, v in summ["global_families"].items():
+        log(f"[compare] global family {k}: {v}")
     # Headline: a missing/extra connection is a fault as bad as a wrong one.
     sf = summ["site_field_verdicts"]
     clk = {k.split(":")[1]: v for k, v in sf.items() if k.startswith("FF#.lift.clk:")}

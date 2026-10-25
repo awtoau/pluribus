@@ -53,7 +53,7 @@ Unknown fields (`unk_*` in the parse) are constant across all 2779 files except 
 - Global clock nets are included by default, with the whole tree: `JCLKOP_PLL -> JLPLLCLK -> VPRXCLKI -> CLKI_DCC -> CLKO_DCC -> VPRX -> HPSX -> CLKI#T_DCC -> CLKO#T_DCC -> VPTX -> HPBX -> CLK#`.
 - 1099 nets carry `PAR_CLOCKSIGNAL`; all 1099 routed.
 - prjtrellis names these with `G_` / `BRANCH_` / `D_` prefixes and different home tiles; 6678 Diamond wires resolve after adding `G_`, the spine/branch wires (VPRX/HPSX/VPTX/HPBX, ~1100 each) do not resolve at their Diamond tile.
-- The lift drops global names (`gkey()` returns None): 2192 decoded arcs on Diamond clock nets dropped -> 1096 split clock nets. Known gap, now measured.
+- Before #109 the lift dropped global names (`gkey()` returned None): 2192 decoded arcs on Diamond clock nets dropped -> 1096 split clock nets. Fixed, see "Global clock tree (#109)".
 
 ## Corpus layout + rerun
 
@@ -141,13 +141,60 @@ Method: for every decoded arc endpoint, `gkey_branch()` (mirrors `gkey()`'s cond
 | V-span off-die, overshoot 2 -> walk-back | 0 | **681** | 0 | Diamond: `N3_V06N0103` from row 1 is `V06N0100@R1`, which turns into `V06S0103@R3` (675 arcs). The walk-back key `V06N0103@R0` is on no Diamond route; 680 nets split (EBR clock nets `dp8kc_*`, `re_ebr_*`, ...) |
 | left-edge stub drop (`left_stub_drop`) | 0 | **4** | 0 | `W3_H06W0303` at R2C2 is dropped; Diamond routes it as `H06W0301@C2 -> H06E0304@C2` (turnaround) on `out0_c` of `efb_i2c2_spi*`; net splits |
 | H06E right-edge mirror, right stub drop | - | - | - | not exercised by the 2779-target corpus; removed in #119 (below) |
-| global names (`global_drop`) | 0 | 2192 | 3337 | Diamond routes the dropped arcs (clock trees); expected gap, not a workaround |
+| global names (`global_drop`), before #109 | 0 | 2192 | 3337 | Diamond routes the dropped arcs (clock trees); after #109: 1078 DISAGREE (G_TECLK 1077 + 1), rest keyed or unused |
 | other unresolvable names (`unresolved_drop`) | 0 | 0 | 2 | |
 | `_v02_alias` (identity) | - | - | - | V02S06xx/07xx used on 3666 tile-uses, never with the V02N mate at the same tile: no evidence either way |
 
 - The two DISAGREE rows are splits (missing joins), not fusions; both are faults: 680 + 4 nets.
 - **Headline, every non-match counted as a fault:** pips 80,532 / 134,261 matched (60.0%; 53,729 faults: 2,990 missing, 44,100 not modelled/named, 6,639 extra); nets 17,641 / 19,498 (90.5%; 1,857 faults); register-clock nets 1,135 / 2,996 (37.9%). "0 pip MISMATCH" only means no pip disagreed where both sides had it.
 - Diamond's turnaround arcs give the missing rules directly: top edge `V06N{i}00@R1 -> V06S{i}03@R3`; left edge `H06W{i}01@C2 -> H06E{i}04@C2`. Not applied here (`lifters/machxo2_lift.py` untouched).
+
+## Global clock tree (#109)
+
+Comparator changes (baseline re-measured under the new comparator, headline unchanged): `global_nets` per family (Diamond nets carrying a global wire; "intact" = lift MATCH and every global wire a DSU node, since an unmapped wire is invisible to the net verdict); Diamond global wires with no graph wire at their tile (`VPRX/HPSX/VPTX/HPBX`, centre-mux) resolve through `gkey()` of the `G_`/`BRANCH_` spelling (DSU only; pips stay `wire_not_in_graph`).
+
+| category | before | after | faults before -> after |
+|---|---|---|---|
+| pips MATCH | 80,532 / 134,261 = 60.0% | 82,758 / 134,261 = 61.6% | 53,729 -> 51,503 |
+| pips LIFT_MISSING / LIFT_ONLY / ORACLE_ONLY | 2,990 / 6,639 / 44,100 | 2,982 / 6,639 / 41,882 | none rose |
+| nets MATCH | 18,325 / 19,498 = 94.0% | 19,424 / 19,498 = 99.6% | 1,173 -> 74 |
+| nets MISMATCH (split / fused) | 1,108 (1,106 / 2) | 9 (5 / 4) | fused +2: `dcca` (below) |
+| nets LIFT_MISSING / ORACLE_ONLY | 51 / 14 | 51 / 14 | unchanged |
+| register-clock nets | 1,876 / 2,996 = 62.6% | 2,994 / 2,996 = 99.9% | 1,120 -> 2 |
+| other site / gkey verdicts | | | identical (field-by-field summary diff) |
+
+Family table (Diamond-routed clock trees, `global_families` / `global_nets`):
+
+| family (dropped decoded arcs) | nets split before -> after | register clocks broken before -> after | intact Diamond nets before -> after |
+|---|---|---|---|
+| `G_JLPLLCLK#` (1080) | 1080 -> 0 | 1080 -> 0 | 0 -> 1079 / 1080 |
+| `G_JTCDIVX#` (24) | 15 -> 0 | 36 -> 0 | 0 -> 8 / 8 |
+| `G_JBCDIVX#` (3) | 3 -> 0 | 19 -> 0 | 0 -> 3 / 3 |
+| `G_JPCLKT##` (7) | 5 -> 0 | 12 -> 0 | 0 -> 5 / 6 |
+| `G_JECSOUT#_ECLKBRIDGECS` (4) | 1 -> 1 | 1 -> 1 | 0 -> 0 / 1 (`eclkbridgecs`: ECLKSYNC internals not unioned) |
+| `G_EBRG#CLK#` (2), `G_ECLKCIB[TB]#` (2), `G_CLK#_#_ECLKBRIDGECS` | 0 | 0 | 0 -> 1 / 1 each |
+| `G_TECLK#` (1077) | 0 | 0 | not keyed |
+| `G_VPTX##00` idx 1-7 (3330) | 0 | 0 | not keyed |
+| spine (VPRX/HPSX/VPTX0000/HPBX0000), DCC | | | 0 -> 1095-1096 / 1098-1099 |
+
+- Keying one family at a time changes nothing: the arcs are links in one chain (`JCLKOP_PLL -> JLPLLCLK -> VPRXCLKI -> DCC -> VPRX -> HPSX -> DCC(T) -> VPTX -> HPBX -> CLK`), and the chain also needs the fixed conns and the DCC buffer. Subset run (1098 clock targets, 2026-10-24): fixed conns alone take register clocks 0 -> 1117/1119 because unmapped wires drop out of the net verdict; the `global_nets` "intact" column is the strict measure.
+- `G_VPTX01xx-07xx` (3330 arcs): no Diamond net touches them (`nets_touched` 0). Diamond routes only index 0000 (`BRANCH_HPBX0000..0300 -> G_VPTX0000..0300` exist in the config, unused default links). Keying them (UP_DOWN without the column test) changed no verdict. Left dropped.
+- `G_TECLK#` (1077 arcs): 1074 are `G_TECLK1 -> S1E1_CLKFB` in the PLL tile `GPLL_L0` (0,0): mux `S1E1_CLKFB` has `G_TECLK1 = F2B26 F2B27` beside `JCLKFB1 = F2B26` / `JCLKFB2 = F2B27` and two no-bit options, while Diamond routes `CLKINTFB -> CLKFB` (`u0_CLKINTFB_TO_CLKFB`) in all 1074 PLL targets. Treated as a decode ambiguity of that mux, not a clock. Keying TECLK fused 5 nets (subset run: nets MISMATCH 9 without, 14 with). The 3 real uses (`ECLKA` in `PIC_T0`, `oddrx*`) need the ECLKSYNC -> TECLK fixed conn chain; not applied.
+
+Rules implemented (`lifters/machxo2_lift.py`):
+
+1. gkey: `G_JLPLLCLK#`, `G_JTCDIVX#`, `G_JBCDIVX#`, `G_JPCLKT##`, `G_JECSOUT#_ECLKBRIDGECS`, `G_EBRG#CLK#`, `G_J?ECLKCIB[TB]#`, `G_CLK#_#_ECLKBRIDGECS` -> one node `(centre col, centre row, name)`. Diamond names all of them at the centre tile (R6C13) only; the same name appears in other tiles' bits.db (PLL tile, CIB) as the other end of the same chip-unique wire.
+2. `apply_clock_fixed_conns`: device-DB `.fixed_conn`s that name a global (not the oscillator: its fixed fan-out to the PLL ref pins fused `pllrefcs` `GND_net` with `clk_c`), all tiles; other non-PLC fixed conns only between nodes already in the DSU; DCC `CLKIn -> CLKOn` (absent from the DB, Diamond routes it).
+3. Not applied (no Diamond-route evidence in the corpus): `G_JRPLLCLK#`, `G_JTCDIV##`, `G_JBCDIV##`, `G_JSEL#_ECLKBRIDGECS`, `G_JSNETCIB*`, `G_HSBX/VSTX/VSRX`, `G_BECLK#`, `G_DDRCLKPOL/DQS*/INRD/PG/LVDS` (unkeyed names listed by `globalise_net` returning None on `LCMXO2-1200`).
+
+Remaining faults:
+
+- `dcca` (+2 fused nets): an explicit `DCCA` primitive is a net boundary in Diamond (`clk_c` | `clko_w`); an implicit DCC (every PLL / divider clock) is inside one net. The bitstream cannot tell them apart; the lift treats the DCC as a wire. Trade: -1,096 split clock nets for +2 fused in the one explicit-DCC target.
+- Split: `pll_outdivider_mux{b,c,d}2_refclk` `clk_c`, `eclkbridgecs` `ecsout_w` (ECLKSYNC -> JQ4 -> ... internals), `pllrefcs` `clk_c`; registers: `eclkbridgecs`, `pllrefcs` (1 each).
+- Fused (known): `pll_outdivider_muxa2_refclk` 2.
+- Hard-IP fixed conns outside the DSU (step 4): union of ALL non-PLC fixed conns: pips MATCH 106,266 (79.1%) but nets MISMATCH 4,163 (fusions). Propagating from one DSU end (any hard-IP name): MISMATCH 121. Propagating only ECLK names: 26 (`eclksynca*`, `iddrx*`, `oddrx*` fuse: ECLKSYNC is a primitive boundary like the DCC). Rejected; 41,882 pips remain ORACLE_ONLY.
+- Hantek V02 (`run_pipeline.py`, sibling worktree, same board): 2,611 LUTs, 1,112 FFs unchanged; load-time nets 4,233 -> 4,085; clock domains 38 -> 11 (HPBX taps fragments of the same 3 primary clocks; 558 / 359 / 195 FFs per clock both runs). Report ranks renamed (`spec_clk_1` -> `spec_clk_4`).
+- `lifter_equiv_corpus.py`: 459 equivalent, 0 not equivalent, 204 error (ECP5 `sedga_*`), same as before.
 
 ## Lifter fixes from the oracle (2026-10-23, 2779 targets)
 
