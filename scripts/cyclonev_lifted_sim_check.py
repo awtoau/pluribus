@@ -26,6 +26,7 @@ import os
 import random
 import re
 import subprocess
+import tempfile
 import sys
 from pathlib import Path
 
@@ -79,7 +80,12 @@ endmodule
 SUPPORTED = {"cyclonev_lcell_comb", "cyclonev_io_ibuf", "cyclonev_io_obuf", "cyclonev_clkena", "dffeas",
              "cyclonev_ram_block", "cyclonev_mlab_cell",     # RAM/MLAB: plain vendor models (lnsim extract)
              "cyclonev_mac"}                                 # DSP: our model (lifters/data/cyclonev_mac_model.v)
-STEP_LIMIT_S = 60   # each lift / compile / sim step: < 10 s on a corpus design; 60 s = hung
+# Step limits (lift / iverilog / vvp), https://github.com/awto-au/awto-dan/issues/53:
+# - STALL_S: no CPU progress for 60 s = hung (primary guard).
+# - OVERALL_S: backstop = 3x the measured cold worst step; measurement in awtoau/pluribus#121.
+STALL_S = 60
+OVERALL_S = 125
+STEP_LOG = []       # (tool, seconds) of every finished step
 PREAMBLE_CLOCKS = 4  # clock pulses per reset level (all-1, all-0) before the model check starts
 JOBS = 4          # designs in parallel; each is a chain of small subprocesses
 GB_PER_JOB = 0.5    # peak child RSS of one design is ~0.06 GB (load.py); RAM gate per job
@@ -148,13 +154,99 @@ def coverage(vo):
     return (not gaps, ",".join(gaps))
 
 
-def run(cmd, env=None, cwd=REPO):
+def _cpu_s(pid):
+    """utime+stime (clock ticks) of a process; None once it is gone."""
     try:
-        r = subprocess.run([str(c) for c in cmd], cwd=cwd, env=env, capture_output=True, text=True,
-                           timeout=STEP_LIMIT_S)
-    except subprocess.TimeoutExpired:
-        return None, f"exceeded {STEP_LIMIT_S}s"
+        f = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        return int(f[11]) + int(f[12])
+    except (OSError, IndexError):
+        return None
+
+
+def run(cmd, env=None, cwd=REPO, overall_s=None):
+    """Run a step; kill on STALL (no CPU progress for STALL_S) or on the OVERALL backstop.
+
+    The compile and the sim print nothing until they finish, so output silence cannot show a hang;
+    CPU time not advancing does.  Backstop: OVERALL_S (see the limits note at the constants).
+    """
+    import time
+    overall_s = overall_s or OVERALL_S
+    out_f = tempfile.TemporaryFile(mode="w+")
+    err_f = tempfile.TemporaryFile(mode="w+")
+    p = subprocess.Popen([str(c) for c in cmd], cwd=cwd, env=env, stdout=out_f, stderr=err_f, text=True)
+    t0 = last_t = time.monotonic()
+    last_cpu = -1
+    why = None
+    while p.poll() is None:
+        try:
+            p.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            pass
+        now = time.monotonic()
+        cpu = _cpu_s(p.pid)
+        if cpu is not None and cpu != last_cpu:
+            last_cpu, last_t = cpu, now
+        if now - last_t > STALL_S:
+            why = f"stalled {now - last_t:.0f}s with no CPU progress (limit {STALL_S}s, loadavg {os.getloadavg()[0]:.1f})"
+        elif now - t0 > overall_s:
+            why = f"exceeded {overall_s}s overall (loadavg {os.getloadavg()[0]:.1f})"
+        if why:
+            p.kill()
+            p.wait()
+            return None, f"{Path(str(cmd[0])).name}: {why}"
+    out_f.seek(0)
+    err_f.seek(0)
+    r = subprocess.CompletedProcess(cmd, p.returncode, out_f.read(), err_f.read())
+    STEP_LOG.append((Path(str(cmd[0])).name, time.monotonic() - t0))
     return r, None
+
+
+def oscillator_enables(vo):
+    """Input ports that, held at 0, silence a zero-delay inverting self-loop in build.vo.
+
+    An lcell whose own output feeds back so that out_next = !out for some other-input value
+    (`q = ~(q & x)`) never settles in a zero-delay sim: Quartus and lifted both spin.  Holding the
+    enable input at 0 leaves the loop quiescent; the oscillating phase has no reference to compare.
+    """
+    out = set()
+    for m in re.finditer(r"cyclonev_lcell_comb\s+(\S+)\s*\((.*?)\);(.*?)lut_mask = 64'h([0-9A-Fa-f]+)", vo, re.S):
+        body, mask = m.group(2), int(m.group(4), 16)
+        co = re.search(r"\.combout\((\\\S+)\s*\)", body)
+        if not co:
+            continue
+        ports = {}
+        for letter in "abcdef":
+            pm = re.search(rf"\.data{letter}\((!?)\s*(\S+?)\s*\)", body)
+            ports[letter] = (pm.group(1) == "!", pm.group(2)) if pm else (False, "gnd")
+        selfp = [k for k, (_n, net) in ports.items() if net == co.group(1)]
+        if not selfp:
+            continue
+        free = [k for k, (_n, net) in ports.items() if k not in selfp and net not in ("gnd", "vcc")]
+
+        def oscillates(fixed):
+            for bits in range(1 << len(free)):
+                val = {k: (ports[k][1] == "vcc") ^ ports[k][0] for k in "abcdef" if k not in free and k not in selfp}
+                val.update({k: (bits >> i) & 1 for i, k in enumerate(free)})
+                for k in free:
+                    if k in fixed:
+                        val[k] = fixed[k]
+
+                def nxt(sv):
+                    v = dict(val)
+                    for k in selfp:
+                        v[k] = sv ^ ports[k][0]
+                    return (mask >> sum(v[k] << i for i, k in enumerate("abcdef"))) & 1
+                if nxt(0) == 1 and nxt(1) == 0:
+                    return True
+            return False
+        if not oscillates({}):
+            continue
+        for k in free:
+            mi = re.match(r"\\(\w+)(?:\[\d+\])?~input_o$", ports[k][1])
+            if mi and not oscillates({k: int(ports[k][0])}):    # net 0 = port bit `neg`
+                out.add(mi.group(1))
+                break
+    return out
 
 
 def relift(design, out):
@@ -290,6 +382,10 @@ def check_design(design, steps=2000, seed=1, zero=(), invert="", do_relift=True)
     ins = [(n, w) for n, (dr, w) in ports.items() if dr == "input"]
     outs = [(n, w) for n, (dr, w) in ports.items() if dr == "output"]
     clocks = clock_inputs(vo, ins)
+    osc = oscillator_enables(vo)
+    if osc:
+        zero = tuple(zero) + tuple(sorted(osc))
+        res["osc"] = ",".join(sorted(osc))
     (work / "models.v").write_text(MODELS)
     src, libs = src_files(d)
     if re.search(r"synthesis\s+full_case", "".join(p.read_text() for p in src)):
@@ -403,6 +499,7 @@ def fmt(r):
             f"({r['model_ok']}/{r['model_ok'] + r['model_wrong']})"
             + (f" lifted-vs-src={r['ls_ok']}/{r['ls_ok'] + r['ls_wrong']}" if r["ls_ok"] or r["ls_wrong"] else "")
             + f" {r['reason']}"
+            + (f" [zero-delay oscillator: input(s) {r['osc']} held 0]" if r.get("osc") else "")
             + (f" bad_pins={r['bad_pins'][:8]}" if r["bad_pins"] else ""))
 
 
@@ -443,6 +540,10 @@ def summary(results, logf=log):
     ok = sum(r["ok"] for r in cov)
     wrong = sum(r["wrong"] for r in cov)
     miss = sum(r["missing"] for r in cov)
+    worst = {}
+    for tool, sec in STEP_LOG:
+        worst[tool] = max(worst.get(tool, 0), sec)
+    logf("slowest step per tool (s): " + ", ".join(f"{k} {v:.1f}" for k, v in sorted(worst.items())))
     logf(f"designs: {dict(st)}")
     logf(f"samples (simulated designs): matched {ok}/{ok + wrong + miss} = "
          f"{100 * ok / max(1, ok + wrong + miss):.1f}%  wrong={wrong} missing={miss}")
