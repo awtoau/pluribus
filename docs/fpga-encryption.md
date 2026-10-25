@@ -72,3 +72,11 @@ Strip.bit as in "Format". Quartus = every one of 254 streams (+5 older-toolchain
 - `KEY_VERIFY` read from a board configured with the image: "key present" in the 9-bit register is device-side proof that the loaded image is the encrypted kind.
 - Evidence in the host firmware of key programming (a key-load JTAG sequence) next to the image.
 - Do not read the verdict as "AES by Quartus": a keyed scramble by the image's producer fits the same data.
+
+### Lift realism (detection only)
+
+- Tool: `scripts/lift_realism.py` (`lift`, `report`); control builder `scripts/cyclonev_random_control.py`; `scripts/cyclonev_unpack.py --allow-invalid` (statistics only, logs loudly, bypasses sync/CRC checks).
+- Measured 2026-10-26: 256 Quartus corpus designs (re-lifted, current lifter) vs 3 random-CRAM controls vs 2 third-party opaque images, e50f die.
+  - Separating metrics (corpus range -> control -> images): FF clock set 1.0 -> 0.37-0.41 -> 0.42; FF D driven 1.0 -> 0.49-0.76 -> 0.74-0.75; FF clock nets 1-2 -> 1277-1807 -> 1815-1824; sink nets with no driver 0 -> 0.29-0.31 -> 0.29-0.30; output pads driven 1.0 -> 0.15-0.29 -> 0.25-0.26; constant LUT masks <= 0.077 -> 0.58-0.69 -> 0.69-0.70.
+  - Images lift to 8013-8227 LUTs / 9526-9720 FFs; nibble-coded random controls 8273-8382 / 9696-9745; largest corpus design 825 / 1040.
+  - 8-9 of 9 discriminating metrics fall in the control range, 0 in the corpus range. Log: `tmp/logs/lift_realism.log`.

@@ -48,6 +48,14 @@ def normalise(raw: bytes) -> bytes:
         die(f"not a valid Cyclone V .rbf: {e}")
 
 
+def bypass_body(raw: bytes) -> bytes:
+    """Realigned stream from the preamble on, no validation (--allow-invalid)."""
+    n, sh = cd.find_sync(raw)
+    if sh:
+        raw = cd.realign(raw, sh)
+    return raw[n - PREAMBLE:]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("bin")
@@ -56,6 +64,9 @@ def main():
     ap.add_argument("--rbf", help="where to keep the stripped .rbf (default: <bt>.rbf)")
     ap.add_argument("--decoder", choices=("native", "mistral"), default="native",
                     help="native: scripts/cyclonev_decode.py (docs/cyclonev-native-decoder.md); mistral: mistral-cv")
+    ap.add_argument("--allow-invalid", action="store_true",
+                    help="DIAGNOSTIC ONLY: decode even if sync/CRC/frame checks fail (e.g. opaque CRAM); "
+                         "statistics only, the result is not a netlist of a real design")
     ap.add_argument("--crosscheck", action="store_true", help="also run the other decoder; log the .bt line-set diff")
     a = ap.parse_args()
 
@@ -69,7 +80,15 @@ def main():
         die(f"refusing to overwrite {a.bt}")
     rbf = a.rbf or a.bt + ".rbf"
     raw = open(a.bin, "rb").read()
-    body = normalise(raw)
+    if a.allow_invalid:
+        log.warning("!!! --allow-invalid: container/CRC validation BYPASSED; output is NOT trustworthy logic !!!")
+        try:
+            body = normalise(raw)
+        except SystemExit:
+            body = bypass_body(raw)
+            log.warning("!!! validation FAILED for %s; using realigned unvalidated stream (%d bytes) !!!", a.bin, len(body))
+    else:
+        body = normalise(raw)
     log.info("%s: %d bytes -> %d validated (preamble kept); first bytes %s", a.bin, len(raw),
              len(body), body[:4].hex())
     os.makedirs(os.path.dirname(os.path.abspath(rbf)), exist_ok=True)
@@ -89,7 +108,7 @@ def main():
         import cyclonev_decode as nd
         import cyclonev_native_tables as nt
         try:
-            m = nd.decode(body, a.device)
+            m = nd.decode(body, a.device, strict=not a.allow_invalid)
         except (nt.TableError, nd.ContainerError) as e:
             die(f"native decoder: {e} (use --decoder mistral)")
         lines = m.bt_lines()
