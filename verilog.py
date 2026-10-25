@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import clocks
+import efb_decode
 from db import engine, die
 from sqlalchemy import text
 
@@ -126,6 +127,15 @@ def load_data(conn, bs_id: int) -> dict:
                     q("SELECT cell, dtype FROM ffs WHERE bitstream=:bs_id")
                     if dtype}
 
+    # Cyclone V hard-block instances (M10K / MLAB RAM ...): JSON records, lifters/cyclonev_hard.py.
+    # Older DBs without the table (other families) yield none.
+    import json as _json
+    try:
+        hard = [dict(_json.loads(d) if isinstance(d, str) else d, name=c, kind=k)
+                for c, k, d in q("SELECT cell, kind, data FROM cv_hard_cells WHERE bitstream=:bs_id ORDER BY cell")]
+    except Exception:
+        hard = []
+
     # ── MachXO2 clock-spine unification (issue #65) ─────────────────────────
     # A single physical clock routed on one BRANCH_HPBX global track is tapped
     # by many per-region local nets that reachability never unions (the global
@@ -152,9 +162,9 @@ def load_data(conn, bs_id: int) -> dict:
         ffs = [(cell, clk_unify.get(clk, clk), ce, d, qn, lsr)
                for (cell, clk, ce, d, qn, lsr) in ffs]
 
-    # LUTs: (cell, init, a, b, c, d, e, z, fn) — e is NULL for every 4-input
+    # LUTs: (cell, init, a, b, c, d, e, f, z, fn) — e,f are NULL for every 4-input
     # family, populated only for Cyclone V's ALM-half LUT5 (#63).
-    luts = q("SELECT cell, init, a, b, c, d, e, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
+    luts = q("SELECT cell, init, a, b, c, d, e, f, z, fn FROM luts WHERE bitstream=:bs_id ORDER BY cell")
 
     # ALU cells (GOWIN carry/adder) — empty for MachXO2.
     alus = q("SELECT cell, mode, sum_net, cout_net, cin, i0, i1, i3 "
@@ -260,7 +270,7 @@ def load_data(conn, bs_id: int) -> dict:
     # extracted as BOTH a dpram_* and a lut_* cell sharing one output net; the
     # query is ORDER BY cell so dpram_* is seen first and wins.
     _existing_net_names = set(net_name_map.values())
-    for _cell, _i, _a, _b, _c, _d, _e, _outz, _fn in luts:
+    for _cell, _i, _a, _b, _c, _d, _e, _f, _outz, _fn in luts:
         if _outz is None or _outz in net_name_map or _outz in const_net_map:
             continue
         _cname = resolve_cell(_cell, cell_name_map)   # human name, else the cell id
@@ -393,7 +403,7 @@ def load_data(conn, bs_id: int) -> dict:
     # Q wire names that are ALSO driven by a LUT continuous assign.
     # Adding `assign q_wire = reg;` for these would create a multi-driver conflict,
     # so emit_ffs must skip connect assigns for them.
-    lut_z_nets: set[str] = {z for _cell, _init, _a, _b, _c, _d, _e, z, _fn in luts if z}
+    lut_z_nets: set[str] = {z for _cell, _init, _a, _b, _c, _d, _e, _f, z, _fn in luts if z}
     # Resolved LUT output identifiers: used by emit_ebr to avoid double-assigning
     # nets that already have a LUT driver (EBR dout bits routed through buffering LUTs).
     lut_driven_net_ids: set[str] = {resolve_net(z, net_name_map, const_net_map)
@@ -461,7 +471,9 @@ def load_data(conn, bs_id: int) -> dict:
         # Family flag — GOWIN devices are GW1N-*/GW2A-*/…  Emitter changes that
         # would perturb the byte-identical MachXO2 output are gated on this.
         "is_gowin":         str(meta[1] or "").upper().startswith("GW"),
+        "is_cyclonev":      str(meta[1] or "").upper().startswith("5C"),
         "ff_dtype_map":     ff_dtype_map,
+        "hard":             hard,
     }
 
 
@@ -790,6 +802,11 @@ def emit_wires(data: dict) -> list[str]:
     return lines
 
 
+def _efb_port(name: str) -> str:
+    """Vendor EFB primitive port name: the fabric wire name (JWBCLKI) minus the leading J."""
+    return name[1:] if name.startswith("J") else name
+
+
 def emit_efb_comment(data: dict) -> list[str]:
     """Comment block describing EFB port connections.
 
@@ -830,7 +847,7 @@ def emit_efb_comment(data: dict) -> list[str]:
         direction = row[2] if len(row) > 2 else None
         wire_name = resolve_net(net, net_name_map, const_net_map)
         arrow = "→" if direction == "out" else "?"
-        lines.append(f"    // EFB.{port_name} {arrow} {wire_name}  (raw net: {net}"
+        lines.append(f"    // EFB.{_efb_port(port_name)} {arrow} {wire_name}  (raw net: {net}"
                      f"{', ' + direction if direction else ''})")
     if efb_ports and n_out == len(efb_ports):
         # Only reachable if the input side regressed (#100 recovered it); say so
@@ -841,7 +858,15 @@ def emit_efb_comment(data: dict) -> list[str]:
     # The instantiation.  Ports carry their recovered direction, so a reader (and
     # yosys) can tell driven from driving without consulting the table above.
     if efb_ports:
-        lines.append("    EFB efb_inst (")
+        attrs, unexplained, notes = efb_decode.decode(efb_config)
+        for note in notes:
+            lines.append(f"    //   {note}")
+        for reg, idx, bits in unexplained:
+            lines.append(f"    //   UNEXPLAINED config bits: {reg} (byte {idx}) 0x{bits:02x}")
+        lines.append("    EFB #(")
+        plist = [f'        .{k}("{v}")' for k, v in attrs.items()]
+        lines.append(",\n".join(plist))
+        lines.append("    ) efb_inst (")
         conns = []
         for row in efb_ports:
             pn, net = row[0], row[1]
@@ -850,10 +875,18 @@ def emit_efb_comment(data: dict) -> list[str]:
         for i, (pn, wire, d) in enumerate(conns):
             comma = "," if i < len(conns) - 1 else ""
             tag = {"in": "// fabric -> EFB", "out": "// EFB -> fabric"}.get(d, "")
-            lines.append(f"        .{pn}({wire}){comma:<2} {tag}")
+            lines.append(f"        .{_efb_port(pn)}({wire}){comma:<2} {tag}")
         lines.append("    );")
     lines.append("")
     return lines
+
+
+# Declared on the blackbox so attribute overrides on the instance elaborate.
+_EFB_PARAM_DEFAULTS = {
+    **{a: "DISABLED" for a in efb_decode.ENABLE_ATTRS},
+    "SPI_MODE": "SLAVE", "SPI_CLK_DIVIDER": "1",
+    **{a: "DISABLED" for a in efb_decode.SPI_ATTR_ORDER},
+}
 
 
 def emit_efb_module(data: dict) -> list[str]:
@@ -880,11 +913,13 @@ def emit_efb_module(data: dict) -> list[str]:
         "// simulation until a behavioural model replaces this stub -- which is honest,",
         "// where driving them to a constant would fake a result.",
         "(* blackbox *)",
-        "module EFB (",
+        "module EFB #(",
+        ",\n".join(f'    parameter {k} = "{v}"' for k, v in _EFB_PARAM_DEFAULTS.items()),
+        ") (",
     ]
-    decls = ([f"    input  wire {p}" for p in ins]
-             + [f"    output wire {p}" for p in outs]
-             + [f"    inout  wire {p}  // direction not recovered" for p in unknown])
+    decls = ([f"    input  wire {_efb_port(p)}" for p in ins]
+             + [f"    output wire {_efb_port(p)}" for p in outs]
+             + [f"    inout  wire {_efb_port(p)}  // direction not recovered" for p in unknown])
     for i, d in enumerate(decls):
         lines.append(d + ("," if i < len(decls) - 1 else ""))
     lines.append(");")
@@ -892,7 +927,8 @@ def emit_efb_module(data: dict) -> list[str]:
     return lines
 
 
-def _simplify_lut(init: str, a: str, b: str, c: str, d: str, e: str | None = None) -> str | None:
+def _simplify_lut(init: str, a: str, b: str, c: str, d: str, e: str | None = None,
+                  f: str | None = None) -> str | None:
     """Reduce a 4- or 5-input LUT to a direct Verilog operator expression where possible.
 
     NC and 1'b0 inputs are treated as constant 0; 1'b1 inputs as constant 1.
@@ -910,6 +946,8 @@ def _simplify_lut(init: str, a: str, b: str, c: str, d: str, e: str | None = Non
     ports  = [(0, a), (1, b), (2, c), (3, d)]
     if e is not None:
         ports.append((4, e))
+    if f is not None:
+        ports.append((5, f))
     live   = [(pos, sig) for pos, sig in ports if sig not in ZERO and sig not in ONE]
     fixed1 = [pos for pos, sig in ports if sig in ONE]
 
@@ -976,7 +1014,7 @@ def _lut_active_positions(init: str) -> set[int]:
 
 def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                       cell_name: str = "", tie_unused: bool = False,
-                      e: str | None = None) -> list[str]:
+                      e: str | None = None, f: str | None = None) -> list[str]:
     """Emit an assign for a LUT with no structured fn tag.
 
     First tries _simplify_lut() — for LUTs with ≤2 live inputs this emits a
@@ -1008,13 +1046,19 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                               f"needs the `e` port, cell {cell_name or z_name!r}")
         ports = [e, d, c, b, a]        # index bits {e,d,c,b,a}, positions 4,3,2,1,0
         positions = (4, 3, 2, 1, 0)
+    elif n == 64:
+        if e is None or f is None:
+            raise ValueError(f"_lut_init_to_case: a 64-char (6-input) init "
+                              f"needs the `e` and `f` ports, cell {cell_name or z_name!r}")
+        ports = [f, e, d, c, b, a]     # index bits {f,e,d,c,b,a}, positions 5..0
+        positions = (5, 4, 3, 2, 1, 0)
     else:
-        raise ValueError(f"_lut_init_to_case: only 4-input (16-char) or "
-                          f"5-input (32-char) LUTs are supported, got a "
+        raise ValueError(f"_lut_init_to_case: only 4-, 5- or 6-input (16/32/64-char) LUTs are "
+                          f"supported, got a "
                           f"{n}-char init for cell {cell_name or z_name!r}")
 
     # _simplify_lut expects LSB-first; the stored INIT is MSB-first, so reverse.
-    expr = _simplify_lut(init[::-1], a, b, c, d, e)
+    expr = _simplify_lut(init[::-1], a, b, c, d, e, f)
     if expr is not None:
         return [f"    assign {z_name} = {expr};"]
 
@@ -1048,7 +1092,9 @@ def emit_luts(data: dict) -> list[str]:
     net_name_map = data["net_name_map"]
     const_net_map = data["const_net_map"]
     cell_name_map = data["cell_name_map"]
-    tie_unused   = data.get("is_gowin", False)
+    # Cyclone V: an ALM's A/B pins are shared by both halves, so a half can see its own
+    # output on an input its table ignores; indexing with that X never resolves in sim.
+    tie_unused   = data.get("is_gowin", False) or data.get("is_cyclonev", False)
 
     # Input pads are declared as `input wire PORT_NAME` in the module header.
     # Pad loopback arcs can make a LUT output net share the same DSU root as an
@@ -1068,23 +1114,23 @@ def emit_luts(data: dict) -> list[str]:
     # [abcde]: e only ever appears for Cyclone V's ALM-half LUT5 (#63); every
     # 4-input family's fn tags simply never use the letter.
     _FN_RULES = [
-        (re.compile(r"^(INV|NOT)\(([abcde])\)$"),     lambda m: f"~{m.group(2)}"),
-        (re.compile(r"^BUF\(([abcde])\)$"),            lambda m: m.group(1)),
-        (re.compile(r"^AND\(([abcde]),([abcde])\)$"),   lambda m: f"{m.group(1)} & {m.group(2)}"),
-        (re.compile(r"^OR\(([abcde]),([abcde])\)$"),    lambda m: f"{m.group(1)} | {m.group(2)}"),
-        (re.compile(r"^XOR\(([abcde]),([abcde])\)$"),   lambda m: f"{m.group(1)} ^ {m.group(2)}"),
-        (re.compile(r"^NAND\(([abcde]),([abcde])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
-        (re.compile(r"^NOR\(([abcde]),([abcde])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
-        (re.compile(r"^XNOR\(([abcde]),([abcde])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
+        (re.compile(r"^(INV|NOT)\(([abcdef])\)$"),     lambda m: f"~{m.group(2)}"),
+        (re.compile(r"^BUF\(([abcdef])\)$"),            lambda m: m.group(1)),
+        (re.compile(r"^AND\(([abcdef]),([abcdef])\)$"),   lambda m: f"{m.group(1)} & {m.group(2)}"),
+        (re.compile(r"^OR\(([abcdef]),([abcdef])\)$"),    lambda m: f"{m.group(1)} | {m.group(2)}"),
+        (re.compile(r"^XOR\(([abcdef]),([abcdef])\)$"),   lambda m: f"{m.group(1)} ^ {m.group(2)}"),
+        (re.compile(r"^NAND\(([abcdef]),([abcdef])\)$"),  lambda m: f"~({m.group(1)} & {m.group(2)})"),
+        (re.compile(r"^NOR\(([abcdef]),([abcdef])\)$"),   lambda m: f"~({m.group(1)} | {m.group(2)})"),
+        (re.compile(r"^XNOR\(([abcdef]),([abcdef])\)$"),  lambda m: f"~({m.group(1)} ^ {m.group(2)})"),
         # MUX(sel,i0,i1): 3-input LUT mux, sel=0 -> i0, sel=1 -> i1 (see classify_lut).
-        (re.compile(r"^MUX\(([abcde]),([abcde]),([abcde])\)$"),
+        (re.compile(r"^MUX\(([abcdef]),([abcdef]),([abcdef])\)$"),
                                                       lambda m: f"({m.group(1)} ? {m.group(3)} : {m.group(2)})"),
         # MUX(sel0,i0,MUX(sel1,i1,i2)): Cyclone V LUT5-only cascaded 2-select
         # mux tree (see load.py's _mux5_tree: "y = i0 if sel0 else (i1 if
         # sel1 else i2)").  OUTER level is sel0=1->i0 / sel0=0->inner --
         # inverted from the inner/3-input MUX's sel=0->i0 convention above;
         # _mux5_tree's own bit-check (not the rule above) is the ground truth.
-        (re.compile(r"^MUX\(([abcde]),([abcde]),MUX\(([abcde]),([abcde]),([abcde])\)\)$"),
+        (re.compile(r"^MUX\(([abcdef]),([abcdef]),MUX\(([abcdef]),([abcdef]),([abcdef])\)\)$"),
                                                       lambda m: (f"({m.group(1)} ? {m.group(2)} : "
                                                                  f"({m.group(3)} ? {m.group(5)} : {m.group(4)}))")),
     ]
@@ -1111,7 +1157,7 @@ def emit_luts(data: dict) -> list[str]:
     # sorted by output name — related bits (e.g. dpram_r2c11_*) then group.
     blocks: list[tuple[str, list[str]]] = []
 
-    for cell, init, pa, pb, pc, pd, pe, out_z, fn in luts:
+    for cell, init, pa, pb, pc, pd, pe, pf, out_z, fn in luts:
         if out_z is None:
             # Output is not connected to any fabric net — skip
             continue
@@ -1137,12 +1183,13 @@ def emit_luts(data: dict) -> list[str]:
         # e is NULL for every 4-input family (#63) — keep None, not "NC", so
         # _lut_init_to_case's len(init)==16 branch (no `e` param) still applies.
         e_expr = rn(pe) if pe is not None else None
+        f_expr = rn(pf) if pf is not None else None
 
         if fn is None or fn.startswith("COMBO"):
             # Pass human name for localparam naming; empty → use z_name (avoids lut_lut_lut…)
             lp_key = _sanitise(cell_human) if cell_human else ""
             blk = _lut_init_to_case(init, z_name, a_expr, b_expr, c_expr, d_expr,
-                                    lp_key, tie_unused=tie_unused, e=e_expr)
+                                    lp_key, tie_unused=tie_unused, e=e_expr, f=f_expr)
             blk[-1] += f"  // {cell_name}  init={init}"
 
         elif fn == "CONST0":
@@ -1157,7 +1204,7 @@ def emit_luts(data: dict) -> list[str]:
             fn_op = _fn_to_vlog(fn)
             # e_expr is None for every 4-input family; fn never contains the
             # letter 'e' in that case, so the missing map entry is never hit.
-            port_map = {"a": a_expr, "b": b_expr, "c": c_expr, "d": d_expr, "e": e_expr}
+            port_map = {"a": a_expr, "b": b_expr, "c": c_expr, "d": d_expr, "e": e_expr, "f": f_expr}
 
             def replace_port(m):
                 letter = m.group(0)
@@ -1167,7 +1214,7 @@ def emit_luts(data: dict) -> list[str]:
                     return f"({expr})"
                 return expr
 
-            vlog_expr = re.sub(r"\b([abcde])\b", replace_port, fn_op)
+            vlog_expr = re.sub(r"\b([abcdef])\b", replace_port, fn_op)
             # Drop the comment when it just repeats the (now-named) output.
             _cmt = "" if z_name == cell_name else f"  // {cell_name}"
             blk = [f"    assign {z_name} = {vlog_expr};{_cmt}"]
@@ -1272,9 +1319,13 @@ def emit_ffs(data: dict) -> list[str]:
     ce_clear_ffs: list[tuple] = []
     active_ffs:   list[tuple] = []
     latch_ffs:    list[tuple] = []   # GOWIN DL/DLC/… transparent latches
+    cv_ffs:       list[tuple] = []   # Cyclone V ALM registers (all controls, see below)
 
     for row in ffs:
         cell, clk, ce, d, q, lsr = row
+        if data.get("is_cyclonev") and str(ff_dtype_map.get(cell, "")).startswith("cyclonev_alm_reg"):
+            cv_ffs.append(row)
+            continue
         if is_latch(cell):
             latch_ffs.append(row)
             continue
@@ -1467,6 +1518,46 @@ def emit_ffs(data: dict) -> list[str]:
                     lines.append(f"        if ({ce_expr}) {reg_ident} <= {d_expr};{hc}")
                 else:
                     lines.append(f"        {reg_ident} <= {d_expr};{hc}")
+            lines.append("    end")
+            lines.append("")
+
+    # ── Cyclone V registers: dffeas semantics ───────────────────────────────
+    # clrn async (clears), else on the clock edge: ena ? (sclr ? 0 : d) : hold.
+    # Controls: ffs.d/clk/ce/lsr(=sclr) + `dtype` flags (lifters/cyclonev_lift.py _ctl_columns).
+    if cv_ffs:
+        from collections import defaultdict as _dd3
+        lines.append(f"    // ── Cyclone V registers ({len(cv_ffs)}) — clrn async, ena, sclr, d ─")
+        groups: dict[tuple, list] = _dd3(list)
+        for cell, clk, ce, d, q, lsr in cv_ffs:
+            flags = dict(p.split("=", 1) if "=" in p else (p, "1")
+                         for p in ff_dtype_map[cell].split(";")[1:])
+            ident = reg_ref(cell)
+            if flags.get("miss") or not clk or not d:
+                lines.append(f"    // {ident}: control not recovered ({flags.get('miss', 'clk/d')}), left undriven")
+                continue
+            neg = flags.get("clkinv") == "1"
+            inv = lambda e, f: f"!{e}" if flags.get(f) == "1" else e
+            en = inv(rn(ce), "ceinv") if ce else "1'b1"
+            sc = inv(rn(lsr), "lsrinv") if lsr else None
+            clr = flags.get("clr")
+            if clr:
+                clr = rn(clr)
+                clr = f"!{clr}" if flags.get("clrinv") == "1" else clr   # expression that is 1 when not cleared
+            dx = inv(rn(d), "dinv")
+            groups[(rn(clk), neg, clr)].append((ident, en, sc, dx))
+        for gi, ((clk_expr, neg, clr), members) in enumerate(sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or ""))):
+            edge = "negedge" if neg else "posedge"
+            sens = f"{edge} {clk_expr}"
+            if clr:
+                lines.append(f"    wire cv_clrn{gi} = {clr};")
+                sens += f" or negedge cv_clrn{gi}"
+            lines.append(f"    // {len(members)} FFs @ {edge} {clk_expr}" + (f", async clear {clr}" if clr else ""))
+            lines.append(f"    always @({sens}) begin")
+            for ident, en, sc, dx in members:
+                body = f"{ident} <= 1'b0" if sc == "1'b1" else (
+                    f"{ident} <= ({sc}) ? 1'b0 : {dx}" if sc else f"{ident} <= {dx}")
+                stmt = body if en == "1'b1" else f"if ({en}) {body}"
+                lines.append((f"        if (!cv_clrn{gi}) {ident} <= 1'b0; else " if clr else "        ") + stmt + ";")
             lines.append("    end")
             lines.append("")
 
@@ -1986,7 +2077,7 @@ def emit_fplls(data: dict) -> list[str]:
     duplicated -- one calibrated M/N-counter decode, used by both the fuzz
     harness and the emitter. See docs/cyclonev-fpll-fuzz-status.md for what
     is and is not calibrated: M divide is confirmed for symmetric (50%
-    duty, hi==lo) non-bypassed cases and for the bypass case; a real sample
+    duty, hi==lo) non-bypassed cases and for the bypass case; a configuration
     with hi != lo (any non-50%-duty or odd-division M/N) decodes to
     confidence=UNKNOWN and is emitted as a comment-only placeholder, not a
     guessed parameter value -- never papers over an uncalibrated case with
@@ -2065,6 +2156,64 @@ def emit_fplls(data: dict) -> list[str]:
     return lines
 
 
+def emit_hard_cells(data: dict) -> list[str]:
+    """Vendor-atom instances (cyclonev_ram_block, cyclonev_mlab_cell ...) from `cv_hard_cells`.
+
+    Params and pin nets are decoded from the bitstream (lifters/cyclonev_hard.py); the instance runs on
+    the vendor model.  A record with `unmodelled` is emitted as a comment (a missing block is a fault).
+    """
+    hard = data.get("hard") or []
+    if not hard:
+        return []
+    nm, cm = data["net_name_map"], data["const_net_map"]
+    rn = lambda net: ("!" + resolve_net(net[1:], nm, cm)) if net.startswith("!") else resolve_net(net, nm, cm)
+    lines = ["    // ── Hard blocks (vendor atoms) ─────────────────────────────────────────"]
+    for h in hard:
+        if h.get("unmodelled"):
+            lines.append(f"    // {h['name']}: NOT LIFTED -- {h['unmodelled']}")
+            if h.get("decode"):
+                dc = h["decode"]
+                lines.append(f"    // {h['name']} decode: M={dc['m']} N={dc['n']} " +
+                             " ".join(f"C{c}={v}" for c, v in sorted(dc["c"].items(), key=lambda kv: int(kv[0]))))
+            continue
+        nm_ = h["name"]
+        par = dict(h["params"])
+        init = int(h.get("init") or 0)
+        if init and h["kind"] == "cyclonev_mlab_cell":
+            par["mem_init0"] = f'"{init:x}"'
+        elif init:
+            par["init_file_layout"] = '"port_a"'
+            for i in range(5):
+                chunk = (init >> (2048 * i)) & ((1 << 2048) - 1)
+                par[f"mem_init{i}"] = f'"{chunk:0512x}"'
+        outs = h.get("outs") or {}
+        width_of = {"portadataout": par.get("port_a_data_width"),
+                    "portbdataout": par.get("port_b_data_width", par.get("data_width")),
+                    "resulta": par.get("result_a_width")}
+        conns = []
+        for port, bits in h["pins"].items():
+            conns.append(f".{port}({{{', '.join(rn(b) for b in reversed(bits))}}})")
+        ram = h["kind"] == "cyclonev_ram_block"
+        mac = h["kind"] == "cyclonev_mac"
+        for port in (("resulta",) if mac else ("portadataout", "portbdataout") if ram else ("portbdataout",)):
+            if port in outs and outs[port]:
+                lines.append(f"    wire [{width_of[port] - 1}:0] {nm_}_{port};")
+                conns.append(f".{port}({nm_}_{port})")
+            else:
+                conns.append(f".{port}()")
+        if ram:
+            conns += [".eccstatus()", ".dftout()"]
+        if mac:
+            conns += [".resultb()", ".scanout()", ".chainout()", ".dftout()"]
+        lines.append(f"    {h['kind']} #(" + ", ".join(f".{k}({v})" for k, v in par.items()) + f") {nm_} (")
+        lines.append("        " + ",\n        ".join(conns) + ");")
+        for port, bitmap in outs.items():
+            for bit, net in sorted(bitmap.items(), key=lambda kv: int(kv[0])):
+                lines.append(f"    assign {rn(net)} = {nm_}_{port}[{int(bit)}];")
+    lines.append("")
+    return lines
+
+
 def emit_output_drives(data: dict) -> list[str]:
     """`assign <output_port> = <fabric driver>;` for output pads (#58).
 
@@ -2086,12 +2235,16 @@ def emit_output_drives(data: dict) -> list[str]:
         base = _sanitise(label)
         port = f"pin{pin}" if (base == "_" or base in seen) else base
         seen.add(port)
-        if direction != "out" or not net_in:
+        if data.get("is_cyclonev") and direction == "out" and not net_in:
+            net_in = net_out    # Cyclone V: net_out is the fabric net; covers a pad-to-pad wire
+        elif direction != "out" or not net_in:
             continue
         # Skip when the driver is itself undriven (fanin=0): the output is
         # genuinely driven off-fabric, and such a shared ghost net may also be a
         # bidir-pad net excluded from declaration — an assign would dangle.
-        if net_stats_map.get(net_in, {}).get("fanin", 1) == 0:
+        elif net_stats_map.get(net_in, {}).get("fanin", 1) == 0:
+            continue
+        if not net_in:
             continue
         driver = resolve_net(net_in, net_name_map, const_net_map)
         if driver in ("NC", "1'b0", "1'b1") or driver == port:
@@ -2368,6 +2521,7 @@ def main():
         emit_trigger_comment(data),
         emit_ebr(data),
         emit_fplls(data),
+        emit_hard_cells(data),
         emit_output_drives(data),
         emit_unresolved_pads_comment(data),
         emit_footer(),

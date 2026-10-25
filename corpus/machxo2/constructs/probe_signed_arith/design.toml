@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog feature probe: signed_arith"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog-in-.v"
+feature = "signed_arith"
+io_bits = 0
+io_reduced = false

@@ -1,0 +1,8 @@
+top = "top"
+purpose = "register with sync reset"
+construct = "syncrst"
+variant = "v01"
+width = 8
+lang = "verilog-2001"
+io_bits = 18
+io_reduced = false

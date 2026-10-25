@@ -3,8 +3,7 @@
 truth — follow-on to cyclonev_die_probe.py's die-identification probe).
 
 Mistral decompiles Cyclone V DSP tiles to named `s DSP.*:MODE` settings
-(M9X9/M18X18P36/M27X27/... — confirmed present in a real unknown design's
-decompile, awto-dji's m2001) but Mistral itself does NOT decode what those
+(M9X9/M18X18P36/M27X27/...) but Mistral itself does NOT decode what those
 settings mean operationally (confirmed by reading mistral-cv's own source:
 "TODO: everything" for DSP mux usage/port mapping). This script builds the
 other half: compile KNOWN Quartus designs, each inferring exactly ONE DSP
@@ -16,8 +15,7 @@ Same proven flow as scripts/cyclonev_die_probe.py:
 then new for this script:
     mistral-cv decomp <model> <rbf> <bt>  -> extract `s DSP.*` lines
 
-Device: 5CEBA4U19C8 (e50f/e50b) -- same die as the real DJI m2001 ground FPGA
-this is meant to apply to (docs/cyclonev-lifter-status.md).
+Device: 5CEBA4U19C8 (e50f/e50b), the die the lifter targets (docs/cyclonev-lifter-status.md).
 
 Usage:
     python3 scripts/cyclonev_dsp_fuzz.py              # all designs
@@ -39,6 +37,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
+import heavy_guard
 import toolchain
 
 # Resolved via the shared toolchain module (env var, then conventional
@@ -47,7 +46,7 @@ import toolchain
 # docs/cyclonev-verification.md for re-running against a different install.
 QUARTUS_BIN = Path(toolchain.quartus_bin())
 MISTRAL_CV = Path(toolchain.mistral_cv())
-DEVICE = "5CEBA4U19C8"          # e50f/e50b -- same die as cyclonev_die_probe.py/DJI m2001
+DEVICE = "5CEBA4U19C8"          # e50f/e50b, same as cyclonev_die_probe.py
 WORK_DIR = REPO / "tmp" / "cyclonev_dsp_fuzz"
 LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_dsp_fuzz.log"
 
@@ -162,6 +161,7 @@ def quartus_compile_design(name, spec, work_dir: Path, logger):
         # or disable the DSP block -- that's the point of this experiment.
     )
 
+    heavy_guard.wait_available(logger, name)
     logger.info("=== %s: %s ===", name, spec["desc"])
 
     if run([str(QUARTUS_BIN / "quartus_map"), name,
@@ -269,6 +269,11 @@ def mode_values(dsp_settings: dict) -> list:
 
 
 def main():
+    with heavy_guard.heavy_lock("cyclonev_dsp_fuzz", heavy_guard.stdout_log()):
+        _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--only", nargs="*", default=None,
                      help="subset of design names to run (default: all)")

@@ -1,0 +1,8 @@
+top = "top"
+purpose = "4-state FSM, one-hot encoding"
+construct = "fsm_oh"
+variant = "v01"
+width = 4
+lang = "verilog-2001"
+io_bits = 5
+io_reduced = false

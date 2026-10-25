@@ -74,7 +74,7 @@ python3     scripts/machxo2_fuzz_dictionary.py                                  
 
 - Logs: `tmp/logs/machxo2_diamond_oracle.log`, `tmp/logs/machxo2_oracle_compare.log`.
 - Oracle is resumable: a target is skipped while its `oracle.json` is newer than the NCD and has the current `schema_version`.
-- Memory gate: workers wait while `psutil.virtual_memory().percent >= 85`, logging every 30 s.
+- Host guard: `scripts/heavy_guard.py`; one heavy batch at a time (`tmp/heavy.lock`), each worker waits for >= `PLURIBUS_MIN_AVAILABLE_GB` available RAM (#111). Covers the oracle and the compare.
 - Tool timeout 2.5 s per call: worst observed 0.80 s (16 workers, 3 full runs) x3.
 
 ## Batch result
@@ -140,7 +140,7 @@ Method: for every decoded arc endpoint, `gkey_branch()` (mirrors `gkey()`'s cond
 | V-span off-die, overshoot 1 (`vspan_offdie_flip`) | 4 | 0 | 0 | |
 | V-span off-die, overshoot 2 -> walk-back | 0 | **681** | 0 | Diamond: `N3_V06N0103` from row 1 is `V06N0100@R1`, which turns into `V06S0103@R3` (675 arcs). The walk-back key `V06N0103@R0` is on no Diamond route; 680 nets split (EBR clock nets `dp8kc_*`, `re_ebr_*`, ...) |
 | left-edge stub drop (`left_stub_drop`) | 0 | **4** | 0 | `W3_H06W0303` at R2C2 is dropped; Diamond routes it as `H06W0301@C2 -> H06E0304@C2` (turnaround) on `out0_c` of `efb_i2c2_spi*`; net splits |
-| H06E right-edge mirror, right stub drop | - | - | - | never exercised by the corpus |
+| H06E right-edge mirror, right stub drop | - | - | - | not exercised by the 2779-target corpus; removed in #119 (below) |
 | global names (`global_drop`), before #109 | 0 | 2192 | 3337 | Diamond routes the dropped arcs (clock trees); after #109: 1078 DISAGREE (G_TECLK 1077 + 1), rest keyed or unused |
 | other unresolvable names (`unresolved_drop`) | 0 | 0 | 2 | |
 | `_v02_alias` (identity) | - | - | - | V02S06xx/07xx used on 3666 tile-uses, never with the V02N mate at the same tile: no evidence either way |
@@ -220,6 +220,59 @@ One commit each; `scripts/machxo2_oracle_compare.py` rerun after each. Fault = e
 - Hantek V02 (`run_pipeline.py`, per commit): REGSET and SRMODE commits leave `2611/1280 LUTs, 1108 FFs, 4341 nets`; V-span rule -> 4274 nets (67 split nets rejoined); left-stub rule -> 1112 FFs, 4262 nets. The 4 new FFs (`ff_r3c2_A0`, `r3c2_B0`, `r5c2_A1`, `r8c2_C0`) are registers whose Q previously fell on the dropped stub and was treated as unused.
 - V02 register modes after the fix: 34 registers are `REGSET=SET` (were all lifted RESET); 871 RESET/ASYNC, 207 RESET/LSR_OVER_CE.
 - `lifter_equiv_corpus.py` before and after each fix: 459 equivalent, 0 not equivalent, 204 error (ECP5 `sedga_*`, unchanged).
+
+## gkey edge rules vs Diamond, 3041 targets (#119, 2026-10-24)
+
+Set: 2779 old fuzz targets + 208 construct builds + 54 coverage designs (docs/machxo2-coverage-designs.md). Driver: `scripts/machxo2_oracle_all.py`; hit counter: `scripts/machxo2_gkey_hits.py`. Fault = every non-MATCH verdict (absent registers counted).
+
+Removed (DISAGREE in every exercised case, 0 AGREE): `h06e_right_mirror` 187, `right_stub_drop` 71, `h06w_left_mirror` 87. No replacement.
+
+Kept after one-at-a-time removal on the full set (each removal raises a fault category; pips identical in all runs):
+
+| rule removed | nets MISMATCH (kept: 1819) | register clock MATCH (kept: 2311) |
+|---|---|---|
+| `h_right_flip` | 2296 (+477) | 2171 (-140) |
+| `h_left_flip` | 1977 (+158) | 2311 |
+| `left_stub_drop` | 1838 (+19) | 2311 (register faults 3861, unchanged) |
+
+Headline, before -> after removing the three rules:
+
+| category | before | after |
+|---|---|---|
+| pips | 127,641 / 205,928 = 61.98% (missing 4,252 + 63,631 not modelled; extra 10,404; wrong 0) | identical |
+| nets | 25,992 / 27,918 = 93.10% (MISMATCH 1,861; LIFT_MISSING 51; ORACLE_ONLY 14) | 26,034 / 27,918 = 93.25% (MISMATCH 1,819) |
+| register-clock | 2,311 / 6,172 = 37.44% (clock ORACLE_ONLY 3,830; register absent from lift 31) | 2,311 / 6,172 = 37.44% (3,855; absent 6) |
+
+- Per set: old corpus identical (nets 18,325 / 19,498, register-clock 1,876 / 2,996); constructs nets identical (5,123 / 5,360); coverage nets 2,544 -> 2,586 / 3,060 (83.1% -> 84.5%).
+- Register-clock: 25 registers move from absent to present with a global-clock-tree miss (#109); total register faults 3,861 -> 3,861.
+- Pips do not move: `gkey()` affects net unions, not the arc comparison.
+- `gkey_branch()` now labels off-die E/W names without a rule `walkback_hstub` (generic walk-back); H06 names no longer count under `h_right_flip` / `h_left_flip`.
+
+Per rule, after (all 3041 targets):
+
+| branch | AGREE | DISAGREE | INCONCLUSIVE |
+|---|---|---|---|
+| `h_right_flip` (non-H06) | 498 | 0 | 20 |
+| `h_left_flip` (non-H06) | 166 | 0 | 36 |
+| `left_stub_drop` (all other W off-die) | 18 | 145 | 37 |
+| `walkback_hstub` (E off-die, no rule) | 0 | 314 | 22 |
+
+- `left_stub_drop` still DISAGREEs on 145 but removing it raises net faults by 19: its drop beats the walk-back on those names. `walkback_hstub` DISAGREE 314 is the generic walk-back on right-edge H06 names; Diamond routes them as a turnaround not yet derived.
+- Removing the rules did not raise any category; the open faults are the unmodelled turnarounds above.
+
+Hantek images (two real third-party designs), `machxo2_gkey_hits.py`, distinct tile-wires per rule, before removal:
+
+| rule | V02 | V4 | V07 |
+|---|---|---|---|
+| `h06e_right_mirror` | 5 | 5 | 7 |
+| `right_stub_drop` | 28 | 35 | 34 |
+| `h06w_left_mirror` | 9 | 2 | 8 |
+| `h_right_flip` | 25 | 40 | 20 |
+| `h_left_flip` | 25 | 13 | 35 |
+| `left_stub_drop` | 27 | 26 | 49 |
+
+- Every rule fires on all three images (2-49 wires of ~29,000 per image), so none is specific to one image.
+- Lift change after removal (counts are a change detector only): V02 nets 4262 -> 4249, FFs 1112 -> 1115, undriven nets 490 -> 479; V07 nets 4304 -> 4290, FFs 1093 -> 1101, LUTs 2636 -> 2637, undriven nets 528 -> 515. Gate loops / conflicts stay 0 (V02, V07). Not oracle-checked: the oracle set shows nets MISMATCH falling (1861 -> 1819) with no category rising, and the Hantek net decrease has the same sign.
 
 ## Other findings
 

@@ -1,0 +1,8 @@
+top = "top"
+purpose = "serial-in parallel-out shift register"
+construct = "shiftreg"
+variant = "v95"
+width = 16
+lang = "verilog-95"
+io_bits = 18
+io_reduced = false

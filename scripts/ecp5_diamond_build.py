@@ -43,6 +43,8 @@ import subprocess
 import sys
 import threading
 
+import heavy_guard
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD_ROOT = os.path.join(REPO, "corpus", "diamond")
 
@@ -173,6 +175,7 @@ prj_project close
 
 
 def build_one(name, src, device, log):
+    heavy_guard.wait_available(log, name)
     # Key the build directory by DIE as well as design.  Building the same
     # design for 25F and 45F is the point (different frame geometry), so they
     # must not overwrite each other.
@@ -239,7 +242,8 @@ def main():
     os.makedirs(BUILD_ROOT, exist_ok=True)
 
     results = []
-    with concurrent.futures.ThreadPoolExecutor(args.jobs) as ex:
+    with heavy_guard.heavy_lock("ecp5_diamond_build", log), \
+            concurrent.futures.ThreadPoolExecutor(args.jobs) as ex:
         futs = [ex.submit(build_one, n, s, args.device, log)
                 for n, s in todo.items()]
         for f in concurrent.futures.as_completed(futs):

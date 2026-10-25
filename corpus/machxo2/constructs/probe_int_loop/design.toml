@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog feature probe: int_loop"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog-in-.v"
+feature = "int_loop"
+io_bits = 0
+io_reduced = false

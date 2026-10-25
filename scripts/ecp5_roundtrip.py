@@ -99,6 +99,7 @@ def load_truth(path):
         else:                                # TRELLIS_FF
             ffs[(row, col, m.group(3), m.group(5))] = {
                 "sd": str(params.get("SD", "")).strip(),
+                "regset": str(params.get("REGSET", "RESET")).strip(),
                 "name": cname,
             }
     return combs, ffs, pios, counts
@@ -223,6 +224,18 @@ def main():
         log.error("    SD MISMATCH %s want=%r got=%r", k, w, g)
     if bad_sd:
         failures.append(f"FF SD: {len(bad_sd)} mismatched")
+
+    # --- 4b. FF REGSET (power-up value) ----------------------------------
+    # Truth is the nextpnr REGSET parameter (absent = RESET).  A bitstream omits
+    # the enum at the device-db default (SET), so a wrong lifter default flips it.
+    bad_rs = [(k, ffs[k]["regset"], got_ff[k]["regset"])
+              for k in sorted(hit_ff) if ffs[k]["regset"] != got_ff[k]["regset"]]
+    log.info("[4b] FF REGSET (power-up): %d/%d matched, %d mismatched",
+             len(hit_ff) - len(bad_rs), len(hit_ff), len(bad_rs))
+    for k, w, g in bad_rs[:10]:
+        log.error("    REGSET MISMATCH %s want=%r got=%r", k, w, g)
+    if bad_rs:
+        failures.append(f"FF REGSET: {len(bad_rs)} mismatched")
 
     # --- 5. Pad placement -------------------------------------------------
     got_pio = set(lift.pio_sites())

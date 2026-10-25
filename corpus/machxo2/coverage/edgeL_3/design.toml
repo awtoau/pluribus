@@ -1,0 +1,5 @@
+top = "top"
+purpose = "coverage design, profile edgeL"
+profile = "edgeL"
+seed = 303
+lanes = 20

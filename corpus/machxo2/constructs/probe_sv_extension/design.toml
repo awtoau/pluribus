@@ -1,0 +1,9 @@
+top = "top"
+purpose = "SystemVerilog source named top.sv (project-level)"
+construct = "probe"
+variant = "sv"
+width = 0
+lang = "systemverilog"
+feature = "sv_extension"
+io_bits = 0
+io_reduced = false

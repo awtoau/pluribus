@@ -25,15 +25,14 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
-import psutil
-
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS)
 sys.path.insert(0, os.path.dirname(SCRIPTS))
 import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402
 import diamond_oracle_parse as P  # noqa: E402
-from machxo2_diamond_oracle import REPO, MEM_GATE_PCT, MEM_LOG_EVERY_S  # noqa: E402
+from machxo2_diamond_oracle import REPO, _Log  # noqa: E402
+import heavy_guard  # noqa: E402
 
 os.environ.setdefault("TRELLIS_DBROOT", toolchain.trellis_dbroot())
 from lifters import machxo2_lift as ML  # noqa: E402
@@ -236,20 +235,18 @@ class Ctx:
                 return "global_drop"       # chip-global clock net: no fabric key
             return "unresolved_drop"
         hops, d = int(m.group(1)), name[0]
-        if d == "E" and col + hops > self.max_col:
-            if col == self.max_col:
-                if L._mirror_e_h06e(name):
-                    return "h06e_right_mirror"
-                if re.match(r"^E\d+_H(\d+)([EW])(\d+)$", name):
-                    return "h_right_flip"
-            return "right_stub_drop"
+        if d == "E" and col + hops > self.max_col and col == self.max_col:
+            mh = re.match(r"^E\d+_H(\d+)([EW])(\d+)$", name)
+            if mh and mh.group(1) != "06":
+                return "h_right_flip"
         if d == "W" and col - hops < 0:
             if col == 0:
-                if re.match(r"^W(\d)_H06W(\d+)$", name):
-                    return "h06w_left_mirror"
-                if re.match(r"^W\d+_H(\d+)([EW])(\d+)$", name):
+                mh = re.match(r"^W\d+_H(\d+)([EW])(\d+)$", name)
+                if mh and mh.group(1) != "06":
                     return "h_left_flip"
             return "left_stub_drop"
+        if (d == "E" and col + hops > self.max_col) or (d == "W" and col - hops < 0):
+            return "walkback_hstub"   # off-die E/W name with no rule: generic walk-back
         mvs = re.match(r"^[NS]\d+_V(\d+)([NS])(\d+)$", name)
         if mvs and ((d == "N" and row - hops < 0)
                     or (d == "S" and row + hops > self.max_row)):
@@ -614,6 +611,20 @@ def compare_target(target, targets_dir, out_root):
                 f["SRMODE"], ff["srmode"])
             fld(f"FF{j}.lift.gsr", "MATCH" if ff["gsr"] == f["GSR"] else "MISMATCH",
                 f["GSR"], ff["gsr"])
+            # D: an unresolved D (tied-0 fallback) is a missing connection.  SD=0 has
+            # a Diamond M pin to compare; SD=1 (F->DI) has no routed D wire.
+            dnet = comp["pins"].get(f"M{j}") if sd == "0" else None
+            if ff.get("d_fault"):
+                v = "LIFT_MISSING"
+            elif sd == "0" and dnet is None:
+                v = "LIFT_ONLY"
+            elif sd == "0" and dnet not in dnet_to_lift:
+                v = "ORACLE_ONLY"
+            elif sd == "0":
+                v = "MATCH" if dnet_to_lift[dnet] == ff["d"] else "MISMATCH"
+            else:
+                v = "MATCH"
+            fld(f"FF{j}.lift.d", v, dnet, ff["d"] + (f" [{ff['d_fault']}]" if ff.get("d_fault") else ""))
             for pin, key, const in (("CLK", "clk", "1'b0"), ("CE", "ce", "1'b1"),
                                     ("LSR", "lsr", "1'b0")):
                 dnet = comp["pins"].get(pin)
@@ -736,18 +747,12 @@ def main():
     results, lock, stop = [], threading.Lock(), threading.Event()
 
     def worker():
-        last = 0.0
         while True:
             try:
                 t = q.get_nowait()
             except queue.Empty:
                 return
-            while psutil.virtual_memory().percent >= MEM_GATE_PCT:
-                if time.monotonic() - last >= MEM_LOG_EVERY_S:
-                    log(f"[mem] {psutil.virtual_memory().percent:.0f}% >= "
-                        f"{MEM_GATE_PCT:.0f}%: waiting")
-                    last = time.monotonic()
-                stop.wait(1.0)
+            heavy_guard.wait_available(_Log, "compare")
             try:
                 r = compare_target(t, args.targets_dir, args.out)
                 r = {"target": t, "status": "ok", **{k: r[k] for k in (
@@ -764,10 +769,11 @@ def main():
 
     t0 = time.monotonic()
     ths = [threading.Thread(target=worker) for _ in range(args.workers)]
-    for th in ths:
-        th.start()
-    for th in ths:
-        th.join()
+    with heavy_guard.heavy_lock("machxo2_oracle_compare", _Log):
+        for th in ths:
+            th.start()
+        for th in ths:
+            th.join()
 
     summ = {"targets": len(results),
             "status": dict(Counter(r["status"] for r in results)),
@@ -816,8 +822,9 @@ def main():
     sf = summ["site_field_verdicts"]
     clk = {k.split(":")[1]: v for k, v in sf.items() if k.startswith("FF#.lift.clk:")}
     summ["headline"] = {}
+    ffd = {k.split(":")[1]: v for k, v in sf.items() if k.startswith("FF#.lift.d:")}
     for label, c in (("pips", summ["pips"]), ("nets", summ["net_verdicts"]),
-                     ("register clock nets", clk)):
+                     ("register clock nets", clk), ("register D nets", ffd)):
         tot, ok = sum(c.values()), c.get("MATCH", 0)
         summ["headline"][label] = {"match": ok, "total": tot, "faults": tot - ok,
                                    "rate_pct": round(100.0 * ok / tot, 1) if tot else None}

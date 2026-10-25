@@ -86,44 +86,27 @@ never hand-edited.
     `cram_sy` broke the `ya`/`yb` split out of bounds; the geometry only
     stays in range at real die scale).
 - `src/main.rs` — `bluebird roundtrip <die> <path>` CLI, plus an integration
-  test (`real_dji_bitstream_roundtrip`) that runs the same check as part of
+  test (`corpus_bitstream_roundtrip`) that runs the same check as part of
   `cargo test`.
 
 ## What's proven
 
-Ran against the real DJI C1 e50f bitstream
-(`/mnt/2tb/git/awto-dji/firmware/unpacked/C1_FW_V01.06.0000/m2001.depack.bin`,
-2,119,888 bytes):
+Measured 2026-10-24 on the Quartus 25.1 corpus design `adder12`
+(`corpus/cyclonev/adder12/bitstream.compressed.rbf`, 5CEBA4U19C8, 730,692 bytes;
+`bluebird roundtrip e50f <file> --assume-compressed`):
 
-- CRAM region located at file offset 34164 (via the same
-  `oram_frame_bytes + pram_frame_bytes * pram_blocks` arithmetic
-  `rbf_load` uses).
-- Nibble-decompressed 2,085,724 compressed bytes → 2,597,992 frame bytes.
-- Unpacked 19,475,024 CRAM bit positions; 1,152,281 set (~6% density —
-  plausible for real fabric config, not all-zero or implausibly dense).
-- **CRAM fold round trip**: `unpack(pack(cram_bits)) == cram_bits`,
-  bit-exact over all 19,475,024 positions.
-- **Nibble codec round trip**: `decompress(compress(decompress(original)))
-  == decompress(original)`, bit-exact.
-- Both checks run as part of `cargo test` (`real_dji_bitstream_roundtrip`),
-  not only by manual CLI invocation.
-
-Caveat found and recorded, not hidden: mistral's own `mistral-cv cycle`
-(its CLI's `rbf_load` → `rbf_save` round trip) does **not** reproduce this
-file's CRAM content exactly on first load — but cycling its own output a
-second time IS a stable fixed point (byte-identical). This means mistral
-defaults some bitstream options it can't recover from this file (no IDCODE
-in a Cyclone V raw bitstream — consistent with `device_fingerprints`'
-awto-dji#3 finding), not a codec bug. The nibble codec and CRAM fold
-arithmetic ported here are option-independent pure data transforms, and
-this session's round-trip checks validate them directly rather than
-through mistral's own lossy CLI round trip.
+- CRAM region located at file offset 34164 (same `oram_frame_bytes + pram_frame_bytes * pram_blocks` arithmetic `rbf_load` uses).
+- Nibble-decompressed to 2,597,992 frame bytes; unpacked 19,475,024 CRAM bit positions, 158,253 set.
+- **CRAM fold round trip**: `unpack(pack(cram_bits)) == cram_bits`, bit-exact over all positions.
+- **Nibble codec round trip**: `decompress(compress(decompress(original))) == decompress(original)`, bit-exact.
+- Both checks run in `cargo test` (`corpus_bitstream_roundtrip`; skips when the corpus file or DB is absent).
+- These are transform-losslessness checks. Whether the unpacked bits are the design's configuration is judged by the Quartus post-fit oracle (`docs/cyclonev-postfit-oracle.md`), not by density or round trip.
 
 Not proven: byte-identical re-encoding of the *original* compressed region
 (our re-compress only encodes the CRAM-fold bits this module models, not
 the CRC/padding bytes that coexist in the same frame — see "Known gaps"
 below). What's proven is losslessness of the transforms this module
-actually implements, which is the honest scope.
+implements.
 
 ## Known gaps / out of scope as of the first session
 
@@ -207,17 +190,10 @@ e50f data, row counts matching the source files exactly:
 Also verified on gt75f (a larger die): routes/lines/rdriver/p2p again match
 the real file line counts exactly (1,082,170 / 973,813 / 1,308,881 / 3,395).
 
-**Relationship to the m2001 design's 70,007 resolved arcs** (first
-session's real DJI fixture decode): these are different data layers, not
-comparable 1:1. `cv_route_muxes`/friends are device-wide routing CAPACITY —
-every mux Mistral's fuzzer found on the whole e50f die, most of them never
-used by any one design. The dominant rnode types by row count (`GOUT`
-201,296, `TD` 138,208, `H6` 115,456, `H3` 57,200, `V2` 53,572 of 695,446
-total muxes) are exactly the general-purpose fabric routing switch points
-you'd expect a device-wide table to be dominated by. m2001's 70,007 arcs are
-one design's actual ROUTES — a small, design-specific subset of what this
-table says the device CAN route. Neither number should match the other;
-both are real and consistent with what they each measure.
+**Relationship to a design's resolved arcs**: different data layers, not comparable 1:1.
+`cv_route_muxes` and friends are device-wide routing capacity (every mux Mistral's fuzzer found on the e50f die);
+a design's decoded arcs are its routes, a small subset of that capacity.
+The dominant rnode types by row count (`GOUT` 201,296, `TD` 138,208, `H6` 115,456, `H3` 57,200, `V2` 53,572 of 695,446 muxes) are general-purpose fabric switch points.
 
 ### The OOM incident and the memory-safety redesign
 
@@ -230,7 +206,7 @@ dies' full parsed row lists live in memory concurrently (gt300f's
 doesn't bound actual RAM, which scales with data size, not thread count.
 Same root-cause class as a separate, unrelated incident that hit this
 session's Quartus-compile verification harness
-(`scripts/cyclonev_verify_all.py`), fixed there with a `psutil` memory gate.
+(`scripts/cyclonev_verify_all.py`), fixed there with `scripts/heavy_guard.py` (available-RAM wait + one-batch lock).
 
 Redesign, verified correct and safe:
 1. **Dies run strictly sequentially**, never concurrently — this is a
