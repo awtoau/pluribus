@@ -2,6 +2,8 @@
 
 - One heavy batch at a time across all scripts: exclusive flock on tmp/heavy.lock.
 - New work starts only when AVAILABLE RAM >= min_available_gb (absolute, not a percent).
+- The lock lives in the git COMMON dir, so every worktree shares it (a per-checkout tmp/ lock let
+  concurrent worktrees run heavy batches together and swap the box, #122).
 - Why: the box idles at ~74% used (IDE, VM, browser), so a percent gate admitted jobs that
   together exceeded RAM; systemd-oomd killed the IDE three times on 2026-10-23 (#111).
 
@@ -17,7 +19,21 @@ import threading
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOCK_PATH = os.path.join(REPO, "tmp", "heavy.lock")
+
+
+def _lock_path():
+    env = os.environ.get("PLURIBUS_HEAVY_LOCK")
+    if env:
+        return env
+    import subprocess
+    r = subprocess.run(["git", "-C", REPO, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        return os.path.join(r.stdout.strip(), "pluribus-heavy.lock")
+    return os.path.join(REPO, "tmp", "heavy.lock")
+
+
+LOCK_PATH = _lock_path()
 MIN_AVAILABLE_GB = float(os.environ.get("PLURIBUS_MIN_AVAILABLE_GB", "12"))
 POLL_S = 5
 LOG_S = 30
@@ -77,3 +93,58 @@ def heavy_lock(name, log):
     finally:
         fcntl.flock(fh, fcntl.LOCK_UN)
         fh.close()
+
+
+def _tree_cpu_s(proc):
+    """CPU seconds of a process and all its descendants; None once it is gone."""
+    import psutil
+    try:
+        procs = [proc] + proc.children(recursive=True)
+        return sum(sum(p.cpu_times()[:2]) for p in procs if p.is_running())
+    except psutil.Error:
+        return None
+
+
+def run_stall_guarded(cmd, what, log, stall_s=60, overall_s=600, **popen_kw):
+    """subprocess.run replacement that cannot hang a batch.
+
+    - Kills the whole process tree when its CPU time does not advance for stall_s (hung/blocked),
+      or when overall_s elapses (busy-loop backstop; callers pass 3x their measured cold worst case).
+    - On expiry logs what, the limit, elapsed and loadavg, and returns returncode=-9 with
+      .timed_out set. Output is captured to temp files (no pipe deadlock).
+    """
+    import psutil
+    import subprocess
+    import tempfile
+    out, err = tempfile.TemporaryFile(mode="w+"), tempfile.TemporaryFile(mode="w+")
+    p = subprocess.Popen([str(c) for c in cmd], stdout=out, stderr=err, text=True, **popen_kw)
+    ps = psutil.Process(p.pid)
+    t0 = last_t = time.monotonic()
+    last_cpu, why = -1.0, None
+    while p.poll() is None:
+        try:
+            p.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            pass
+        now = time.monotonic()
+        cpu = _tree_cpu_s(ps)
+        if cpu is not None and cpu != last_cpu:
+            last_cpu, last_t = cpu, now
+        if now - last_t > stall_s:
+            why = f"no CPU progress for {now - last_t:.0f}s (stall limit {stall_s}s)"
+        elif now - t0 > overall_s:
+            why = f"ran {now - t0:.0f}s (overall limit {overall_s}s)"
+        if why:
+            for c in ps.children(recursive=True) + [ps]:
+                try:
+                    c.kill()
+                except psutil.Error:
+                    pass
+            p.wait()
+            log.error("%s: KILLED, %s, loadavg %.1f, cmd %s", what, why, os.getloadavg()[0], " ".join(map(str, cmd))[:200])
+            break
+    out.seek(0)
+    err.seek(0)
+    r = subprocess.CompletedProcess(cmd, -9 if why else p.returncode, out.read(), err.read())
+    r.timed_out = bool(why)
+    return r

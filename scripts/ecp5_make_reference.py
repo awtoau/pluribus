@@ -27,6 +27,9 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import heavy_guard  # noqa: E402
+
 DEVICE_FLAG = {
     "LFE5U-12F": "--12k", "LFE5U-25F": "--25k",
     "LFE5U-45F": "--45k", "LFE5U-85F": "--85k",
@@ -92,9 +95,10 @@ def main():
         "--log", os.path.join(out, "nextpnr.log"),
     ]
     log.info("running: %s", " ".join(cmd))
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    # overall = 3x the slowest measured full verify_one build (154.7 s with 6 workers, 2026-10-26, #122)
+    r = heavy_guard.run_stall_guarded(cmd, "nextpnr-ecp5", log, stall_s=60, overall_s=480)
     if r.returncode != 0:
-        log.error("nextpnr failed (rc=%d)", r.returncode)
+        log.error("nextpnr failed (rc=%d%s)", r.returncode, ", timed out" if r.timed_out else "")
         log.error("stderr tail:\n%s", r.stderr[-3000:])
         return r.returncode
     log.info("wrote %s and %s",
