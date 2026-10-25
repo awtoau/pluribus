@@ -145,6 +145,7 @@ class ECP5Lift:
         else:
             from native_trellis import pytrellis_compat as pytrellis
         self._pt = pytrellis
+        self._dbroot = dbroot
         self.dbroot = dbroot
         pytrellis.load_database(dbroot)
         self.device = device
@@ -257,6 +258,146 @@ class ECP5Lift:
             return False
         return not any(s in name for s in cls._POSITIONAL_GLOBAL)
 
+    # ---- clock tree (#116) -------------------------------------------------
+    # prjtrellis parks/positions these per referencing tile, so the tree never joins.
+    # Canonical node per physical wire; evidence: docs/ecp5-diamond-oracle.md "Clock tree".
+    _CK_UNIQUE = re.compile(
+        r"^G_(JPCLKT\d+|[TLR]DCC\d+CLKI|CLKI_[TLR]DCC\d+|CLKO_[TLR]DCC\d+"
+        r"|VPFS\d+|HPFE\d+|HPFW\d+)$")
+    _CK_QPCLK = re.compile(r"^G_(LL|LR|UL|UR)PCLK(\d+)$")
+    _CK_SPINE = re.compile(r"^G_(HPRX|VPTX)(\d\d)00$")
+    _CK_HPBX = re.compile(r"^([GLR])_HPBX(\d\d)00$")
+
+    def _clock_geom(self):
+        g = getattr(self, "_ckg", None)
+        if g is None:
+            import json
+            p = os.path.join(self._dbroot, "ECP5", self.device, "globals.json")
+            with open(p) as fh:
+                g = json.load(fh)
+            self._ckg = g
+        return g
+
+    def _quad_of(self, col, row):
+        for q, b in self._clock_geom()["quadrants"].items():
+            if b["x0"] <= col <= b["x1"] and b["y0"] <= row <= b["y1"]:
+                return q
+        return None
+
+    def clock_key(self, row, col, name):
+        """Node key of a clock-tree wire, or None if `name` is not modelled here.
+        Works for a decoded tile-local name (tap / spine / PLC tile) and for the
+        position Diamond reports the same wire at (with a G_ prefix added)."""
+        if not name.startswith(("G_", "L_", "R_")):
+            return None
+        if self._CK_UNIQUE.match(name):
+            return ("clk", name[2:])
+        m = self._CK_QPCLK.match(name)
+        if m:       # quadrant clock i is the quadrant's HPRX i (Diamond: LRPCLK0 -> HPRX0000)
+            return ("hprx", m.group(1), int(m.group(2)))
+        g = self._clock_geom()
+        m = self._CK_SPINE.match(name)
+        if m:
+            idx = int(m.group(2))
+            q = self._quad_of(col, row)
+            if m.group(1) == "HPRX":
+                return None if q is None else ("hprx", q, idx)
+            for sn, s in g["spines"].items():
+                # Diamond names the vertical VPTX anywhere along its quadrant half
+                if s["x"] == col and sn[:2] == q:
+                    return ("vptx", sn, idx)
+            for tn in g["taps"]:        # TAP_DRIVE tile in a tap column
+                if int(tn[1:]) == col and q is not None:
+                    return ("vptx", q + tn[1:], idx)
+            return None
+        m = self._CK_HPBX.match(name)
+        if m:
+            for tn, t in g["taps"].items():
+                if t["lx0"] <= col <= t["lx1"]:
+                    side = "L"
+                elif t["rx0"] <= col <= t["rx1"]:
+                    side = "R"
+                else:
+                    continue
+                tcol = int(tn[1:])
+                if m.group(1) in "LR":      # tap tile names its own side
+                    side = m.group(1)
+                return ("hpbx", row, tcol, side, int(m.group(2)))
+        return None
+
+    def apply_clock_fixed_conns(self, dsu, pc=None):
+        """Union the clock tree's fixed conns between modelled wires, the DCC
+        buffer CLKI -> CLKO, and pad -> JPCLKT for clock-capable pads (iodb
+        function PCLKT<b>_<k> <-> JPCLKT<b><k>, 228/228 in the Diamond routes).
+        Returns the number of unions."""
+        nat = getattr(self.chip, "_native", None)
+        if nat is None:
+            return 0
+        from native_trellis import tiledb
+        n = 0
+        seen = set()
+        for tname, (row, col) in nat.geom.tile_rc.items():
+            ttype = nat.geom.tile_type[tname]
+            if ttype in seen or not ttype.startswith(("TMID", "LMID", "RMID", "BMID", "CMUX")):
+                continue
+            seen.add(ttype)
+            _muxes, fixed = tiledb.load_tiletype(nat.db_root, nat.family, ttype)
+            for sink, src in fixed:
+                a, b = self.clock_key(row, col, sink), self.clock_key(row, col, src)
+                if a is not None and b is not None and a[0] == b[0] == "clk":
+                    dsu.union(a, b)
+                    n += 1
+        for key in [k for k in list(dsu.p) if k[0] == "clk" and k[1].startswith("CLKI_")]:
+            ko = ("clk", "CLKO_" + key[1][len("CLKI_"):])
+            dsu.union(key, ko)
+            n += 1
+        import json
+        iop = os.path.join(self._dbroot, "ECP5", self.device, "iodb.json")
+        with open(iop) as fh:
+            pios = json.load(fh)["pio_metadata"]
+        for e in pios:
+            m = re.match(r"^PCLKT(\d)_(\d)$", e.get("function") or "")
+            if not m:
+                continue
+            ck = ("clk", f"JPCLKT{m.group(1)}{m.group(2)}")
+            if ck in dsu.p:
+                pw = f"JPADDI{e['pio']}"
+                if self.wname_id(e["col"], e["row"], pw) is None:
+                    pw += "_PIO"
+                pk = self.gkey(e["row"], e["col"], pw)
+                if pk is not None:
+                    dsu.union(pk, ck)
+                    n += 1
+        # pad-input mux wires (JPCLKT -> JINCK -> JPADDI) at each mid-edge tile: Diamond routes
+        # pad -> JPADDI -> JINCK -> JPCLKT, the DB has them as fixed conns.  Only chains that
+        # already touch a used clock node (two passes cover JPCLKT~JINCK~JPADDI).
+        loc = re.compile(r"^([NSEW]\d+)*_?(JINCK|JPADDI)$")
+        driven = {(r, c, k) for (r, c, k, _s) in pc.arcs} if pc is not None else set()
+        pairs = []
+        for tname, (row, col) in nat.geom.tile_rc.items():
+            ttype = nat.geom.tile_type[tname]
+            if not ttype.startswith(("TMID", "LMID", "RMID", "BMID", "ECLK")):
+                continue
+            muxes, fixed = tiledb.load_tiletype(nat.db_root, nat.family, ttype)
+            # left/right pads: JINCK is a one-option mux (JPADDI, no bits) in ECLK_L/R
+            # (the no-bits option is the idle default: skipped when the config drives the mux)
+            fixed = list(fixed) + [
+                (k, o) for k, v in muxes.items() if loc.match(k) and (row, col, k) not in driven
+                for o in v if loc.match(o)]
+            for sink, src in fixed:
+                ends = []
+                for nm in (sink, src):
+                    ends.append(self.clock_key(row, col, nm) if nm.startswith("G_")
+                                else (self.gkey(row, col, nm) if loc.match(nm) else None))
+                if None not in ends:
+                    pairs.append(tuple(ends))
+        for _ in range(2):
+            for a, b in pairs:
+                if a in dsu.p or b in dsu.p:
+                    dsu.union(a, b)
+                    n += 1
+        return n
+
     def gkey(self, row, col, name):
         """Canonical node key for a wire name referenced at (row, col), or
         None if the name must not participate in the union-find.
@@ -268,6 +409,9 @@ class ECP5Lift:
         Deliberately free of the MachXO2 edge-case surgery — those work around
         MachXO2 tile-DB defects that ECP5 does not share.
         """
+        ck = self.clock_key(row, col, name)
+        if ck is not None:
+            return ck
         if self._is_chip_global(name):
             return None
         g = self.rg.globalise_net(row, col, name)
@@ -346,12 +490,33 @@ class ECP5Lift:
         # drives, so remap() can route slice control pins through them rather
         # than onto a dead bare wire.  Recomputed per config, and the bel cache
         # is dropped because remap() results depend on it.
+        pc.alias_arcs = self._drop_ccu2_alias_arcs(pc)
         self._prefer_mux_nodes = {
             (r, c, sink) for (r, c, sink, _src) in pc.arcs
             if sink.startswith(("MUXCLK", "MUXLSR"))
         }
         self._bel_cache.clear()
         return pc
+
+    _CCU2_ALIAS_ARC = re.compile(r"^(F5|FX)[A-D]_SLICE$")
+
+    @classmethod
+    def _drop_ccu2_alias_arcs(cls, pc):
+        """`F# <- F5x_SLICE / FXx_SLICE` in a MODE=CCU2 slice is bit aliasing, not a
+        wide mux: bits.db has mux F# option F5x_SLICE = F8B10 and CCU2.INJECT1_0 NO =
+        F8B10 (FXx: F8B11 / INJECT1_1).  Diamond routes F#_SLICE -> F# there (all
+        78 CCU2 slices of the oracle corpus).  Removed from pc.arcs; returns them."""
+        keep, dropped = [], []
+        for a in pc.arcs:
+            r, c, sink, src = a
+            m = re.match(r"^F([0-7])$", sink)
+            if (m and cls._CCU2_ALIAS_ARC.match(src) and pc.slice_enum.get(
+                    (r, c, "ABCD"[int(m.group(1)) // 2]), {}).get("MODE") == "CCU2"):
+                dropped.append(a)
+            else:
+                keep.append(a)
+        pc.arcs[:] = keep
+        return dropped
 
     # ---- netlist recovery --------------------------------------------------
     def recover_netlist(self, pc):
@@ -388,6 +553,7 @@ class ECP5Lift:
         # ECP5 has no EFB and no MachXO2-style PLC fast-connect table.
         d.efb_resolved = {}
         d.plc_fc_applied = 0
+        d.clock_fc_applied = self.apply_clock_fixed_conns(dsu, pc)
 
         d.used_roots = {dsu.find(k) for k in src_keys}
 
