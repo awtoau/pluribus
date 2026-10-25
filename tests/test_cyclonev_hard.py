@@ -56,6 +56,18 @@ def test_fpll_decode_matches_quartus_defparams():
     assert (d["m"], d["n"], d["c"]) == (12, 2, {5: 3})      # 50 MHz * 12 / 2 / 3 = 100 MHz
 
 
+def test_fpll_netlist_and_unmodelled():
+    kv = {("FPLL_ENABLE", None): "1", ("CLKIN_0_SRC", None): "4", ("C5_COUT_EN", None): "1",
+          ("DPRIO0_CNT_HI_DIV", 5): "02", ("DPRIO0_CNT_LO_DIV", 5): "02"}
+    nets = {"refclk": "n1", "nreset": "n2", "lock": "n3", ("clkout", 5): "n4"}
+    rec = hard.fpll_cell(("FPLL", 54, 37), kv, nets)
+    assert rec["unmodelled"] is None and rec["kind"] == "pluribus_cv_fpll"
+    assert rec["outs"] == {"locked": {0: "n3"}, "clkout": {5: "n4"}} and rec["params"]["C_EN"] == "9'b000100000"
+    rec = hard.fpll_cell(("FPLL", 54, 37), {**kv, ("M_CNT_BYPASS_EN", None): "1"}, nets)
+    assert "M_CNT_BYPASS_EN" in rec["unmodelled"]
+    assert "refclk pad" in hard.fpll_cell(("FPLL", 0, 37), kv, nets)["unmodelled"]
+
+
 def test_dsp_unknown_mode_is_reported():
     rec = hard.dsp_cell(("DSP", 1, 1), {("MODE", None): "M18X18P36"}, {})
     assert rec["unmodelled"] and "M18X18P36" in rec["unmodelled"]

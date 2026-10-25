@@ -126,10 +126,14 @@ wire m27 = (operation_mode == "m27x27");
 wire s2 = (operation_mode == "m18x18_sumof2");
 wire supported = (m9 || m18 || m27 || s2) && !any_aclr && !(loadconst | accumulate | negate | sub)
                  && (use_chainadder == "false") && (enable_double_accum == "false");
-// m9x9 lane 0 is a 9x9; the 9-bit operands are used as given
+// m9x9 lane 0: 18-bit product in resulta[17:0]; above it the vendor atom gives all-ones iff both operands are
+// signed and negative, else 0 (measured: scripts/cyclonev_dsp_vendor_check.py, issue #121);
+// m9x9 with operands wider than 9 bits (lanes 1-2) is X
 wire signed [63:0] p0 = sx_ax * sx_ay;
 wire signed [63:0] p1 = sx_bx * sx_by;
-wire [63:0] comb = !supported ? {64{1'bx}} : s2 ? (p0 + p1) : p0;
+wire m9_negneg = (signed_max == "true") && (signed_may == "true") && e_ax[ax_width-1] && e_ay[ay_scan_in_width-1];
+wire m9_wide = m9 && (ax_width > 9 || ay_scan_in_width > 9);
+wire [63:0] comb = (!supported || m9_wide) ? {64{1'bx}} : s2 ? (p0 + p1) : m9 ? {{46{m9_negneg}}, p0[17:0]} : p0;
 
 generate
     if (COUT >= 0) always @(posedge clk[COUT]) if (ena[COUT]) r_out <= comb;

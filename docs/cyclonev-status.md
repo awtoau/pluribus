@@ -18,10 +18,11 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
   - docs: `docs/cyclonev-postfit-oracle.md`, `docs/cyclonev-rcf-oracle.md`
 - **Scorecard:** `scripts/cyclonev_lift_scorecard.py`.
 
-## Status (measured 2026-10-24)
+## Status (measured 2026-10-26)
 - **Functional gate** (`scripts/cyclonev_lifted_sim_check.py --all`; lifted Verilog simulated, per output sample matched / wrong / missing):
-  - 256 designs: 253 PASS, 3 FAIL (PLL). Samples: matched 6131814 / 6131814; wrong 0, missing 0 (PLL has no netlist samples).
-  - Reference per kind: logic, carry, registers, M10K, MLAB: Quartus `build.vo` on the vendor models (RAM/MLAB: plain `cyclonev_atoms.v` + `altera_lnsim.sv`). DSP: `build.vo` on our model, plus lifted vs the design's own RTL.
+  - iverilog (default): 256 designs, 256 PASS. Samples: matched 6437030 / 6437030; wrong 0, missing 0. PLL designs run on Questa (encrypted atoms).
+  - Questa (`--sim questa`, `build.vo` on the vendor libraries only, incl. encrypted DSP / PLL atoms): 255 PASS, 1 FAIL (`c_latch_v95_1`: 2 missing = lifted X where the vendor lcell resolves the self-loop at power-up; iverilog scores the same 2 samples as xq). Samples matched 6437030 / 6437032.
+  - Reference per kind (iverilog): logic, carry, registers, M10K, MLAB: Quartus `build.vo` on the vendor models (RAM/MLAB: plain `cyclonev_atoms.v` + `altera_lnsim.sv`). DSP: `build.vo` on our model, plus lifted vs the design's own RTL. PLL: vendor atoms (Questa) vs our FPLL model.
 
 | kind | designs | PASS | FAIL | matched / samples | wrong | missing |
 |---|---|---|---|---|---|---|
@@ -32,13 +33,14 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
 | M10K | 24 | 24 | 0 | 771892 / 771892 | 0 | 0 |
 | MLAB | 5 | 5 | 0 | 132825 / 132825 | 0 | 0 |
 | DSP | 11 | 11 | 0 | 1416611 / 1416611 | 0 | 0 |
-| PLL | 3 | 0 | 3 | no netlist | - | - |
+| PLL | 3 | 3 | 0 | 305216 / 305216 | 0 | 0 |
 
   - Before this work (start of session): 165 pass, 47 fail (registers), 24 not covered (RAM 22, DSP 2); matched 3441733 / 3804461 (90.5%).
   - Register controls (enable, async clear, sync clear, negedge): emitted from the lifter's `ctl`; the 47 failures are gone.
   - RAM: 18 M10K + 4 MLAB designs from before and 7 added (init contents, ROM, single port, dual clock) pass. Contents, widths, clocks, modes are decoded from the bitstream. `c_rom_vnd_mlab_8` was placed in an M10K by Quartus (counted under M10K).
   - DSP: own `cyclonev_mac` model (vendor atom is encrypted), validated: `build.vo` on it vs source RTL, 11 / 11 designs (`scripts/cyclonev_dsp_model_check.py`). Lifted vs source RTL 1416611 / 1416611.
-  - PLL: FAIL by design of the gate. The frequency decode (ref * M / N / C) matches the Quartus defparams for 4 / 4 output counters; the netlist is not lifted (reference-clock pad `CLKIN_0_SRC`, output clock nets, phase, duty not decoded). Detail: `docs/cyclonev-postfit-oracle.md` "PLL".
+  - DSP model vs the encrypted vendor atom (`scripts/cyclonev_dsp_vendor_check.py`, Questa): 267 / 267 configs, 51264000 / 51264000 bits after fixing `m9x9` bits above 17 (#121).
+  - PLL: netlist lifted (refclk pad, reset, lock, output counter -> clock net) on our model `lifters/data/cyclonev_fpll_model.v`, measured against the vendor atoms; 3 / 3 PASS, decode 4 / 4 counters. Refclk pad table has one evidenced entry. Detail: `docs/cyclonev-postfit-oracle.md` "PLL".
   - Model check (Quartus netlist + models vs `src/`): `model=ok` on every simulated design with a comparable sample, 0 wrong.
 - **Structural (lifter fields vs Quartus post-fit, `scripts/cyclonev_lift_scorecard.py`), matched / total:**
   - The compare applies Quartus's `!` flags, so LUT masks and output buffers are scored as functions of
@@ -52,8 +54,8 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
   - Routing pips: 39,550 / 39,550 against RCF. About half of RCF edges have no native node and are unscored.
   - LUT masks: 98.5%. Flip-flop presence: 98.5%. Pin use and direction: 97.6%.
   - Held-out split (family-level): routing 100% on both halves.
-- **Verification:** `scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz` FAILS: stage 5 (lifted sim, blocking) fails on the 3 PLL designs above. Selftest and pad map pass; baseline on `regbank16`: 61 LUTs, 64 FFs, 139 nets, 608 arcs, 19 pads.
-- **Tests:** `python3 -m pytest tests -q` passes (216).
+- **Verification:** `scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz`: stage 5 (iverilog gate) passes; stage 6 (Questa: vendor-library gate + DSP vendor check) fails on `c_latch_v95_1` only (above). Stage 5/6 no longer deadlock on `tmp/heavy.lock` (nested flock). Pad map passes. Selftest FAILS: `regbank16` gives 140 nets vs baseline 139 (61 LUTs, 64 FFs, 608 arcs, 19 pads match); predates the PLL work, untraced (#121).
+- **Tests:** `python3 -m pytest tests -q` passes (217).
 - **Gate notes:** self-feeding LUTs are emitted as `fb ? lut[..1..] : lut[..0..]` (X-safe latch). A zero-delay inverting self-loop (`c_latch_v95_1` q3) has no reference in Quartus either; the gate holds its enable input at 0. Step limits: stall (no CPU progress 60 s) + 3x measured backstop (#121).
 
 ## Still open
@@ -71,9 +73,9 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
 9. ~~**lifted.v polarity**~~ closed 2026-10-24: LUT tables are over the nets, pad output inverters are NOT rows (rule: `docs/cyclonev-postfit-oracle.md` "Polarity"). Gate: `scripts/cyclonev_lifted_sim_check.py --all`, stage 5 of `cyclonev_verify_all.py`.
 10. ~~**Register controls in lifted.v**~~ closed 2026-10-24: emitted from `ffs.d/clk/ce/lsr` + `ffs.dtype` flags (no schema change). Gate: registered 87 / 87.
 11. ~~**Sim gate not covered (RAM, DSP)**~~ closed 2026-10-24: RAM on the plain vendor models, DSP on our own model. Remaining gaps:
-    - **PLL (3 designs FAIL):** lift the netlist: `CLKIN_0_SRC` value -> reference pad (needs designs on other refclk pins), output counter -> clock net, phase, duty. Sim path: vendor atoms are encrypted; `altera_pll` (general) is `generic_pll`, which iverilog 13 asserts on and verilator 5.046 `--timing` runs.
+    - **PLL:** closed 2026-10-26 (3 / 3 PASS on Questa). Open: `CLKIN_0_SRC` -> pad has one evidenced value (needs builds on other refclk pins); phase shift, presets, bypass, fractional mode, cascade, switchover are NOT LIFTED.
     - **DSP:** only independent multiplies and sum-of-2 (`m9x9` lane 0, `m18x18_full`, `m27x27`, `M18X19_COMBINED`) are decoded and modelled; accumulate, pre-adder, coefficients, chainout, scan chains, `aclr`, `m9x9` lanes 1-2 give X in the model and are not lifted.
-    - **Cross-check:** Questa-Altera Starter Edition (free licence, Dan would have to request it) would run the encrypted `cyclonev_mac` / PLL atoms and cross-check our DSP model and a PLL lift. Not installed, not requested.
+    - **Cross-check:** Questa-Altera Starter installed (`scripts/questa.py`); `--sim questa` and `scripts/cyclonev_dsp_vendor_check.py`, stage 6 of `cyclonev_verify_all.py`.
     - **RAM:** `bidir_dual_port`, widths other than x20 / x40, init outside those layouts, byte enables, ECC: no corpus evidence; the lifter reports the block as `NOT LIFTED` with the reason.
 8. **Not scored field by field:** I/O drive, slew and standard (no variation in the corpus). RAM, MLAB and DSP parameters are checked by simulation only.
 
@@ -90,7 +92,9 @@ python3.15t scripts/cyclonev_decode.py IN.rbf OUT.bt        # decode a .rbf
 python3.15t scripts/cyclonev_unpack.py IN.bin OUT.bt        # native by default; --decoder mistral|--crosscheck
 python3.15t scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz
 python3.15t scripts/cyclonev_lifted_sim_check.py --all      # functional gate alone (~2 min), prints the per-kind table
+python3.15t scripts/cyclonev_lifted_sim_check.py --all --sim questa   # same gate, build.vo on the vendor libraries
 python3.15t scripts/cyclonev_dsp_model_check.py             # our cyclonev_mac model vs the source RTL
+python3.15t scripts/cyclonev_dsp_vendor_check.py            # our cyclonev_mac model vs the encrypted vendor atom (Questa)
 python3.15t scripts/cyclonev_lifted_sim_check.py <design>   # one design, prints bad pins
 ```
 

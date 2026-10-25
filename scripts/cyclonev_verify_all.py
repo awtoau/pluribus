@@ -32,6 +32,10 @@ Stages
 5. Lifted sim   -- BLOCKING functional gate: re-lift every corpus design, simulate
                   lifted Verilog vs Quartus build.vo (scripts/cyclonev_lifted_sim_check.py);
                   prints wrong/missing per design; any failing design fails the run.
+                  PLL designs run on Questa (vendor PLL atoms are encrypted).
+6. Questa       -- BLOCKING vendor cross-check (scripts/questa.py): the same gate with build.vo on
+                  the vendor libraries only (--sim questa), and our cyclonev_mac model vs the
+                  encrypted vendor atom (scripts/cyclonev_dsp_vendor_check.py).
 
 Threading (stages 1-2 only; 3-4 are single-shot, not Quartus-bound)
 --------------------------------------------------------------------
@@ -465,7 +469,9 @@ def stage_lifted_sim(logger, jobs):
     missing output sample, or a failed model check, fails the run."""
     import cyclonev_lifted_sim_check as simcheck
     t0 = time.time()
-    results = simcheck.run_guarded(simcheck.all_designs(), jobs=jobs, logf=logger.info)
+    # main() already holds heavy.lock; run_guarded would re-take it on a 2nd fd and block forever (flock)
+    heavy_guard.wait_available(logger, "lifted sim", min_gb=jobs * simcheck.GB_PER_JOB)
+    results = simcheck.run_gate(simcheck.all_designs(), jobs=jobs, logf=logger.info)
     ok = simcheck.summary(results, logf=logger.info)
     for r in results:
         if r["status"] in ("FAIL", "ERROR"):
@@ -478,6 +484,37 @@ def stage_lifted_sim(logger, jobs):
                     f"({time.time() - t0:.1f}s)")
     logger.info(summary_line)
     return {"pass": ok, "summary": summary_line, "results": results}
+
+
+# ── stage 6: Questa vendor-library cross-check (blocking) ───────────────────
+
+def stage_questa(logger, jobs):
+    """Corpus gate on the vendor libraries + DSP model vs the encrypted vendor cyclonev_mac."""
+    import subprocess
+    import questa
+    import cyclonev_lifted_sim_check as simcheck
+    t0 = time.time()
+    if not questa.available():
+        line = "Questa: FAIL — not installed / no licence (use --skip-questa to run without it)"
+        logger.error(line)
+        return {"pass": False, "summary": line}
+    heavy_guard.wait_available(logger, "questa sim", min_gb=jobs * simcheck.GB_PER_JOB)
+    results = simcheck.run_gate(simcheck.all_designs(), jobs=jobs, logf=logger.info, sim="questa")
+    ok = simcheck.summary(results, logf=logger.info)
+    n = {s: sum(1 for r in results if r["status"] == s) for s in ("PASS", "FAIL", "ERROR", "NOT_BUILT")}
+    for r in results:
+        if r["status"] in ("FAIL", "ERROR"):
+            logger.error("questa sim %s %s: wrong=%d missing=%d %s", r["status"], r["design"],
+                         r["wrong"], r["missing"], r["reason"])
+    dsp = subprocess.run([sys.executable, str(REPO / "scripts" / "cyclonev_dsp_vendor_check.py")],
+                         cwd=REPO, capture_output=True, text=True)
+    tail = (dsp.stdout.strip().splitlines() or ["(no output)"])[-1]
+    logger.info("DSP model vs vendor cyclonev_mac: %s", tail)
+    passed = ok and dsp.returncode == 0
+    line = (f"Questa: {'PASS' if passed else 'FAIL'} — gate {n['PASS']} pass, {n['FAIL']} fail, "
+            f"{n['ERROR']} error, {n['NOT_BUILT']} not built; DSP model: {tail} ({time.time() - t0:.1f}s)")
+    logger.info(line)
+    return {"pass": passed, "summary": line}
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -510,6 +547,8 @@ def _main():
     ap.add_argument("--skip-padmap", action="store_true")
     ap.add_argument("--skip-lifted-sim", action="store_true",
                      help="skip the blocking lifted-vs-Quartus functional sim (stage 5)")
+    ap.add_argument("--skip-questa", action="store_true",
+                     help="skip the Questa vendor-library cross-check (stage 6)")
     ap.add_argument("--sim-jobs", type=int, default=4)
     ap.add_argument("--work-dir", type=Path, default=REPO / "tmp" / "cyclonev_verify_all")
     args = ap.parse_args()
@@ -560,6 +599,11 @@ def _main():
         stage_results["lifted_sim"] = stage_lifted_sim(logger, args.sim_jobs)
     else:
         logger.info("Lifted sim: SKIPPED (--skip-lifted-sim)")
+
+    if not args.skip_questa:
+        stage_results["questa"] = stage_questa(logger, args.sim_jobs)
+    else:
+        logger.info("Questa: SKIPPED (--skip-questa)")
 
     logger.info("=" * 72)
     logger.info("COMBINED SUMMARY")

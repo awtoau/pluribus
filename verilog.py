@@ -2208,6 +2208,20 @@ def emit_hard_cells(data: dict) -> list[str]:
             conns.append(f".{port}({{{', '.join(rn(b) for b in reversed(bits))}}})")
         ram = h["kind"] == "cyclonev_ram_block"
         mac = h["kind"] == "cyclonev_mac"
+        if h["kind"] == "pluribus_cv_fpll":       # own model: lifters/data/cyclonev_fpll_model.v
+            dc = h["decode"]
+            lines.append(f"    // {nm_} decode: M={dc['m']} N={dc['n']} " +
+                         " ".join(f"C{c}={v}" for c, v in sorted(dc["c"].items(), key=lambda kv: int(kv[0]))))
+            lines.append(f"    wire {nm_}_locked;")
+            lines.append(f"    wire [8:0] {nm_}_clkout;")
+            conns += [f".locked({nm_}_locked)", f".clkout({nm_}_clkout)"]
+            lines.append(f"    {h['kind']} #(" + ", ".join(f".{k}({v})" for k, v in par.items()) + f") {nm_} (")
+            lines.append("        " + ",\n        ".join(conns) + ");")
+            for bit, net in (outs.get("locked") or {}).items():
+                lines.append(f"    assign {rn(net)} = {nm_}_locked;")
+            for bit, net in sorted((outs.get("clkout") or {}).items(), key=lambda kv: int(kv[0])):
+                lines.append(f"    assign {rn(net)} = {nm_}_clkout[{int(bit)}];")
+            continue
         for port in (("resulta",) if mac else ("portadataout", "portbdataout") if ram else ("portbdataout",)):
             if port in outs and outs[port]:
                 lines.append(f"    wire [{width_of[port] - 1}:0] {nm_}_{port};")

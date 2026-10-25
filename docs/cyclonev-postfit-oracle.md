@@ -309,7 +309,7 @@ Models: `cyclonev_ram_block` / `cyclonev_mlab_cell` in `cyclonev_atoms.v` are pl
 
 ## DSP (2026-10-24)
 
-Method: (a) reference = the design's own source RTL, simulated directly; (b) our own `cyclonev_mac` model (`lifters/data/cyclonev_mac_model.v`) from the Cyclone V handbook (vol. 1 ch. 3, `sources/cyclonev-device-handbook.pdf`) and the atom's parameters, validated before use: `build.vo` on our model vs source RTL on all 11 corpus DSP designs (`scripts/cyclonev_dsp_model_check.py`, 0 wrong). The lifted side then runs on the same model and is also compared to the source RTL (model-independent). Questa-Altera Starter Edition (free licence, Dan to request) would run the encrypted atom as a further cross-check; not installed, not requested.
+Method: (a) reference = the design's own source RTL, simulated directly; (b) our own `cyclonev_mac` model (`lifters/data/cyclonev_mac_model.v`) from the Cyclone V handbook (vol. 1 ch. 3, `sources/cyclonev-device-handbook.pdf`) and the atom's parameters, validated before use: `build.vo` on our model vs source RTL on all 11 corpus DSP designs (`scripts/cyclonev_dsp_model_check.py`, 0 wrong). The lifted side then runs on the same model and is also compared to the source RTL (model-independent).
 
 - Modelled: `m9x9` (lane 0), `m18x18_full`, `m27x27`, `m18x18_sumof2`; per-operand input registers; output register. Everything else gives X.
 - Mistral MODE: `M9X9`, absent = `m18x18_full` (18x19), `M27X27`, `M18X19_COMBINED` = `m18x18_sumof2`.
@@ -319,11 +319,25 @@ Method: (a) reference = the design's own source RTL, simulated directly; (b) our
   - m27x27: ax = banks 0,6,7; ay = banks 2,8,9.
   - sumof2: as m18 plus bx = banks 6,7; by = banks 8,9; `by[18]` = bank11.8.
 - Signedness and registers (Mistral lane names are swapped against the atom's in the single-lane modes): `signed_max/may` = `BX/BY_SIGNED`, `ax/ay_clock` = `INREG_CTRL_BX/BY`, `output_clock` = `OREG_CTRL`; in sumof2 the names follow the atom.
+- Vendor cross-check (2026-10-26, Questa-Altera Starter 2025.2, `scripts/cyclonev_dsp_vendor_check.py`): our model vs the encrypted `cyclonev_mac`, side by side, random operands / enables / clocks.
+  - Configs: the 11 corpus instances (exact defparams) + seeded random configs over the 4 modelled modes (signedness, operand and output clocks random, result width 64).
+  - Found: `m9x9` bits above 17 were wrong (model sign-extended the product). Vendor: all-ones iff both operands are signed and negative, else 0. Fixed; `m9x9` with operands > 9 bits now gives X.
+  - After the fix, seed 2, 256 random + 11 corpus configs x 1000 steps: 267 / 267 configs, 51264000 / 51264000 bits agree; wrong 0, missing 0.
 - Corpus: `mult9x9`, `mult18x18` plus `c_dsp_*` (signed / unsigned 9, 18, 27; input regs, output reg, combinational; sum of two products).
 
-## PLL (2026-10-24)
+## PLL (2026-10-26)
 
-- Vendor atoms (`cyclonev_fractional_pll`, `cyclonev_pll_output_counter`, `..._refclk_select`, `..._reconfig`) are encrypted: `build.vo` cannot be simulated. `altera_pll` (general) instantiates the plain `generic_pll`; iverilog 13 asserts on it (`eval_tree.cc:570`), verilator 5.046 `--timing` simulates it (100 MHz out of 50 MHz in: 199 edges in 2 us).
-- Corpus: `c_pll_vnd_m2d1_1`, `c_pll_vnd_m4d1_2`, `c_pll_vnd_m3d2_1` (50 MHz in).
-- Decode (`lifters/cyclonev_hard.py fpll_cell`): f = ref * M / N / C, M = `M_CNT_HI+LO`, N = `N_CNT_HI+LO`, C = `DPRIO0_CNT_HI.c + LO.c` of the counters with `Cc_COUT_EN`; unset hi / lo are 1. Matches the Quartus defparams of all 4 output counters (75, 100, 100 and 200 MHz). Quartus's own `FRACTIONAL_PLL` / `PLL_OUTPUT_COUNTER` defparams are a field-level oracle.
-- Not lifted: reference-clock pad (`CLKIN_0_SRC` = 4 in all three; the one refclk pad is H10), output counter -> clock net, phase shift, duty cycle, fractional mode. The gate reports the three designs as FAIL with that reason.
+- Vendor atoms (`cyclonev_fractional_pll`, `cyclonev_pll_output_counter`, `..._refclk_select`, `..._reconfig`) are encrypted; Questa-Altera Starter runs them (precompiled `cyclonev_ver`). iverilog cannot.
+- Corpus: `c_pll_vnd_m2d1_1`, `c_pll_vnd_m4d1_2`, `c_pll_vnd_m3d2_1` (50 MHz in, 75 / 100 / 100 + 200 MHz out).
+- Decode (`lifters/cyclonev_hard.py fpll_cell`): f = ref * M / N / C, M = `M_CNT_HI+LO`, N = `N_CNT_HI+LO`, C = `DPRIO0_CNT_HI.c + LO.c` of counters with `Cc_COUT_EN`; unset hi / lo are 1. 4 / 4 output counters match the Quartus defparams.
+- Netlist (lifter):
+  - refclk pad: `CLKIN_0_SRC` = 4 on `FPLL.054.037` -> H10 (`GPIO.038.045.0:COMBOUT`), 3 / 3 designs; the only evidenced value, other values / tiles are NOT LIFTED.
+  - reset: routed net into `FPLL:NRESET0`; `NREVERT_INVERT` = 1 <-> Quartus `nreset_invert = "true"` (active-high).
+  - lock: `FPLL:LOCK0` routed net.
+  - output counter c -> `FPLL:CLKOUT.c` -> CMUX `PLLIN` -> GCLK -> SCLK (clock-tree table): C3 = 100 MHz LAB domain, C5 = 200 MHz MLAB domain in `m4d1_2`, confirmed by the sim gate.
+  - Settings outside the modelled set (phase / presets, bypass, fractional, other `CNT_IN_SRC`, `VCO_DIV`) -> NOT LIFTED with the key.
+- Behaviour of the vendor sim model (measured in Questa, `tmp/qexp` probes; now `lifters/data/cyclonev_fpll_model.v`):
+  - `locked` = 1 at the first refclk posedge with reset inactive; 0 at once on reset.
+  - VCO first rising edge at lock, re-aligned to refclk every N / gcd(M, N) refclk cycles; stops while unlocked.
+  - Output counter: high for HI VCO cycles, low for LO; odd-duty correction falls on the VCO negedge half a cycle early. State is kept across reset; the first VCO edge after power-up is not counted.
+- Gate: the 3 designs PASS on Questa (vendor atoms vs our model). Mutation check: counting the first VCO edge fails all 3 (5960-21197 wrong samples).
