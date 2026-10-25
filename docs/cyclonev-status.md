@@ -54,7 +54,7 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
   - Routing pips: 39,550 / 39,550 against RCF. About half of RCF edges have no native node and are unscored.
   - LUT masks: 98.5%. Flip-flop presence: 98.5%. Pin use and direction: 97.6%.
   - Held-out split (family-level): routing 100% on both halves.
-- **Verification:** `scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz`: stage 5 (iverilog gate) passes; stage 6 (Questa: vendor-library gate + DSP vendor check) fails on `c_latch_v95_1` only (above). Stage 5/6 no longer deadlock on `tmp/heavy.lock` (nested flock). Selftest and pad map pass; baseline on `regbank16`: 61 LUTs, 64 FFs, 139 nets, 608 arcs, 19 pads.
+- **Verification:** `scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz`: stage 5 (iverilog gate) passes; stage 6 (Questa: vendor-library gate + DSP vendor check) fails on `c_latch_v95_1` only (above). Stage 5/6 no longer deadlock on `tmp/heavy.lock` (nested flock). Pad map passes. Selftest FAILS: `regbank16` gives 140 nets vs baseline 139 (61 LUTs, 64 FFs, 608 arcs, 19 pads match); predates the PLL work, untraced (#121).
 - **Tests:** `python3 -m pytest tests -q` passes (217).
 - **Gate notes:** self-feeding LUTs are emitted as `fb ? lut[..1..] : lut[..0..]` (X-safe latch). A zero-delay inverting self-loop (`c_latch_v95_1` q3) has no reference in Quartus either; the gate holds its enable input at 0. Step limits: stall (no CPU progress 60 s) + 3x measured backstop (#121).
 
