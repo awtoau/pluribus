@@ -6,6 +6,7 @@
 - Every rule is a corpus differential against build.vo (docs/cyclonev-postfit-oracle.md "RAM and MLAB");
   a block outside the rules is returned with `unmodelled` set, never guessed.
 """
+import re
 
 
 def _kvi(kv, key, default=None):
@@ -192,30 +193,65 @@ def mlab_cell(tile, alm, half, raw, kv, w, perm):
 
 
 # ---- FPLL -----------------------------------------------------------------------------------------
-def fpll_cell(tile, kv):
-    """One enabled FPLL tile -> decode record (frequency ratios only; the netlist is NOT lifted).
+# Reference-clock pad per (FPLL tile, CLKIN_0_SRC): corpus evidence only (c_pll_vnd_*, 3/3 designs on H10,
+# Quartus pll_clkin_0_src = "clk_0").  Other values / tiles: NOT LIFTED, never guessed.
+FPLL_REFCLK_PAD = {((54, 37), 4): "GPIO.038.045.0:COMBOUT"}
+# Settings the model covers: value None = any value (analog / lock-filter, no effect on simulation).
+_FPLL_KNOWN = {"FPLL_ENABLE": "1", "NREVERT_INVERT": "1", "FRACTIONAL_DIVISION_SETTING": "00000001",
+               "VCO_DIV": "0", "TCLK_SEL": "0", "CTRL_OVERRIDE_SETTING": "0", "CNT_IN_SRC": "0",
+               "CLKIN_0_SRC": None, "BWCTRL": None, "CP_CURRENT": None, "LOCK_FILTER_CFG_SETTING": None,
+               "UNLOCK_FILTER_CFG_SETTING": None, "VCO0PH_EN": None, "M_CNT_HI_DIV_SETTING": None,
+               "M_CNT_LO_DIV_SETTING": None, "N_CNT_HI_DIV_SETTING": None, "N_CNT_LO_DIV_SETTING": None,
+               "DPRIO0_CNT_HI_DIV": None, "DPRIO0_CNT_LO_DIV": None, "DPRIO0_CNT_ODD_DIV_EVEN_DUTY_EN": None}
 
-    f(counter c) = ref * M / N / C with M = M_HI + M_LO, N = N_HI + N_LO, C = DPRIO0_HI.c + DPRIO0_LO.c
-    (a bypassed counter divides by 1; unset hi/lo fields are 1).  Checked against the Quartus defparams
-    of the 3 c_pll_* designs (4 outputs, all matched) by scripts/cyclonev_lifted_sim_check.py.
-    Not decoded: the reference-clock pad (CLKIN_0_SRC value -> pad), the output counter -> clock net
-    binding, phase shift, duty cycle, fractional mode, M/N counters with odd-division duty correction.
+
+def fpll_cell(tile, kv, nets=None):
+    """One enabled FPLL tile -> `pluribus_cv_fpll` record (lifters/data/cyclonev_fpll_model.v).
+
+    - f(counter c) = ref * M / N / C; M = M_HI + M_LO, N = N_HI + N_LO, C = DPRIO0_HI.c + DPRIO0_LO.c
+      (unset hi/lo fields are 1).  Checked against the Quartus defparams by the sim gate.
+    - Output counter c drives FPLL:CLKOUT.c (clock-tree CMUX PLLIN); refclk pad from FPLL_REFCLK_PAD.
+    - nets: {"refclk", "nreset", "lock", ("clkout", c)} -> net (lifter); missing refclk/nreset = fault.
+    - Settings outside _FPLL_KNOWN (phase, presets, bypass, fractional, ...) -> `unmodelled`.
     """
     x, y = tile[1], tile[2]
+    nets = nets or {}
     hx = lambda key, idx=None, d=1: int(kv[(key, idx)], 16) if (key, idx) in kv else d
-    dv = lambda hi, lo, byp: 1 if _kvi(kv, byp) == "1" else hi + lo
-    m = dv(hx("M_CNT_HI_DIV_SETTING"), hx("M_CNT_LO_DIV_SETTING"), "M_CNT_BYPASS_EN")
-    n = dv(hx("N_CNT_HI_DIV_SETTING"), hx("N_CNT_LO_DIV_SETTING"), "N_CNT_BYPASS_EN")
-    cs = {}
+    m = hx("M_CNT_HI_DIV_SETTING") + hx("M_CNT_LO_DIV_SETTING")
+    n = hx("N_CNT_HI_DIV_SETTING") + hx("N_CNT_LO_DIV_SETTING")
+    cs, hi, lo, odd = {}, {}, {}, {}
     for c in range(9):
         if _kvi(kv, f"C{c}_COUT_EN") == "1":
-            byp = kv.get(("DPRIO0_CNT_BYPASS_EN", c)) == "1"
-            cs[c] = 1 if byp else hx("DPRIO0_CNT_HI_DIV", c) + hx("DPRIO0_CNT_LO_DIV", c)
-    return {"name": f"fpll_r{x}c{y}", "kind": "cyclonev_fractional_pll", "x": x, "y": y, "block": "FPLL",
-            "params": {}, "pins": {}, "outs": {},
-            "decode": {"m": m, "n": n, "c": cs, "clkin_0_src": hx("CLKIN_0_SRC", None, 2)},
-            "unmodelled": "PLL netlist: reference-clock pad (CLKIN_0_SRC), output-counter clock nets, "
-                          "phase and duty are not decoded"}
+            hi[c], lo[c] = hx("DPRIO0_CNT_HI_DIV", c), hx("DPRIO0_CNT_LO_DIV", c)
+            odd[c] = kv.get(("DPRIO0_CNT_ODD_DIV_EVEN_DUTY_EN", c)) == "1"
+            cs[c] = hi[c] + lo[c]
+    why = []
+    for (key, idx), val in sorted(kv.items(), key=str):
+        if re.match(r"^(C\d_COUT_EN|VCO_PH\d_EN)$", key):
+            continue
+        if key not in _FPLL_KNOWN:
+            why.append(f"{key}{'' if idx is None else f'.{idx}'}={val}")
+        elif _FPLL_KNOWN[key] is not None and val != _FPLL_KNOWN[key]:
+            why.append(f"{key}={val}")
+    clkin = hx("CLKIN_0_SRC", None, 2)
+    if ((x, y), clkin) not in FPLL_REFCLK_PAD:
+        why.append(f"refclk pad for CLKIN_0_SRC={clkin} (no corpus evidence)")
+    for need in ("refclk", "nreset"):
+        if not nets.get(need):
+            why.append(f"{need} net not found")
+    outs = {"locked": {0: nets["lock"]}} if nets.get("lock") else {}
+    clk = {c: nets[("clkout", c)] for c in cs if nets.get(("clkout", c))}
+    if clk:
+        outs["clkout"] = clk
+    byte = lambda d: "72'h" + "".join(f"{d.get(c, 0):02x}" for c in range(8, -1, -1))
+    bits = lambda d: "9'b" + "".join("1" if d.get(c) else "0" for c in range(8, -1, -1))
+    return {"name": f"fpll_r{x}c{y}", "kind": "pluribus_cv_fpll", "x": x, "y": y, "block": "FPLL",
+            "params": {"M": m, "N": n, "NRESET_INVERT": 1, "C_HI": byte(hi), "C_LO": byte(lo),
+                       "C_ODD": bits(odd), "C_EN": bits({c: c in clk for c in cs})},
+            "pins": {"refclk": [nets.get("refclk")], "nreset": [nets.get("nreset")]},
+            "outs": outs,
+            "decode": {"m": m, "n": n, "c": cs, "clkin_0_src": clkin},
+            "unmodelled": "; ".join(why) or None}
 
 
 # ---- DSP (cyclonev_mac) -------------------------------------------------------------------------

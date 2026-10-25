@@ -64,7 +64,10 @@ def _run(cmd, cwd):
 
 
 def compile_and_run(work, files, top, libs=CV_LIBS, vlog_args=(), vsim_args=()):
-    """vlib work; vlog files; vsim -c top -> (ok, transcript). ok False on any tool error / kill."""
+    """vlib work; vlog files; vsim -c top -> (stage, ok, transcript).
+
+    stage = the tool that ran last ("vlib" | "vlog" | "vsim"); ok False on any tool error / kill.
+    """
     work = Path(work)
     work.mkdir(parents=True, exist_ok=True)
     text = []
@@ -72,15 +75,15 @@ def compile_and_run(work, files, top, libs=CV_LIBS, vlog_args=(), vsim_args=()):
         rc, o = _run([BIN / "vlib", "work"], work)
         text.append(o)
         if rc:
-            return False, "".join(text)
+            return "vlib", False, "".join(text)
     rc, o = _run([BIN / "vlog", "-quiet", *vlog_args, *[Path(f).resolve() for f in files]], work)
     text.append(o)
     if rc != 0:
-        return False, "".join(text)
+        return "vlog", False, "".join(text)
     lib_args = [a for lb in libs for a in ("-L", lb)]
     rc, o = _run([BIN / "vsim", "-c", "-quiet", *lib_args, *vsim_args, "-do", "run -all; quit -f", top], work)
     text.append(o)
-    return rc == 0 and "** Fatal" not in o and "** Error" not in o, "".join(text)
+    return "vsim", rc == 0 and "** Fatal" not in o and "** Error" not in o, "".join(text)
 
 
 def main():
@@ -90,7 +93,7 @@ def main():
     ap.add_argument("--lib", action="append", help="-L library (default: Cyclone V set)")
     ap.add_argument("files", nargs="+")
     a = ap.parse_args()
-    ok, text = compile_and_run(a.work, a.files, a.top, tuple(a.lib) if a.lib else CV_LIBS)
+    _stage, ok, text = compile_and_run(a.work, a.files, a.top, tuple(a.lib) if a.lib else CV_LIBS)
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(LOG, "a") as fh:
         fh.write(f"== {time.strftime('%Y-%m-%dT%H:%M:%S%z')} {a.top} {a.files}\n{text}\nok={ok}\n")

@@ -217,6 +217,27 @@ def clock_tree_links(pc):
     return links, dict(unresolved)
 
 
+def _hard_mod():
+    try:
+        from lifters import cyclonev_hard as hard
+    except ImportError:
+        import cyclonev_hard as hard
+    return hard
+
+
+def fpll_refclk_links(pc):
+    """(pad COMBOUT, FPLL:REFCLK) per enabled FPLL whose CLKIN_0_SRC has a known pad (cyclonev_hard)."""
+    table = _hard_mod().FPLL_REFCLK_PAD
+    out = []
+    for tile, kv in sorted(pc.settings.items(), key=str):
+        if tile[0] != "FPLL" or kv.get(("FPLL_ENABLE", None)) != "1":
+            continue
+        pad = table.get(((tile[1], tile[2]), int(kv.get(("CLKIN_0_SRC", None), "2"), 16)))
+        if pad:
+            out.append((parse_node(pad), CVNode("FPLL", tile[1], tile[2], None, "REFCLK", None)))
+    return out
+
+
 class CVNode:
     """Parsed Mistral node: BLOCK.x.y[.bi][:PORT[.pi]].
 
@@ -795,6 +816,7 @@ class CycloneVLift:
         for (src, dst) in pc.arcs:
             dsu.union(src, dst)
         d.clock_links, d.clock_unresolved = clock_tree_links(pc)
+        d.clock_links += fpll_refclk_links(pc)
         for (src, dst) in d.clock_links:
             dsu.union(src, dst)
 
@@ -993,7 +1015,14 @@ class CycloneVLift:
                 pins[n.tile_key()][(n.bi, n.port, n.pi)] = (net_of(n), n in src_nodes and n not in sink_nodes)
         for tile in sorted(set(pc.settings) | set(pins)):
             if tile[0] == "FPLL" and pc.settings.get(tile, {}).get(("FPLL_ENABLE", None)) == "1":
-                d.hard.append(hard.fpll_cell(tile, pc.settings[tile]))
+                fp = lambda port, pi=None, _t=tile: CVNode("FPLL", _t[1], _t[2], None, port, pi)
+                linked = {s for s, _d in d.clock_links} | {t for _s, t in d.clock_links}
+                nets = {"refclk": net_of(fp("REFCLK")) if fp("REFCLK") in linked else None,
+                        "nreset": net_of(fp("NRESET0")) if fp("NRESET0") in sink_nodes else None,
+                        "lock": net_of(fp("LOCK0")) if fp("LOCK0") in src_nodes else None}
+                nets.update({("clkout", c): net_of(fp("CLKOUT", c)) for c in range(9)
+                             if fp("CLKOUT", c) in linked})
+                d.hard.append(hard.fpll_cell(tile, pc.settings[tile], nets))
             if tile[0] == "DSP" and (pins.get(tile) or pc.settings.get(tile)):
                 d.hard.append(hard.dsp_cell(tile, pc.settings.get(tile, {}), pins.get(tile, {})))
             if tile[0] == "M10K" and (pins.get(tile) or pc.settings.get(tile)):
