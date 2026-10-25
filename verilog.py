@@ -472,6 +472,7 @@ def load_data(conn, bs_id: int) -> dict:
         # would perturb the byte-identical MachXO2 output are gated on this.
         "is_gowin":         str(meta[1] or "").upper().startswith("GW"),
         "is_cyclonev":      str(meta[1] or "").upper().startswith("5C"),
+        "is_machxo2":       str(meta[1] or "").upper().startswith("LCMXO"),
         "ff_dtype_map":     ff_dtype_map,
         "hard":             hard,
     }
@@ -1076,6 +1077,15 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                for s, pos in zip(sel, positions)]
     sel_expr = "{" + ", ".join(sel) + "}"
 
+    if tie_unused and z_name in sel:
+        # Self-feeding LUT (latch): split on the feedback so `?:` merges to the table value
+        # when both halves agree; a bit-select with an X index is X even then.
+        sel1 = "{" + ", ".join("1'b1" if x == z_name else x for x in sel) + "}"
+        sel0 = "{" + ", ".join("1'b0" if x == z_name else x for x in sel) + "}"
+        return [
+            f"    localparam [{n-1}:0] {lp_name} = {n}'b{init};",
+            f"    assign {z_name} = {z_name} ? {lp_name}[{sel1}] : {lp_name}[{sel0}];",
+        ]
     return [
         f"    localparam [{n-1}:0] {lp_name} = {n}'b{init};",
         f"    assign {z_name} = {lp_name}[{sel_expr}];",
@@ -1704,7 +1714,10 @@ def emit_trigger_comment(data: dict) -> list[str]:
     The trigger comparator and EBR write-counter live inside EFB hard IP and
     are invisible to the fabric netlist.  This block documents the inferred
     architecture so the ghost nets in the Verilog are interpretable.
+    MachXO2 only: the block is EFB-specific.
     """
+    if not data.get("is_machxo2"):
+        return []
     return [
         "    // ── Trigger & capture-arm architecture ──────────────────────────────",
         "    //",

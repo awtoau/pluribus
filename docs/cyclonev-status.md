@@ -3,7 +3,7 @@
 Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything below is on `main`.
 
 ## Where it is
-- **Corpus:** 256 designs, 255 Quartus-built (`c_latch_v95_1` is not built here), `corpus/cyclonev/<design>/`.
+- **Corpus:** 256 designs, 256 Quartus-built, `corpus/cyclonev/<design>/`.
   - Tracked: `src/` and `design.toml`.
   - Gitignored: build outputs, `bitstream.rbf`, `bitstream.compressed.rbf`, `postfit.vo`, `rcf`, `decomp.bt`, `corpus.db`.
   - Builder: `scripts/cyclonev_corpus_build.py`. Generator: `scripts/cyclonev_construct_gen.py`. Report: `scripts/cyclonev_construct_report.py`.
@@ -20,12 +20,12 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
 
 ## Status (measured 2026-10-24)
 - **Functional gate** (`scripts/cyclonev_lifted_sim_check.py --all`; lifted Verilog simulated, per output sample matched / wrong / missing):
-  - 256 designs: 252 PASS, 3 FAIL (PLL), 1 not built (`c_latch_v95_1`). Samples: matched 6125789 / 6125789; wrong 0, missing 0 (PLL has no netlist samples).
+  - 256 designs: 253 PASS, 3 FAIL (PLL). Samples: matched 6131814 / 6131814; wrong 0, missing 0 (PLL has no netlist samples).
   - Reference per kind: logic, carry, registers, M10K, MLAB: Quartus `build.vo` on the vendor models (RAM/MLAB: plain `cyclonev_atoms.v` + `altera_lnsim.sv`). DSP: `build.vo` on our model, plus lifted vs the design's own RTL.
 
 | kind | designs | PASS | FAIL | matched / samples | wrong | missing |
 |---|---|---|---|---|---|---|
-| combinational | 92 | 92 | 0 | 990437 / 990437 | 0 | 0 |
+| combinational | 93 | 93 | 0 | 996462 / 996462 | 0 | 0 |
 | carry | 18 | 18 | 0 | 373674 / 373674 | 0 | 0 |
 | registered | 87 | 87 | 0 | 1928225 / 1928225 | 0 | 0 |
 | registered + carry | 15 | 15 | 0 | 512125 / 512125 | 0 | 0 |
@@ -53,7 +53,8 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
   - LUT masks: 98.5%. Flip-flop presence: 98.5%. Pin use and direction: 97.6%.
   - Held-out split (family-level): routing 100% on both halves.
 - **Verification:** `scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz` FAILS: stage 5 (lifted sim, blocking) fails on the 3 PLL designs above. Selftest and pad map pass; baseline on `regbank16`: 61 LUTs, 64 FFs, 139 nets, 608 arcs, 19 pads.
-- **Tests:** `python3 -m pytest tests -q` passes (208).
+- **Tests:** `python3 -m pytest tests -q` passes (216).
+- **Gate notes:** self-feeding LUTs are emitted as `fb ? lut[..1..] : lut[..0..]` (X-safe latch). A zero-delay inverting self-loop (`c_latch_v95_1` q3) has no reference in Quartus either; the gate holds its enable input at 0. Step limits: stall (no CPU progress 60 s) + 3x measured backstop (#121).
 
 ## Still open
 1. ~~`_lut_self_latch()`~~ closed 2026-10-24: removed. `c_latch_v95_1` (Quartus-built) showed it wrong (q1 never sets, q2 refused, oscillator emitted as a latch). Detail: `docs/cyclonev-postfit-oracle.md` "Self-feeding LUT latch".
