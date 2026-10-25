@@ -95,6 +95,7 @@ def score_design(name, tables, geom):
                 ok_net = False
             elif s in got and len(got) == 1:
                 c["matched"] += 1
+                why[("matched", bkey[0])] += 1
             elif s in got:
                 c["missing"] += 1
                 why[("ambiguous pattern", bkey[0])] += 1

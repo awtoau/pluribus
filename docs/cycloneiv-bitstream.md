@@ -201,6 +201,35 @@ Every Cyclone IV rule here comes from Cyclone IV oracle runs. No Cyclone V bit p
 - Header differs from the vendor files beyond flag/length/CRC: lane 1 bits 36..37, lane 3 bits 8..11, lane 0. These are option bits; meaning not derived.
 - Earlier work in this repo treated the same payload as a Cyclone V e50f stream. That reading is contradicted: the payload has no `jjjj` sync, and it passes the Cyclone IV CRC chain on all 6154 frames.
 
+## Routing decode, EP4CE6 (paused 2026-10-26; work moved to EP4CGX150)
+
+- Security: Cyclone IV E/GX have no design-security (AES) feature (handbook vol 1 has compression, no security chapter; only Cyclone III LS has AES), so every Cyclone IV stream is decodable in principle.
+- Routing oracle: `quartus_cdb --back_annotate=routing` works for Cyclone IV (EP4CE6, GX parts listed by Quartus 25.1). Exported per design as `corpus/cycloneiv/<d>/routing.rcf` (`cycloneiv_fuzz.py` step `quartus_cdb`; it rewrites `build.qsf` even with `--write_settings_files=off`, so the `.qsf` is restored).
+- RCF element types seen: LE_BUFFER, LOCAL_LINE, LOCAL_INTERCONNECT, R4, C4, R24, C16, LAB_CONTROL_MUX, BLOCK_INPUT_MUX, IO_DATAIN, LAB_CLK, BLK_CLK_BUF, BLK_CLK_LIM, SCLK_TO_ROWCLK_BUF, GLOBAL_CLK_H/V, CLK_BUFFER, CLKBUF_IN/OUT, GEN_CORE_BUF.
+  - `dest = (atom, PORT), route_port = P`: P is the physical LUT pin (matches the `.vo`).
+  - LE_BUFFER index = 2 x LE + {0, 1}.
+- Corpus: `rnd_*` (`scripts/cycloneiv_rnd_designs.py`): random 4-LUT networks + registers with random enable / sync clear / async clear / sync load, adders, XOR-group outputs, fitter SEED per design. Tiers s 40 (20-120 nodes), m 40 (300-700), l 40 (900-1500).
+  - First attempt (up to 2600 nodes, global random wiring) did not route in 10 min; sources now 85% from the last 60 nodes. Worst fit after that 65 s (4 jobs).
+- Tools: `cycloneiv_corpus.py` (RCF parser, CRAM as a (frame, v) plane), `cycloneiv_geom.py` (device-driven tile anchors, `lifters/data/cycloneiv_<die>_geom.json`), `cycloneiv_route_learn.py` (tile-relative mux tables), `cycloneiv_route_score.py` (scored vs RCF).
+- Findings:
+  - LOCAL_INTERCONNECT mux = 2 levels in 2 v rows: level A = 2 bits in one frame (or none), level B = one-hot over 6 bits in the next 3 frames; 18 inputs. Patterns with only a B bit exist (A = none).
+  - Mux input order differs per LAB column (not X parity); tables are keyed per column.
+  - R4 / LE_BUFFER sources: same pattern for every row of a column.
+  - C4 sources: naming depends on Y. Per (column, LI, pattern), source is a function of Y mod 4 in 20,295 / 21,191 cases (Y mod 1: 6,692 / 9,214). Not yet modelled.
+- Held-out score (train `rnd_l*` crc32-even 20 designs, score the odd 20), 2026-10-26:
+
+| dst type | matched | missing | wrong | extra | headline |
+|---|---|---|---|---|---|
+| LE_BUFFER (LE comb/FF -> buffer) | 37,847 | 1,179 | 10 | not scored | 97.0% |
+| LOCAL_INTERCONNECT | 65,851 | 40,871 | 1,596 | not scored | 60.8% |
+| R4 | 35 | 129,794 | 3,215 | not scored | 0.0% |
+| all RCF edges | 103,733 | 488,931 | 4,821 | not scored | 17.4% |
+
+  - LI missing = 38,006 ambiguous patterns (C4 Y-naming) + unknown/untabled. R4: mux bits not found by the tile-relative rule (R4 mux probably sits at the driving end, outside the window or keyed wrong). C4, C16, R24, LE inputs, LAB controls, clocks, IO: not learnt yet (`no table`).
+  - `extra` not implemented in the scorer yet; not a pass.
+- Resume: `cycloneiv_fuzz.py --build --match 'rnd_*' --jobs 4` (needs `--generate` first), `--rcf-only` for older designs, then `cycloneiv_route_learn.py --train 'rnd_l*' --split even` and `cycloneiv_route_score.py --tables tmp/cycloneiv/route_learn_even.json --designs 'rnd_l*' --split odd`.
+- Left for EP4CE6: C4 Y-rule, R4/C4/C16/R24 mux location, LE input and FF control sinks, LAB-wide controls and inversion, carry (`sum_lutc_input`, cin), clocks, IO, lifter + emitter, sim gate.
+
 ## Gaps
 
 - Fabric not decoded:
