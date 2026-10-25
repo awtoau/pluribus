@@ -63,7 +63,7 @@ def test_fpll_netlist_and_unmodelled():
     rec = hard.fpll_cell(("FPLL", 54, 37), kv, nets)
     assert rec["unmodelled"] is None and rec["kind"] == "pluribus_cv_fpll"
     assert rec["outs"] == {"locked": {0: "n3"}, "clkout": {5: "n4"}} and rec["params"]["C_EN"] == "9'b000100000"
-    rec = hard.fpll_cell(("FPLL", 54, 37), dict(kv, **{("M_CNT_BYPASS_EN", None): "1"}), nets)
+    rec = hard.fpll_cell(("FPLL", 54, 37), {**kv, ("M_CNT_BYPASS_EN", None): "1"}, nets)
     assert "M_CNT_BYPASS_EN" in rec["unmodelled"]
     assert "refclk pad" in hard.fpll_cell(("FPLL", 0, 37), kv, nets)["unmodelled"]
 
