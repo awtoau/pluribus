@@ -27,9 +27,11 @@ def test_asm_to_plane_mirrors_inside_the_lab_column():
 
 
 def test_programmed_bits_follow_the_roles():
-    b0 = [1, -1, 0, 1, -1, 0, 1, -1, 0]
+    b0 = [1, -1, 0, 1, -1, 0, 0, -1, 0]
     b1 = [0, -1, 1, 1, 0, -1, 0, 0, 0]
-    assert D.programmed(b0, b1).tolist() == [True, True, False, True, False, True, True, False, False]
+    first = [True, False, False, True, False, False, True, False, False]
+    assert D.programmed(b0, b1).tolist() == [True, True, False, True, False, True, False, False, False]
+    assert D.programmed(b0, b1, first).tolist() == [True, True, False, True, False, True, True, False, False]
 
 
 def test_pos_index():

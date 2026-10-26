@@ -68,9 +68,13 @@ def asm_to_plane(fa, va, fxs):
     return (FX + FRAME_MIRROR - (fa - FX)).astype(np.int32), (ROW_MIRROR - va).astype(np.int32)
 
 
-def programmed(b0, b1):
-    """Which entries of a group are programmed 1: the select bit, and a second-level bit iff b1 == -1."""
-    return (np.asarray(b0) == 1) | (np.asarray(b1) == -1)
+def programmed(b0, b1, first=None):
+    """Which entries of a group are programmed 1: the select bit (the group's first entry; b0 = +1, or 0 on
+    ~3 % of the 3-groups), and a second-level bit iff b1 == -1."""
+    p = (np.asarray(b0) == 1) | (np.asarray(b1) == -1)
+    if first is not None:
+        p = p | np.asarray(first)
+    return p
 
 
 def prepare():
@@ -83,7 +87,9 @@ def prepare():
     g = cg.load("ep4cgx150")
     fxs = np.array(sorted(g.FX[x] for x in g.FX), np.int64)
     pf, pv = asm_to_plane(pos % 6154, pos // 6154, fxs)
-    pred = programmed(b0, b1)
+    first = np.zeros(len(pos), bool)
+    first[gstart[gsize == 3]] = True          # the select entry of every 3-group (b0 = 0 on some)
+    pred = programmed(b0, b1, first)
     # block key: the non-select entries of the group (positions as plane linear address), up to 2
     lin = pf.astype(np.int64) * 6368 + pv
     isA = b0 != 1
