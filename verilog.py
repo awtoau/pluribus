@@ -211,8 +211,13 @@ def load_data(conn, bs_id: int) -> dict:
                for r in q("SELECT name, prim, params, pins, not_lifted FROM hard_ip "
                           "WHERE bitstream=:bs_id ORDER BY name")]
 
-    if os.environ.get("PLURIBUS_LEGACY_EBR"):      # A/B against the pre-#127 emission (no hard-IP cells)
-        ebr_cells, ebr_pins, hard_ip = [], {}, []
+    # A/B switch for ablations: PLURIBUS_HIP_OFF=ebr,pll,ddr (PLURIBUS_LEGACY_EBR=1 = all three)
+    off = set(os.environ.get("PLURIBUS_HIP_OFF", "").split(",")) | (
+        {"ebr", "pll", "ddr"} if os.environ.get("PLURIBUS_LEGACY_EBR") else set())
+    if "ebr" in off:
+        ebr_cells, ebr_pins = [], {}
+    hard_ip = [h for h in hard_ip if not (("pll" in off and h[1] == "EHXPLLJ")
+                                          or ("ddr" in off and h[1] in ("ODDRXE", "UNSUPPORTED")))]
 
     # Net names: net → (name, description, freq_mhz)
     # `spec_` prefix marks every NON-confirmed name as speculative, right in the
@@ -851,6 +856,28 @@ def emit_wires(data: dict) -> list[str]:
     return lines
 
 
+# PLL <-> EFB hard-wired interface (device DB fixed conns: S1E1_JPLL*_PLL <-> S1E3_JPLL*_EFB), used when
+# the PLL tile has PLL_USE_WB ENABLED.  (EFB port, PLL port, bus width)
+_PLL_WB = [("PLLCLKO", "PLLCLK", 1), ("PLLRSTO", "PLLRST", 1), ("PLL0STBO", "PLLSTB", 1),
+           ("PLLWEO", "PLLWE", 1), ("PLLADRO", "PLLADDR", 5), ("PLLDATO", "PLLDATI", 8)]
+
+
+def _pll_wb_on(data: dict) -> bool:
+    return any(h[1] == "EHXPLLJ" and h[2].get("PLL_USE_WB") == "ENABLED" for h in data.get("hard_ip", []))
+
+
+def _pll_wb_efb_conns(data: dict) -> list[tuple[str, str]]:
+    """(EFB port, wire) pairs for the PLL interface; the wires are declared by emit_plls."""
+    if not _pll_wb_on(data):
+        return []
+    out = []
+    for efb, _pll, n in _PLL_WB:
+        out += [(f"{efb}{i}" if n > 1 else efb, f"pll_wb_{efb.lower()}{i}" if n > 1 else f"pll_wb_{efb.lower()}")
+                for i in range(n)]
+    out += [(f"PLL0DATI{i}", f"pll_wb_dato{i}") for i in range(8)] + [("PLL0ACKI", "pll_wb_ack")]
+    return out
+
+
 def _efb_port(name: str) -> str:
     """Vendor EFB primitive port name: the fabric wire name (JWBCLKI) minus the leading J."""
     return name[1:] if name.startswith("J") else name
@@ -921,10 +948,13 @@ def emit_efb_comment(data: dict) -> list[str]:
             pn, net = row[0], row[1]
             d = row[2] if len(row) > 2 else None
             conns.append((pn, resolve_net(net, net_name_map, const_net_map), d))
+        wb = _pll_wb_efb_conns(data)
         for i, (pn, wire, d) in enumerate(conns):
-            comma = "," if i < len(conns) - 1 else ""
+            comma = "," if (i < len(conns) - 1 or wb) else ""
             tag = {"in": "// fabric -> EFB", "out": "// EFB -> fabric"}.get(d, "")
             lines.append(f"        .{_efb_port(pn)}({wire}){comma:<2} {tag}")
+        for i, (pn, wire) in enumerate(wb):
+            lines.append(f"        .{pn}({wire}){',' if i < len(wb) - 1 else ' '} // PLL wishbone interface")
         lines.append("    );")
     lines.append("")
     return lines
@@ -966,9 +996,11 @@ def emit_efb_module(data: dict) -> list[str]:
         ",\n".join(f'    parameter {k} = "{v}"' for k, v in _EFB_PARAM_DEFAULTS.items()),
         ") (",
     ]
+    wbp = _pll_wb_efb_conns(data)
     decls = ([f"    input  wire {_efb_port(p)}" for p in ins]
              + [f"    output wire {_efb_port(p)}" for p in outs]
-             + [f"    inout  wire {_efb_port(p)}  // direction not recovered" for p in unknown])
+             + [f"    inout  wire {_efb_port(p)}  // direction not recovered" for p in unknown]
+             + [f"    {'input ' if p.startswith('PLL0') and 'STBO' not in p else 'output'} wire {p}" for p, _w in wbp])
     for i, d in enumerate(decls):
         lines.append(d + ("," if i < len(decls) - 1 else ""))
     lines.append(");")
@@ -2348,7 +2380,6 @@ def emit_plls(data: dict) -> list[str]:
             lines.append(f"    // NOT LIFTED: {nl}")
         attrs = ""
         if fin:
-            params["FIN"] = f"{fin:.6f}"
             fr = _pll_freqs(params, fin)
             if fr:
                 attrs = "(* " + ", ".join(
@@ -2356,11 +2387,26 @@ def emit_plls(data: dict) -> list[str]:
                     + [f'FREQUENCY_PIN_{o}="{f:.6f}"' for o, f in fr.items()]) + " *)\n    "
         else:
             lines.append("    // NOT LIFTED: FIN (input frequency is off-chip; pass --pll-fin MHz)")
-        plist = [f".{k}({_vparam(v)})" for k, v in params.items() if k in _PLL_PARAMS]
+        plist = [f".{k}({_vparam(v)})" for k, v in params.items()
+                 if k in _PLL_PARAMS and k not in ("FIN", "INT_LOCK_STICKY")]   # sim-model-only
         conns = []
+        wb = params.get("PLL_USE_WB") == "ENABLED" and bool(data.get("efb_ports"))
+        if wb:
+            lines.append("    wire " + ", ".join(w for _p, w in _pll_wb_efb_conns(data)) + ";"
+                         "   // PLL <-> EFB hard-wired interface")
         for port in _PLL_IN:
             pin = pins.get(port)
-            if port == "CLKFB":
+            wbm = {"PLLCLK": "pll_wb_pllclko", "PLLRST": "pll_wb_pllrsto", "PLLSTB": "pll_wb_pll0stbo",
+                   "PLLWE": "pll_wb_pllweo"}
+            m5 = re.fullmatch(r"PLLADDR(\d)", port)
+            m8 = re.fullmatch(r"PLLDATI(\d)", port)
+            if wb and port in wbm:
+                ex = wbm[port]
+            elif wb and m5:
+                ex = f"pll_wb_plladro{m5.group(1)}"
+            elif wb and m8:
+                ex = f"pll_wb_plldato{m8.group(1)}"
+            elif port == "CLKFB":
                 ex = "1'b0"          # CLKOP feedback is patched in below
             elif pin and pin.get("net"):
                 ex = rn(pin["net"])
@@ -2379,6 +2425,9 @@ def emit_plls(data: dict) -> list[str]:
                     continue
                 used.add(e)
                 outs[port] = e
+        if wb:
+            outs.update({f"PLLDATO{i}": f"pll_wb_dato{i}" for i in range(8)})
+            outs["PLLACK"] = "pll_wb_ack"
         if params.get("FEEDBK_PATH") == "CLKOP":
             if "CLKOP" not in outs:
                 outs["CLKOP"] = f"pll_{name.lower()}_clkop"
@@ -2635,6 +2684,9 @@ def emit_output_drives(data: dict) -> list[str]:
         base = _sanitise(label)
         port = f"pin{pin}" if (base == "_" or base in seen) else base
         seen.add(port)
+        if pin in data.get("oddr_pad_q", {}):          # pad driven by its IOLOGIC DDR register
+            assigns.append(f"    assign {port} = {data['oddr_pad_q'][pin]};")
+            continue
         if data.get("is_cyclonev") and direction == "out" and not net_in:
             net_in = net_out    # Cyclone V: net_out is the fabric net; covers a pad-to-pad wire
         elif direction != "out" or not net_in:
@@ -2647,8 +2699,6 @@ def emit_output_drives(data: dict) -> list[str]:
         if not net_in:
             continue
         driver = resolve_net(net_in, net_name_map, const_net_map)
-        if pin in data.get("oddr_pad_q", {}):          # pad driven by its IOLOGIC DDR register
-            driver = data["oddr_pad_q"][pin]
         if driver in ("NC", "1'b0", "1'b1") or driver == port:
             continue
         assigns.append(f"    assign {port} = {driver};")

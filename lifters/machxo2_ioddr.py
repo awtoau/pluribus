@@ -8,22 +8,26 @@ are not lifted; the settings are reported.
 import re
 from pathlib import Path
 
-_FC = re.compile(r"^\.fixed_conn E1_J(OPOS|ONEG|CLK|LSR|CE|TS)([A-D])_\w+IOLOGIC (J\w+)$")
+_FC = re.compile(r"^\.fixed_conn (?:[NSEW]1_)?J(OPOS|ONEG|CLK|LSR|CE|TS)([A-D])_\w*IOLOGIC (?:([NSEW])1_)?(J\w+)$")
+_OFF = {None: (0, 0), "N": (-1, 0), "S": (1, 0), "E": (0, 1), "W": (0, -1)}
 
 
 def wires(dbroot, family, tiletype):
-    """{(letter, role): wire} e.g. ('A', 'OPOS') -> 'JA0'."""
+    """{(letter, role): (drow, dcol, wire)} e.g. ('A', 'OPOS') -> (0, 0, 'JA0'); top edge uses S1_ wires."""
     out = {}
     for line in (Path(dbroot) / family / "tiledata" / tiletype / "bits.db").read_text().splitlines():
         m = _FC.match(line)
         if m:
-            out[(m.group(2), m.group(1))] = m.group(3)
+            out[(m.group(2), m.group(1))] = (*_OFF[m.group(3)], m.group(4))
     return out
 
 
-def cells(pc, resolve, pad_pin, dbroot, family="MachXO2"):
-    """[{name, prim, params, pins, not_lifted}]; pad_pin(row, col, letter) -> package pin or None."""
+def cells(pc, resolve, pad_pin, pad_net, dbroot, family="MachXO2"):
+    """[{name, prim, params, pins, not_lifted}]; pad_pin(row, col, letter) -> package pin or None;
+    pad_net(row, col, letter) -> fabric net driving that output pad (= the OPOS/D0 wire; the lift keys
+    pad J-wires through the pad node, so D0 is read from the pad rather than from the wire)."""
     res = []
+    sinks = {(r, c, sk) for (r, c, sk, _src) in pc.arcs}
     for (r, c), ttype in sorted(pc.tile_type.items()):
         if not ttype.startswith("PIC_"):
             continue
@@ -41,7 +45,14 @@ def cells(pc, resolve, pad_pin, dbroot, family="MachXO2"):
             w = wires(dbroot, family, ttype)
             pins = {}
             for role, port in (("OPOS", "D0"), ("ONEG", "D1"), ("CLK", "SCLK"), ("LSR", "RST")):
-                net = resolve(r, c, w[(L, role)]) if (L, role) in w else None
+                net = None
+                if (L, role) in w:
+                    dr, dc, wire = w[(L, role)]
+                    # a J wire no decoded arc drives is unrouted (the pad keeps a placeholder net)
+                    if (r + dr, c + dc, wire) in sinks:
+                        net = pad_net(r, c, L) if role == "OPOS" else resolve(r + dr, c + dc, wire)
+                if net is None and role in ("OPOS", "ONEG", "CLK"):
+                    nl.append(f"{port} unrouted in the bitstream (tie-off / dedicated clock source not decodable)")
                 inv = False
                 if role == "CLK":
                     inv = en.get(f"IOLOGIC{L}.CLKOMUX") == "INV"

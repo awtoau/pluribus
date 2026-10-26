@@ -1481,8 +1481,15 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                         schema.pad_map.c.bitstream == bs_id, schema.pad_map.c.row == rr,
                         schema.pad_map.c.col == cc, schema.pad_map.c.pio == letter)).scalar()
 
+                def _pad_net(rr, cc, letter):
+                    # fabric net on the pad's output joint node (JA<n>): the ODDR D0 input
+                    key = lift.pad_fabric_node(rr, cc, letter, "out")
+                    if key is None or key not in design.dsu.p:
+                        return None
+                    return design.net_name.get(design.dsu.find(key))
+
                 dd = machxo2_ioddr.cells(
-                    pc, lambda rr, cc, w: resolve_net(design, lift, rr, cc, w), _pad_pin, dbroot)
+                    pc, lambda rr, cc, w: resolve_net(design, lift, rr, cc, w), _pad_pin, _pad_net, dbroot)
                 for h in dd:
                     conn.execute(insert(schema.hard_ip).values(
                         bitstream=bs_id, name=h["name"], prim=h["prim"], params=h["params"],

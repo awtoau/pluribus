@@ -7,7 +7,8 @@ tool-derived or off-chip are reported in `not_lifted`, never guessed.
 import re
 from pathlib import Path
 
-# EHXPLLJ model parameters (cae_library/simulation/verilog/machxo2/EHXPLLJ.v) that the tile encodes.
+# EHXPLLJ parameters accepted by LSE (cae_library/synthesis/verilog/machxo2.v) that the tile encodes.
+# INT_LOCK_STICKY and FIN exist only in the simulation model, so they are not emitted.
 _DIV = ("CLKI_DIV", "CLKFB_DIV", "CLKOP_DIV", "CLKOS_DIV", "CLKOS2_DIV", "CLKOS3_DIV")
 _WORD_PARAMS = ("CLKOP_CPHASE", "CLKOS_CPHASE", "CLKOS2_CPHASE", "CLKOS3_CPHASE",
                 "CLKOP_FPHASE", "CLKOS_FPHASE", "CLKOS2_FPHASE", "CLKOS3_FPHASE",
@@ -16,7 +17,7 @@ _WORD_PARAMS = ("CLKOP_CPHASE", "CLKOS_CPHASE", "CLKOS2_CPHASE", "CLKOS3_CPHASE"
 _ENUM_PARAMS = ("CLKOP_ENABLE", "CLKOS_ENABLE", "CLKOS2_ENABLE", "CLKOS3_ENABLE", "FEEDBK_PATH",
                 "PLL_USE_WB", "CLKOP_TRIM_POL", "CLKOS_TRIM_POL", "CLKOP_TRIM_DELAY",
                 "CLKOS_TRIM_DELAY", "VCO_BYPASS_A0", "VCO_BYPASS_B0", "VCO_BYPASS_C0",
-                "VCO_BYPASS_D0", "INT_LOCK_STICKY", "FRACN_ENABLE", "DPHASE_SOURCE",
+                "VCO_BYPASS_D0", "FRACN_ENABLE", "DPHASE_SOURCE",
                 "OUTDIVIDER_MUXA2", "OUTDIVIDER_MUXB2", "OUTDIVIDER_MUXC2", "OUTDIVIDER_MUXD2")
 # Words the tool derives from the frequency plan (not HDL parameters).
 TOOL_DERIVED = {"GMC_TEST", "ICP_CURRENT", "LPF_RESISTOR", "LPF_CAPACITOR", "KVCO", "GMC_GAIN",
