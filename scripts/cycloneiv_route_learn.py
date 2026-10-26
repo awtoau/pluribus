@@ -218,6 +218,7 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
     shape = (WF[1] - WF[0], WV[1] - WV[0])
     det = np.ones(shape, dtype=bool)        # constant within every well-sampled source
     anyone = np.zeros(shape, dtype=bool)
+    every = np.ones(shape, dtype=bool)      # set in all instances of every well-sampled source
     for s, v in by_src.items():
         if len(v) < MIN_SRC:
             continue
@@ -229,6 +230,7 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
             w_or |= w
         det &= w_and | ~w_or
         anyone |= w_and
+        every &= w_and
     if not anyone.any() and not any(len(v) >= MIN_SRC for v in by_src.values()):
         return None
     # unused tiles: same class, dst not used in that design
@@ -244,9 +246,18 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
         zero_unused = (tot == 0) if key[0] not in SINKS else (tot / len(unused) <= SINK_UNUSED_MAX)
     else:
         zero_unused = np.ones(shape, dtype=bool)
-    mux = det & anyone & zero_unused
+    if key[0].startswith("LAB"):
+        # FF control lines: the "off" choice can be a SET bit (SCLR const 0 = bit set), so the unused
+        # tile rule would drop the select bits; keep bits that tell sources apart
+        mux = det & anyone & ~every
+    else:
+        mux = det & anyone & zero_unused
     pos = [tuple(int(t) for t in p) for p in np.argwhere(mux)]
     if not pos:
+        # one source and no select bit: the mux has a single legal input (BLK_CLK_BUF <- LAB_CLK)
+        if len(by_src) == 1:
+            src = next(iter(by_src))
+            return {"mux": [], "n": len(insts), "srcs": 1, "pats": {src: ()}, "conflict_srcs": 0, "anchor": off}
         return {"mux": [], "n": len(insts), "srcs": len(by_src), "anchor": off}
     pats, conflict = {}, 0
     pf = np.array([p[0] + WF[0] for p in pos])
