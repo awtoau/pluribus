@@ -40,9 +40,39 @@ def read_bits(plane, geom, x, y, mux):
     return tuple(m for m, h in zip(mux, hit) if h)
 
 
+class AsmSource:
+    """Exact tables from the Quartus asm.ddb (cycloneiv_asm_tables): per plane, the selected input of
+    every mux the block map names.  Sources come back as learner-style keys; a wire has one key per RCF
+    alias (the RCF names a wire by its driver point), so several candidates are normal."""
+
+    def __init__(self, path=None):
+        import cycloneiv_asm_decode as ad
+        import cycloneiv_asm_tables as at
+        self.t = at.Tables(ad.Dec(), path) if path else at.Tables(ad.Dec())
+        self._cache = {}
+
+    def decoded(self, plane):
+        dec = self._cache.get(id(plane))
+        if dec is None:
+            self._cache.clear()               # one design at a time
+            dec = self._cache[id(plane)] = self.t.decode_design(plane)
+        return dec
+
+    def sources(self, plane, key, x, y):
+        rec = self.decoded(plane).get((x, y, tuple(key)))
+        if rec is None:
+            return None
+        return self.t.rcf_names(rec, x, y)
+
+    def extra_at(self, plane, x, y, used):
+        """Muxes of tile (x, y) the asm tables decode to a source but the RCF does not use."""
+        return sum(1 for (dx, dy, key) in self.decoded(plane) if dx == x and dy == y and (key, x, y) not in used)
+
+
 class Decoder:
-    def __init__(self, paths):
+    def __init__(self, paths, asm=None):
         self.tables = [Table(p) for p in paths]
+        self.asm = asm
         self._idx = {}
 
     def groups_in_class(self, t, cls):
@@ -60,8 +90,10 @@ class Decoder:
         known single source (an extra connection the RCF does not have)."""
         n = 0
         t = self.tables[0]
+        asm_dec = self.asm.decoded(plane) if self.asm is not None else {}
+        n += sum(1 for (dx, dy, key) in asm_dec if dx == x and dy == y and (key, x, y) not in used)
         for key, (mux, pats, (ax, ay)) in self.groups_in_class(t, rl.tile_class(geom, x, y, t.col_phase)):
-            if (key, x, y) in used or not mux:
+            if (key, x, y) in used or not mux or (x, y, key) in asm_dec:
                 continue
             bits = read_bits(plane, geom, x + ax, y + ay, mux)
             if bits:
@@ -83,6 +115,10 @@ class Decoder:
             key = rl.ff_lab_key(plane, geom, x, y, key[1], key[2])
         if x not in geom.kind or not 0 <= y <= geom.ymax:
             return [], "off die"
+        if self.asm is not None:            # exact asm tables first; the learner only where they have no entry
+            got = self.asm.sources(plane, key, x, y)
+            if got:
+                return (got, "ok") if len(got) == 1 else (got, "asm alias")   # one wire, several RCF names
         for t in self.tables:
             g = t.groups.get(f"{rl.tile_class(geom, x, y, t.col_phase, key[0])}|{'|'.join(map(str, key))}")
             if g is None:
