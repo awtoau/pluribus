@@ -295,6 +295,35 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 - IO input sites: every used IOIBUF site has a 4-bit signature (4 consecutive v in one periphery frame), set in all designs using the site and in <= 3% of the others (249 sites with >= 12 uses; e.g. X26 Y91 N1 frame 26 v 380..383, N8 244..247, N15 108..111: v falls by 136 per N step of 7; left/right IO columns X117 carry the same pattern with frames 20..34). Some sites also show a bit beyond the lane model (v 6344+, the lane-tail columns).
 - Memory: a per-column learner (104 columns instead of 8 classes) needs a larger cgroup than 2.5 GB.
 
+## Third-party image test pass (2026-10-26)
+
+`scripts/cycloneiv_image_pass.py` (log `tmp/logs/cycloneiv_image_pass.log`): a third-party compressed GX150 image (read only, never copied) against 6 held-out Quartus corpus designs and a control (the image with its set bits shuffled inside every frame: same bits per frame, random v). Tables: pooled X mod 8 learner tables from 150 training designs. Image: 2,178,780 set bits of 39.4 M positions (5.5%).
+
+| measure | image | control (shuffled) | corpus designs (6) |
+|---|---|---|---|
+| used LEs (mask != 0 or LE-used bit) of 149,760 | 89,283 (59.6%) | 131,771 (88%) | 804 .. 1,186 |
+| active LABs of 9,360 | 7,077 | 9,359 | 109 .. 152 |
+| constant masks (0000 / FFFF) | 0.000 | 0.016 | 0.000 |
+| mask support 0 / 1 / 2 / 3 / 4 inputs | 0 / .093 / .089 / .317 / .501 | .016 / 0 / .002 / .093 / .890 | 0 / .03-.05 / .02-.05 / .11-.13 / .79-.82 |
+| distinct masks | 3,077 | 7,153 | 539 .. 818 |
+| most common masks | ff00 5,494, 9617 3,102, 698e 2,904, f0f0 2,370, f3c0 1,567 | 4000, 8000, 1000, 2000 (single-bit masks) | 6996, ff00, 9669, f0f0 |
+| carry-form masks (top 8 of corpus arithmetic cells) | 11,337 (12.7% of used) | 0 | 5 .. 79 |
+| routing: nonzero muxes in an active LAB | 54.2 | 47.2 | 50 .. 60 |
+| routing: unknown share of nonzero muxes | 0.064 | 0.430 | 0.036 .. 0.042 |
+| LE inputs the mask depends on that trace to one driver | 6,589 / 9,016 = 73.1% | 13 / 588 = 2.2% | 74% .. 82% |
+| IO output sites with the full 36-bit signature | 16 | 0 | 11 .. 29 |
+| IO input sites with the 4-bit signature | 21 | 0 | 17 .. 31 |
+| set bits claimed by the decode | 90.1% (unclaimed 214,628) | 59.6% | 98.4% .. 98.7% |
+
+- Verdict: logic, not noise. The control separates from the image on every measure (single-bit masks and 89% 4-input support; 43% of its nonzero routing muxes match no legal source; 2% of inputs trace to a driver); the image sits next to the corpus on the routing (6.4% unknown vs 3.6-4.2%) and tracing (73% vs 74-82%) measures and has real-logic mask structure (buffers `ff00` / `f0f0`, XOR3 / carry forms; 50% 4-input, rest small support).
+- Used LEs 89,283 of 149,760 (59.6%); 7,077 of 9,360 LABs active. The 12.7% carry-form masks are a lower bound (the carry-mode bit itself is not decoded).
+- Where the image differs from the corpus: more small-support functions (support <= 2: 18% vs 5-10%; support <= 3: 50% vs 18-21%), and 6.4% unknown routing patterns (constructs absent from the corpus: clock tree, M9K / multiplier neighbours, wide fan-in).
+- Fan-out of sampled drivers (1..9+): image [2663, 385, 89, 43, 10, 14, 5, 1, 13]; corpus designs [235, 159, 109, 77, 59, 26, 9, 4, 2] (smaller, denser cones); the image shows a few high-fan-out nets (13 drivers with 9+ sinks).
+- Combinational back-edges in the sampled cones are not a usable measure: the loop-free corpus designs give 0 .. 5,322 (wrong decoded edges), the image 8.
+- IO edges (sites with a known signature): image outputs top 5, bottom 1, right 10; inputs top 7, bottom 2, right 12; none on the left edge (transceiver side). Only sites used >= 12 times in the corpus have a signature (176 output, 249 input of 456 pins).
+- Claims: LUT-mask + used-bit positions cover 718,530 of the image's set bits (33%); routing-mux positions of every LAB 1,174,333 (54%); static bits 225,516; IO 1,940. The 9.9% unclaimed bits are blocks and nets outside the fabric tables (clock tree, IO routing, M9K, multipliers, PLL, transceivers).
+- Not claimed: nothing here shows the logic is correct, only that its statistics match built designs; the lifter and gate are still open.
+
 ## Gaps
 
 - Fabric not decoded:

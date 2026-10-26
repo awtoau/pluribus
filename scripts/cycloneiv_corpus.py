@@ -226,3 +226,8 @@ def designs(pattern="*"):
     return sorted(p.name for p in CORPUS.iterdir()
                   if fnmatch.fnmatch(p.name, pattern) and (p / "routing.rcf").exists()
                   and (p / "bitstream.rbf").exists())
+
+
+def load_plane_only(name):
+    """SparsePlane of a design without parsing its RCF / .vo."""
+    return cram_plane((CORPUS / name / "bitstream.rbf").read_bytes(), geom_of(name))
