@@ -345,6 +345,16 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 - Pin inverters (clrn / ena / sclr / sload): not decodable from the LE window. Greedy 4-bit decision tables on 240 FF-control designs score 0..0.3% matched for the inverted labels (held-out missing 230..331 each). The inverters are not LE-local bits (LAB-wide control path, to be searched at LAB scope); `CycloneIVLift.pin_inverted` stays False. Clock inversion (LAB bit (-6,-30)) is decoded.
 - The asm.ddb tables (previous section) do not replace the learner yet (issue #136).
 
+Net-level routing experiments (one race-free held-out design, LE-input traces vs RCF truth: match / unresolved / wrong; learner `rl_gx_m8f`):
+- baseline 1,091 / 841 / 37 (ambiguous driver 592, unknown R4 95, unknown C4 84).
+- + driver-cell-must-be-used filter in the Tracer: 1,098 / 839 / 32 (ambiguous 570). Kept (`Tracer.valid`).
+- + vendor asm tables first (`Decoder(asm=AsmSource())`): 555 / 1,380 / 34. Worse: an asm record has several RCF alias names, each walked as a separate branch; physical tracing needs routing.ddb fan-in (undecoded).
+- + `--template` (row-phase-0 mux bits from other phases): no change in the phase-0 mux; the missing second bit row there is not a det/anyone bit. 1,021 / 924 / 24 with the retrained set (375 designs). Option kept, off by default.
+- Ambiguous traces (570): the true driver is among the candidates in 374; candidate sets of 2: 156, of 10+: 219. Nearest-driver prior picks it 143 times and a wrong one 145 (86 ties): no usable prior.
+- Cause of the ambiguity: sink groups in row phase 0 learn 5 mux bits where phases 1..3 learn 10, so 9 of 24 LE-input sources share one pattern.
+- FF control pins read as unreadable (`zero pattern` / `unknown pattern`) are set to their idle constant in `lift_ff` (`des.assumed_idle`): gate 3.94% vs 4.02% without, no gain.
+- Gate with decoded routing, 8 odd race-free designs: matched 307 / (307 + missing 6,593 + extra 21 + wrong 873) = 3.94%.
+
 ## Gaps
 
 - Fabric not decoded:

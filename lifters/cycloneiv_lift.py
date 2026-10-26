@@ -37,6 +37,9 @@ TERMINAL_WIRES = {"IO_DATAIN", "BLK_CLK_BUF", "LAB_CLK", "GLOBAL_CLK_H", "GLOBAL
                   "CLK_BUFFER", "CLKBUF_IN", "GEN_CORE_BUF", "CLKBUF_OUT"}
 
 
+IDLE = {"ENA": "1'b1", "CLRN": "1'b1", "SCLR": "1'b0", "SLOAD": "1'b0", "ASDATA": "1'b0"}
+
+
 class Design:
     def __init__(self):
         self.luts = []          # {name, x, y, le, init, mode, a, b, c, d, cin, z, cout}
@@ -44,6 +47,7 @@ class Design:
         self.terminals = {}     # net -> descriptor tuple (boundary inputs)
         self.unresolved = []    # (cell, pin, reason)
         self.not_lifted = collections.Counter()
+        self.assumed_idle = collections.Counter()    # FF control pins set to their idle constant (mux unreadable)
         self.used_les = 0
 
 
@@ -330,6 +334,9 @@ class CycloneIVLift:
                 net = comb(x, y, le)
             else:
                 net = self.net_of(got, des, name, port, owner) if got else None
+            if net is None and port in IDLE and (why.startswith("zero pattern") or why.startswith("unknown pattern")):
+                net = IDLE[port]            # unreadable control mux: assume the pin is idle (counted, not hidden)
+                des.assumed_idle[port] += 1
             if net is None:
                 des.unresolved.append((name, port, why))
                 net = f"u_{x}_{y}_{le}_{port.lower()}"
