@@ -31,6 +31,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import heavy_guard
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -96,7 +97,8 @@ def run_stage(name: str, cmd: list[str], cwd: Path) -> float:
     """Run one stage, return wall-clock seconds. Any non-zero exit is fatal."""
     LOG.info("stage %-9s starting: %s", name, " ".join(cmd))
     t0 = time.monotonic()
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    import heavy_guard
+    proc = heavy_guard.guarded(cmd, name, LOG, cwd=cwd)  # #122
     dt = time.monotonic() - t0
     if proc.returncode != 0:
         LOG.error("stage %s FAILED rc=%d\n%s", name, proc.returncode, proc.stderr[-4000:])
@@ -148,8 +150,8 @@ def one_seed(pkg: Path, seed: int, threads: int, workdir: Path,
         shutil.copy2(src, d / f)
 
     t0 = time.monotonic()
-    proc = subprocess.run(nextpnr_cmd(d, seed, threads, "out", extra=extra),
-                          cwd=d, capture_output=True, text=True)
+    import heavy_guard
+    proc = heavy_guard.guarded(nextpnr_cmd(d, seed, threads, "out", extra=extra), "nextpnr", LOG, cwd=d)  # #122
     dt = time.monotonic() - t0
     log_text = (d / "out.tim").read_text() if (d / "out.tim").exists() else ""
     log_text += proc.stderr
@@ -217,6 +219,7 @@ def report(results: list[SeedResult]) -> dict:
     return summary
 
 
+@heavy_guard.locked("fpga_build_bench")
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)

@@ -1,0 +1,4 @@
+top = "top"
+purpose = "global network: fanout"
+construct = "globals"
+variant = "fanout"

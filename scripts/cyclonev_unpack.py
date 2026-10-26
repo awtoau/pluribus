@@ -95,10 +95,10 @@ def main():
     open(rbf, "wb").write(body)
     os.makedirs(os.path.dirname(os.path.abspath(a.bt)), exist_ok=True)
     def run_mistral(out):
-        try:
-            r = subprocess.run([toolchain.mistral_cv(), "decomp", a.device, rbf, out],
-                               capture_output=True, text=True, timeout=DECOMP_LIMIT_S)
-        except subprocess.TimeoutExpired:
+        import heavy_guard
+        r = heavy_guard.guarded([toolchain.mistral_cv(), "decomp", a.device, rbf, out], "mistral-cv",
+                                log, overall_s=DECOMP_LIMIT_S)  # #122
+        if r.timed_out:
             die(f"mistral-cv decomp exceeded {DECOMP_LIMIT_S}s")
         log.info("mistral-cv rc=%d\n%s%s", r.returncode, r.stdout[-1500:], r.stderr[-1500:])
         if r.returncode != 0:

@@ -120,8 +120,8 @@ def _dump_one(arch, tree, log, keep):
                    os.environ.get("LD_LIBRARY_PATH", "")]),
                FOUNDRY=os.path.join(d, "ispfpga"))
     if not asc.exists():
-        r = subprocess.run([bstool, "-a", "-b", arch, local.name, asc.name],
-                           cwd=work, capture_output=True, text=True, env=env)
+        import heavy_guard
+        r = heavy_guard.guarded([bstool, "-a", "-b", arch, local.name, asc.name], "bstool", cwd=work, env=env)  # #122
         if r.returncode != 0 or not asc.exists():
             log.error("  %s: bstool rc=%d: %s", arch, r.returncode,
                       (r.stdout + r.stderr).strip()[-300:])

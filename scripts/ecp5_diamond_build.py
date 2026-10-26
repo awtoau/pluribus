@@ -61,10 +61,6 @@ BUILD_ROOT = os.path.join(data_root(), "corpus", "diamond")
 # Parts of the existing corpus (docs/ecp5-diamond-oracle.md), one per die.
 DEVICES = {"25F": "LFE5U-25F-6MG285I", "45F": "LFE5U-45F-6BG554C",
            "85F": "LFE5U-85F-7BG554C"}
-# One PAR + bitgen run: measured cold worst 20 s on 85F (dm_mixed, 2026-07-29 corpus
-# log timestamps); stall guard is CPU-based, overall = 3x worst, rounded up.
-BUILD_STALL_S = 60
-BUILD_OVERALL_S = 90
 
 DIAMOND = os.environ.get("DIAMONDDIR",
                          os.path.expanduser("~/lscc/diamond/3.14"))
@@ -300,9 +296,7 @@ def build_one(name, src, device, log, force=False):
          os.path.join(DIAMOND, "ispfpga", "bin", "lin64"),
          env.get("LD_LIBRARY_PATH", "")])
 
-    r = heavy_guard.run_stall_guarded(
-        [DIAMONDC, tcl], f"diamond {name} {device}", log,
-        stall_s=BUILD_STALL_S, overall_s=BUILD_OVERALL_S, cwd=d, env=env)
+    r = heavy_guard.guarded([DIAMONDC, tcl], f"diamondc {name} {device}", log, cwd=d, env=env)  # #122
     logtxt = (r.stdout or "") + (r.stderr or "")
     with open(os.path.join(d, "diamond.log"), "w") as fh:
         fh.write(logtxt)

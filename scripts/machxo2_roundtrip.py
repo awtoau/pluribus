@@ -156,9 +156,9 @@ def sh(cmd, extra_env=None, cwd=None, stage=""):
     slog = WORK / f"stage_{stage}.log" if stage else None
     log(f"  $ {' '.join(str(c) for c in cmd)}")
     t0 = time.perf_counter()
-    r = subprocess.run(cmd, env=env, cwd=cwd or str(REPO),
-                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                       text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, stage or str(cmd[0]), cwd=cwd or str(REPO), env=env)  # #122
+    r.stdout += r.stderr
     if stage:
         with _prof_lock:
             PROFILE.append((stage, time.perf_counter() - t0))

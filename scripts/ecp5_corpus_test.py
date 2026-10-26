@@ -249,13 +249,13 @@ def run_oracle(bitpath, out, device, idcode=None):
     reported when the retry is not applicable.
     """
     cmd = [ECPUNPACK, bitpath, out]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, "ecpunpack")  # #122
     if r.returncode != 0:
         first = r.stderr.strip()[-200:]
         if idcode is None:
             return False, f"ecpunpack rc={r.returncode}: {first}", None
-        r = subprocess.run(cmd + ["--idcode", f"0x{idcode:08x}"],
-                           capture_output=True, text=True)
+        r = heavy_guard.guarded(cmd + ["--idcode", f"0x{idcode:08x}"], "ecpunpack")  # #122
         if r.returncode != 0:
             return False, (f"ecpunpack rc={r.returncode}: {first} "
                            f"(retry with --idcode 0x{idcode:08x}: "

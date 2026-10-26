@@ -155,10 +155,10 @@ def run_diamond(work_dir, verilog_path, lpf_text):
     diamond_log = work_dir / "diamond.log"
     env = dict(os.environ)
     env["LM_LICENSE_FILE"] = LICENSE
+    import heavy_guard
+    proc = heavy_guard.guarded([DIAMONDC, "run.tcl"], "diamondc", cwd=str(work_dir), env=env)  # #122
     with open(diamond_log, "w") as fh:
-        proc = subprocess.run(
-            [DIAMONDC, "run.tcl"], stdout=fh, stderr=subprocess.STDOUT,
-            cwd=str(work_dir), env=env)
+        fh.write(proc.stdout + proc.stderr)
     bit = impl / "fuzz_impl1.bit"
     detail = diamond_diagnosis(diamond_log)
     if proc.returncode != 0 and not bit.exists():

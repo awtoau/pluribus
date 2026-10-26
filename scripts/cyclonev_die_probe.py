@@ -55,8 +55,9 @@ def _detect_toolchain_version(quartus_bin, logger=None):
         # banner, not a compile). Observed: <1s. Timeout: 30s, a stall
         # bound for a hung/misinstalled binary, not a measured multiple --
         # on expiry falls through to the dir-name fallback below, logged.
-        out = subprocess.run([str(quartus_bin / "quartus_map"), "--version"],
-                              capture_output=True, text=True, timeout=30).stdout
+        import heavy_guard
+        out = heavy_guard.guarded([str(quartus_bin / "quartus_map"), "--version"], "quartus_map --version",
+                                  overall_s=30).stdout  # #122
         m = re.search(r"Version\s+(\S+)\s+Build\s+(\S+)", out)
         if m:
             return f"quartus-{m.group(1)}.{m.group(2)}"
@@ -103,7 +104,9 @@ def setup_logging(log_path: Path) -> logging.Logger:
 
 
 def run(cmd, cwd, logger, timeout=180):
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    import heavy_guard
+    # overall 3x measured cold worst per tool, stall 60 s: heavy_guard.OVERALL_S (#122)
+    result = heavy_guard.guarded(cmd, "die_probe", logger, overall_s=max(timeout, heavy_guard.overall_for(cmd)), cwd=cwd)
     if result.returncode != 0:
         logger.error(f"FAILED: {' '.join(cmd)}\n{result.stdout[-2000:]}\n{result.stderr[-1000:]}")
         return False

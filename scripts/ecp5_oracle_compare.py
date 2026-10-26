@@ -944,6 +944,7 @@ def headline(summ):
     return out
 
 
+@heavy_guard.locked("ecp5_oracle_compare")
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--report", action="store_true",

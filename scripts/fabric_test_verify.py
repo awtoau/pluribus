@@ -65,11 +65,11 @@ def simulate(vfile, top, work):
     tb = work / f"tb_{top}.v"
     tb.write_text(TB.format(top=top))
     vvp = work / f"{top}.vvp"
-    r = subprocess.run(["iverilog", "-g2012", "-o", str(vvp), "-s", "ft_tb",
-                        str(tb), str(vfile)], capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(["iverilog", "-g2012", "-o", str(vvp), "-s", "ft_tb", str(tb), str(vfile)], "iverilog")  # #122
     if r.returncode != 0:
         return None, None, (r.stderr or r.stdout).strip()[:300]
-    r = subprocess.run(["vvp", str(vvp)], capture_output=True, text=True)
+    r = heavy_guard.guarded(["vvp", str(vvp)], "vvp")  # #122
     m = re.search(r"SIG ([0-9a-f]{8}) PASS (\d)", r.stdout)
     if not m:
         return None, None, r.stdout.strip()[:300]
@@ -78,9 +78,8 @@ def simulate(vfile, top, work):
 
 def synth_stats(vfile, top):
     """Cell counts after synth_ecp5 -- proof the blocks were not optimised away."""
-    r = subprocess.run(
-        ["yosys", "-p", f"read_verilog {vfile}; synth_ecp5 -top {top}"],
-        capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(["yosys", "-p", f"read_verilog {vfile}; synth_ecp5 -top {top}"], "yosys synth_ecp5")  # #122
     out = r.stdout
     cells = {}
     for name in ("TRELLIS_FF", "LUT4", "CCU2C", "PFUMX", "L6MUX21"):

@@ -97,6 +97,7 @@ def report(tag, work):
             f"{v}={gk.get(f'{r}:{v}', 0)}" for v in ("AGREE", "DISAGREE", "INCONCLUSIVE")))
 
 
+@heavy_guard.locked("machxo2_oracle_all")
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", required=True)
