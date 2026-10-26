@@ -57,6 +57,7 @@ def one(rec, root):
     return dict(label=rec.get("label"), status="ok", device=dev, **T.census_widemux(text))
 
 
+@heavy_guard.locked("ecp5_widemux_census")
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=3)

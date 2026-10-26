@@ -1,0 +1,4 @@
+top = "top"
+purpose = "random RTL, 1310 LUT nodes, 34 in / 20 out (routing corpus)"
+exercises = ["routing", "lab_controls", "carry", "io"]
+qsf = ["set_global_assignment -name SEED 209"]

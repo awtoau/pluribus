@@ -1,0 +1,4 @@
+top = "top"
+purpose = "global network: secwide0"
+construct = "globals"
+variant = "secwide0"

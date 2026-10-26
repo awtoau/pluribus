@@ -1,0 +1,4 @@
+top = "top"
+purpose = "global network: clk4pad"
+construct = "globals"
+variant = "clk4pad"

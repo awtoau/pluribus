@@ -201,6 +201,63 @@ Every Cyclone IV rule here comes from Cyclone IV oracle runs. No Cyclone V bit p
 - Header differs from the vendor files beyond flag/length/CRC: lane 1 bits 36..37, lane 3 bits 8..11, lane 0. These are option bits; meaning not derived.
 - Earlier work in this repo treated the same payload as a Cyclone V e50f stream. That reading is contradicted: the payload has no `jjjj` sync, and it passes the Cyclone IV CRC chain on all 6154 frames.
 
+## Routing decode, EP4CE6 (paused 2026-10-26; work moved to EP4CGX150)
+
+- Security: Cyclone IV E/GX have no design-security (AES) feature (handbook vol 1 has compression, no security chapter; only Cyclone III LS has AES), so every Cyclone IV stream is decodable in principle.
+- Routing oracle: `quartus_cdb --back_annotate=routing` works for Cyclone IV (EP4CE6, GX parts listed by Quartus 25.1). Exported per design as `corpus/cycloneiv/<d>/routing.rcf` (`cycloneiv_fuzz.py` step `quartus_cdb`; it rewrites `build.qsf` even with `--write_settings_files=off`, so the `.qsf` is restored).
+- RCF element types seen: LE_BUFFER, LOCAL_LINE, LOCAL_INTERCONNECT, R4, C4, R24, C16, LAB_CONTROL_MUX, BLOCK_INPUT_MUX, IO_DATAIN, LAB_CLK, BLK_CLK_BUF, BLK_CLK_LIM, SCLK_TO_ROWCLK_BUF, GLOBAL_CLK_H/V, CLK_BUFFER, CLKBUF_IN/OUT, GEN_CORE_BUF.
+  - `dest = (atom, PORT), route_port = P`: P is the physical LUT pin (matches the `.vo`).
+  - LE_BUFFER index = 2 x LE + {0, 1}.
+- Corpus: `rnd_*` (`scripts/cycloneiv_rnd_designs.py`): random 4-LUT networks + registers with random enable / sync clear / async clear / sync load, adders, XOR-group outputs, fitter SEED per design. Tiers s 40 (20-120 nodes), m 40 (300-700), l 40 (900-1500).
+  - First attempt (up to 2600 nodes, global random wiring) did not route in 10 min; sources now 85% from the last 60 nodes. Worst fit after that 65 s (4 jobs).
+- Tools: `cycloneiv_corpus.py` (RCF parser, CRAM as a (frame, v) plane), `cycloneiv_geom.py` (device-driven tile anchors, `lifters/data/cycloneiv_<die>_geom.json`), `cycloneiv_route_learn.py` (tile-relative mux tables), `cycloneiv_route_score.py` (scored vs RCF).
+- Findings:
+  - LOCAL_INTERCONNECT mux = 2 levels in 2 v rows: level A = 2 bits in one frame (or none), level B = one-hot over 6 bits in the next 3 frames; 18 inputs. Patterns with only a B bit exist (A = none).
+  - Mux input order differs per LAB column (not X parity); tables are keyed per column.
+  - R4 / LE_BUFFER sources: same pattern for every row of a column.
+  - C4 sources: naming depends on Y. Per (column, LI, pattern), source is a function of Y mod 4 in 20,295 / 21,191 cases (Y mod 1: 6,692 / 9,214). Not yet modelled.
+- Held-out score (train `rnd_l*` crc32-even 20 designs, score the odd 20), 2026-10-26:
+
+| dst type | matched | missing | wrong | extra | headline |
+|---|---|---|---|---|---|
+| LE_BUFFER (LE comb/FF -> buffer) | 37,847 | 1,179 | 10 | not scored | 97.0% |
+| LOCAL_INTERCONNECT | 65,851 | 40,871 | 1,596 | not scored | 60.8% |
+| R4 | 35 | 129,794 | 3,215 | not scored | 0.0% |
+| all RCF edges | 103,733 | 488,931 | 4,821 | not scored | 17.4% |
+
+  - LI missing = 38,006 ambiguous patterns (C4 Y-naming) + unknown/untabled. R4: mux bits not found by the tile-relative rule (R4 mux probably sits at the driving end, outside the window or keyed wrong). C4, C16, R24, LE inputs, LAB controls, clocks, IO: not learnt yet (`no table`).
+  - `extra` not implemented in the scorer yet; not a pass.
+- Resume: `cycloneiv_fuzz.py --build --match 'rnd_*' --jobs 4` (needs `--generate` first), `--rcf-only` for older designs, then `cycloneiv_route_learn.py --train 'rnd_l*' --split even` and `cycloneiv_route_score.py --tables tmp/cycloneiv/route_learn_even.json --designs 'rnd_l*' --split odd`.
+- Left for EP4CE6: C4 Y-rule, R4/C4/C16/R24 mux location, LE input and FF control sinks, LAB-wide controls and inversion, carry (`sum_lutc_input`, cin), clocks, IO, lifter + emitter, sim gate.
+
+## EP4CGX150 (2026-10-26, current target)
+
+- Quartus 25.1 builds EP4CGX150DF31C7 / EP4CGX110DF31C7 (smoke: map 4 s, fit 9 s). One CRAM geometry for both: F = 796, 37 periphery + 6154 CRAM frames. GX has no AES (see EP4CE6 section).
+- Die of the third-party compressed image under study: EP4CGX150. Header lane 1 bits 0..23 = 0x200dff on our GX150 builds and on the image; 0xa00dff (bit 23) on GX110. Also matches the vendor-SFL comparison.
+- Legal LABs by fitter probe (`cycloneiv_device_grid.py`, `lifters/data/cycloneiv_ep4cgx150_labs.json`): 9,360 LABs = 104 columns x 90 rows (149,760 LEs / 16).
+- Corpus: `gx150_sp_000..299` (random RTL, 400-900 nodes, one anchor register per LAB in a random 7x7 window, `FITTER_EFFORT "FAST FIT"`). Worst step over 300 builds: map 12.1 s, fit 31.6 s. Unconstrained designs of 4.5k nodes: fit > 11 min; Lite has no place regions.
+- Geometry (`lifters/data/cycloneiv_ep4cgx150_geom.json`, from `cycloneiv_le_locate.py` + `cycloneiv_geom.py`, no per-site sweeps):
+  - the EP4CE6 per-LAB LUT-mask rule holds unchanged;
+  - 3,921 LAB tiles located, 2,915 confirmed in 2 designs, 0 conflicts;
+  - 8 lanes x 793 bytes, row pitch 70 v, LAB column pitch 35 frames; 104 LAB columns + 12 special (M9K-like gap 328, multiplier-like gap 60) + 2 IO.
+- LUT-mask decode from CRAM vs post-fit `.vo` (`cycloneiv_lut_check.py`), 301 designs: 334,656 cells (13,419 arithmetic), 5,354,496 mask bits, matched 100%, missing 0, wrong 0.
+- Routing (held-out, 30 training designs `gx150_sp_00..06` crc32-even, scored on 21 other designs; matched / (matched + missing + extra + wrong), extra not scored): all pips 236,659 / 293,757 = 80.56%.
+
+| dst type | matched | missing | wrong | % |
+|---|---|---|---|---|
+| LOCAL_INTERCONNECT | 51,568 | 3,380 | 87 | 93.7 |
+| C4 | 44,579 | 6,578 | 102 | 87.0 |
+| R4 | 50,307 | 9,504 | 126 | 83.9 |
+| LE inputs | 55,054 | 21,731 | 363 | 71.4 |
+| LE_BUFFER | 20,193 | 637 | 0 | 96.9 |
+| C16 / R24 | 1,833 / 1,756 | 1,207 / 889 | 96 / 34 | 58.5 / 65.6 |
+| LAB_CONTROL_MUX | 200 | 1,217 | 33 | 13.8 |
+
+- More training data is the main lever (same learner reached 84.7% overall with 150 training designs); memory is the limit: a plane is 38 MiB per GX150 design.
+- Method findings (hold on both dies): mux bits sit at the wire's driving end (R4 dx, C4 dx 0..1 / dy, per-group search); R4 / C4 indices rotate with Y mod 4; LI input order repeats per X mod 8; FF CLK / ENA / CLRN pins pick a LAB line with a per-LE select bit (EP4CE6 held-out 1117 / 1117 and 277 / 277 LABs).
+- Not done on GX150: connection-level trace score, FF / LAB-control / IO / carry decode, lifter + emitter, sim gate, M9K / multipliers / PLL.
+- EP4CE6 LUT decode: 996 wrong bits of 1,780,540 + 996 in `rnd_*` (all LEs crossing the bit-lane boundary at v 1241 and 206); the GX150 lane model has no such case. EP4CE6 lane fix pending.
+
 ## Gaps
 
 - Fabric not decoded:

@@ -212,8 +212,8 @@ def main():
     ecpunpack = toolchain.tool("ecpunpack", "ECPUNPACK")
     if os.path.isabs(ecpunpack):
         import subprocess
-        r = subprocess.run([ecpunpack, args.outfile, os.devnull],
-                           capture_output=True, text=True)
+        import heavy_guard
+        r = heavy_guard.guarded([ecpunpack, args.outfile, os.devnull], "ecpunpack")  # #122
         log.info("  ecpunpack (independent oracle): %s",
                  "accepts it" if r.returncode == 0
                  else f"rc={r.returncode}: {r.stderr.strip()[-160:]}")

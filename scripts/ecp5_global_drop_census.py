@@ -100,6 +100,7 @@ def one(path, label, work):
             "tiles": {k: dict(v) for k, v in tiles.items()}}
 
 
+@heavy_guard.locked("ecp5_global_drop_census")
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--data-root", default=None)

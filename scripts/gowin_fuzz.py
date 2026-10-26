@@ -58,6 +58,7 @@ Usage:
 import argparse
 import json
 import os
+import heavy_guard
 import re
 import shutil
 import subprocess
@@ -212,7 +213,8 @@ def gw_env(xdg):
 
 def _run(cmd, cwd, env=None, log=None, full_env=False):
     e = env if full_env else {**os.environ, **(env or {})}
-    r = subprocess.run(cmd, cwd=str(cwd), env=e, capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, os.path.basename(str(cmd[0])), cwd=str(cwd), env=e)  # #122
     if log is not None:
         log.write(f"\n$ {' '.join(str(c) for c in cmd)}\n{r.stdout}{r.stderr}")
     return r.returncode, r.stdout + r.stderr
@@ -472,6 +474,7 @@ def run_design(d: Design, dev, device, root: Path, log):
 
 
 # ── driver ────────────────────────────────────────────────────────────────────
+@heavy_guard.locked("gowin_fuzz")
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

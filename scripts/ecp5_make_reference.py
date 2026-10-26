@@ -64,6 +64,7 @@ def parse_build_sh(path):
     return args
 
 
+@heavy_guard.locked("ecp5_make_reference")
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("build_dir")

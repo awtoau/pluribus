@@ -61,6 +61,7 @@ needs to widen the set that reaches a real equiv verdict.
 import argparse
 import fnmatch
 import os
+import heavy_guard
 import re
 import sqlite3
 import subprocess
@@ -247,8 +248,8 @@ def run_equiv(gold_files, gate_file, renames, deletes, top="fuzz"):
     verdict: 'PASS' | 'FAIL' | 'ERROR'.
     """
     script = _yosys_script(gold_files, gate_file, renames, deletes, top)
-    res = subprocess.run(["yosys", "-p", script],
-                         capture_output=True, text=True, cwd=str(REPO))
+    import heavy_guard
+    res = heavy_guard.guarded(["yosys", "-p", script], "fuzz_lec yosys", cwd=str(REPO))  # #122
     log = res.stdout + res.stderr
     proven = unproven = None
     for ln in log.splitlines():
@@ -464,6 +465,7 @@ def enumerate_targets(pattern):
             yield d
 
 
+@heavy_guard.locked("fuzz_lec")
 def main():
     global con_path
     ap = argparse.ArgumentParser(

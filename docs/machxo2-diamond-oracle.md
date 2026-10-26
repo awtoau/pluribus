@@ -147,7 +147,7 @@ Method: for every decoded arc endpoint, `gkey_branch()` (mirrors `gkey()`'s cond
 
 - The two DISAGREE rows are splits (missing joins), not fusions; both are faults: 680 + 4 nets.
 - **Headline, every non-match counted as a fault:** pips 80,532 / 134,261 matched (60.0%; 53,729 faults: 2,990 missing, 44,100 not modelled/named, 6,639 extra); nets 17,641 / 19,498 (90.5%; 1,857 faults); register-clock nets 1,135 / 2,996 (37.9%). "0 pip MISMATCH" only means no pip disagreed where both sides had it.
-- Diamond's turnaround arcs give the missing rules directly: top edge `V06N{i}00@R1 -> V06S{i}03@R3`; left edge `H06W{i}01@C2 -> H06E{i}04@C2`. Not applied here (`lifters/machxo2_lift.py` untouched).
+- Diamond's turnaround arcs give the missing rules directly: top edge `V06N{i}00@R1 -> V06S{i}03@R3`; left edge `H06W{i}01@C2 -> H06E{i}04@C2` (the left edge is generalised in "H-span fold at the die edge").
 
 ## Global clock tree (#109)
 
@@ -248,17 +248,7 @@ Headline, before -> after removing the three rules:
 - Pips do not move: `gkey()` affects net unions, not the arc comparison.
 - `gkey_branch()` now labels off-die E/W names without a rule `walkback_hstub` (generic walk-back); H06 names no longer count under `h_right_flip` / `h_left_flip`.
 
-Per rule, after (all 3041 targets):
-
-| branch | AGREE | DISAGREE | INCONCLUSIVE |
-|---|---|---|---|
-| `h_right_flip` (non-H06) | 498 | 0 | 20 |
-| `h_left_flip` (non-H06) | 166 | 0 | 36 |
-| `left_stub_drop` (all other W off-die) | 18 | 145 | 37 |
-| `walkback_hstub` (E off-die, no rule) | 0 | 314 | 22 |
-
-- `left_stub_drop` still DISAGREEs on 145 but removing it raises net faults by 19: its drop beats the walk-back on those names. `walkback_hstub` DISAGREE 314 is the generic walk-back on right-edge H06 names; Diamond routes them as a turnaround not yet derived.
-- Removing the rules did not raise any category; the open faults are the unmodelled turnarounds above.
+- The ablation rows above and the per-rule hit table below describe the rules as they were at #119. `h_right_flip`, `h_left_flip`, `left_stub_drop` and the generic `walkback_hstub` are replaced by one fold rule ("H-span fold at the die edge"); no rule name from this section exists in the code.
 
 Hantek images (two real third-party designs), `machxo2_gkey_hits.py`, distinct tile-wires per rule, before removal:
 
@@ -273,6 +263,52 @@ Hantek images (two real third-party designs), `machxo2_gkey_hits.py`, distinct t
 
 - Every rule fires on all three images (2-49 wires of ~29,000 per image), so none is specific to one image.
 - Lift change after removal (counts are a change detector only): V02 nets 4262 -> 4249, FFs 1112 -> 1115, undriven nets 490 -> 479; V07 nets 4304 -> 4290, FFs 1093 -> 1101, LUTs 2636 -> 2637, undriven nets 528 -> 515. Gate loops / conflicts stay 0 (V02, V07). Not oracle-checked: the oracle set shows nets MISMATCH falling (1861 -> 1819) with no category rising, and the Hantek net decrease has the same sign.
+
+## H-span fold at the die edge (2026-10-26)
+
+A horizontal span folds at the die edge: wire D (E or W), segment k, at off-die column p is the SAME wire as the opposite-direction one (same index + segment) at the mirror column q = -1 - p (left) or 2*max_col + 1 - p (right). One rule in `gkey()` for H02 and H06, both edges, every off-die distance.
+
+- Diamond evidence: `H06W{i}00@C1 -> H06E{i}03@C3` and `H06W{i}01@C1 -> H06E{i}04@C3` (left), `H06E{i}01 -> H06W{i}04`, `H06E{i}02 -> H06W{i}05` (right): a W wire starting at s returns as an E wire starting at -1-s.
+- Mapping: `W3_H06W{i}03` at col c (c < 3) = `H06E{i}03` at col 2-c; `W3_H06E{i}03` at col c = `H06W{i}03` at col 2-c; `E3_H06E{i}03` at col max_col-j = `H06W{i}03` at col max_col-2+j.
+- Verdicts (`gkey_branch` `h_fold_<span>_<L|R>`): AGREE 1,176, DISAGREE 0, INCONCLUSIVE 159 over constructs + coverage + globals (old corpus: no ref falls off-die in a way that changes a verdict). Replaced rules had 145 + 314 DISAGREE.
+- Effect (4 sets, same designs before/after): constructs nets 5,123 -> 5,273 /5,360; coverage nets 2,667 -> 3,031 /3,060; coverage register D 1,755 -> 1,975; constructs register CE 1,140 -> 1,172. Old corpus unchanged. Pips unchanged (`gkey` only affects net unions).
+- Real design (label V07, Diamond LCMXO2-1200 image): 88 undriven nets (55 "edge H06 turnaround", 33 "edge H06 stub arc dropped") gone; they fed 103 FF D pins and ~90 LUT inputs.
+
+## Secondary network (LCMXO2-1200, 2026-10-26)
+
+Designs: `scripts/machxo2_globals_gen.py` -> `corpus/machxo2/globals/` (`hsctl`, `sec8`, `pll3dom`, `pll3dom_x`, `clk4pad`, `fanout`); build with `machxo2_construct_build.py --dir corpus/machxo2/globals`. The fuzz corpus never promotes a net to the secondary network (one clock, low-fanout control), so every CE / LSR sink of a high-fanout net was ORACLE_ONLY (1,270 of 1,424 FFs in the first 4 designs).
+
+Diamond route, e.g. `ce`: pad -> ... -> `R11C13_JB5 -> R6C13_JSNETCIBB1 -> VSRX0000 -> R6C8_HSSX0000 -> R3C10_VSTX0200 -> R3C10_HSBX0000 -> R3C11_HSBX0001 -> CE` of columns C9..C12.
+
+- Spines `G_VSRX0{0-7}00` and their CIB feeds `G_JSNETCIB*`: one node each at the centre tile (DB fixed conns `G_JSNETCIBB1 1200_S5_JB5` etc.; the `1200_` prefix is the density, stripped for this device).
+- `VSTX0200` of column C is spine (C-10)%4, `VSTX0300` is spine 4+(C-10)%4 (Diamond columns, both row bands). Observed in `sec8` (all 8 spines promoted, 26 columns).
+- `HSBX0000` / `HSBX0400` taps (one per tile, fed by the pip from VSTX) drive ONE group wire at Diamond column A = C+1; a group wire covers columns A-2..A+1. Track by C mod 4: 2 -> `0001`, 0 -> `0201`, 3 -> `0101`, 1 -> `0301` (and `0401`, `0601`, `0501`, `0701` for the 0400 tap, fabric-side). A tile sees one wire of each track: `A = 4*((C-a+2)//4)+a` with a = 3, 1, 0, 2.
+- CE uses tracks 0001/0201, LSR uses 0101/0301 (spines 0,2 carry CE; 1,3 carry LSR; 4-7 feed routing via `HSBX0401..0701 -> H00L/H00R/V00T/V00B`).
+- Not applied: PLC `.fixed_conn G_HSBX0301 G_HSBX0000` (tile-local; contradicts the group wires), `*KEEP` dummies (`G_VSTX0300_B2T <- SOUTHKEEP` tied two spines together).
+- Result (globals, 8 designs): register CE 2,145/2,145 (was 154/1,424 on the first 4), LSR 1,785/2,145 (360 left = `pll3dom` `rst_c`, see below); nets 2,202/2,205.
+- Unverified: bands/columns not exercised by any design (edge columns C1, C22-C23; rows 1 and 11), tracks 0401-0701 as data (Diamond promoted no data net in `fanout`).
+
+## Centre muxes split across tiles, carry across tiles (2026-10-26)
+
+- `G_VPRXCLKI0`: `G_JPCLKT21` = `F25B0` in CENTER6-type tile + `F0B0` in the next. prjtrellis decodes each tile alone and takes the last fitting option (`G_PCLKCIBVIQT0`, `G_JTCDIVX1`). `native_config.joint_center_muxes()` decodes chip-unique `G_` muxes listed in several CENTER tiles jointly: an option is selected iff its bits match in every tile that lists them; highest total bit count wins. MachXO2 only; `decode_chip_full(joint=False)` is the prjtrellis result. Diamond: `R6C13_JPCLKT21 -> R6C13_VPRXCLKI0` for pad clocks.
+- Carry: `FCO` (slice D) -> `E1_HFIE0000` -> `FCI` (slice A of the next tile) welded only when both slices are CCU2 (Diamond `R5C18_FCO -> R5C19_HFIE0000 -> R5C19_FCI`).
+- Together: constructs nets 5,317 -> 5,359 /5,360, register clock 1,035 -> 1,172 /1,172; old corpus unchanged.
+
+## Gate (2026-10-26, `scripts/machxo2_gate.py`)
+
+Serial run of the compare over old (2,779), constructs (208), coverage (54), globals (8). Fault = every non-MATCH.
+
+| set | pips | nets | register clock | CE | LSR | D |
+|---|---|---|---|---|---|---|
+| old, before = after | 82,758 / 134,261 | 19,424 / 19,498 | 2,994 / 2,996 | 2,996 / 2,996 | 2,996 / 2,996 | 2,972 / 2,996 |
+| constructs before | 27,243 / 38,815 | 5,123 / 5,360 | 435 / 1,172 | 1,140 / 1,172 | 1,124 / 1,172 | 1,171 / 1,172 |
+| constructs after | 27,277 / 38,807 | 5,359 / 5,360 | 1,172 / 1,172 | 1,172 / 1,172 | 1,172 / 1,172 | 1,172 / 1,172 |
+| coverage before | 20,023 / 32,852 | 2,667 / 3,060 | 1,998 / 1,998 | 1,998 / 1,998 | 1,998 / 1,998 | 1,755 / 1,998 |
+| coverage after | 20,023 / 32,852 | 3,031 / 3,060 | 2,004 / 2,004 | 2,004 / 2,004 | 2,004 / 2,004 | 1,975 / 2,004 |
+| globals (8 designs) after | 13,363 / 18,580 | 2,202 / 2,205 | 2,143 / 2,145 | 2,145 / 2,145 | 1,785 / 2,145 | 2,145 / 2,145 |
+
+- Coverage denominators 1,998 -> 2,004: 6 registers were absent from the lift before (their Q fell on a dropped edge stub).
+- Remaining net faults (old corpus, 74): 8 `dpr16x4c` `u0/WD*_INT`, 6 IDDR/ODDR pad nets, `dcca` x2, PLL refclk x5, `eclkbridgecs`, `clkfbbufa`, 43+ `iddrx*`/`ifs1p3*` bank pad nets. Constructs: 1 (`dcca`-class). Globals: `clk_c` x2 (PLL refclk), `rst_c` in `pll3dom` (pad wire `JPADDIC_PIO` becomes a stray DSU node through the CIB_CFG0 EFB<-pad fixed conn; the FFs themselves are on the right net).
 
 ## Other findings
 
