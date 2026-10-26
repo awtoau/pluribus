@@ -84,7 +84,52 @@ class Tables:
         self.blocks = t["blocks"]
         labcols = sorted(x for x, k in dec.g.kind.items() if k == "LAB")
         self.colrank = {x: i for i, x in enumerate(reversed(labcols))}
+        self.rankcol = {i: x for x, i in self.colrank.items()}
         self.dec = dec
+        # inverse tables for decoding: (class, dst rel key) -> block rel key; (dir, k) -> [(type, I, C-X, R+Y)]
+        self.dst2block = {}
+        for bk, dk in self.blocks.items():
+            cls, key = bk.split("|", 1)
+            self.dst2block[(cls, dk)] = key
+        self.form2rcf = collections.defaultdict(list)
+        for (typ, i), forms in self.alias.items():
+            for dr, k, cx, ry in forms:
+                self.form2rcf[(dr, k)].append((typ, int(i), cx, ry))
+
+    def rcf_names(self, rec, x, y):
+        """Learner-style source keys 'TYPE|0|I|dx|dy' (relative to tile x, y) an asm record can carry."""
+        nm = self.dec.names.get(rec)
+        out = []
+        if nm is None:
+            for (typ, i), base in self.unnamed.items():
+                r = rec - base
+                if 0 <= r and r // 90 in self.rankcol and 0 <= r % 90 <= self.dec.g.ymax:
+                    out.append(f"{typ}|0|{i}|{self.rankcol[r // 90] - x}|{r % 90 - y}")
+            return out
+        p = D.vendor_parse(nm)
+        if p is None or p[3] is None or p[4] is None:
+            return out
+        _, dr, k, R, C = p
+        for typ, i, cx, ry in self.form2rcf.get((dr, k), ()):
+            out.append(f"{typ}|0|{i}|{C - cx - x}|{ry - R - y}")
+        return out
+
+    def decode_design(self, plane):
+        """{(x, y, dst key tuple): record} for every selected mux input the block map can name."""
+        gids, recs, _ = active_groups(self.dec, plane)
+        out = {}
+        for G, r in zip(gids, recs):
+            x, y, key = block_key(self.dec, int(G))
+            if x not in self.dec.g.kind or not 0 <= y <= self.dec.g.ymax:
+                continue
+            dk = self.blocks.get(f"{rl.tile_class(self.dec.g, x, y, 8)}|{key}")
+            if dk is None:
+                continue
+            typ, s, i, dx, dy = dk.split("|")
+            s = int(s) if s.lstrip("-").isdigit() else s
+            i = int(i) if i.lstrip("-").isdigit() else i
+            out[(x + int(dx), y + int(dy), (typ, s, i))] = int(r)
+        return out
 
     def src_matches(self, rec, sn):
         """Does asm record `rec` denote the oracle source node sn?"""

@@ -104,9 +104,12 @@ def prepare():
     key[noA, 0] = lin[gstart[noA]]
     _, block = np.unique(key, axis=0, return_inverse=True)
     block = block.astype(np.int32).reshape(-1)
+    # entry -> unique (block, position) id: a bit may appear in several groups of one block
+    u, inv = np.unique(block[gid].astype(np.int64) << 32 | (lin & 0xFFFFFFFF), return_inverse=True)
+    e_ukey, ukey_block = inv.astype(np.int32), (u >> 32).astype(np.int32)
     os.makedirs(A.TMP, exist_ok=True)
     for name, arr in (("pf", pf), ("pv", pv), ("pred", pred), ("gid", gid), ("grec", grec), ("gstart", gstart),
-                      ("gsize", gsize), ("block", block), ("b0", b0)):
+                      ("gsize", gsize), ("block", block), ("b0", b0), ("e_ukey", e_ukey), ("ukey_block", ukey_block)):
         np.save(f"{DEC}_{name}.npy", arr)
     names = icnames()
     pickle.dump(names, open(f"{DEC}_names.pkl", "wb"))
@@ -129,27 +132,21 @@ class Dec:
         self.fxs = np.array(sorted(self.g.FX[x] for x in self.g.FX), np.int64)
         self.xs_sorted = sorted(self.g.FX, key=lambda x: self.g.FX[x])
         ng = len(self.gsize)
-        self.npred = np.bincount(np.asarray(self.gid), weights=self.pred, minlength=ng).astype(np.int32)
-        # per block: number of distinct positions (a bit may appear in several groups of the block)
-        lin = np.asarray(self.pf).astype(np.int64) * 6368 + np.asarray(self.pv)
-        self.lin = lin
-        bl_e = self.block[np.asarray(self.gid)]
-        u, inv = np.unique(bl_e.astype(np.int64) << 32 | (lin & 0xFFFFFFFF), return_inverse=True)
-        self.e_ukey = inv.astype(np.int32)       # entry -> unique (block, position) id
-        self.ukey_block = (u >> 32).astype(np.int32)
-        self.ukey_lin = (u & 0xFFFFFFFF).astype(np.int64)
+        gid = np.asarray(self.gid)
+        self.npred = np.bincount(gid[self.pred], minlength=ng).astype(np.int32)
+        self.e_ukey = np.load(f"{DEC}_e_ukey.npy", mmap_mode="r")
+        self.ukey_block = np.load(f"{DEC}_ukey_block.npy")
+        self.nblocks = int(self.block.max()) + 1
 
     def active(self, plane):
         """Groups selected by a design: predicted bits all set, every other bit of the block clear.
-        -> (group ids, record ids, block ids)."""
-        nv = plane.shape[1]
-        s = plane.has(np.asarray(self.pf), np.asarray(self.pv))
+        -> (group ids, record ids, block ids).  Integer bincounts over the set entries only (no float
+        weight copies of the 51 M-entry arrays)."""
+        s = np.flatnonzero(plane.has(np.asarray(self.pf), np.asarray(self.pv)))
         gid = np.asarray(self.gid)
-        nset_pred = np.bincount(gid, weights=self.pred & s, minlength=len(self.gsize))
-        # per block: distinct set positions
-        uset = np.zeros(len(self.ukey_block), bool)
-        uset[self.e_ukey[s]] = True
-        bset = np.bincount(self.ukey_block, weights=uset, minlength=self.block.max() + 1)
+        sp = s[self.pred[s]]
+        nset_pred = np.bincount(gid[sp], minlength=len(self.gsize))
+        bset = np.bincount(self.ukey_block[np.unique(self.e_ukey[s])], minlength=self.nblocks)
         act = (self.npred > 0) & (nset_pred == self.npred) & (bset[self.block] == self.npred)
         gids = np.flatnonzero(act)
         return gids, self.grec[gids], self.block[gids]

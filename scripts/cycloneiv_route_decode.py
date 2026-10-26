@@ -40,9 +40,31 @@ def read_bits(plane, geom, x, y, mux):
     return tuple(m for m, h in zip(mux, hit) if h)
 
 
+class AsmSource:
+    """Exact tables from the Quartus asm.ddb (cycloneiv_asm_tables): per plane, the selected input of
+    every mux the block map names.  Sources come back as learner-style keys; a wire has one key per RCF
+    alias (the RCF names a wire by its driver point), so several candidates are normal."""
+
+    def __init__(self, path=None):
+        import cycloneiv_asm_decode as ad
+        import cycloneiv_asm_tables as at
+        self.t = at.Tables(ad.Dec(), path) if path else at.Tables(ad.Dec())
+        self._cache = {}
+
+    def sources(self, plane, key, x, y):
+        dec = self._cache.get(id(plane))
+        if dec is None:
+            dec = self._cache[id(plane)] = self.t.decode_design(plane)
+        rec = dec.get((x, y, tuple(key)))
+        if rec is None:
+            return None
+        return self.t.rcf_names(rec, x, y)
+
+
 class Decoder:
-    def __init__(self, paths):
+    def __init__(self, paths, asm=None):
         self.tables = [Table(p) for p in paths]
+        self.asm = asm
         self._idx = {}
 
     def groups_in_class(self, t, cls):
@@ -83,6 +105,10 @@ class Decoder:
             key = rl.ff_lab_key(plane, geom, x, y, key[1], key[2])
         if x not in geom.kind or not 0 <= y <= geom.ymax:
             return [], "off die"
+        if self.asm is not None:            # exact asm tables first; the learner only where they have no entry
+            got = self.asm.sources(plane, key, x, y)
+            if got:
+                return (got, "ok") if len(got) == 1 else (got, "ambiguous pattern")
         for t in self.tables:
             g = t.groups.get(f"{rl.tile_class(geom, x, y, t.col_phase, key[0])}|{'|'.join(map(str, key))}")
             if g is None:
