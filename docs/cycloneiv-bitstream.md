@@ -295,6 +295,21 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 - IO input sites: every used IOIBUF site has a 4-bit signature (4 consecutive v in one periphery frame), set in all designs using the site and in <= 3% of the others (249 sites with >= 12 uses; e.g. X26 Y91 N1 frame 26 v 380..383, N8 244..247, N15 108..111: v falls by 136 per N step of 7; left/right IO columns X117 carry the same pattern with frames 20..34). Some sites also show a bit beyond the lane model (v 6344+, the lane-tail columns).
 - Memory: a per-column learner (104 columns instead of 8 classes) needs a larger cgroup than 2.5 GB.
 
+## Lifter, emitter and functional gate (EP4CGX150, 2026-10-26)
+
+- `lifters/cycloneiv_lift.py` (bitstream -> cells / nets), `lifters/cycloneiv_emit.py` (self-contained Verilog), `scripts/cycloneiv_lifted_sim_check.py` (gate), `scripts/cycloneiv_verify_all.py` (stages: LUT-mask decode 100% [blocking], routing score [reported], lifted-sim gate [blocking], NOT LIFTED list).
+- Decoded from the bitstream (verified against the post-fit netlist):
+  - LE used = LE bit (-8,-1) or a nonzero mask: 1004 of 1018 LEs on `gx150_sp_001` (14 pass-through LEs missed).
+  - LUT mask 100% (5.35 M bits). Carry mode: the DATAC mux reads zero (CIN is a learnt source of that mux); 0 mode mismatches on `gx150_sp_001` (1004 LEs).
+  - FF exists when an LE_BUFFER of the LE selects the register output and its mux reads nonzero (a zero mux is the idle code).
+  - FF pins (CLK, CLRN, ENA, SCLR, SLOAD, ASDATA, D) are per-(LE, pin) mux groups; D reads the learnt pseudo source LUTOUT (own LUT) or a routed DATAD; constants are learnt pseudo sources CONST 0 / 1.
+  - Clock inversion: LAB bit (-6,-30) from the tile anchor (Jaccard 0.85 over 5,442 clock lines, greedy); other control-pin inverters (60 CLRN, 1 ENA inverted in `gx150_sp_001`) are not decoded; `ffi` corpus built to find them.
+- Register semantics follow the vendor primitive exactly (`PRIM_GDFF_LOW`): async clear is a level, a capture needs a clean 0 -> 1 edge (an X -> 1 edge is ignored), ena must be 1, state updates in the active region and q follows by a non-blocking assignment (`q_tmp` / `q_tmp_dly`). Using `posedge` and a plain non-blocking assignment gave a different power-up and race behaviour.
+- Gate method: both netlists simulated with iverilog on the vendor cell models; stimulus: data first, clocks left X for 100 ps (an inverted clock goes X -> 1 and captures once with settled data), then one clock pulsed at a time (pulsing two clocks together races the register updates of one domain against the other); every LUT combout / cout and FF q of the post-fit netlist is compared by location. Boundary nets (pads, clock wires) are named from the RCF (naming only; no logic comes from the .vo).
+- Race exclusion: a register whose asynchronous clear is driven by logic glitches at the clock edge in zero-delay simulation, differently in two correct models; `race_taint` excludes such registers and everything downstream and prints the count. The random generator now draws async clears from input pins only (`gx150_rb_*`, 150 designs, 0 excluded).
+- Results with routing taken from the .vo (`--oracle`, isolates everything except routing decode): `gx150_rb_*` 8 / 8 designs PASS, points matched 7,773 / (7,773 + missing 0 + extra 0 + wrong 0) = 100%; `gx150_ffc_001` 74 / 74. These do not test the routing decode.
+- Results with routing from the bitstream (pooled X mod 8 tables, 150 + 61 training designs): `gx150_rb_*` odd, 8 designs: 0 PASS, points matched 324 / (324 + missing 6,509 + extra 51 + wrong 940) = 4.1%. The cause is routing: 1,600-1,800 unresolved cell inputs per design, 'ambiguous driver' (a pooled pattern names more than one source; a few percent per hop compounds over 4-6 hops).
+
 ## Third-party image test pass (2026-10-26)
 
 `scripts/cycloneiv_image_pass.py` (log `tmp/logs/cycloneiv_image_pass.log`): a third-party compressed GX150 image (read only, never copied) against 6 held-out Quartus corpus designs and a control (the image with its set bits shuffled inside every frame: same bits per frame, random v). Tables: pooled X mod 8 learner tables from 150 training designs. Image: 2,178,780 set bits of 39.4 M positions (5.5%).

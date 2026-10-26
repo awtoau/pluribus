@@ -150,6 +150,7 @@ def specs():
     import cycloneiv_knobs
     out.update(cycloneiv_knobs.knob_specs())
     out.update(cycloneiv_knobs.ffc_specs())
+    out.update(cycloneiv_knobs.io_specs())
     return out
 
 
