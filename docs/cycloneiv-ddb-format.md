@@ -43,6 +43,17 @@ Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](cyclonev-ddb-fo
 - Then the same names again prefixed `XQ4/Q4_` (second table, same layout), then GCLK / RCLK / BIOCLK / TIOCLK / IOC / LEIM / HSSI names (16 M of the 50 M inflated).
 - Families: H4 370,260, V4 263,952, H24 12,690, V16 12,402, HSSI 1,653, LEIM 1,385, RCLKR*, GCLK, BIOCLKCS, TIOCLKCS, IOC.
 
+## routing.ddb (88 MB inflated; layout only, not decoded)
+
+- Body `u32 4, 118, 92, 1802443` then a `DYGR_LOOKUP` nest of `(u32 65536|65537, 0, 2|6|12)` triplets (0..13.3 MB, 1,756 `INT_LOOKUP_OFFSET`), 13.3..19.2 MB small ints, `197688` (ROUTE_ELEMENT_TEMPLATE count) at 21,629,332 followed by 180 k x `6`, `1802443` at 22,469,513 followed by `-1, 0, -1, 0` and 5.4 MB of zeros (= 3 bytes per node), 27.9..40 MB u16-like data, 40..42 MB zeros, 43..61 MB large packed values (bit fields), 61..83.7 MB i32 with small magnitudes (the `int` / `unsigned short` arrays, 3,612,712 each = 2 x (N + 3,913)), 83.7..85.9 MB zeros, 85.9 MB..end signed deltas of ~1e5 (position-like).
+- Byte-level segmentation: `tmp/cycloneiv`-style profile with 64 KB windows separates these regions cleanly; no per-array count fields (counts come from the enclosing structs), so the arrays have to be sized from the type table.
+- The fan-in map (`DYGR_DETAIL::ROUTE_FANIN_MAP`, NODE_DATA count 0) is what would name every mux output; until it is decoded the block -> destination map is learnt from the oracle.
+
+## Naming quirks found while scoring
+
+- The RCF type of a source is not always the wire's physical class: at LI muxes ~6 % of 2-bit codes that the asm attributes to an `H4` record are named `C4:...` by the RCF (and vice versa), consistently per tile class; `H24` records appear as RCF `C16` and `V16` as `R24`. These are driver-mux names, so the alias sets carry cross-type forms.
+- ~3 % of 3-groups carry `b0 = 0` on the select entry (first entry of the group); it is still the programmed select bit.
+
 ## Not decoded
 
 - routing.ddb (fan-in map that would name mux outputs directly), place / pad / timing.
