@@ -399,6 +399,7 @@ class MachXO2Lift:
                   "0401": ("0400", 3), "0601": ("0400", 1), "0501": ("0400", 0), "0701": ("0400", 2)}
     _HSB = re.compile(r"G_HSBX(\d{4})")
     _KEEP = re.compile(r"^(?:NORTH|SOUTH|EAST|WEST)KEEP$")
+    _PAD_WIRE = re.compile(r"JPADD[IO][A-D]_PIO$")
 
     def _global_family_key(self, row, col, name):
         if not name.startswith("G_"):
@@ -1484,10 +1485,13 @@ class MachXO2Lift:
                     continue    # group wires are keyed in _global_family_key
                 if self._KEEP.match(sink) or self._KEEP.match(src):
                     continue    # edge dummy terminations: they tie unrelated spines together
+                raw = (sink, src)
                 sink, src = self._density_name(sink), self._density_name(src)
                 if sink is None or src is None:
                     continue
                 isg = self._GLOBAL_NAME.match(sink) or self._GLOBAL_NAME.match(src)
+                if (sink, src) != raw and (self._PAD_WIRE.search(sink) or self._PAD_WIRE.search(src)):
+                    continue    # EFB <- pad wiring: would make every pad-used design carry a stray pad node
                 if not isg and ttype == "PLC":
                     continue
                 ks, kd = self.gkey(row, col, sink), self.gkey(row, col, src)
