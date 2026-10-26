@@ -147,6 +147,8 @@ def specs():
     import cycloneiv_rnd_designs
     out.update(cycloneiv_rnd_designs.rnd_specs())
     out.update(cycloneiv_rnd_designs.gx_specs())
+    import cycloneiv_knobs
+    out.update(cycloneiv_knobs.knob_specs())
     return out
 
 

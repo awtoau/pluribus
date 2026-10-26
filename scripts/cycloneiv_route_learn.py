@@ -105,6 +105,37 @@ def instances(name, d, geom=None):
             if geom is not None and bkey[0] == "FF" and bkey[2] in FF_LAB_PORTS:
                 bkey = ff_lab_key(d["plane"], geom, bx, by, bkey[1], bkey[2])
             out.append((bkey, bx, by, akey + (ax - bx, ay - by)))
+    out += pseudo_instances(d, geom)
+    return out
+
+
+# Pins the RCF does not route are still muxes with a code: constants and the carry input.
+LE_PORTS = ("dataa", "datab", "datac", "datad")
+FF_PORTS = ("d", "asdata", "clrn", "sclr", "sload", "ena")
+
+
+def pseudo_instances(d, geom=None):
+    """(group, x, y, src) for pins the .vo ties to a constant (CONST 0 / 1) and for the DATAC pin
+    of carry-mode LEs (CIN): the mux code that selects them, learnt like any other source."""
+    vo, out = d["vo"], []
+    for a in vo.atoms.values():
+        loc = LOC.match(a.get("location") or "")
+        if not loc or a["type"] not in ("cycloneive_lcell_comb", "dffeas"):
+            continue
+        kind, x, y, n = loc.group(1), int(loc.group(2)), int(loc.group(3)), int(loc.group(4))
+        if kind == "LCCOMB":
+            for p, _b, _d, net, _i, const in a["conns"]:
+                if p in LE_PORTS and net is None and const in ("0", "1"):
+                    out.append((("LCCOMB", n, p.upper()), x, y, ("CONST", int(const), 0, 0, 0)))
+            if a["params"].get("sum_lutc_input") == "cin":
+                out.append((("LCCOMB", n, "DATAC"), x, y, ("CIN", 0, 0, 0, 0)))
+        elif kind == "FF":
+            for p, _b, _d, net, _i, const in a["conns"]:
+                if p in FF_PORTS and net is None and const in ("0", "1"):
+                    key = ("FF", n, p.upper())
+                    if geom is not None and key[2] in FF_LAB_PORTS:
+                        key = ff_lab_key(d["plane"], geom, x, y, n, key[2])
+                    out.append((key, x, y, ("CONST", int(const), 0, 0, 0)))
     return out
 
 

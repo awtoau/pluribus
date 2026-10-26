@@ -90,6 +90,9 @@ def le_bits(plane, geom, x, y, le):
     return plane.has(ff, vv).reshape(-1)
 
 
+SUBSET = "any"     # any | ff | lut : which LEs form the instance set
+
+
 def collect(name, geom):
     d = cc.load(name)
     feats = le_features(d["vo"])
@@ -106,6 +109,10 @@ def collect(name, geom):
                 if b is None:
                     continue
                 f = feats.get((x, y, le), {})
+                if SUBSET == "either" and not (f.get("lut") or f.get("ff")):
+                    continue
+                if SUBSET in ("ff", "lut") and not f.get(SUBSET):
+                    continue
                 rows.append(b)
                 fx.append([bool(f.get(k)) for k in FEATS])
     return name, np.array(rows, dtype=bool), np.array(fx, dtype=bool)
@@ -122,7 +129,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--designs", default="rnd_l*")
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--subset", default="any", choices=["any", "ff", "lut", "either"])
     a = ap.parse_args()
+    global SUBSET
+    SUBSET = a.subset
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     log.setLevel(logging.INFO)
     for h in (logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_le_features.log", "w"), logging.StreamHandler()):

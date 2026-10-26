@@ -141,6 +141,10 @@ class Tracer:
             k2, dx, dy = parse_src(c)
             if k2[0] == "DRV":
                 found.add(("DRV", k2[1], k2[2], x + dx, y + dy))
+            elif k2[0] == "CONST":
+                found.add(("CONST", k2[1], 0, 0, 0))
+            elif k2[0] == "CIN":
+                found.add(("CIN", 0, 0, x, y))
             else:
                 f, w = self.walk(k2, x + dx, y + dy, depth + 1, stack)
                 found |= f
