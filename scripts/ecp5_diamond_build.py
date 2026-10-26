@@ -209,12 +209,17 @@ endmodule
     # GSR primitive: registers get GSR:ENABLED, which the bitstream omits (DB default).
     "dm_gsr": """
 module top(input clk, input rst_n, input d, output q);
-  reg [7:0] sr;
+  wire [8:0] c;
+  assign c[0] = d;
   GSR GSR_INST (.GSR(rst_n));
-  always @(posedge clk) sr <= {sr[6:0], d};
-  assign q = sr[7];
+  genvar i;
+  generate for (i = 0; i < 8; i = i + 1) begin : g
+    FD1S3AX #(.GSR("ENABLED")) ff (.D(c[i]), .CK(clk), .Q(c[i+1]));
+  end endgenerate
+  assign q = c[8];
 endmodule
 """,
+
 
     # Registered 18x18 multiply: DSP block.
     "dm_dsp": """

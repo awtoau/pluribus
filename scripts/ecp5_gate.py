@@ -158,6 +158,8 @@ def main():
     ap.add_argument("--score-only", action="store_true",
                     help="skip steps 1-3, score the compare.json files in --out")
     ap.add_argument("--workers", type=int, default=2, help="compare workers (RAM-bound)")
+    ap.add_argument("--only", nargs="*", help="restrict oracle/compare to these targets "
+                    "(debug; the gate verdict then covers only them, baseline update refused)")
     ap.add_argument("--update-baseline", action="store_true")
     ap.add_argument("--baseline", default=DEFAULT_BASELINE)
     ap.add_argument("--out", default=os.path.join(REPO, "corpus", "ecp5", "diamond-oracle"))
@@ -167,17 +169,20 @@ def main():
     import heavy_guard
     import ecp5_diamond_build as B
     errors = []
+    only = (["--only"] + args.only) if args.only else []
+    if args.only and args.update_baseline:
+        ap.error("--only and --update-baseline are exclusive")
     with heavy_guard.heavy_lock("ecp5_gate", log):
         if not args.score_only:
             if not args.no_build:
                 failed = B.ensure_built(list(B.DESIGNS), args.dies, log)
                 errors += [f"build failed: {f}" for f in failed]
             ok = run_step([sys.executable, os.path.join(SCRIPTS, "ecp5_diamond_oracle.py"),
-                           "--out", args.out], "oracle", log, ORACLE_OVERALL_S)
+                           "--out", args.out] + only, "oracle", log, ORACLE_OVERALL_S)
             if not ok:
                 errors.append("oracle step failed")
             ok = run_step([sys.executable, os.path.join(SCRIPTS, "ecp5_oracle_compare.py"),
-                           "--out", args.out, "--workers", str(args.workers)],
+                           "--out", args.out, "--workers", str(args.workers)] + only,
                           "compare", log, COMPARE_OVERALL_S)
             if not ok:
                 errors.append("compare step failed")
@@ -194,6 +199,8 @@ def main():
 
     cur = {}
     for t in sorted(os.listdir(args.out)):
+        if args.only and t not in args.only:
+            continue
         if not os.path.exists(os.path.join(args.out, t, "oracle.json")):
             continue
         p = os.path.join(args.out, t, "compare.json")
@@ -215,7 +222,8 @@ def main():
             base = json.load(fh)
     reg, imp, new, gone = ([], [], [], [])
     if base:
-        reg, imp, new, gone = diff(base["targets"], cur)
+        reg, imp, new, gone = diff({t: v for t, v in base["targets"].items()
+                                    if not args.only or t in args.only}, cur)
         common = set(base["targets"]) & set(cur)
         log.info("targets: %d scored, %d in baseline, %d new, %d absent", len(cur),
                  len(base["targets"]), len(new), len(gone))
