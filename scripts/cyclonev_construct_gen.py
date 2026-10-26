@@ -424,7 +424,7 @@ def pll_pin_designs():
         nm = f"c_pllpin_vnd_{pin.lower()}{'_' + site.lower()[:site.index('_N')].replace('_', '') if site else ''}_1"
         qsf = [f"set_location_assignment PIN_{pin} -to refclk"]
         if site:
-            qsf.append(f"set_location_assignment FRACTIONALPLL_{site} -to {{p|general[0].gpll}}")
+            qsf.append(f"set_location_assignment FRACTIONALPLL_{site} -to {{p|general[0].gpll~FRACTIONAL_PLL}}")
         out.append((nm, pin, qsf))
     return out
 
