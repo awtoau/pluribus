@@ -72,6 +72,27 @@ def wait_available(log, what="", min_gb=None):
           f"{what}: waiting for >= {need:.0f} GB available RAM (now {available_gb():.1f})", log)
 
 
+# Measured peak RSS per job (GB); sources and dates in docs/performance.md.  Worker counts derive
+# from these and BATCH_MAX_GB, so a RAM upgrade retunes by setting PLURIBUS_BATCH_MAX_GB (and
+# PLURIBUS_MIN_AVAILABLE_GB) only.  Unmeasured jobs are absent on purpose: workers_for() refuses them.
+JOB_GB = {
+    "ecp5_85f_lift_process": 7.5,    # graph + one target, 85F, per process
+    "ecp5_graph_45f": 3.3,           # routing graph (+ signature), shared across threads of one process
+    "ecp5_graph_25f": 1.9,
+    "ecp5_target_extra_25f": 0.35,   # marginal RSS of one more concurrent 25F target on a shared graph
+    "quartus_fit_small": 1.06,       # quartus_fit RSS, corpus-size Cyclone V design (map: 0.53)
+    "cyclonev_sim_job": 0.07,        # load.py / verilog.py child of lifted_sim_check (iverilog path)
+}
+BATCH_FILL = 0.8   # fraction of BATCH_MAX_GB planned for workers; the rest is headroom for peaks
+
+
+def workers_for(job, cap, base_gb=0.0):
+    """Workers that fit BATCH_MAX_GB * BATCH_FILL after a fixed base: floor((cap_gb - base) / JOB_GB[job]),
+    clamped to [1, cap].  KeyError for an unmeasured job: measure it, add it to JOB_GB."""
+    per = JOB_GB[job]
+    return max(1, min(cap, int((BATCH_MAX_GB * BATCH_FILL - base_gb) // per)))
+
+
 SCOPE_ENV = "PLURIBUS_SCOPE"  # set once the batch runs in its own capped cgroup scope
 BATCH_MAX_GB = float(os.environ.get("PLURIBUS_BATCH_MAX_GB", "28"))
 

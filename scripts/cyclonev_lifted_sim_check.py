@@ -98,8 +98,11 @@ STALL_S = 60
 OVERALL_S = 125
 STEP_LOG = []       # (tool, seconds) of every finished step
 PREAMBLE_CLOCKS = 4  # clock pulses per reset level (all-1, all-0) before the model check starts
-JOBS = 4          # designs in parallel; each is a chain of small subprocesses
-GB_PER_JOB = 0.5    # peak child RSS of one design is ~0.06 GB (load.py); RAM gate per job
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import heavy_guard  # noqa: E402
+# Designs in parallel: RAM-derived (heavy_guard.JOB_GB), capped at 8 so the shared box keeps cores.
+JOBS = heavy_guard.workers_for("cyclonev_sim_job", cap=8)
+GB_PER_JOB = 0.5    # RAM gate per job; covers a Questa vsim child, whose RSS is unmeasured
 
 
 def log(msg):

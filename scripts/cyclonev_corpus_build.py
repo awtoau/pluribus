@@ -43,6 +43,7 @@ os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(CORPUS / "corpus.db"))
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 
+import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402
 
 DEVICE = "5CEBA4U19C8"
@@ -328,7 +329,8 @@ def main():
                     help="rerun Quartus even when the input hash matches the last build")
     ap.add_argument("--adopt-keys", action="store_true",
                     help="write quartus.key for existing complete builds (trusts them), then exit")
-    ap.add_argument("--jobs", type=int, default=1, help="parallel builds (default 1)")
+    ap.add_argument("--jobs", type=int, default=heavy_guard.workers_for("quartus_fit_small", cap=6),
+                    help="parallel builds (default: RAM-derived from heavy_guard.JOB_GB, max 6)")
     ap.add_argument("--limit-scale", type=float, help="multiplier on per-step limits (default jobs)")
     args = ap.parse_args()
     global LIMIT_SCALE, REBUILD
@@ -357,7 +359,6 @@ def main():
     log.info("DB %s; %d designs; NoGIL=%s", os.environ["PLURIBUS_SQLITE_PATH"], len(names),
              not getattr(sys, "_is_gil_enabled", lambda: True)())
     from concurrent.futures import ThreadPoolExecutor
-    import heavy_guard
     with heavy_guard.heavy_lock("cyclonev_corpus_build", log), \
             ThreadPoolExecutor(max_workers=args.jobs) as ex:
         results = dict(zip(names, ex.map(lambda n: build_one(n, args.skip_quartus), names)))
