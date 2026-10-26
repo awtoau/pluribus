@@ -250,6 +250,28 @@ def wait_for_memory(name):
     heavy_guard.wait_available(log, name)
 
 
+REUSE_OUTPUTS = ("postfit.vo", "bitstream.rbf", "route_report.txt", "build.rcf", "build.pin",
+                 "quartus/simulation/questa/build.vo")
+KEY_FILE = "quartus.key"
+REBUILD = False     # --rebuild: ignore the content key
+
+
+def build_key(spec, srcs):
+    """Hash of every input of the Quartus flow; same key = same outputs (derived artifact)."""
+    h = hashlib.sha256()
+    h.update(json.dumps({"device": DEVICE, "top": spec["top"], "qsf": list(spec.get("qsf", [])),
+                         "quartus": str(toolchain.quartus_bin()), "route_tcl": ROUTE_TCL,
+                         "srcs": {s.name: hashlib.sha256(s.read_bytes()).hexdigest() for s in srcs}},
+                        sort_keys=True).encode())
+    return h.hexdigest()
+
+
+def reusable(ddir, key):
+    kf = ddir / KEY_FILE
+    return (not REBUILD and kf.is_file() and kf.read_text().strip() == key
+            and all((ddir / o).is_file() for o in REUSE_OUTPUTS))
+
+
 def build_one(name, skip_quartus):
     ddir = CORPUS / name
     spec = tomllib.loads((ddir / "design.toml").read_text())
@@ -260,9 +282,15 @@ def build_one(name, skip_quartus):
     t0 = time.monotonic()
     fail = None
     if not skip_quartus:
-        wait_for_memory(name)
-        clean(ddir)
-        fail = quartus(ddir, spec, srcs)
+        key = build_key(spec, srcs)
+        if reusable(ddir, key):
+            log.info("%s: Quartus inputs unchanged (key %s), reusing build", name, key[:12])
+        else:
+            wait_for_memory(name)
+            clean(ddir)
+            fail = quartus(ddir, spec, srcs)
+            if fail is None:
+                (ddir / KEY_FILE).write_text(key + "\n")
     with DB_LOCK:
         return finish_one(name, ddir, spec, srcs, skip_quartus, fail, t0)
 
@@ -296,10 +324,15 @@ def main():
                     help="reuse existing outputs; only re-parse + re-compare")
     ap.add_argument("--match", help="glob on design names, e.g. 'c_*'")
     ap.add_argument("--missing", action="store_true", help="only designs with no postfit_builds row")
+    ap.add_argument("--rebuild", action="store_true",
+                    help="rerun Quartus even when the input hash matches the last build")
+    ap.add_argument("--adopt-keys", action="store_true",
+                    help="write quartus.key for existing complete builds (trusts them), then exit")
     ap.add_argument("--jobs", type=int, default=1, help="parallel builds (default 1)")
     ap.add_argument("--limit-scale", type=float, help="multiplier on per-step limits (default jobs)")
     args = ap.parse_args()
-    global LIMIT_SCALE
+    global LIMIT_SCALE, REBUILD
+    REBUILD = args.rebuild
     LIMIT_SCALE = args.limit_scale or max(1, args.jobs)
     setup_logging()
     import schema
@@ -313,6 +346,14 @@ def main():
         with db.engine().connect() as conn:
             have = {r[0] for r in conn.exec_driver_sql("select design from postfit_builds")}
         names = [n for n in names if n not in have]
+    if args.adopt_keys:
+        for n in names:
+            d = CORPUS / n
+            sp = tomllib.loads((d / "design.toml").read_text())
+            if all((d / o).is_file() for o in REUSE_OUTPUTS) and not (d / KEY_FILE).exists():
+                (d / KEY_FILE).write_text(build_key(sp, sorted((d / "src").glob("*.v"))) + "\n")
+                log.info("%s: adopted existing build", n)
+        return
     log.info("DB %s; %d designs; NoGIL=%s", os.environ["PLURIBUS_SQLITE_PATH"], len(names),
              not getattr(sys, "_is_gil_enabled", lambda: True)())
     from concurrent.futures import ThreadPoolExecutor

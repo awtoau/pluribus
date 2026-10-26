@@ -179,17 +179,19 @@ def init_int(s):
 
 
 # -------------------------------------------------------------- per worker ---
-class Ctx:
-    def __init__(self):
-        self.L = ML.MachXO2Lift(DEVICE)
-        self.rg = self.L.rg
-        self.max_row = self.L.chip.get_max_row()
-        self.max_col = self.L.chip.get_max_col()
-        nat = self.L.chip._native
+_GARCS_LOCK = threading.Lock()
+_GARCS = {}
+
+
+def shared_garcs(nat):
+    """(src, sink) -> "pip" | "pip_nobits" (mux default, never in a .config) | "fixed";
+    rebuilt from bits.db like rgraph._build().  Read-only and identical for every
+    worker, so built once per process."""
+    with _GARCS_LOCK:
+        if "g" in _GARCS:
+            return _GARCS["g"]
         dbroot = os.environ["TRELLIS_DBROOT"]
-        # (src, sink) -> "pip" | "pip_nobits" (mux default, never in a .config)
-        #                | "fixed"; rebuilt from bits.db like rgraph._build().
-        self.garcs = {}
+        garcs = {}
         for tname, (row, col) in nat.geom.tile_rc.items():
             muxes, fixed = load_mux_bits(dbroot, nat.geom.tile_type[tname])
             for sink, srcs in muxes.items():
@@ -201,14 +203,25 @@ class Ctx:
                     if gs is not None:
                         k = (tuple(gs), tuple(gk))
                         kind = "pip" if bits else "pip_nobits"
-                        if self.garcs.get(k) != "pip":
-                            self.garcs[k] = kind
+                        if garcs.get(k) != "pip":
+                            garcs[k] = kind
             for sink, src in fixed:
                 gk = nat.gl.globalise_net(row, col, sink)
                 gs = nat.gl.globalise_net(row, col, src)
                 if gk is not None and gs is not None:
-                    self.garcs.setdefault((tuple(gs), tuple(gk)), "fixed")
-        self.enums = load_plc_enums(dbroot)
+                    garcs.setdefault((tuple(gs), tuple(gk)), "fixed")
+        _GARCS["g"] = garcs
+        return garcs
+
+
+class Ctx:
+    def __init__(self):
+        self.L = ML.MachXO2Lift(DEVICE)
+        self.rg = self.L.rg
+        self.max_row = self.L.chip.get_max_row()
+        self.max_col = self.L.chip.get_max_col()
+        self.garcs = shared_garcs(self.L.chip._native)
+        self.enums = load_plc_enums(os.environ["TRELLIS_DBROOT"])
 
     def glob(self, row, col, name):
         g = self.rg.globalise_net(row, col, name)

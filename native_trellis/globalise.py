@@ -157,6 +157,7 @@ class Globaliser:
         self.prefix = chip_prefix(chip_name)
         self.center = CENTER_MAP[(max_row, max_col)]  # (row, col)
         self.gi = generate_global_info(max_row, max_col)
+        self._name_cache = {}
 
     # --- global position (RoutingGraph.cpp:349-512) -------------------------
     def _find_global_position(self, row, col, db_name):
@@ -221,64 +222,71 @@ class Globaliser:
         return None  # NONE
 
     # --- globalise_net (RoutingGraph.cpp:171-296) ---------------------------
-    def globalise_net(self, row, col, db_name):
+    def _parse_name(self, db_name):
+        """Row/col-independent half of globalise_net, memoised per db name:
+        () (other chip's prefix) | ("g", stripped) | ("l", offsets, name, is_pio)."""
+        r = self._name_cache.get(db_name)
+        if r is not None:
+            return r
         stripped = db_name
-
+        r = False
         # Chip-prefix stripping (256_/640_ =4, 1200_.. =5, 4300D_/9400D_ =6).
         if db_name.startswith(("256_", "640_")):
             if db_name[:4] == self.prefix:
                 stripped = db_name[4:]
             else:
-                return None
-        if db_name.startswith(("1200_", "1300_", "2000_", "2100_", "4000_",
-                               "4300_", "6900_", "7000_", "9400_")):
+                r = ()
+        if r is False and db_name.startswith(("1200_", "1300_", "2000_", "2100_", "4000_",
+                                              "4300_", "6900_", "7000_", "9400_")):
             if db_name[:5] == self.prefix:
                 stripped = db_name[5:]
             else:
-                return None
-        if db_name.startswith(("4300D_", "9400D_")):
+                r = ()
+        if r is False and db_name.startswith(("4300D_", "9400D_")):
             if db_name[:6] == self.prefix:
                 stripped = db_name[6:]
             else:
-                return None
+                r = ()
+        if r is False:
+            if stripped.startswith(("G_", "L_", "R_", "U_", "D_", "BRANCH_")):
+                r = ("g", stripped)
+            else:
+                m = self._LOCAL_RE.match(stripped)
+                if m:
+                    offs = tuple((g[0], int(g[1:])) for g in (m.group(1), m.group(2)) if g)
+                    r = ("l", offs, m.group(3), self._is_pio_wire(db_name))
+                else:
+                    r = ("l", (), stripped, False)
+        self._name_cache[db_name] = r
+        return r
 
-        # Global prefixes -> nominal position via spine/stride layout.
-        if stripped.startswith(("G_", "L_", "R_", "U_", "D_", "BRANCH_")):
-            return self._find_global_position(row, col, stripped)
-
+    def globalise_net(self, row, col, db_name):
+        p = self._parse_name(db_name)
+        if not p:
+            return None
+        if p[0] == "g":
+            # Global prefixes -> nominal position via spine/stride layout.
+            return self._find_global_position(row, col, p[1])
         # Local net: apply N/S/E/W relative offsets.
         x, y = col, row
-        m = self._LOCAL_RE.match(stripped)
-        if m:
-            for i in (1, 2):  # groups before the final (.*)
-                g = m.group(i)
-                if not g:
-                    continue
-                d = int(g[1:])
-                if g[0] == "N":
-                    y -= d
-                elif g[0] == "S":
-                    y += d
-                elif g[0] == "W":
-                    x -= d
-                    if x < 0 and self._is_pio_wire(db_name) and x == -1:
-                        x = 0
-                elif g[0] == "E":
-                    x += d
-                    if (x > self.max_col and self._is_pio_wire(db_name)
-                            and x == self.max_col + 1):
-                        x = self.max_col
-                else:
-                    raise AssertionError(g)
-            name = m.group(m.lastindex) if m.lastindex else stripped
-            # m.group(3) is the final (.*) capture
-            name = m.group(3)
-        else:
-            name = stripped
-
+        for letter, d in p[1]:
+            if letter == "N":
+                y -= d
+            elif letter == "S":
+                y += d
+            elif letter == "W":
+                x -= d
+                if x < 0 and p[3] and x == -1:
+                    x = 0
+            elif letter == "E":
+                x += d
+                if x > self.max_col and p[3] and x == self.max_col + 1:
+                    x = self.max_col
+            else:
+                raise AssertionError(letter)
         if x < 0 or x > self.max_col or y < 0 or y > self.max_row:
             return None
-        return RId(x, y, name)
+        return RId(x, y, p[2])
 
     def _is_pio_wire(self, db_name):
         return any(s in db_name for s in self._PIO_SUBSTR)
@@ -314,56 +322,75 @@ class Ecp5Globaliser:
         self.max_row = max_row
         self.max_col = max_col
         self.prefix = chip_prefix(chip_name)
+        self._name_cache = {}
 
-    def globalise_net(self, row, col, db_name):
+    def _parse_name(self, db_name, right):
+        """Row-independent half of globalise_net, memoised per (name, col >= 69):
+        () (other device's prefix) | ("a", name) absolute | ("p", name) at the
+        referencing tile | ("l", dx, dy, name) local with offsets."""
+        key = (db_name, right)
+        r = self._name_cache.get(key)
+        if r is not None:
+            return r
         stripped = db_name
-
         # Device-size prefix (25K_/45K_/85K_): keep only our own device's
         # wires, drop the rest.  Unlike MachXO2 all ECP5 prefixes are 4 chars.
         if db_name.startswith(("25K_", "45K_", "85K_")):
             if db_name[:4] != self.prefix:
-                return None
+                self._name_cache[key] = r = ()
+                return r
             stripped = db_name[4:]
 
         # PCSA/PCSB share one tile DB; on the right half the "A" is a "B".
-        if col >= 69:
+        if right:
             p = stripped.find("PCSA")
             if p != -1:
                 stripped = stripped[:p + 3] + "B" + stripped[p + 4:]
 
         if stripped.startswith(("G_", "L_", "R_")):
             if (stripped.startswith("G_")
-                    and not any(s in stripped
-                                for s in self._POSITIONAL_GLOBAL)):
-                return RId(0, 0, stripped)
-            return RId(col, row, stripped)
-
-        # Local net: apply N/S/E/W relative offsets.
-        x, y = col, row
-        m = self._LOCAL_RE.match(stripped)
-        if m:
-            for i in (1, 2):
-                g = m.group(i)
-                if not g:
-                    continue
-                d = int(g[1:])
-                if g[0] == "N":
-                    y -= d
-                elif g[0] == "S":
-                    y += d
-                elif g[0] == "W":
-                    x -= d
-                elif g[0] == "E":
-                    x += d
-                else:
-                    raise AssertionError(g)
-            name = m.group(3)
+                    and not any(s in stripped for s in self._POSITIONAL_GLOBAL)):
+                r = ("a", stripped)
+            else:
+                r = ("p", stripped)
         else:
-            name = stripped
+            dx = dy = 0
+            m = self._LOCAL_RE.match(stripped)
+            if m:
+                for i in (1, 2):
+                    g = m.group(i)
+                    if not g:
+                        continue
+                    d = int(g[1:])
+                    if g[0] == "N":
+                        dy -= d
+                    elif g[0] == "S":
+                        dy += d
+                    elif g[0] == "W":
+                        dx -= d
+                    elif g[0] == "E":
+                        dx += d
+                    else:
+                        raise AssertionError(g)
+                r = ("l", dx, dy, m.group(3))
+            else:
+                r = ("l", 0, 0, stripped)
+        self._name_cache[key] = r
+        return r
 
+    def globalise_net(self, row, col, db_name):
+        p = self._parse_name(db_name, col >= 69)
+        if not p:
+            return None
+        k = p[0]
+        if k == "a":
+            return RId(0, 0, p[1])
+        if k == "p":
+            return RId(col, row, p[1])
+        x, y = col + p[1], row + p[2]
         if x < 0 or x > self.max_col or y < 0 or y > self.max_row:
             return None
-        return RId(x, y, name)
+        return RId(x, y, p[3])
 
 
 def make_globaliser(family, chip_name, max_row, max_col):

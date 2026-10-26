@@ -18,7 +18,12 @@ Wire "id" == the wire NAME string (pytrellis interns names to ints and always
 resolves them back via to_str; using the string directly is equivalent and
 makes to_str the identity).
 """
+import copy
+import os
+import sys
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
 from .geometry import ChipGeometry, family_of
 from .globalise import make_globaliser
@@ -135,6 +140,36 @@ def _ecp5_pio_count(ttype):
     return 0
 
 
+def _fresh(s):
+    """Same text, new object (str(s) returns s itself)."""
+    return (s + "\0")[:-1]
+
+
+@lru_cache(maxsize=None)
+def _slice_templates():
+    t = []
+    for z in range(8):
+        t.extend((_add_logic_comb(z), _add_ff(z)))
+    t.append(_add_ramw())
+    return tuple(t)
+
+
+@lru_cache(maxsize=None)
+def _pio_templates(npio):
+    return tuple(_add_pio(z) for z in range(npio))
+
+
+def _build_threads():
+    """Graph-build threads: only a free-threaded interpreter gains from them.
+    PLURIBUS_RGRAPH_THREADS overrides (1 = serial)."""
+    env = os.environ.get("PLURIBUS_RGRAPH_THREADS")
+    if env:
+        return max(1, int(env))
+    if getattr(sys, "_is_gil_enabled", lambda: True)():
+        return 1
+    return min(os.cpu_count() or 1, 8)
+
+
 class NativeRoutingGraph:
     """Pure-Python routing graph -- pytrellis-free."""
 
@@ -165,18 +200,75 @@ class NativeRoutingGraph:
         self._tiledb = tiledb
         self._build()
 
-    def _wire(self, x, y, name):
-        self.wires.setdefault((x, y), set()).add(name)
-
     def _build(self):
-        gl = self.gl
-        # Iterate every tilegrid tile (name -> type + row/col).
-        for name, (row, col) in self.geom.tile_rc.items():
+        """Per-tile work is independent, so it runs on a thread pool when the
+        interpreter is free-threaded; merged in tile order (arc order per
+        location is preserved)."""
+        names = list(self.geom.tile_rc)
+        n_thr = _build_threads()
+        if n_thr <= 1 or len(names) < 256:
+            parts = [self._build_chunk(names)]
+        else:
+            size = max(16, len(names) // (n_thr * 8))
+            chunks = [names[i:i + size] for i in range(0, len(names), size)]
+            with ThreadPoolExecutor(n_thr) as ex:
+                parts = list(ex.map(lambda c: self._build_chunk(c, True), chunks))
+        for arcs, wires, bels in parts:
+            for ploc, lst in arcs.items():
+                self.arcs.setdefault(ploc, []).extend(lst)
+            for loc, ws in wires.items():
+                cur = self.wires.get(loc)
+                if cur is None:
+                    self.wires[loc] = ws
+                else:
+                    cur.update(ws)
+            for loc, bm in bels.items():
+                self.bels.setdefault(loc, {}).update(bm)
+
+    def _build_chunk(self, names, threaded=False):
+        """(arcs, wires, bels) for a run of tilegrid tiles; touches no shared state.
+        threaded=True: private globaliser cache + private copies of the tile-type
+        strings, so no object is refcounted by two threads (free-threaded builds
+        otherwise run each thread ~10x slower on the shared ones)."""
+        gl = copy.copy(self.gl) if threaded else self.gl
+        if threaded:
+            gl._name_cache = {}
+        copies = {}
+
+        def tiletype(ttype):
+            muxes, fixed = self._tiledb.load_tiletype(self.db_root, self.family, ttype)
+            if not threaded:
+                return muxes, fixed
+            c = copies.get(ttype)
+            if c is None:
+                c = copies[ttype] = (
+                    {_fresh(k): [_fresh(x) for x in v] for k, v in muxes.items()},
+                    [(_fresh(a), _fresh(b)) for a, b in fixed])
+            return c
+        arcs, wires, bels = {}, {}, {}
+
+        def wire(x, y, name):
+            ws = wires.get((x, y))
+            if ws is None:
+                wires[(x, y)] = {name}
+            else:
+                ws.add(name)
+
+        def add_bels(col, row, templates):
+            belmap = bels.setdefault((col, row), {})
+            for bname, btype, bz, pins in templates:
+                rpins = {}
+                for pin, wname in pins.items():
+                    wire(col, row, wname)
+                    rpins[pin] = RId(col, row, wname)
+                belmap[bname] = Bel(bname, btype, bz, rpins)
+
+        for name in names:
+            row, col = self.geom.tile_rc[name]
             ttype = self.geom.tile_type[name]
-            muxes, fixed = self._tiledb.load_tiletype(
-                self.db_root, self.family, ttype)
+            muxes, fixed = tiletype(ttype)
             ploc = (col, row)
-            arclist = self.arcs.setdefault(ploc, [])
+            arclist = arcs.setdefault(ploc, [])
 
             # add_routing: configurable mux arcs
             for sink, sources in muxes.items():
@@ -187,8 +279,8 @@ class NativeRoutingGraph:
                     gsrc = gl.globalise_net(row, col, src)
                     if gsrc is None:
                         continue
-                    self._wire(*gsrc)
-                    self._wire(*gsink)
+                    wire(*gsrc)
+                    wire(*gsink)
                     arclist.append(Arc(gsrc, gsink, True))
 
             # add_routing: fixed connections
@@ -199,29 +291,15 @@ class NativeRoutingGraph:
                 gsrc = gl.globalise_net(row, col, src)
                 if gsrc is None:
                     continue
-                self._wire(*gsrc)
-                self._wire(*gsink)
+                wire(*gsrc)
+                wire(*gsink)
                 arclist.append(Arc(gsrc, gsink, False))
 
             # SLICE bels for PLC tiles (split_slice_mode path).  The bel
             # builders are CommonBels in prjtrellis — shared verbatim between
             # ECP5 and MachXO2; only the tile type name differs.
             if ttype == self._plc_type:
-                belmap = self.bels.setdefault((col, row), {})
-                for z in range(8):
-                    for bname, btype, bz, pins in (
-                            _add_logic_comb(z), _add_ff(z)):
-                        rpins = {}
-                        for pin, wname in pins.items():
-                            self._wire(col, row, wname)
-                            rpins[pin] = RId(col, row, wname)
-                        belmap[bname] = Bel(bname, btype, bz, rpins)
-                bname, btype, bz, pins = _add_ramw()
-                rpins = {}
-                for pin, wname in pins.items():
-                    self._wire(col, row, wname)
-                    rpins[pin] = RId(col, row, wname)
-                belmap[bname] = Bel(bname, btype, bz, rpins)
+                add_bels(col, row, _slice_templates())
 
             # ECP5 PIO bels.  MachXO2 pads ride JQ/JA joint nodes and need no
             # bel; ECP5 pads have a real PIO bel whose pins are the *_PIO
@@ -229,14 +307,8 @@ class NativeRoutingGraph:
             if self.family == "ECP5":
                 npio = _ecp5_pio_count(ttype)
                 if npio:
-                    belmap = self.bels.setdefault((col, row), {})
-                    for z in range(npio):
-                        bname, btype, bz, pins = _add_pio(z)
-                        rpins = {}
-                        for pin, wname in pins.items():
-                            self._wire(col, row, wname)
-                            rpins[pin] = RId(col, row, wname)
-                        belmap[bname] = Bel(bname, btype, bz, rpins)
+                    add_bels(col, row, _pio_templates(npio))
+        return arcs, wires, bels
 
     # --- pytrellis-compatible-ish accessors (Stage E wraps these) -----------
     def get_max_row(self):

@@ -21,6 +21,8 @@ Surface provided (exactly what the two callers touch):
       .globalise_net(row, col, name)   -> RoutingId(.loc.x/.loc.y/.id)
   Bel.pins[pin] = (RoutingId wire, direction)
 """
+import threading
+import weakref
 from collections import namedtuple
 
 from .rgraph import NativeRoutingGraph
@@ -95,14 +97,45 @@ class RoutingGraph:
         return RoutingId(Location(r.x, r.y), r.name)
 
 
+class _Shared:
+    """Read-only graph state shared by every Chip of one (device, db, family)."""
+
+    def __init__(self, native):
+        self.native = native
+        self.rg = None
+        self.lock = threading.Lock()
+
+
+_SHARED = weakref.WeakValueDictionary()     # freed when the last Chip using it goes
+_SHARED_LOCK = threading.Lock()
+_KEY_LOCKS = {}
+
+
+def _shared_for(device, db, family):
+    """One graph build per process per device, not one per lifter/worker."""
+    key = (device, db, family)
+    with _SHARED_LOCK:
+        sh = _SHARED.get(key)
+        if sh is not None:
+            return sh
+        klock = _KEY_LOCKS.setdefault(key, threading.Lock())
+    with klock:                              # other devices keep building meanwhile
+        sh = _SHARED.get(key)
+        if sh is None:
+            sh = _Shared(NativeRoutingGraph(device, db, family))
+            with _SHARED_LOCK:
+                _SHARED[key] = sh
+        return sh
+
+
 class Chip:
     def __init__(self, device, family=None):
         db = _state["dbroot"]
         if db is None:
             raise RuntimeError("call load_database() before Chip()")
         # family=None resolves from devices.json (MachXO2, ECP5, ...).
-        self._native = NativeRoutingGraph(device, db, family)
-        self._rg = None
+        self._shared = _shared_for(device, db, family)
+        self._native = self._shared.native
         self.info = _TileInfo(device, self._native.family)
 
     def get_max_row(self):
@@ -116,6 +149,8 @@ class Chip:
                 in self._native.geom.get_tiles_by_position(row, col)]
 
     def get_routing_graph(self, include_lutperm_pips=True, split_slice_mode=True):
-        if self._rg is None:
-            self._rg = RoutingGraph(self._native)
-        return self._rg
+        sh = self._shared
+        with sh.lock:
+            if sh.rg is None:
+                sh.rg = RoutingGraph(sh.native)
+        return sh.rg
