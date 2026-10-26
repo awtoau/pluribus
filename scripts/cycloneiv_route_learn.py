@@ -82,9 +82,7 @@ FF_LAB_PORTS = {"CLK", "ENA", "CLRN", "SCLR", "SLOAD"}
 def le_bit(plane, geom, x, y, le, df, dv):
     f0, v0 = geom.anchor(x, y)
     s = -1 if le % 2 else 1
-    f, v = f0 + df, v0 + geom.DN[le] + s * dv
-    nf, nv = plane.shape
-    return bool(0 <= f < nf and 0 <= v < nv and plane[f, v])
+    return plane[f0 + df, v0 + geom.DN[le] + s * dv]
 
 
 def ff_lab_key(plane, geom, x, y, n, port):
@@ -112,13 +110,7 @@ def instances(name, d, geom=None):
 
 def window(plane, geom, x, y):
     f0, v0 = geom.anchor(x, y)
-    nf, nv = plane.shape
-    w = np.zeros((WF[1] - WF[0], WV[1] - WV[0]), dtype=bool)
-    fa, fb = max(0, f0 + WF[0]), min(nf, f0 + WF[1])
-    va, vb = max(0, v0 + WV[0]), min(nv, v0 + WV[1])
-    if fa < fb and va < vb:
-        w[fa - f0 - WF[0]:fb - f0 - WF[0], va - v0 - WV[0]:vb - v0 - WV[0]] = plane[fa:fb, va:vb]
-    return w
+    return plane.rect(f0 + WF[0], f0 + WF[1], v0 + WV[0], v0 + WV[1])
 
 
 ROW_PHASE = 4   # R4 / C4 indices rotate with Y mod 4 (an R4 index occurs at one row phase only)
@@ -174,7 +166,9 @@ def learn_group(cls, key, insts, planes, geom, used_tiles, tiles_of_class):
 
 
 def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
-    """insts: [(design, x, y, src)].  -> dict with mux bits and per-source patterns, or None."""
+    """insts: [(design, x, y, src)].  -> dict with mux bits and per-source patterns, or None.
+    Streaming: per source only the AND / OR of its windows is kept (a stack of every window was
+    1.5 GB for the large LE-input groups)."""
     ax, ay = off
     ok = lambda x, y: 0 <= x + ax <= geom.xmax and 0 <= y + ay <= geom.ymax  # noqa: E731
     by_src = collections.defaultdict(list)
@@ -183,48 +177,54 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
             by_src[src].append((di, x, y))
     if not by_src:
         return None
-    wins = {s: np.stack([window(planes[di], geom, x + ax, y + ay) for di, x, y in v]) for s, v in by_src.items()}
-    good = [s for s, v in by_src.items() if len(v) >= MIN_SRC]
-    if not good:
-        return None
-    shape = next(iter(wins.values())).shape[1:]
+    shape = (WF[1] - WF[0], WV[1] - WV[0])
     det = np.ones(shape, dtype=bool)        # constant within every well-sampled source
     anyone = np.zeros(shape, dtype=bool)
-    everyone = np.ones(shape, dtype=bool)
-    for s in good:
-        w = wins[s]
-        det &= w.all(0) | (~w).all(0)
-        anyone |= w.all(0)
-        everyone &= w.all(0)
+    for s, v in by_src.items():
+        if len(v) < MIN_SRC:
+            continue
+        w_and = np.ones(shape, dtype=bool)
+        w_or = np.zeros(shape, dtype=bool)
+        for di, x, y in v:
+            w = window(planes[di], geom, x + ax, y + ay)
+            w_and &= w
+            w_or |= w
+        det &= w_and | ~w_or
+        anyone |= w_and
+    if not anyone.any() and not any(len(v) >= MIN_SRC for v in by_src.values()):
+        return None
     # unused tiles: same class, dst not used in that design
-    unused = []
-    for di in range(len(planes)):
-        for (x, y) in tiles_of_class:
-            if (di, x, y) not in used_tiles and ok(x, y):
-                unused.append((di, x, y))
+    unused = [(di, x, y) for di in range(len(planes)) for (x, y) in tiles_of_class
+              if (di, x, y) not in used_tiles and ok(x, y)]
     rng = np.random.default_rng(0)
     if len(unused) > 400:
         unused = [unused[i] for i in rng.choice(len(unused), 400, replace=False)]
     if unused:
-        uw = np.stack([window(planes[di], geom, x + ax, y + ay) for di, x, y in unused])
-        zero_unused = ~uw.any(0) if key[0] not in SINKS else uw.mean(0) <= SINK_UNUSED_MAX
+        tot = np.zeros(shape, dtype=np.int32)
+        for di, x, y in unused:
+            tot += window(planes[di], geom, x + ax, y + ay)
+        zero_unused = (tot == 0) if key[0] not in SINKS else (tot / len(unused) <= SINK_UNUSED_MAX)
     else:
         zero_unused = np.ones(shape, dtype=bool)
-    return finish(det & anyone & zero_unused, by_src, wins, insts, off)
-
-
-def finish(mux, by_src, wins, insts, off):
+    mux = det & anyone & zero_unused
     pos = [tuple(int(t) for t in p) for p in np.argwhere(mux)]
     if not pos:
         return {"mux": [], "n": len(insts), "srcs": len(by_src), "anchor": off}
     pats, conflict = {}, 0
+    pf = np.array([p[0] + WF[0] for p in pos])
+    pv = np.array([p[1] + WV[0] for p in pos])
     for s, v in by_src.items():
-        w = wins[s]
-        sub = [tuple(sorted(p for p in pos if w[i][p])) for i in range(len(v))]
-        if len(set(sub)) != 1:
+        sub = set()
+        for di, x, y in v:
+            f0, v0 = geom.anchor(x + ax, y + ay)
+            hit = planes[di].has(f0 + pf, v0 + pv)
+            sub.add(tuple(sorted(p for p, h in zip(pos, hit) if h)))
+            if len(sub) > 1:
+                break
+        if len(sub) != 1:
             conflict += 1
             continue
-        pats[s] = sub[0]
+        pats[s] = next(iter(sub))
     return {"mux": pos, "n": len(insts), "srcs": len(by_src), "pats": pats, "conflict_srcs": conflict,
             "anchor": off}
 

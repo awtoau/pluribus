@@ -136,6 +136,12 @@ def gx_specs():
                     'set_global_assignment -name FITTER_EFFORT "FAST FIT"'] + locs,
             "purpose": f"random RTL on EP4CGX150 around LAB X{cx} Y{cy}, {n_nodes} LUT nodes",
             "exercises": ["routing", "lab_controls", "carry", "io", "le_address"]}
+    # header-bit probe: same design, other package / speed grade / temperature grade of both dies
+    for tag, dev in (("gx150_cf23c8", "EP4CGX150CF23C8"), ("gx150_df27i7", "EP4CGX150DF27I7"),
+                     ("gx110_cf23c7", "EP4CGX110CF23C7"), ("gx110_df27c8", "EP4CGX110DF27C8")):
+        out[f"{tag}_smoke"] = {"top": "top", "verilog": rnd_design(7_000_001, 60, 12, 8), "device": dev,
+                               "qsf": ["set_global_assignment -name SEED 1"],
+                               "purpose": f"header-bit probe on {dev}", "exercises": ["header"]}
     for tag, dev in GX_DEVICES.items():
         v = rnd_design(7_000_001, 60, 12, 8)
         out[f"{tag}_smoke"] = {"top": "top", "verilog": v, "device": dev,

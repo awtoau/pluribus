@@ -258,6 +258,43 @@ Every Cyclone IV rule here comes from Cyclone IV oracle runs. No Cyclone V bit p
 - Not done on GX150: connection-level trace score, FF / LAB-control / IO / carry decode, lifter + emitter, sim gate, M9K / multipliers / PLL.
 - EP4CE6 LUT decode: 996 wrong bits of 1,780,540 + 996 in `rnd_*` (all LEs crossing the bit-lane boundary at v 1241 and 206); the GX150 lane model has no such case. EP4CE6 lane fix pending.
 
+## Quartus device-info (.ddb) decode, Cyclone IV GX (2026-10-26)
+
+Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family in `cycloneive/`. Reader: `scripts/quartus_ddb.py`, dump: `scripts/quartus_ddb_dump.py`.
+
+- Container: 0x73-byte header (u32 0x14, ..., "Version 25.1std.0 ...") then payload.
+  - zlib kinds (icname, routing, asm, place, pad, timing, gid_database): a chain of zlib streams, NOT terminated; each ends with a sync-flush marker `00 00 ff ff` and the next starts with `78 01` (the "invalid stored block lengths" of a single inflate is that boundary). Split on `00 00 ff ff 78 01`, inflate each: 100% of the bytes decode.
+  - xz kinds (hdr, part_info, pcf): one `fd 37 7a 58 5a 00` stream at 0x73 (Python `lzma`).
+  - asmdb / asmdb_dirt: other layout, not decoded.
+- Which stingray is which (`device.db`, SQLite, names base64): STINGRAY1 = EP4CGX15, STINGRAY2 = GX30 (V1 = GX22), STINGRAY3 = GX75 (V1 GX50, V2 GX30A), STINGRAY4 = EP4CGX150 (149,760 LEs), STINGRAY4_V1 = EP4CGX110 (109,424 LEs). Same ddb files (`ddb_stingray4_*`) serve both.
+- Header bit meaning (settled): the option lanes of `quartus_cpf` .rbf output for 6 of our builds (`cycloneiv_header_probe.py`):
+  - lane 1 = `f8 00 20 0d ff` on every EP4CGX150 build (DF31C7, CF23C8, DF27I7) and `f8 00 a0 0d ff` on every EP4CGX110 build (DF31C7, CF23C7, DF27C8). Lane 1 bit 23 = die variant (STINGRAY4 vs STINGRAY4_V1: full die vs fused-down 109,424-LE variant). It does not follow package, speed grade or temperature grade.
+  - lane 0 = `00 73|74 xx yy ff`: byte 2..3 change per build (usercode / checksum); byte 1 = 0x74 on the F484 (CF23) builds and 0x73 on the F672 / F896 builds, so it follows package.
+  - lanes 2..3 identical across all six builds.
+  - A third-party compressed image has lane 1 = `c0 00 20 0d ff` (first byte differs: option bits; bytes 1..3 = `00 20 0d` as on GX150, GX110 has `00 a0 0d`), so it is the EP4CGX150 variant (full die), not GX110.
+- stingray4 hdr.ddb payload (107 KB): chip description database (device name "EP4CGX150", family, node-type names such as LE_BUFFER, LAB_LINE, C16, GLOBAL_CLK_H; file names `stingray4.ww19.asm.rba`, `stingray4_dirt.xml`). It carries no .rbf header fields.
+- icname: 729,374 name records `u32 len, name, u32 flag` (names like `H4R90C119RT[0]`, `V4R..UP[..]`, `RCLKR..`, `LEIM:R..C..S..I..|...`), then a second table keyed `XQ4/Q4_...`. Names use the vendor R/C grid, not the RCF X/Y frame.
+- asm (461 MB for stingray4): header `u32 4, u32 N=1,802,443, u32 N`, then 1.2 MB of zeros, then variable-width records. Measured so far:
+  - values `6154` (= CRAM frames), `-6154`, `-12306`, `1`, `-2` recur: bit addresses are coded relative, `frame + 6154 * v` (frame fastest);
+  - pairs `(i32 address delta, u32 mask)` with masks `0xff`, `0xff00`, `0xffff`, `0x100`, `0x101`, `0x1`;
+  - absolute addresses of known LUT-mask bits do not occur literally (searched `f + 6154 v`, `b * 6154 + f`, `f * 6352 + b`, with frame offsets -45..5).
+  - record framing (verified: 310,180 consecutive records parse, bytes 0x124800..70 MB of the 461 MB): `u32 c` (1..32), `c` x `u16` (group sizes `3,3,...` then the item count n, e.g. `3,3,3,3,3,18`, `3,3,3,3,3,3,3,24`), n x `(i32 position delta, u32 mask)`, then one `i32` separator (mostly 0, else +-65537, +-131073, ...). First record has 4 extra u16 in front.
+  - the 18-item record is the LOCAL_INTERCONNECT shape: 18 = 3 (A choice) x 6 (B choice), items in 6 groups of 3. The learner finds the same 18 sources as patterns over 8 bit positions (2 rows x 4 frames).
+  - the cumulative item positions (decomposed `a * 6154 + b`) span a 6 x 9 window, so they are not the 8 mux bit positions; item meaning (position / mask semantics) and how a routing node selects its record (the other 390 MB, N = 1,802,443 entries) are not decoded.
+  - routing.ddb (88 MB, header `u32 4, 118, 92, N, ...`) and icname (729,374 names + a second `XQ4/...` table) not decoded beyond the name list.
+  - Verdict 2026-10-26: not usable yet; the statistical tables below carry routing.
+
+## EP4CGX150 routing tables from the corpus (2026-10-26, replaces the 80.6% figure)
+
+- Learner now streams per source (AND / OR of windows) instead of stacking windows (1.5 GB for the large LE-input groups), so all 150 crc32-even designs fit in a 2.5 GB cgroup; planes are sparse (`SparsePlane`, ~1 MB per design, was 38 MiB).
+- Held-out (20 designs of the odd half), pooled tables (X mod 8, Y mod 4): pips matched 272,070 / (matched 272,070 + missing 21,492 + extra 1,644 + wrong 195) = 92.10%; nets with every pip matched 13,210 / 22,407 = 58.95%.
+  - extra counted on touched tiles + 60 random untouched LABs per design; an unused mux whose bits read as one known source.
+  - per type, matched / missing / wrong: LE inputs 74,574 / 2,571 / 3 (96.7%), LOCAL_INTERCONNECT 52,137 / 2,858 / 40 (94.7%), C4 48,444 / 2,798 / 17 (94.5%), R4 53,888 / 5,986 / 63 (89.9%), LE_BUFFER 20,823 / 7 / 0 (99.97%), FF pins 5,580 / 515 / 25 (91.2%), LAB_CONTROL_MUX 1,234 / 209 / 7 (85.1%), C16 1,877 / 1,238 / 21 (59.9%), R24 1,681 / 989 / 9 (62.8%).
+  - not covered (zero / no table): clock tree (BLK_CLK_BUF 1 / 2,440, LAB_CLK 93 / 445, SCLK_TO_ROWCLK_BUF 7 / 478, GLOBAL_CLK_*), IO (IO_DATAIN 195 / 327, IOOBUF 5 / 379, BLOCK_INPUT_MUX 307 / 80). Most of the remaining misses are 'ambiguous pattern' (two sources share a pooled pattern): per-column tables resolve those.
+- IO sites (`cycloneiv_io_bits.py`, no geometry needed): each used IOOBUF site has a 36-bit configuration signature (set in >= 95% of designs using the site, in <= 3% of the others), in clusters of 4 consecutive v. Top-row (Y91) and bottom-row (Y0) IO config sits in the periphery frames (e.g. X26/X30/X32/X34 -> frames 26..29), v falls by 136 per IO step of 7 in N (N2, N9, N16, N23). The LAB-column anchor model does not apply to IO rows, so IO-row routing tables (IO_DATAIN, BLOCK_INPUT_MUX, IOOBUF.I) need their own anchors.
+- IO input sites: every used IOIBUF site has a 4-bit signature (4 consecutive v in one periphery frame), set in all designs using the site and in <= 3% of the others (249 sites with >= 12 uses; e.g. X26 Y91 N1 frame 26 v 380..383, N8 244..247, N15 108..111: v falls by 136 per N step of 7; left/right IO columns X117 carry the same pattern with frames 20..34). Some sites also show a bit beyond the lane model (v 6344+, the lane-tail columns).
+- Memory: a per-column learner (104 columns instead of 8 classes) needs a larger cgroup than 2.5 GB.
+
 ## Gaps
 
 - Fabric not decoded:

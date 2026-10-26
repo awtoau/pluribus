@@ -33,7 +33,7 @@ import cycloneiv_route_learn as rl  # noqa: E402
 log = logging.getLogger("cycloneiv_le_features")
 WIN_F = (-34, 9)
 WIN_V = 3
-FEATS = ["lut", "cin", "ff", "ena", "sclr", "sload", "clrn", "asdata", "clkinv", "d_lut"]
+FEATS = ["lut", "cin", "ff", "ena", "sclr", "sload", "clrn", "asdata", "clkinv", "d_lut", "d_other"]
 LOC = re.compile(r"^(LCCOMB|FF)_X(\d+)_Y(\d+)_N(\d+)$")
 
 
@@ -72,6 +72,7 @@ def le_features(vo):
             f["_d"] = vo.canon(dnet) if dnet else None
     for k, f in out.items():
         f["d_lut"] = bool(f.get("ff") and f.get("_d") and f.get("_d") == comb_out.get(k))
+        f["d_other"] = bool(f.get("ff") and not f["d_lut"])
         f.pop("_d", None)
     return out
 
@@ -85,17 +86,21 @@ def le_bits(plane, geom, x, y, le):
     vs = [v0 + s * dv for dv in range(-WIN_V, WIN_V + 1)]
     if fa < 0 or fb > nf or min(vs) < 0 or max(vs) >= nv:
         return None
-    return plane[fa:fb][:, vs].reshape(-1)
+    ff, vv = np.meshgrid(np.arange(fa, fb), np.array(vs), indexing="ij")
+    return plane.has(ff, vv).reshape(-1)
 
 
 def collect(name, geom):
     d = cc.load(name)
     feats = le_features(d["vo"])
     rows, fx = [], []
+    touched = {(x, y) for (x, y, _le) in feats}
     for x in range(geom.xmax + 1):
         if geom.col_kind(x) != "LAB":
             continue
         for y in range(1, geom.ymax):
+            if (x, y) not in touched:
+                continue      # empty LABs add no information and 150k LEs per design of memory
             for le in range(16):
                 b = le_bits(d["plane"], geom, x, y, le)
                 if b is None:
