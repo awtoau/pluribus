@@ -199,6 +199,17 @@ def clock_tree_links(pc):
     srcs = {s for s, _d in pc.arcs}
     dsts = {d for _s, d in pc.arcs}
     links, unresolved = [], defaultdict(int)
+    # native `.bt`: the CMUX output port is itself the arc source (CMUXHG.x.y.i:CLKOUT -> SCLK); tie it to its pad / PLL
+    for node in sorted((n for n in srcs - dsts if n.block.startswith("CMUX") and n.port == "CLKOUT"), key=str):
+        kind = node.block[4:]
+        ent = data["cmux"].get(f"{node.x:03d}.{node.y:03d}")
+        lst = ent and ent.get("gclk" if kind in _CMUX_G else "rclk")
+        gname = lst[node.bi] if lst and node.bi is not None and node.bi < len(lst) else None
+        pad = _cmux_source(pc, parse_node(gname)) if gname else None
+        if pad is None:
+            unresolved["cmux_unresolved"] += 1
+            continue
+        links.append((pad, node))
     todo = sorted((n for n in srcs - dsts if n.block in ("SCLK", "GCLK", "RCLK")), key=str)
     for node in todo:
         if node.block == "SCLK":

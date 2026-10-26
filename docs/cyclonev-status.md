@@ -69,7 +69,7 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
    - `sload` as a signal stays unclaimed: all 2794 Quartus registers tie `sload` to gnd (1344) or vcc (1450). The lifter's const rule (1 iff pin-fed) is the only rule the corpus supports.
    - Not closed: CRAM option bit 6.3 and the CvP bit. `OPT_B` is `ffffff40.2dffffff` in all 237 designs, so the corpus cannot name either bit; naming needs a knob build.
 6. **Re-encode check:** a Quartus rebuild of a one-LUT-bit Verilog change, compared against the edited bitstream, has not been done.
-7. **Dies:** only e50f is exercised. The native decoder refuses sx50f, sx120f and any HPS die.
+7. **Dies:** e50f (die byte 0x05) and, since 2026-10-26, the gt150f die = 5CEBA7 / 5CEFA7 (die byte 0x13), see "Second die" below. sx50f, sx120f and any HPS die are refused.
 9. ~~**lifted.v polarity**~~ closed 2026-10-24: LUT tables are over the nets, pad output inverters are NOT rows (rule: `docs/cyclonev-postfit-oracle.md` "Polarity"). Gate: `scripts/cyclonev_lifted_sim_check.py --all`, stage 5 of `cyclonev_verify_all.py`.
 10. ~~**Register controls in lifted.v**~~ closed 2026-10-24: emitted from `ffs.d/clk/ce/lsr` + `ffs.dtype` flags (no schema change). Gate: registered 87 / 87.
 11. ~~**Sim gate not covered (RAM, DSP)**~~ closed 2026-10-24: RAM on the plain vendor models, DSP on our own model. Remaining gaps:
@@ -78,6 +78,23 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
     - **Cross-check:** Questa-Altera Starter installed (`scripts/questa.py`); `--sim questa` and `scripts/cyclonev_dsp_vendor_check.py`, stage 6 of `cyclonev_verify_all.py`.
     - **RAM:** `bidir_dual_port`, widths other than x20 / x40, init outside those layouts, byte enables, ECC: no corpus evidence; the lifter reports the block as `NOT LIFTED` with the reason.
 8. **Not scored field by field:** I/O drive, slew and standard (no variation in the corpus). RAM, MLAB and DSP parameters are checked by simulation only.
+
+## Vendor database (.ddb), 2026-10-26
+- Container fully decoded (all 2,708 files; format `docs/cyclonev-ddb-format.md`): `scripts/cyclonev_ddb_decode.py`, tests `tests/test_cyclonev_ddb.py`.
+- Die map from `device.db` + hdr: 0x05 = `cyclonev_e50f` (5CEBA4/5CEFA4), 0x13 = `cyclonev_d6_gtf150` (5CEBA7/5CEFA7, 56,480 ALM). Die byte = option-RAM strip 6 bits 19..26 (`cyclonev_decode.die_byte`).
+- `asm.ddb` decoded to records of (source node -> destination-mux select bits): `scripts/cyclonev_ddb_asm.py`. Routing CRAM position set identical to the native tables on both dies (6,072,456 and 17,012,500 positions, 0 extra, 0 missing).
+- (mux, code) pairs vs native: e50f 11,764,244 matched, 1,794,432 missing, 597,698 extra (all-bits-set code), 0 wrong = 83.1 %; gt150f 33,061,705 / 5,091,215 / 1,679,292 / 0 = 83.0 %. Missing ~98 % = sources in the die-edge tile ring. Detail in the format doc.
+- Not done: routing graph / icname -> node names, so the native tables are still Mistral-sourced; the vendor file independently confirms the routing bit positions and codes, not source identities. Block-mux (LUT, FF, IO) bits are not in asm.
+
+## Second die: 5CEBA7 / gt150f (die byte 0x13)
+- Tables: Mistral-sourced like e50f (`cyclonev_native_tables.py 5CEBA7U19C8`; CRAM 7605 x 7024, 90 x 82 tiles, 1,934,054 muxes, 4,310 LAB + 1,338 MLAB + 686 M10K + 156 DSP).
+- `cyclonev_decode.py` / `cyclonev_unpack.py --device auto` pick the die from the die byte; strict decode refuses a model/die-byte mismatch.
+- Corpus `corpus/cyclonev_e150/` (18 designs, Quartus Lite 25.1 builds 5CEBA7U19C8, src tracked, outputs gitignored; `PLURIBUS_CV_CORPUS=cyclonev_e150 PLURIBUS_CV_DEVICE=5CEBA7U19C8 python3.15t scripts/cyclonev_corpus_build.py`). All 18 build, decode (all container CRCs valid), lift.
+- Native vs mistral-cv `.bt`: identical in compat mode (adder12 checked); default mode differs only in the classes known from e50f (GCLK/CMUX -> SCLK links 20 lines, CLK SEL/INV roles 47 swapped pairs).
+- Structural scorecard (mistral `.bt`, `cyclonev_lift_scorecard.py --score-only`): LUT function 270/270, LUT inputs 765/765, FF present/D 175/175, ctl fields 100 %, ff.clk 165/175 (10 missing, all FPLL output counter in `c_pll_vnd_m2d1_1`), pins 520/521, obuf.i 201/202 (PLL lock).
+- Functional gate (`cyclonev_lifted_sim_check.py --all`, iverilog, mistral `.bt`): 15 / 18 PASS. FAIL: `c_pll_vnd_m2d1_1` (FPLL CLKOUT not bridged, no clock-tree link for FPLL.000.014), `clock_promotion` (7830 / 32200 samples wrong on 4 pins), `regbank16` (102 / 16100 samples X on 4 pins).
+- Same gate on native `.bt`: 14 / 18 (two_clocks fails: the lifter reads the Mistral CLK SEL/INV role names; the native `.bt` has them swapped; pre-existing, not tested on e50f). Lifter now ties `CMUX*:CLKOUT` arc roots (native form) to their pad.
+- Not done on this die: compressed images (`COMPRESSED_POSTAMBLES` has e50f only), fuzzing, HMC / PLL beyond the one design, I/O standards.
 
 ## Decision needed first
 - Whether a Cyclone V is in the hardware. The bench markings settle it: an FPGA marked `5CEFA4U19I7` (Cyclone V E, 5CEA4) would need this work.

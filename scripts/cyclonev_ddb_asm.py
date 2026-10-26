@@ -27,7 +27,9 @@ import cyclonev_ddb_decode as dd  # noqa: E402
 
 log = logging.getLogger("cyclonev_ddb_asm")
 DEVINFO = dd.DEVINFO + "/cyclonev"
-DIES = {"e50f": ("cyclonev_e50f", "5CEBA4U19C8"), "gt150f": ("cyclonev_d6_gtf150", "5CEBA7U19C8")}
+DIES = {"e50f": ("cyclonev_e50f", "5CEBA4U19C8"), "gt150f": ("cyclonev_d6_gtf150", "5CEBA7U19C8"),
+        "gx25f": ("cyclonev_gx25f", None), "gt75f": ("cyclonev_gt75f", None), "gt300f": ("cyclonev_gt300f", None),
+        "sx50f": ("cyclonev_sx50f", None), "sx120f": ("cyclonev_sx120f", None)}   # model None: stats only (no native tables)
 
 
 def asm_path(die):
@@ -139,7 +141,7 @@ def mistral_triples(t):
     r = t["routes"]
     pats, rvals = t["patterns"], t["rvals"]
     pat, span, src, so, dest = r["pat"], r["span"], r["src"], r["src_off"], r["dest"]
-    S, Mx, Sl = [], [], []
+    S, Mx, Sl, Cd = [], [], [], []
     for p in np.unique(pat):
         if p == 0xFE:
             continue
@@ -148,7 +150,8 @@ def mistral_triples(t):
         for s, c in enumerate(rvals[pt["o_vals"]:pt["o_vals"] + pt["span"]]):
             if c:
                 S.append(src[so[idx] + s]); Mx.append(idx); Sl.append(np.full(len(idx), s, np.int16))
-    return np.concatenate(S), np.concatenate(Mx), np.concatenate(Sl)
+                Cd.append(np.full(len(idx), int(c), np.int64))
+    return np.concatenate(S), np.concatenate(Mx), np.concatenate(Sl), np.concatenate(Cd)
 
 
 def compare(die):
@@ -158,13 +161,17 @@ def compare(die):
     r = t["routes"]
     names = r["type_names"]
     pat, so, src, dest = r["pat"], r["src_off"], r["src"], r["dest"]
-    tsrc, tmux, tslot = mistral_triples(t)
+    tsrc, tmux, tslot, tcode = mistral_triples(t)
+    pbits = np.array([q['bits'] for q in t['patterns']] + [0] * 300, np.int64)
     log.info("%s: tables %d muxes, %d triples (%.1fs); M=%d", die, len(pat), len(tsrc), time.time() - t0, M)
     stream = RecordStream(asm_path(die), M)
     cnt = collections.Counter()           # (dest type, verdict) -> n
     seen_src = []
     seen_trip = []                         # matched (mux<<8|slot) packed
+    pair_keys = []                         # (mux<<20|code) of every asm group
+    allones = collections.Counter()
     out_of_class = 0
+    seen_pos = np.zeros(M, bool)
     recs_nonempty = recs_empty = 0
     rec_src = []
     for b in stream:
@@ -172,12 +179,15 @@ def compare(die):
         nrec = len(n)
         recs_empty += int((nb == 0).sum()); recs_nonempty += int((nb > 0).sum())
         P = b["P"]
+        seen_pos[P] = True
         rec = np.repeat(np.arange(nrec, dtype=np.int64), nb)
         own = owner[P]
         k = bitk[P].astype(np.int64)
         rt = own >= 0
         out_of_class += int((~rt).sum())
         key = rec[rt] * (len(pat) + 1) + own[rt]
+        if not len(key):
+            continue
         order = np.argsort(key, kind="stable")
         key, kk = key[order], k[rt][order]
         starts = np.flatnonzero(np.concatenate([[True], key[1:] != key[:-1]]))
@@ -198,6 +208,10 @@ def compare(die):
         rsrc = best[grec]
         dtype_ = (dest[gmux] >> 24).astype(np.int64)
         verdict = np.where(~valid, 2, np.where(gsrc == rsrc, 0, 1))      # 0 matched, 1 wrong, 2 extra
+        isall = ~valid & (code == (np.int64(1) << pbits[pat[gmux]]) - 1)
+        for a in np.unique(dest[gmux[isall]] >> 24):
+            allones[names[int(a)]] += int((dest[gmux[isall]] >> 24 == a).sum())
+        pair_keys.append(np.unique(gmux * (1 << 20) + code))
         for v in (0, 1, 2):
             sel = verdict == v
             if sel.any():
@@ -218,9 +232,34 @@ def compare(die):
     matched_set = np.unique(np.concatenate(seen_trip))
     tkey = tmux.astype(np.int64) * 256 + tslot
     is_matched = np.isin(tkey, matched_set)
-    res = dict(die=die, model=model, M=M, records=recs_nonempty + recs_empty, empty_records=recs_empty,
+    present = np.unique(np.concatenate(pair_keys))
+    mkeys = np.unique(tmux.astype(np.int64) * (1 << 20) + tcode)
+    allk = present[np.isin(present, mkeys)]
+    pair = dict(mistral_pairs=int(len(mkeys)), asm_pairs=int(len(present)), matched=int(len(allk)),
+                missing=int(len(mkeys) - len(allk)),
+                extra_all_ones=int(0), extra_other=int(len(present) - len(allk)))
+    ext = present[~np.isin(present, mkeys)]
+    em, ec = ext >> 20, ext & ((1 << 20) - 1)
+    ao = ec == (np.int64(1) << pbits[pat[em]]) - 1
+    pair["extra_all_ones"] = int(ao.sum())
+    pair["extra_other"] = int((~ao).sum())
+    # where do the missing (mux, code) pairs sit?  distance of the SOURCE tile to the nearest die edge
+    g = t["geom"]
+    tk = tmux.astype(np.int64) * (1 << 20) + tcode
+    miss = ~np.isin(tk, present)
+    sx_, sy_ = (tsrc.astype(np.int64) >> 17) & 0x7F, (tsrc.astype(np.int64) >> 10) & 0x7F
+    edge = np.minimum(np.minimum(sx_, sy_), np.minimum(g["tile_sx"] - 1 - sx_, g["tile_sy"] - 1 - sy_))
+    edge = np.clip(edge, 0, 12)
+    hm = np.bincount(edge[miss], minlength=13).tolist()
+    ha = np.bincount(edge, minlength=13).tolist()
+    pair["missing_by_source_edge_distance"] = hm
+    pair["all_by_source_edge_distance"] = ha
+    claimed = int((owner >= 0).sum())
+    posd = dict(native_routing_positions=claimed, asm_distinct_positions=int(seen_pos.sum()),
+                both=int((seen_pos & (owner >= 0)).sum()))
+    res = dict(die=die, position_sets=posd, model=model, M=M, records=recs_nonempty + recs_empty, empty_records=recs_empty,
                asm_records_with_route_source=int(len(rs)), sources_seen=int(len(seen)), records_sharing_a_source=int(dup),
-               positions_outside_route_muxes=out_of_class,
+               positions_outside_route_muxes=out_of_class, extra_all_ones_by_dest_type=dict(allones), mux_code_pairs=pair,
                mistral_triples=int(len(tsrc)), per_dest_type={})
     tot = collections.Counter()
     for tid in np.unique(dt):
@@ -249,9 +288,11 @@ def compare(die):
 
 def stats(die):
     _, model = DIES[die]
-    import cyclonev_native_tables as nt
-    g = nt.load(model)["geom"]
-    M = g["cram_sx"] * g["cram_sy"]
+    M = 1 << 62
+    if model:
+        import cyclonev_native_tables as nt
+        g = nt.load(model)["geom"]
+        M = g["cram_sx"] * g["cram_sy"]
     s = RecordStream(asm_path(die), M)
     rec = ne = bits = ush = 0
     shapes = collections.Counter()
@@ -262,19 +303,20 @@ def stats(die):
     types = {t[5]: t[3] for t in dd.read_types(asm_path(die))}
     print(f"{die}: records {rec} (non-empty {ne}); sum n {ush} (type table unsigned short {types.get('unsigned short')}); "
           f"entries {bits} (type table ASM_BIT {types.get('DYGR_ROUTE_ASM_BIT')}); nodes (type table) {types.get('DYGR_ROUTE_ASM_NODE')}")
-    print(shapes.most_common(8))
+    print("  shapes (n, nb):", shapes.most_common(5))
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=("stats", "compare"))
-    ap.add_argument("--die", choices=sorted(DIES), default="e50f")
+    ap.add_argument("--die", choices=sorted(DIES) + ["all"], default="e50f")
     a = ap.parse_args()
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=[
         logging.StreamHandler(), logging.FileHandler(os.path.join(REPO, "tmp", "logs", "cyclonev_ddb_asm.log"))])
     if a.cmd == "stats":          # streaming, small RSS: no lock
-        stats(a.die)
+        for die in (sorted(DIES) if a.die == "all" else [a.die]):
+            stats(die)
         return
     import heavy_guard
     with heavy_guard.heavy_lock("cyclonev_ddb_asm", log):
