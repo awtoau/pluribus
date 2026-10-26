@@ -104,3 +104,21 @@ Before = main 5f2d4bdcd + loud-fault commit. After = branch wt-113.
 - `scripts/undriven_classify.py` on the 287 undriven-and-read nets: 185 global-spine arc dropped (#109), 46 edge H06 hop-3 stub arc dropped by `gkey()`, 45 edge H06 wire with no driver (turnaround), 10 other (5 EBR1-tile `JF`, 2 EBR1-tile `JQ`, 1 bottom-edge pad `JQ`, 1 clock pin, 1 DPRAM read with unconnected write pin).
 - Edge H06 stubs: the Diamond corpus holds one H06 turnaround (`H06W0301 -> H06E0304` at col 1, 4 arcs) and no hop-3 stub arc; no rule beyond the existing col-hops == -1 one is derivable from it. Needs a Diamond build routing hop-3 H06 near the die edge.
 - The rebuild still collapses: output pads stay constant while the clock tree, edge stubs and EBR read outputs are open.
+
+## 2026-10-26 re-measure (label V07, branch of main c20155649 + guard rollout)
+
+Rebuild = `aw2_roundtrip.py` (Diamond LSE + map + PAR + bitgen, compare to the original decode).
+
+| | session start | now |
+|---|---|---|
+| gate no-driver wires / DB undriven nets | 270 / 364 | 36 / 118 |
+| nets / FFs | 4,139 / 1,101 | 3,955 / 1,105 |
+| rebuild LUT INIT: matched / missing / extra / wrong | 4 / 1,253 / 0 / 0 (0.32%) | 229 / 1,028 / 44 / 0 (17.60%) |
+| rebuild registers (original 1,070) | 5 | 205 |
+| rebuild LUT4 (original 1,257) | 4 | 273 |
+| LSE warnings | 309 | 96 |
+
+- Undriven-and-read nets at start (258): 158 global-spine (1,101 FF.CLK + 144 FF.LSR + 126 FF.CE pins), 55 edge H06 turnaround, 33 edge H06 stub, 12 other. Now 25: 10 clock nets (PLL/DCC roots, hard IP not emitted, 1,105 FF.CLK pins), 15 other (EBR read outputs `JF`/`JQ`, slice `F0`/`HF0W` fast connects).
+- Fixed from oracle evidence (docs/machxo2-diamond-oracle.md): H-span fold at the die edge (88 nets), secondary network CE/LSR/fabric tracks (148 nets), CENTER clock mux joint decode, cross-tile CCU2 carry (`n_luts` 2,637 -> 2,689: 52 more CCU2 half-slices now emit sum/carry logic), FF GSR default.
+- Remaining collapse of the rebuild (LSE keeps 205 of 1,070 registers): logic that only reaches hard IP is pruned. Not emitted: 7 EBR (0 of 7 mapped), PLL (0 of 1), IOLOGIC DDR inputs (15 ADC pads "no load"), output DDR (ADC_ENC, DAC_CLK "no driver"); the EFB is emitted.
+- Counts in the first table are change detectors; `n_luts` above 1,280 still measures lifter faults.
