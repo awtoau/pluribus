@@ -162,6 +162,8 @@ def learn(dec, names):
     cooc = collections.defaultdict(collections.Counter)
     act = collections.Counter()           # block key -> activations
     occ = collections.Counter()           # (class, dst rel key) -> occurrences over every LAB tile of the class
+    poshit = collections.defaultdict(collections.Counter)   # block key -> learner dst whose mux holds the block's bits
+    bycls = learner_index()
     labtiles = [(x, y) for x, k in dec.g.kind.items() if k == "LAB" for y in range(1, dec.g.ymax)]
     for di, name in enumerate(names):
         d = cc.load(name)
@@ -188,11 +190,27 @@ def learn(dec, names):
                 for dy in (-1, 0, 1):
                     for dk in bytile.get((x + dx, y + dy), ()):
                         c[f"{dk}|{dx}|{dy}"] += 1
+            if bk not in poshit:
+                rel = {tuple(map(int, q.split(","))) for q in key.split("|")}
+                hits = set()
+                for dx, dy in ((0, 0), (-1, 0), (0, 1), (-1, 1)):
+                    tx, ty = x + dx, y + dy
+                    if tx not in dec.g.kind or not 0 <= ty <= dec.g.ymax:
+                        continue
+                    for (typ, s, i), (ax, ay), mux in bycls.get(rl.tile_class(dec.g, tx, ty, 8), []):
+                        if tx + ax == x and ty + ay == y and rel <= mux:
+                            hits.add(f"{typ}|{s}|{i}|{dx}|{dy}")
+                poshit[bk].update(hits)
         if di % 10 == 9:
             D.log.info("learn A: %d designs, %d block keys (%.0fs)", di + 1, len(act), time.time() - t0)
-    # a block names a destination iff they appear together nearly always, in BOTH directions
-    bmap, amb = {}, 0
+    # a block names a destination: the learner mux holding its bits when unique (LI / R4 / C4 positions are
+    # exact per class), else the dst that appears together with it nearly always, in BOTH directions
+    bmap, amb, bypos = {}, 0, 0
     for bk, n in act.items():
+        if len(poshit.get(bk, ())) == 1:
+            bmap[bk] = next(iter(poshit[bk]))
+            bypos += 1
+            continue
         if n < 3 or not cooc[bk]:
             continue
         cls = bk.split("|", 1)[0]
@@ -201,7 +219,8 @@ def learn(dec, names):
             bmap[bk] = good[0][1]
         elif good:
             amb += 1
-    D.log.info("block map: %d keys (%d ambiguous, %d under-sampled)", len(bmap), amb, sum(1 for n in act.values() if n < 3))
+    D.log.info("block map: %d keys (%d by learner position, %d ambiguous, %d under-sampled)", len(bmap), bypos, amb,
+               sum(1 for n in act.values() if n < 3))
     alias = collections.defaultdict(collections.Counter)
     unnamed = collections.defaultdict(collections.Counter)
     for di, name in enumerate(names):
