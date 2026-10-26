@@ -271,7 +271,7 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
   - lane 1 = `f8 00 20 0d ff` on every EP4CGX150 build (DF31C7, CF23C8, DF27I7) and `f8 00 a0 0d ff` on every EP4CGX110 build (DF31C7, CF23C7, DF27C8). Lane 1 bit 23 = die variant (STINGRAY4 vs STINGRAY4_V1: full die vs fused-down 109,424-LE variant). It does not follow package, speed grade or temperature grade.
   - lane 0 = `00 73|74 xx yy ff`: byte 2..3 change per build (usercode / checksum); byte 1 = 0x74 on the F484 (CF23) builds and 0x73 on the F672 / F896 builds, so it follows package.
   - lanes 2..3 identical across all six builds.
-  - A third-party compressed image with lane 1 = `c0 00 20 0d ff`-equivalent bits 0..23 = 0x200dff is therefore the EP4CGX150 variant (full die), not GX110.
+  - A third-party compressed image has lane 1 = `c0 00 20 0d ff` (first byte differs: option bits; bytes 1..3 = `00 20 0d` as on GX150, GX110 has `00 a0 0d`), so it is the EP4CGX150 variant (full die), not GX110.
 - stingray4 hdr.ddb payload (107 KB): chip description database (device name "EP4CGX150", family, node-type names such as LE_BUFFER, LAB_LINE, C16, GLOBAL_CLK_H; file names `stingray4.ww19.asm.rba`, `stingray4_dirt.xml`). It carries no .rbf header fields.
 - icname: 729,374 name records `u32 len, name, u32 flag` (names like `H4R90C119RT[0]`, `V4R..UP[..]`, `RCLKR..`, `LEIM:R..C..S..I..|...`), then a second table keyed `XQ4/Q4_...`. Names use the vendor R/C grid, not the RCF X/Y frame.
 - asm (461 MB for stingray4): header `u32 4, u32 N=1,802,443, u32 N`, then 1.2 MB of zeros, then variable-width records. Measured so far:
