@@ -172,10 +172,10 @@ def run(cmd, cwd, logger, timeout=180):
     all faster than fit. On expiry: subprocess.run raises TimeoutExpired,
     caught by the caller, which logs the command and timeout value."""
     logger.info("+ %s", " ".join(str(c) for c in cmd))
-    try:
-        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        logger.error("TIMEOUT after %ds: %s", timeout, " ".join(str(c) for c in cmd))
+    import heavy_guard
+    # overall 3x measured cold worst per tool, stall 60 s: heavy_guard.OVERALL_S (#122)
+    result = heavy_guard.guarded(cmd, "fpll_fuzz", logger, overall_s=max(timeout, heavy_guard.overall_for(cmd)), cwd=cwd)
+    if result.timed_out:
         return None
     if result.returncode != 0:
         logger.error("FAILED (rc=%d): %s\n--- stdout tail ---\n%s\n--- stderr tail ---\n%s",

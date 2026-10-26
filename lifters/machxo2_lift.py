@@ -382,16 +382,59 @@ class MachXO2Lift:
         "EBRG": re.compile(r"G_EBRG\dCLK\d"),
         "ECLKCIB": re.compile(r"G_J?ECLKCIB[TB]\d"),
         "ECLKBRIDGE": re.compile(r"G_CLK\d_\d_ECLKBRIDGECS"),
+        # secondary (control / high-fanout) network spines + their CIB feeds: one node each
+        "VSRX": re.compile(r"G_VSRX0[0-7]00"),
+        "SNETCIB": re.compile(r"G_JSNETCIB(?:MID[0-7]|[BLRT][01])"),
     }
+
+    # Secondary network below the spine (LCMXO2-1200 only; docs/machxo2-diamond-oracle.md,
+    # "Secondary network").  Diamond routes spine VSRX0k00 -> HSSX -> VSTX0200 (k<4) /
+    # VSTX0300 (k>=4) -> HSBX0000 / HSBX0400 -> a 4-column group wire (HSBX0001/0201/0401/0601
+    # on Diamond-odd columns, HSBX0101/0301/0501/0701 on Diamond-even) -> CE / LSR / fabric.
+    _VSTX = re.compile(r"G_VSTX0([23])00(?:_B2T)?")
+    # The left-edge column also has VSTX0600 (spine 2) / VSTX0700 (spine 6) feeding taps HSBX0100 /
+    # HSBX0500, which drive the 0201 / 0601 group wires anchored at Diamond column 2.
+    _VSTX_EDGE = {"G_VSTX0600": 2, "G_VSTX0700": 6}
+    _HSB_EDGE_TAP = {"0000": "0100", "0400": "0500"}
+    # track -> (driving tap wire, anchor residue mod 4 in Diamond columns).  A tile at Diamond
+    # column C sees ONE wire of each track, anchored at A = 4*((C - a + 2)//4) + a (it covers
+    # columns A-2..A+1) and driven by the HSBX0000/0400 tap at Diamond column A-1.
+    _HSB_TRACK = {"0001": ("0000", 3), "0201": ("0000", 1), "0101": ("0000", 0), "0301": ("0000", 2),
+                  "0401": ("0400", 3), "0601": ("0400", 1), "0501": ("0400", 0), "0701": ("0400", 2)}
+    _HSB = re.compile(r"G_HSBX(\d{4})")
+    _KEEP = re.compile(r"^(?:NORTH|SOUTH|EAST|WEST)KEEP$")
+    _PAD_WIRE = re.compile(r"JPADD[IO][A-D]_PIO$")
 
     def _global_family_key(self, row, col, name):
         if not name.startswith("G_"):
             return None
+        from native_trellis.geometry import CENTER_MAP
+        crow, ccol = CENTER_MAP[(self.chip.get_max_row(), self.chip.get_max_col())]
         for rx in self._CENTER_FAMILIES.values():
             if rx.fullmatch(name):
-                from native_trellis.geometry import CENTER_MAP
-                crow, ccol = CENTER_MAP[(self.chip.get_max_row(), self.chip.get_max_col())]
                 return (ccol, crow, name)
+        if self.device != "LCMXO2-1200":
+            return None
+        if name in self._VSTX_EDGE:
+            return (ccol, crow, f"G_VSRX0{self._VSTX_EDGE[name]}00")
+        mv = self._VSTX.fullmatch(name)
+        if mv:   # the column's VSTX wire is spine (col+3)%4 (+4 on VSTX0300)
+            return (ccol, crow, f"G_VSRX0{(col + 3) % 4 + (4 if mv.group(1) == '3' else 0)}00")
+        mh = self._HSB.fullmatch(name)
+        if mh:
+            t = mh.group(1)
+            if t in ("0000", "0400", "0100", "0500"):
+                return (col, row, name)
+            tr = self._HSB_TRACK.get(t)
+            if tr is None:
+                return None
+            base, res = tr
+            c_d = col + 1                                    # Diamond column
+            anchor = 4 * ((c_d - res + 2) // 4) + res
+            dc = anchor - 2                                  # tap column, graph numbering
+            if dc < 0 and res == 1:                          # 0201 / 0601 at the left edge
+                return (0, row, f"G_HSBX{self._HSB_EDGE_TAP[base]}")
+            return (dc, row, f"G_HSBX{base}") if 0 <= dc <= self.chip.get_max_col() else None
         return None
 
     def gkey(self, row, col, name):
@@ -462,45 +505,22 @@ class MachXO2Lift:
             max_col  = self.chip.get_max_col()
             max_row  = self.chip.get_max_row()
 
-            # Right-edge horizontal span: an off-right-edge E{N}_H##{E|W}{idx}
-            # stub (not H06) is the opposite-direction H## wire of the same
-            # index at max_col.  Other off-die names take the walk-back below.
-            # Kept: removing it raises net faults (#119, ablation).
-            if is_east and col + hops > max_col and col == max_col:
-                hme = re.match(r'^E\d+_H(\d+)([EW])(\d+)$', name)
-                if hme and hme.group(1) != "06":
-                    flip = "W" if hme.group(2) == "E" else "E"
-                    cname = f"H{hme.group(1)}{flip}{hme.group(3)}"
-                    gc = self.rg.globalise_net(row, max_col, cname)
+            # Horizontal span whose hop leaves the die.  A span folds at the edge:
+            # the wire named D, segment k at off-die position p is the SAME wire as the
+            # opposite-direction one (same index+segment) at the mirror column
+            # q = -1 - p (left) or 2*max_col + 1 - p (right).  Diamond's turnaround arcs
+            # (H06W0000@C1 -> H06E0003@C3, H06E0001 -> H06W0004, ...) fit this for every
+            # off-die distance, H02 and H06 (docs/machxo2-diamond-oracle.md, #119).
+            mh = re.match(r'^[EW]\d+_H(\d+)([EW])(\d+)$', name)
+            if mh and ((is_east and col + hops > max_col) or (wire[0] == 'W' and col - hops < 0)):
+                p = col + hops if is_east else col - hops
+                q = 2 * max_col + 1 - p if p > max_col else -1 - p
+                if 0 <= q <= max_col:
+                    flip = "W" if mh.group(2) == "E" else "E"
+                    gc = self.rg.globalise_net(row, q, f"H{mh.group(1)}{flip}{mh.group(3)}")
                     if gc.loc.x >= 0 and gc.loc.y >= 0:
-                        return (gc.loc.x, gc.loc.y, gc.id)
-
-            # Symmetric guard for W-direction wires at the left edge.
-            # h_left_flip and the left-stub drop below are kept: removing either
-            # raises net faults (#119, ablation).
-            if not is_east and wire[0] == 'W' and col - hops < 0:
-                if col == 0:
-                    # General left-edge horizontal span (net_merge_gap defect):
-                    # an off-left-edge W{N}_H##{E|W}{idx} stub is the same
-                    # physical wire as the opposite-direction H## wire of the
-                    # same index at col 0 (mirror of the top-edge vertical fix,
-                    # on the column axis).  Remap it onto that continuation.
-                    hmw = re.match(r'^W\d+_H(\d+)([EW])(\d+)$', name)
-                    if hmw and hmw.group(1) != "06":
-                        flip = "E" if hmw.group(2) == "W" else "W"
-                        cname = f"H{hmw.group(1)}{flip}{hmw.group(3)}"
-                        gc = self.rg.globalise_net(row, 0, cname)
-                        if gc.loc.x >= 0 and gc.loc.y >= 0:
-                            return (gc.loc.x, gc.loc.y, gc.id)
-                elif col - hops == -1:
-                    # H06W stub 1 col off the die: Diamond turns it around at
-                    # the edge (H06W{i}01 -> H06E{i}04 at C2, #105); it is the
-                    # H06E wire of the same index+segment at col 0.
-                    mw = re.match(r'^W\d_H06W(\d+)$', name)
-                    if mw:
-                        gc = self.rg.globalise_net(row, 0, f"H06E{mw.group(1)}")
-                        if gc.loc.x >= 0 and gc.loc.y >= 0:
-                            return self._v02_alias(gc.loc.x, gc.loc.y, gc.id)
+                        return self._v02_alias(gc.loc.x, gc.loc.y, gc.id)
+            if wire[0] == 'W' and col - hops < 0:
                 return None
 
             # Vertical span whose hop runs off the top/bottom edge.
@@ -754,6 +774,17 @@ class MachXO2Lift:
                       if e.get("MODE") == "CCU2"]
         d.plc_carry_applied = self.apply_plc_fixed_conns(
             dsu, self.load_plc_carry_conns(), sorted(set(ccu2_tiles)))
+        # Across a tile boundary the chain runs slice D's FCO -> E1_HFIE0000 -> next tile's FCI
+        # (slice A).  Both slices must be CCU2: a lone chain end must not weld to whatever sits
+        # next to it (the 77-tile fusion in `_load_plc_conns`).  Diamond routes exactly this
+        # (R5C18_FCO -> R5C19_HFIE0000 -> R5C19_FCI, constructs adder/counter/sub/lt/eq).
+        ccu2 = {(r, c, sl) for (r, c, sl), e in pc.slice_enum.items() if e.get("MODE") == "CCU2"}
+        for (r, c, sl) in sorted(ccu2):
+            if sl == "D" and (r, c + 1, "A") in ccu2:
+                ko, ki = self.gkey(r, c, "FCO"), self.gkey(r, c, "E1_HFIE0000")
+                if ko is not None and ki is not None:
+                    dsu.union(ko, ki)
+                    d.plc_carry_applied += 1
 
         # Wide-mux tree.  Unlike the carry chain there is no config bit saying
         # a slice uses its muxes, so this must go in at every PLC tile; the
@@ -1122,7 +1153,7 @@ class MachXO2Lift:
                         "lsr": net_or(pins.get("LSR"), "1'b0"),
                         "regset": senum.get(f"REG{j}.REGSET", enum_def[f"SLICE{sl}.REG{j}.REGSET"]),
                         "sd": sd,
-                        "gsr": senum.get("GSR", "DISABLED"),
+                        "gsr": senum.get("GSR", enum_def[f"SLICE{sl}.GSR"]),   # absent = bits.db default (ENABLED)
                         # tile enum LSR{slice}.SRMODE: ASYNC | LSR_OVER_CE
                         "srmode": pc.enums.get((r, c), {}).get(
                             f"LSR{'ABCD'.index(sl)}.SRMODE",
@@ -1441,6 +1472,14 @@ class MachXO2Lift:
     _GLOBAL_NAME = re.compile(r"^(G|L|R|U|D|BRANCH)_")
     _DCC_IN = re.compile(r"^G_CLKI(\d)_DCC$")
 
+    def _density_name(self, n):
+        """DB fixed conns can carry a `<density>_` prefix (`1200_S5_JB5`): keep it for this
+        device, None for another density."""
+        m = re.match(r"^(\d+)_(.*)$", n)
+        if not m:
+            return n
+        return m.group(2) if self.device.endswith("-" + m.group(1)) else None
+
     def apply_clock_fixed_conns(self, dsu):
         """Union the device-DB `.fixed_conn`s of the clock tree (#109):
         - every conn naming a G_/L_/R_/U_/D_/BRANCH_ global, except the oscillator
@@ -1461,7 +1500,17 @@ class MachXO2Lift:
             for sink, src in fixed:
                 if self._OSC.match(sink) or self._OSC.match(src):
                     continue
+                if self._HSB.match(sink) or self._HSB.match(src):
+                    continue    # group wires are keyed in _global_family_key
+                if self._KEEP.match(sink) or self._KEEP.match(src):
+                    continue    # edge dummy terminations: they tie unrelated spines together
+                raw = (sink, src)
+                sink, src = self._density_name(sink), self._density_name(src)
+                if sink is None or src is None:
+                    continue
                 isg = self._GLOBAL_NAME.match(sink) or self._GLOBAL_NAME.match(src)
+                if (sink, src) != raw and (self._PAD_WIRE.search(sink) or self._PAD_WIRE.search(src)):
+                    continue    # EFB <- pad wiring: would make every pad-used design carry a stray pad node
                 if not isg and ttype == "PLC":
                     continue
                 ks, kd = self.gkey(row, col, sink), self.gkey(row, col, src)

@@ -62,7 +62,8 @@ def main():
             and f.net not in (select q from ffs where bitstream=:b and q is not null)
             and f.net not in (select out_net from net_fanout where bitstream=:b and out_net is not null)
             and f.net not in (select net_in from pad_map where bitstream=:b and net_in is not null)
-            and f.net not in (select net from efb_ports where bitstream=:b and direction='out')""")
+            and f.net not in (select net from efb_ports where bitstream=:b and direction='out')
+            and f.net not in (select net from ebr_ports where bitstream=:b and role='read' and net is not null)""")
         und = [r[0] for r in c.execute(q, {"b": b})]
     lift = MachXO2Lift(a.device)
     pc = lift.parse_config(a.config)
@@ -98,9 +99,17 @@ def main():
             by["ghost-D (EBR OUTREG bypass)"].append(n)
         else:
             by["renamed/not-in-dsu"].append(n)
+    with db.engine().connect() as c:
+        pins = defaultdict(Counter)
+        for n, ct, pin in c.execute(text("select net, cell_type, pin from net_fanout where bitstream=:b"), {"b": b}):
+            pins[n][f"{ct}.{re.sub(r'[0-9]+$', '#', pin)}"] += 1
     log.info("undriven-and-read nets: %d", len(und))
     for cls, ns in sorted(by.items(), key=lambda x: -len(x[1])):
         log.info("  %-28s %d", cls, len(ns))
+        tot = Counter()
+        for n in ns:
+            tot.update(pins[n])
+        log.info("      sink pins: %s", dict(tot.most_common(8)))
         for n in ns[:a.list]:
             log.info("      %s  roots(col,row,wire)=%s", n, roots.get(n, [])[:4])
     return 0

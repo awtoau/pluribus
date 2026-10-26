@@ -193,8 +193,9 @@ def build_tb(tb, plan, frames, run_ns, ff_names, sck_half_ns, tie=None, undriven
 
 def undriven_wires(rtl_path, top):
     """Wires yosys `check` reports as used-but-undriven (the unrecovered part of the netlist)."""
-    r = subprocess.run(["yosys", "-p", f"read_verilog -sv {rtl_path}; hierarchy -check -top "
-                        f"{top}; proc; check"], capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(["yosys", "-p", f"read_verilog -sv {rtl_path}; hierarchy -check -top "
+                             f"{top}; proc; check"], "yosys check")  # #122
     return sorted(set(re.findall(r"Wire \S*?\.\\?(\S+) is used but has no driver",
                                  r.stdout + r.stderr)))
 
@@ -202,10 +203,9 @@ def undriven_wires(rtl_path, top):
 def run_vvp(vvp, cwd, run_us, log):
     limit = max(VVP_FLOOR_S, VVP_S_PER_US * run_us)
     t0 = time.monotonic()
-    try:
-        r = subprocess.run(["vvp", str(vvp), "+efb_trace"], cwd=str(cwd), capture_output=True,
-                           text=True, timeout=limit)
-    except subprocess.TimeoutExpired:
+    import heavy_guard
+    r = heavy_guard.guarded(["vvp", str(vvp), "+efb_trace"], "vvp", log, overall_s=limit, cwd=str(cwd))  # #122
+    if r.timed_out:
         log.error("vvp exceeded %.0f s (limit = max(%d, %.1f s/us x %g us)) -- killed",
                   limit, VVP_FLOOR_S, VVP_S_PER_US, run_us)
         return None
@@ -286,7 +286,8 @@ def main():
     cmd = ["iverilog", "-g2012", "-o", str(vvp), "-s", "aw2_tb", str(work / "rtl.v"),
            str(REPO / "scripts/efb_open_model.v"), str(REPO / "scripts/pll_model.v"),
            str(work / "tb.v")]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, "iverilog", log)  # #122
     if r.returncode != 0:
         log.error("COMPILE FAILED\n%s", (r.stderr or r.stdout)[-3000:])
         return 1

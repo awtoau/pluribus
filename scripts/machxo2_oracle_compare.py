@@ -235,18 +235,12 @@ class Ctx:
                 return "global_drop"       # chip-global clock net: no fabric key
             return "unresolved_drop"
         hops, d = int(m.group(1)), name[0]
-        if d == "E" and col + hops > self.max_col and col == self.max_col:
-            mh = re.match(r"^E\d+_H(\d+)([EW])(\d+)$", name)
-            if mh and mh.group(1) != "06":
-                return "h_right_flip"
-        if d == "W" and col - hops < 0:
-            if col == 0:
-                mh = re.match(r"^W\d+_H(\d+)([EW])(\d+)$", name)
-                if mh and mh.group(1) != "06":
-                    return "h_left_flip"
-            return "left_stub_drop"
         if (d == "E" and col + hops > self.max_col) or (d == "W" and col - hops < 0):
-            return "walkback_hstub"   # off-die E/W name with no rule: generic walk-back
+            mh = re.match(r"^[EW]\d+_H(\d+)([EW])(\d+)$", name)
+            if mh:                      # span folds at the edge: mirror column, opposite direction
+                p = col + hops if d == "E" else col - hops
+                return f"h_fold_{mh.group(1)}_{'R' if p > self.max_col else 'L'}"
+            return "walkback_hstub" if d == "E" else "left_stub_drop"
         mvs = re.match(r"^[NS]\d+_V(\d+)([NS])(\d+)$", name)
         if mvs and ((d == "N" and row - hops < 0)
                     or (d == "S" and row + hops > self.max_row)):
@@ -459,17 +453,23 @@ def compare_target(target, targets_dir, out_root):
     for n in O["nets"]:
         roots = set()
         mapped = 0
+        rw = defaultdict(list)
+        rw_pad = defaultdict(list)
         for w in n["wires"]:
             i = wmap(w)
             if i["exists"] or i["dsu"] is not None:
                 mapped += 1
                 if i["dsu"] is not None and i["dsu"] in dsu.p:
-                    roots.add(dsu.find(i["dsu"]))
-        net_roots[n["name"]] = (roots, mapped)
+                    # pad pins are not fabric nodes: a stray pad-pin DSU class must not split a net
+                    (rw_pad if _PAD_INTERNAL.match(P.split_wire(w)[2]) else rw)[dsu.find(i["dsu"])].append(w)
+        if not rw:
+            rw = rw_pad
+        roots = set(rw)
+        net_roots[n["name"]] = (roots, mapped, rw)
         for rt in roots:
             root_nets[rt].add(n["name"])
     for n in O["nets"]:
-        roots, mapped = net_roots[n["name"]]
+        roots, mapped, rw = net_roots[n["name"]]
         merged = sorted({x for rt in roots for x in root_nets[rt]} - {n["name"]})
         if not n["wires"]:
             v = "ORACLE_ONLY"           # unrouted in Diamond (none in corpus)
@@ -485,6 +485,9 @@ def compare_target(target, targets_dir, out_root):
         rec = {"net": n["name"], "verdict": v, "lift_classes": len(roots),
                "merged_with": merged[:10],
                "lift_nets": sorted({design.net_name.get(rt, "?") for rt in roots})[:10]}
+        if len(roots) > 1:   # which Diamond wires fell into which lift class (smallest classes first)
+            rec["class_wires"] = [[design.net_name.get(rt, "?"), len(ws), ws[:4]]
+                                  for rt, ws in sorted(rw.items(), key=lambda kv: len(kv[1]))[:6]]
         if v != "MATCH":
             rec["unmapped_wires"] = [w for w in n["wires"] if not wmap(w)["exists"]][:20]
         res["nets"].append(rec)
@@ -509,7 +512,7 @@ def compare_target(target, targets_dir, out_root):
             gn[fk]["intact"] += ok
     res["global_nets"] = dict(gn)
     dnet_to_lift = {}
-    for name, (roots, _m) in net_roots.items():
+    for name, (roots, _m, _rw) in net_roots.items():
         if len(roots) == 1:
             dnet_to_lift[name] = design.net_name.get(next(iter(roots)))
 

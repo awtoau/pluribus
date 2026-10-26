@@ -202,8 +202,7 @@ def build_one(name, src, device, log):
          os.path.join(DIAMOND, "ispfpga", "bin", "lin64"),
          env.get("LD_LIBRARY_PATH", "")])
 
-    r = subprocess.run([DIAMONDC, tcl], cwd=d, capture_output=True, text=True,
-                       env=env)
+    r = heavy_guard.guarded([DIAMONDC, tcl], "diamondc", cwd=d, env=env)  # #122
     logtxt = (r.stdout or "") + (r.stderr or "")
     with open(os.path.join(d, "diamond.log"), "w") as fh:
         fh.write(logtxt)
