@@ -118,7 +118,7 @@ class Decoder:
         if self.asm is not None:            # exact asm tables first; the learner only where they have no entry
             got = self.asm.sources(plane, key, x, y)
             if got:
-                return (got, "ok") if len(got) == 1 else (got, "ambiguous pattern")
+                return (got, "ok") if len(got) == 1 else (got, "asm alias")   # one wire, several RCF names
         for t in self.tables:
             g = t.groups.get(f"{rl.tile_class(geom, x, y, t.col_phase, key[0])}|{'|'.join(map(str, key))}")
             if g is None:

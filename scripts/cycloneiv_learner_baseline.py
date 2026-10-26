@@ -44,7 +44,7 @@ def score_design_alias(name, dec, geom):
                 c["missing"] += 1
                 why[(reason, bkey[0])] += 1
                 ok_net = False
-            elif want in cands and (len(cands) == 1 or reason == "ambiguous pattern" and dec.asm is not None):
+            elif want in cands and (len(cands) == 1 or reason == "asm alias"):
                 c["matched"] += 1
                 why[("matched", bkey[0])] += 1
             elif len(cands) > 1:
