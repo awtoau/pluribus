@@ -454,13 +454,17 @@ def compare_target(target, targets_dir, out_root):
         roots = set()
         mapped = 0
         rw = defaultdict(list)
+        rw_pad = defaultdict(list)
         for w in n["wires"]:
             i = wmap(w)
             if i["exists"] or i["dsu"] is not None:
                 mapped += 1
                 if i["dsu"] is not None and i["dsu"] in dsu.p:
-                    roots.add(dsu.find(i["dsu"]))
-                    rw[dsu.find(i["dsu"])].append(w)
+                    # pad pins are not fabric nodes: a stray pad-pin DSU class must not split a net
+                    (rw_pad if _PAD_INTERNAL.match(P.split_wire(w)[2]) else rw)[dsu.find(i["dsu"])].append(w)
+        if not rw:
+            rw = rw_pad
+        roots = set(rw)
         net_roots[n["name"]] = (roots, mapped, rw)
         for rt in roots:
             root_nets[rt].add(n["name"])

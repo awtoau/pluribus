@@ -392,6 +392,10 @@ class MachXO2Lift:
     # VSTX0300 (k>=4) -> HSBX0000 / HSBX0400 -> a 4-column group wire (HSBX0001/0201/0401/0601
     # on Diamond-odd columns, HSBX0101/0301/0501/0701 on Diamond-even) -> CE / LSR / fabric.
     _VSTX = re.compile(r"G_VSTX0([23])00(?:_B2T)?")
+    # The left-edge column also has VSTX0600 (spine 2) / VSTX0700 (spine 6) feeding taps HSBX0100 /
+    # HSBX0500, which drive the 0201 / 0601 group wires anchored at Diamond column 2.
+    _VSTX_EDGE = {"G_VSTX0600": 2, "G_VSTX0700": 6}
+    _HSB_EDGE_TAP = {"0000": "0100", "0400": "0500"}
     # track -> (driving tap wire, anchor residue mod 4 in Diamond columns).  A tile at Diamond
     # column C sees ONE wire of each track, anchored at A = 4*((C - a + 2)//4) + a (it covers
     # columns A-2..A+1) and driven by the HSBX0000/0400 tap at Diamond column A-1.
@@ -411,13 +415,15 @@ class MachXO2Lift:
                 return (ccol, crow, name)
         if self.device != "LCMXO2-1200":
             return None
+        if name in self._VSTX_EDGE:
+            return (ccol, crow, f"G_VSRX0{self._VSTX_EDGE[name]}00")
         mv = self._VSTX.fullmatch(name)
         if mv:   # the column's VSTX wire is spine (col+3)%4 (+4 on VSTX0300)
             return (ccol, crow, f"G_VSRX0{(col + 3) % 4 + (4 if mv.group(1) == '3' else 0)}00")
         mh = self._HSB.fullmatch(name)
         if mh:
             t = mh.group(1)
-            if t in ("0000", "0400"):
+            if t in ("0000", "0400", "0100", "0500"):
                 return (col, row, name)
             tr = self._HSB_TRACK.get(t)
             if tr is None:
@@ -426,6 +432,8 @@ class MachXO2Lift:
             c_d = col + 1                                    # Diamond column
             anchor = 4 * ((c_d - res + 2) // 4) + res
             dc = anchor - 2                                  # tap column, graph numbering
+            if dc < 0 and res == 1:                          # 0201 / 0601 at the left edge
+                return (0, row, f"G_HSBX{self._HSB_EDGE_TAP[base]}")
             return (dc, row, f"G_HSBX{base}") if 0 <= dc <= self.chip.get_max_col() else None
         return None
 
@@ -1145,7 +1153,7 @@ class MachXO2Lift:
                         "lsr": net_or(pins.get("LSR"), "1'b0"),
                         "regset": senum.get(f"REG{j}.REGSET", enum_def[f"SLICE{sl}.REG{j}.REGSET"]),
                         "sd": sd,
-                        "gsr": senum.get("GSR", "DISABLED"),
+                        "gsr": senum.get("GSR", enum_def[f"SLICE{sl}.GSR"]),   # absent = bits.db default (ENABLED)
                         # tile enum LSR{slice}.SRMODE: ASYNC | LSR_OVER_CE
                         "srmode": pc.enums.get((r, c), {}).get(
                             f"LSR{'ABCD'.index(sl)}.SRMODE",

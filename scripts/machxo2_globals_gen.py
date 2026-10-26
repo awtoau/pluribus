@@ -50,6 +50,7 @@ def shift(name, clk, n, din, ctl):
 def design(kind):
     pins = []
     ports = []
+    lpf_extra = []
 
     def inp(n):
         ports.append(f"input wire {n}")
@@ -100,14 +101,31 @@ def design(kind):
         body += ("always @(posedge clk) r <= {r[238:0], d} ^ ({60{x0}} & r[239:180]) ^ ({60{x1}} & r[179:120])"
                  " ^ ({60{x2}} & r[119:60]) ^ ({60{x3}} & r[59:0]) ^ {r[238:0], 1'b0};\n")
         body += "reg qr; always @(posedge clk) qr <= r[239];\nassign q = qr;\n"
+    elif kind.startswith("secwide"):
+        var = int(kind[len("secwide"):])
+        for i in range(8):
+            inp(f"ce{i}"); inp(f"rs{i}")
+        inp("d"); outp("q")
+        sites = []
+        for r in (3, 4, 8, 9):
+            for c in range(2, 22):
+                for k, sl in enumerate("ABCD"):
+                    sites.append((r, c, sl, (k + 4 * (r in (4, 9)) + var * c) % 8))
+        prev = "d"
+        for n, (r, c, sl, i) in enumerate(sites):
+            body += (f"wire q{n};\nFD1P3IX f{n} (.D({prev}), .SP(ce{i}), .CK(clk), .CD(rs{i}), .Q(q{n}));\n")
+            lpf_extra.append(f'LOCATE COMP "f{n}" SITE "R{r}C{c}{sl}";\n')
+            prev = f"q{n}"
+        body += f"assign q = {prev};\n"
     else:
         raise SystemExit(kind)
     v = "module top (\n    " + ",\n    ".join(ports) + "\n);\n" + body + "endmodule\n"
     lpf = "".join(f'LOCATE COMP "{n}" SITE "{s}";\nIOBUF PORT "{n}" IO_TYPE=LVCMOS33;\n' for n, s in pins)
-    return v, lpf
+    return v, lpf + "".join(lpf_extra)
 
 
-KINDS = sys.argv[1:] or ["pll3dom", "pll3dom_x", "clk4pad", "hsctl", "sec8", "fanout"]
+KINDS = sys.argv[1:] or ["pll3dom", "pll3dom_x", "clk4pad", "hsctl", "sec8", "fanout",
+                         "secwide0", "secwide1", "secwide2"]
 
 
 def main():

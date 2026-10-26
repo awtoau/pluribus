@@ -76,6 +76,18 @@ def test_hsbx_group_wires_resolve_to_their_tap(L):
     assert L.gkey(4, 12, "G_HSBX0201") == (11, 4, "G_HSBX0000")
 
 
+def test_left_edge_tracks(L):
+    # Diamond: R3C1_VSTX0600 -> R3C1_HSBX0100 -> R3C2_HSBX0201 (CE track at C2); VSTX0600 <- HSSX0200
+    from native_trellis.geometry import CENTER_MAP
+    crow, ccol = CENTER_MAP[(L.chip.get_max_row(), L.chip.get_max_col())]
+    assert L.gkey(3, 0, "G_VSTX0600") == (ccol, crow, "G_VSRX0200")
+    assert L.gkey(3, 0, "G_VSTX0700") == (ccol, crow, "G_VSRX0600")
+    assert L.gkey(3, 1, "G_HSBX0201") == (0, 3, "G_HSBX0100")
+    assert L.gkey(3, 1, "G_HSBX0601") == (0, 3, "G_HSBX0500")
+    # the ordinary left-edge LSR track still comes from the VSTX0200 tap
+    assert L.gkey(3, 1, "G_HSBX0301") == (0, 3, "G_HSBX0000")
+
+
 def test_density_prefix_is_stripped_only_for_this_device(L):
     assert L._density_name("1200_S5_JB5") == "S5_JB5"
     assert L._density_name("2000_S6_JB5") is None
