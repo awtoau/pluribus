@@ -1,0 +1,7 @@
+top = "c_pllpin_vnd_l17_1"
+purpose = "altera_pll 50 MHz x2/1, refclk on pin L17 [vendor]"
+exercises = ["pll", "fpll", "refclk_pin"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001", "set_location_assignment PIN_L17 -to refclk"]
+construct = "pllpin"
+variant = "L17"
+width = 1

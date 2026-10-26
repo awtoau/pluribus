@@ -384,6 +384,26 @@ def pll(n, mult, div, outs):
             f'.refclk(refclk), .fboutclk(), .fbclk(1\'b0));\nendmodule\n')
 
 
+# Refclk-pin designs (#112 loose end): same PLL as m2d1, refclk on a chosen pin (+ optional PLL site).
+# Pins = the `clkin` lists of mistral data/e50f-fpll.txt for package U19 (index = position in the list).
+PLL_PINS = (
+    ("G13", None), ("T15", None), ("U13", None), ("L17", None), ("K7", None), ("G10", None),
+    ("P9", None), ("R10", None),
+    ("H10", "X0_Y38_N0"), ("G13", "X0_Y38_N0"), ("U13", "X0_Y1_N0"), ("T15", "X0_Y1_N0"),
+)
+
+
+def pll_pin_designs():
+    out = []
+    for pin, site in PLL_PINS:
+        nm = f"c_pllpin_vnd_{pin.lower()}{'_' + site.lower()[:site.index('_N')].replace('_', '') if site else ''}_1"
+        qsf = [f"set_location_assignment PIN_{pin} -to refclk"]
+        if site:
+            qsf.append(f"set_location_assignment FRACTIONALPLL_{site} -to {{p|general[0].gpll}}")
+        out.append((nm, pin, qsf))
+    return out
+
+
 # construct -> (generator, widths, variants, purpose, exercises)
 SIMPLE = {
     "counter": (counter, WIDTHS, "free-running up counter", ["counter", "carry"]),
@@ -485,6 +505,14 @@ def main():
         (d / "design.toml").write_text(toml(
             nm, "pll", f"m{mult}d{div}", outs, f"altera_pll 50 MHz x{mult}/{div}, {outs} output(s), counters on outputs [vendor]",
             ["pll", "fpll"], "vnd"))
+        names.append(nm)
+    for nm, pin, qsf in pll_pin_designs():
+        d = CORPUS / nm
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        (d / "src" / f"{nm}.v").write_text(pll(nm, 2, 1, 1))
+        (d / "design.toml").write_text(toml(
+            nm, "pllpin", pin, 1, f"altera_pll 50 MHz x2/1, refclk on pin {pin} [vendor]",
+            ["pll", "fpll", "refclk_pin"], "vnd", qsf))
         names.append(nm)
     log.info("generated %d designs", len(names))
 
