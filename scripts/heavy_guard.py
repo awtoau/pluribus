@@ -72,8 +72,30 @@ def wait_available(log, what="", min_gb=None):
           f"{what}: waiting for >= {need:.0f} GB available RAM (now {available_gb():.1f})", log)
 
 
+SCOPE_ENV = "PLURIBUS_SCOPE"  # set once the batch runs in its own capped cgroup scope
+BATCH_MAX_GB = float(os.environ.get("PLURIBUS_BATCH_MAX_GB", "28"))
+
+
+def isolate_in_scope():
+    """Re-exec the running batch script in its own memory-capped systemd user scope.
+
+    systemd-oomd kills the largest cgroup under app.slice when pressure passes 80%; batches that
+    share the IDE's scope take the IDE and every agent with them (2026-10-26, #124). In their own
+    scope they are the kill target, and MemoryMax with no swap OOM-kills inside the scope first.
+    Skipped under pytest, when already scoped, off systemd, or with PLURIBUS_NO_ISOLATE=1.
+    """
+    import shutil
+    if (os.environ.get(SCOPE_ENV) or os.environ.get("PLURIBUS_NO_ISOLATE") or "pytest" in sys.modules
+            or not shutil.which("systemd-run") or not sys.argv or not os.path.isfile(sys.argv[0])):
+        return
+    cmd = ["systemd-run", "--user", "--scope", "--collect", "--quiet", "-p", f"MemoryMax={BATCH_MAX_GB:g}G",
+           "-p", "MemorySwapMax=0", "-E", f"{SCOPE_ENV}=1", sys.executable, *sys.argv]
+    os.execvp(cmd[0], cmd)
+
+
 @contextlib.contextmanager
 def heavy_lock(name, log):
+    isolate_in_scope()
     if os.environ.get(HELD_ENV):  # a parent batch already holds the lock; child stages must not deadlock on it
         yield
         return
