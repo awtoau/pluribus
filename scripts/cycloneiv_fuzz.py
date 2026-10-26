@@ -48,7 +48,7 @@ OVERALL_RND_S = {"quartus_map": 180, "quartus_fit": 300, "quartus_asm": 30, "qua
 # fit 31.6 s, asm 3.9 s, eda 2.2 s, cpf 0.8 s, cdb 1.7 s.
 OVERALL_GX_S = {"quartus_map": 37, "quartus_fit": 95, "quartus_asm": 12, "quartus_eda": 7,
                 "quartus_cpf": 3, "quartus_cdb": 6}
-MAX_JOBS = 4          # Quartus processes at once (shared box, #122)
+MAX_JOBS = 2          # Quartus processes at once (shared box; coordinator cap after the 2026-10-26 OOM, #124)
 JOB_MIN_GB = 20       # available RAM before a job starts (#122)
 log = logging.getLogger("cycloneiv_fuzz")
 
