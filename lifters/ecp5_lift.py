@@ -694,7 +694,7 @@ class ECP5Lift:
                         "lsr": resolve(pins.get("LSR"), "1'b0"),
                         "regset": senum.get(f"REG{j}.REGSET", enum_def[f"SLICE{sl}.REG{j}.REGSET"]),
                         "sd": sd,
-                        "gsr": senum.get("GSR", "DISABLED"),
+                        "gsr": senum.get("GSR", enum_def[f"SLICE{sl}.GSR"]),
                     })
 
         # Force net names for every resolved arc endpoint, including pad nodes
