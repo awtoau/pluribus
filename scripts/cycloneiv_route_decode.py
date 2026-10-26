@@ -146,6 +146,8 @@ class Tracer:
                 found.add(("CONST", k2[1], 0, 0, 0))
             elif k2[0] == "CIN":
                 found.add(("CIN", 0, 0, x, y))
+            elif k2[0] == "LUTOUT":
+                found.add(("LUTOUT", 0, 0, x, y))
             elif k2[0] in self.terminals:
                 found.add(("WIRE", k2[0], k2[1], k2[2], x + dx, y + dy))
             else:

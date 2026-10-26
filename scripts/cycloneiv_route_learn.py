@@ -40,6 +40,18 @@ MIN_SRC = 2
 
 def atom_xyn(vo, name):
     a = vo.atoms.get(name)
+    if a is None:
+        # WYSIWYG registers: the RCF names a register after its q net (r0_2_q), the .vo after the instance
+        alias = getattr(vo, "_q_alias", None)
+        if alias is None:
+            alias = {}
+            for an, at in vo.atoms.items():
+                if at["type"] == "dffeas":
+                    for p, _b, _d, net, _i, _c in at["conns"]:
+                        if p == "q" and net:
+                            alias[net] = an
+            vo._q_alias = alias
+        a = vo.atoms.get(alias.get(name, ""))
     if a is None or not a.get("location"):
         return None
     m = LOC.match(a["location"])
@@ -76,7 +88,7 @@ def node_at(vo, node):
 # odd LEs mirrored); EP4CE6 held-out: CLK 1117/1117 LABs, CLRN 277/277 (cycloneiv_lab_controls.py).
 # ENA shares the clock select.  SCLR / SLOAD are single LAB lines.
 FF_SEL = {"CLK": (4, 2), "ENA": (4, 2), "CLRN": (3, 2)}
-FF_LAB_PORTS = {"CLK", "ENA", "CLRN", "SCLR", "SLOAD"}
+FF_LAB_PORTS = set()   # was {"CLK", "ENA", "CLRN", "SCLR", "SLOAD"}: per-(LE, pin) groups replace the line mapping
 
 
 def le_bit(plane, geom, x, y, le, df, dv):
@@ -118,6 +130,13 @@ def pseudo_instances(d, geom=None):
     """(group, x, y, src) for pins the .vo ties to a constant (CONST 0 / 1) and for the DATAC pin
     of carry-mode LEs (CIN): the mux code that selects them, learnt like any other source."""
     vo, out = d["vo"], []
+    comb_of = {}
+    for a in vo.atoms.values():
+        loc = LOC.match(a.get("location") or "")
+        if loc and a["type"] == "cycloneive_lcell_comb":
+            for p, _b, _d, net, _i, _c in a["conns"]:
+                if p == "combout" and net:
+                    comb_of[vo.canon(net)] = (int(loc.group(2)), int(loc.group(3)), int(loc.group(4)))
     for a in vo.atoms.values():
         loc = LOC.match(a.get("location") or "")
         if not loc or a["type"] not in ("cycloneive_lcell_comb", "dffeas"):
@@ -131,8 +150,10 @@ def pseudo_instances(d, geom=None):
                 out.append((("LCCOMB", n, "DATAC"), x, y, ("CIN", 0, 0, 0, 0)))
         elif kind == "FF":
             for p, _b, _d, net, _i, const in a["conns"]:
+                if p == "d" and net is not None and comb_of.get(vo.canon(net)) == (x, y, n - 1):
+                    out.append((("FF", n, "DATAD"), x, y, ("LUTOUT", 0, 0, 0, 0)))
                 if p in FF_PORTS and net is None and const in ("0", "1"):
-                    key = ("FF", n, p.upper())
+                    key = ("FF", n, "DATAD" if p == "d" else p.upper())
                     if geom is not None and key[2] in FF_LAB_PORTS:
                         key = ff_lab_key(d["plane"], geom, x, y, n, key[2])
                     out.append((key, x, y, ("CONST", int(const), 0, 0, 0)))
@@ -246,7 +267,7 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
         zero_unused = (tot == 0) if key[0] not in SINKS else (tot / len(unused) <= SINK_UNUSED_MAX)
     else:
         zero_unused = np.ones(shape, dtype=bool)
-    if key[0].startswith("LAB"):
+    if key[0].startswith("LAB") or key[0] == "FF":
         # FF control lines: the "off" choice can be a SET bit (SCLR const 0 = bit set), so the unused
         # tile rule would drop the select bits; keep bits that tell sources apart
         mux = det & anyone & ~every

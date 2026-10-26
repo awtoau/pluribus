@@ -43,3 +43,55 @@ def knob_specs():
         out[f"knob_{name}"] = {"top": "top", "verilog": v, "qsf": q,
                                "purpose": f"carry knob {name}", "exercises": ["carry"]}
     return out
+
+
+FFC_DESIGNS = 120          # gx150_ffc_NNN: register-control corpus (directed, WYSIWYG dffeas)
+
+
+def ffc_design(seed):
+    """Groups of registers sharing control signals; every control/clock choice random per group."""
+    import random
+    r = random.Random(seed)
+    ctl = {"clk": ["clk0", "clk1"], "ena": ["e0", "e1"], "clrn": ["c0", "c1"], "sclr": ["s0", "s1"],
+           "sload": ["l0", "l1"]}
+    ndata = r.randrange(12, 28)
+    data = [f"d{k}" for k in range(ndata)]
+    body, outs, q = [], [], []
+    for g in range(r.randrange(5, 11)):
+        use = {k: (r.choice(v) if r.random() < (1.0 if k == "clk" else 0.55) else None) for k, v in ctl.items()}
+        inv = r.random() < 0.15
+        for j in range(r.randrange(3, 10)):
+            nm = f"r{g}_{j}"
+            d_src = r.choice(data)
+            if r.random() < 0.5:
+                body.append(f"  wire n{g}_{j} = {r.choice(data)} & {d_src};")
+                d_src = f"n{g}_{j}"
+            ports = [f".d({d_src})", f".clk({'~' if inv else ''}{use['clk']})", f".q({nm}_q)"]
+            for k in ("ena", "clrn", "sclr", "sload"):
+                if use[k]:
+                    ports.append(f".{k}({use[k]})")
+            if use["sload"]:
+                ports.append(f".asdata({r.choice(data)})")
+            body.append(f"  wire {nm}_q;")
+            body.append(f"  dffeas #(.power_up(\"low\"), .is_wysiwyg(\"true\")) {nm} ({', '.join(ports)});")
+            q.append(f"{nm}_q")
+    r.shuffle(q)
+    n_out = max(4, len(q) // 8)
+    for o in range(n_out):
+        grp = q[o::n_out]
+        outs.append(f"o{o}")
+        body.append(f"  assign o{o} = ^{{{', '.join(grp)}}};")
+    allc = [c for v in ctl.values() for c in v]
+    return (f"module top(input {', '.join(allc + data)}, output {', '.join(outs)});\n" + "\n".join(body)
+            + "\nendmodule\n")
+
+
+def ffc_specs():
+    out = {}
+    for j in range(FFC_DESIGNS):
+        out[f"gx150_ffc_{j:03d}"] = {
+            "top": "top", "verilog": ffc_design(31_000_000 + j), "device": "EP4CGX150DF31C7",
+            "qsf": ["set_global_assignment -name SEED %d" % (1 + j)],
+            "purpose": "register-control corpus (WYSIWYG dffeas groups) on EP4CGX150",
+            "exercises": ["ff_controls", "lab_controls"]}
+    return out

@@ -33,7 +33,7 @@ LE_USED = (-8, -1)         # LE window bit: set for 95.8% of LUT cells and absen
 CLK_POL = (-6, -30)        # LAB-relative bit (frame, v offset from the tile anchor): clock inverted
 D_DIRECT = (4, -1)         # LE window bit (even LEs): FF D not from the LUT (sload / direct)
 PORTS = ("DATAA", "DATAB", "DATAC", "DATAD")
-TERMINAL_WIRES = {"IO_DATAIN", "LAB_CLK", "GLOBAL_CLK_H", "GLOBAL_CLK_V", "SCLK_TO_ROWCLK_BUF",
+TERMINAL_WIRES = {"IO_DATAIN", "BLK_CLK_BUF", "LAB_CLK", "GLOBAL_CLK_H", "GLOBAL_CLK_V", "SCLK_TO_ROWCLK_BUF",
                   "CLK_BUFFER", "CLKBUF_IN", "GEN_CORE_BUF", "CLKBUF_OUT"}
 
 
@@ -300,28 +300,16 @@ class CycloneIVLift:
         name = f"ff_{x}_{y}_{le}"
         ff = {"name": name, "x": x, "y": y, "le": le, "q": qnet(x, y, le)}
         owner = {"cin": "1'b0"}
-        defaults = {"CLK": None, "CLRN": "1'b1", "ENA": "1'b1", "SCLR": "1'b0", "SLOAD": "1'b0",
-                    "ASDATA": "1'b0"}
-        for port in ("CLK", "CLRN", "ENA", "SCLR", "SLOAD", "ASDATA"):
+        for port in ("CLK", "CLRN", "ENA", "SCLR", "SLOAD", "ASDATA", "DATAD"):
             got, why = tr.trace(("FF", n, port), x, y)
-            net = self.net_of(got, des, name, port, owner) if got else None
+            if got is not None and got[0] == "LUTOUT":
+                net = comb(x, y, le)
+            else:
+                net = self.net_of(got, des, name, port, owner) if got else None
             if net is None:
-                if port == "CLK" or why not in ("zero pattern", "no table"):
-                    des.unresolved.append((name, port, why))
-                    net = f"u_{x}_{y}_{le}_{port.lower()}"
-                    des.terminals[net] = ("UNRESOLVED", why)
-                else:
-                    net = defaults[port]
-            ff[port.lower()] = net
-        direct = le % 2 == 0 and self.le_bit(plane, x, y, le, *D_DIRECT)
-        ff["d"] = comb(x, y, le)
-        if direct:
-            got, why = tr.trace(("FF", n, "DATAD"), x, y)
-            net = self.net_of(got, des, name, "DATAD", owner) if got else None
-            if net is None:
-                des.unresolved.append((name, "D", why))
-                net = f"u_{x}_{y}_{le}_d"
+                des.unresolved.append((name, port, why))
+                net = f"u_{x}_{y}_{le}_{port.lower()}"
                 des.terminals[net] = ("UNRESOLVED", why)
-            ff["d"] = net
+            ff["d" if port == "DATAD" else port.lower()] = net
         ff["clk_inv"] = self.lab_bit(plane, x, y, *CLK_POL)
         return ff
