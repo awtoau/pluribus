@@ -382,16 +382,50 @@ class MachXO2Lift:
         "EBRG": re.compile(r"G_EBRG\dCLK\d"),
         "ECLKCIB": re.compile(r"G_J?ECLKCIB[TB]\d"),
         "ECLKBRIDGE": re.compile(r"G_CLK\d_\d_ECLKBRIDGECS"),
+        # secondary (control / high-fanout) network spines + their CIB feeds: one node each
+        "VSRX": re.compile(r"G_VSRX0[0-7]00"),
+        "SNETCIB": re.compile(r"G_JSNETCIB(?:MID[0-7]|[BLRT][01])"),
     }
+
+    # Secondary network below the spine (LCMXO2-1200 only; docs/machxo2-diamond-oracle.md,
+    # "Secondary network").  Diamond routes spine VSRX0k00 -> HSSX -> VSTX0200 (k<4) /
+    # VSTX0300 (k>=4) -> HSBX0000 / HSBX0400 -> a 4-column group wire (HSBX0001/0201/0401/0601
+    # on Diamond-odd columns, HSBX0101/0301/0501/0701 on Diamond-even) -> CE / LSR / fabric.
+    _VSTX = re.compile(r"G_VSTX0([23])00(?:_B2T)?")
+    # track -> (driving tap wire, anchor residue mod 4 in Diamond columns).  A tile at Diamond
+    # column C sees ONE wire of each track, anchored at A = 4*((C - a + 2)//4) + a (it covers
+    # columns A-2..A+1) and driven by the HSBX0000/0400 tap at Diamond column A-1.
+    _HSB_TRACK = {"0001": ("0000", 3), "0201": ("0000", 1), "0101": ("0000", 0), "0301": ("0000", 2),
+                  "0401": ("0400", 3), "0601": ("0400", 1), "0501": ("0400", 0), "0701": ("0400", 2)}
+    _HSB = re.compile(r"G_HSBX(\d{4})")
+    _KEEP = re.compile(r"^(?:NORTH|SOUTH|EAST|WEST)KEEP$")
 
     def _global_family_key(self, row, col, name):
         if not name.startswith("G_"):
             return None
+        from native_trellis.geometry import CENTER_MAP
+        crow, ccol = CENTER_MAP[(self.chip.get_max_row(), self.chip.get_max_col())]
         for rx in self._CENTER_FAMILIES.values():
             if rx.fullmatch(name):
-                from native_trellis.geometry import CENTER_MAP
-                crow, ccol = CENTER_MAP[(self.chip.get_max_row(), self.chip.get_max_col())]
                 return (ccol, crow, name)
+        if self.device != "LCMXO2-1200":
+            return None
+        mv = self._VSTX.fullmatch(name)
+        if mv:   # the column's VSTX wire is spine (col+3)%4 (+4 on VSTX0300)
+            return (ccol, crow, f"G_VSRX0{(col + 3) % 4 + (4 if mv.group(1) == '3' else 0)}00")
+        mh = self._HSB.fullmatch(name)
+        if mh:
+            t = mh.group(1)
+            if t in ("0000", "0400"):
+                return (col, row, name)
+            tr = self._HSB_TRACK.get(t)
+            if tr is None:
+                return None
+            base, res = tr
+            c_d = col + 1                                    # Diamond column
+            anchor = 4 * ((c_d - res + 2) // 4) + res
+            dc = anchor - 2                                  # tap column, graph numbering
+            return (dc, row, f"G_HSBX{base}") if 0 <= dc <= self.chip.get_max_col() else None
         return None
 
     def gkey(self, row, col, name):
@@ -1418,6 +1452,14 @@ class MachXO2Lift:
     _GLOBAL_NAME = re.compile(r"^(G|L|R|U|D|BRANCH)_")
     _DCC_IN = re.compile(r"^G_CLKI(\d)_DCC$")
 
+    def _density_name(self, n):
+        """DB fixed conns can carry a `<density>_` prefix (`1200_S5_JB5`): keep it for this
+        device, None for another density."""
+        m = re.match(r"^(\d+)_(.*)$", n)
+        if not m:
+            return n
+        return m.group(2) if self.device.endswith("-" + m.group(1)) else None
+
     def apply_clock_fixed_conns(self, dsu):
         """Union the device-DB `.fixed_conn`s of the clock tree (#109):
         - every conn naming a G_/L_/R_/U_/D_/BRANCH_ global, except the oscillator
@@ -1437,6 +1479,13 @@ class MachXO2Lift:
             _muxes, fixed = tiledb.load_tiletype(nat.db_root, nat.family, ttype)
             for sink, src in fixed:
                 if self._OSC.match(sink) or self._OSC.match(src):
+                    continue
+                if self._HSB.match(sink) or self._HSB.match(src):
+                    continue    # group wires are keyed in _global_family_key
+                if self._KEEP.match(sink) or self._KEEP.match(src):
+                    continue    # edge dummy terminations: they tie unrelated spines together
+                sink, src = self._density_name(sink), self._density_name(src)
+                if sink is None or src is None:
                     continue
                 isg = self._GLOBAL_NAME.match(sink) or self._GLOBAL_NAME.match(src)
                 if not isg and ttype == "PLC":
