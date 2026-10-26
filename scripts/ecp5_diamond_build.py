@@ -27,26 +27,40 @@ DESIGNS
   dm_multiclk   several independent clock domains — clock-global recovery.
   dm_shiftreg   long shift register — dense FF packing, few LUTs.
   dm_mixed      all of the above in one design, plus block RAM.
+  dm_mux32/64   32:1 / 64:1 mux: L6MUX21 and a second wide-mux level.
+  dm_add_cmp    CCU2 adder + comparator (carry chain with two operands).
+  dm_ebr_dp     simple dual-port RAM on two clocks (EBR, two clock pins).
+  dm_distram    small RAM (distributed RAM: DPRAM/RAMW slices).
+  dm_dsp        registered 18x18 multiplier (DSP).
+  dm_gsr        GSR primitive: slices with GSR=ENABLED (the bits.db default, #118).
 
 Usage:
-    python3 scripts/ecp5_diamond_build.py [--only NAME] [--device DEV] [--jobs N]
+    python3.15t scripts/ecp5_diamond_build.py [--only NAME] [--die 25F|45F|85F] [--jobs N] [--force]
 
-Logs to ./tmp/logs/ecp5_diamond_build.log.  Bitstreams land in
-corpus/diamond/<name>/ (gitignored; they are OUR builds but still binaries).
+Existing builds (routed .ncd + .bit) are reused unless --force.
+
+Logs to ./tmp/logs/ecp5_diamond_build.log.  Builds land in
+<data-root>/corpus/diamond/<die>_<name>/ (gitignored; OUR builds but still
+binaries).  data-root = this checkout, else the main checkout (shared cache).
 """
 import argparse
 import concurrent.futures
+import glob
 import logging
 import os
-import shutil
-import subprocess
 import sys
 import threading
 
-import heavy_guard
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import heavy_guard  # noqa: E402
+from ecp5_diamond_oracle import data_root  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BUILD_ROOT = os.path.join(REPO, "corpus", "diamond")
+BUILD_ROOT = os.path.join(data_root(), "corpus", "diamond")
+
+# Parts of the existing corpus (docs/ecp5-diamond-oracle.md), one per die.
+DEVICES = {"25F": "LFE5U-25F-6MG285I", "45F": "LFE5U-45F-6BG554C",
+           "85F": "LFE5U-85F-7BG554C"}
 
 DIAMOND = os.environ.get("DIAMONDDIR",
                          os.path.expanduser("~/lscc/diamond/3.14"))
@@ -57,8 +71,7 @@ LICENSE = os.environ.get(
 # LFE5U-25F in caBGA381 -- a real part, in the Trellis DB, and NOT the 12F
 # every existing test used.  Choosing a different die than the verified one is
 # deliberate: geometry_for() has only ever been exercised on 12F.
-DEFAULT_DEVICE = "LFE5U-25F-6MG285I"
-DEFAULT_TRELLIS_DEV = "LFE5U-25F"
+DEFAULT_DEVICE = DEVICES["25F"]
 
 _lock = threading.Lock()
 
@@ -145,6 +158,79 @@ module top(input clk, input rst, input [3:0] sel, input [15:0] din,
   end
 endmodule
 """,
+
+    # 32:1 and 64:1 muxes: beyond one L5/PFUMX level, forces L6MUX21.
+    "dm_mux32": """
+module top(input clk, input [4:0] sel, input [31:0] d, output reg q);
+  wire m = d[sel];
+  always @(posedge clk) q <= m;
+endmodule
+""",
+    "dm_mux64": """
+module top(input clk, input [5:0] sel, input [63:0] d, output reg q);
+  wire m = d[sel];
+  always @(posedge clk) q <= m;
+endmodule
+""",
+
+    # Adder + comparator on registered operands: CCU2 chains with two inputs.
+    "dm_add_cmp": """
+module top(input clk, input [15:0] a, input [15:0] b,
+           output reg [16:0] s, output reg lt);
+  reg [15:0] ra, rb;
+  always @(posedge clk) begin
+    ra <= a; rb <= b;
+    s <= ra + rb;
+    lt <= ra < rb;
+  end
+endmodule
+""",
+
+    # Simple dual-port RAM, independent read/write clocks: EBR with two clocks.
+    "dm_ebr_dp": """
+module top(input wclk, input rclk, input we, input [8:0] waddr,
+           input [8:0] raddr, input [17:0] din, output reg [17:0] dout);
+  reg [17:0] mem [0:511];
+  always @(posedge wclk) if (we) mem[waddr] <= din;
+  always @(posedge rclk) dout <= mem[raddr];
+endmodule
+""",
+
+    # 16x8 RAM with async read: distributed RAM (DPRAM/RAMW slices).
+    "dm_distram": """
+module top(input clk, input we, input [3:0] waddr, input [3:0] raddr,
+           input [7:0] din, output [7:0] dout);
+  reg [7:0] mem [0:15];
+  always @(posedge clk) if (we) mem[waddr] <= din;
+  assign dout = mem[raddr];
+endmodule
+""",
+
+    # GSR primitive: registers get GSR:ENABLED, which the bitstream omits (DB default).
+    "dm_gsr": """
+module top(input clk, input rst_n, input d, output q);
+  wire [8:0] c;
+  assign c[0] = d;
+  GSR GSR_INST (.GSR(rst_n));
+  genvar i;
+  generate for (i = 0; i < 8; i = i + 1) begin : g
+    FD1S3AX #(.GSR("ENABLED")) ff (.D(c[i]), .CK(clk), .Q(c[i+1]));
+  end endgenerate
+  assign q = c[8];
+endmodule
+""",
+
+
+    # Registered 18x18 multiply: DSP block.
+    "dm_dsp": """
+module top(input clk, input [17:0] a, input [17:0] b, output reg [35:0] p);
+  reg [17:0] ra, rb;
+  always @(posedge clk) begin
+    ra <= a; rb <= b;
+    p <= ra * rb;
+  end
+endmodule
+""",
 }
 
 
@@ -174,13 +260,26 @@ prj_project close
 """
 
 
-def build_one(name, src, device, log):
-    heavy_guard.wait_available(log, name)
-    # Key the build directory by DIE as well as design.  Building the same
-    # design for 25F and 45F is the point (different frame geometry), so they
-    # must not overwrite each other.
+def build_dir(name, device):
+    # Key by DIE as well as design: same design on 25F/45F/85F must not overwrite.
     die = device.split("-")[0] + "-" + device.split("-")[1]
-    d = os.path.join(BUILD_ROOT, f"{die}_{name}")
+    return os.path.join(BUILD_ROOT, f"{die}_{name}")
+
+
+def built_files(d):
+    """-> (ncd, bit) of a finished routed build under d, else (None, None)."""
+    imp = os.path.join(d, "impl1")
+    ncd = [f for f in glob.glob(os.path.join(imp, "*_impl1.ncd"))]
+    bit = [f for f in glob.glob(os.path.join(imp, "*_impl1.bit")) if os.path.getsize(f) > 0]
+    return (ncd[0], bit[0]) if ncd and bit else (None, None)
+
+
+def build_one(name, src, device, log, force=False):
+    d = build_dir(name, device)
+    if not force and all(built_files(d)):
+        log.info("%-14s %s REUSED", name, device)
+        return name, built_files(d)[1], 0, ""
+    heavy_guard.wait_available(log, name)
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, f"{name}.v"), "w") as fh:
         fh.write(src)
@@ -202,57 +301,62 @@ def build_one(name, src, device, log):
          os.path.join(DIAMOND, "ispfpga", "bin", "lin64"),
          env.get("LD_LIBRARY_PATH", "")])
 
-    r = heavy_guard.guarded([DIAMONDC, tcl], "diamondc", cwd=d, env=env)  # #122
+    r = heavy_guard.guarded([DIAMONDC, tcl], f"diamondc {name} {device}", log, cwd=d, env=env)  # #122
     logtxt = (r.stdout or "") + (r.stderr or "")
     with open(os.path.join(d, "diamond.log"), "w") as fh:
         fh.write(logtxt)
 
-    bit = None
-    for root, _dirs, files in os.walk(d):
-        for f in files:
-            if f.endswith(".bit"):
-                bit = os.path.join(root, f)
+    ncd, bit = built_files(d)
     with _lock:
-        if bit and os.path.getsize(bit) > 0:
-            log.info("%-14s BUILT  %s (%d B)", name,
-                     os.path.relpath(bit, REPO), os.path.getsize(bit))
+        if bit:
+            log.info("%-14s %s BUILT  %s (%d B)", name, device,
+                     os.path.relpath(bit, BUILD_ROOT), os.path.getsize(bit))
         else:
-            log.error("%-14s FAILED rc=%d", name, r.returncode)
+            log.error("%-14s %s FAILED rc=%d", name, device, r.returncode)
             for ln in logtxt.strip().splitlines()[-15:]:
                 log.error("      %s", ln)
     return name, bit, r.returncode, logtxt
 
 
+def ensure_built(names, dies, log, jobs=3, force=False):
+    """Build every (design, die) lacking a routed NCD + bit.  Caller holds the
+    heavy lock.  Returns the list of "<die>_<name>" that failed."""
+    os.makedirs(BUILD_ROOT, exist_ok=True)
+    jobs_l = [(n, DEVICES[d]) for d in dies for n in names]
+    failed = []
+    with concurrent.futures.ThreadPoolExecutor(jobs) as ex:
+        futs = {ex.submit(build_one, n, DESIGNS[n], dev, log, force): (n, dev)
+                for n, dev in jobs_l}
+        for f in concurrent.futures.as_completed(futs):
+            n, dev = futs[f]
+            if not f.result()[1]:
+                failed.append(os.path.basename(build_dir(n, dev)))
+    return sorted(failed)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--only", action="append", default=[])
-    ap.add_argument("--device", default=DEFAULT_DEVICE)
+    ap.add_argument("--die", action="append", choices=sorted(DEVICES),
+                    help="default: 25F only (as before); repeat for several")
     ap.add_argument("--jobs", type=int, default=3)
+    ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
     log = setup_logging("ecp5_diamond_build")
 
     if not os.path.exists(DIAMONDC):
-        log.error("diamondc not found at %s -- set DIAMONDDIR", DIAMONDC)
+        log.error("diamondc not found at %s -- set DIAMONDDIR", DIAMOND)
         return 2
-    log.info("diamond=%s device=%s license=%s", DIAMOND, args.device, LICENSE)
-
-    todo = {k: v for k, v in DESIGNS.items()
-            if not args.only or k in args.only}
-    os.makedirs(BUILD_ROOT, exist_ok=True)
-
-    results = []
-    with heavy_guard.heavy_lock("ecp5_diamond_build", log), \
-            concurrent.futures.ThreadPoolExecutor(args.jobs) as ex:
-        futs = [ex.submit(build_one, n, s, args.device, log)
-                for n, s in todo.items()]
-        for f in concurrent.futures.as_completed(futs):
-            results.append(f.result())
-
-    ok = [r for r in results if r[1]]
-    log.info("---- %d/%d built ----", len(ok), len(results))
-    for name, bit, _rc, _l in sorted(results):
-        log.info("  %-14s %s", name, os.path.relpath(bit, REPO) if bit else "FAILED")
-    return 0 if len(ok) == len(results) else 1
+    dies = args.die or ["25F"]
+    names = [k for k in DESIGNS if not args.only or k in args.only]
+    log.info("diamond=%s dies=%s license=%s", DIAMOND, dies, LICENSE)
+    with heavy_guard.heavy_lock("ecp5_diamond_build", log):
+        failed = ensure_built(names, dies, log, args.jobs, args.force)
+    log.info("---- %d/%d built ----", len(names) * len(dies) - len(failed),
+             len(names) * len(dies))
+    for f in failed:
+        log.info("  FAILED %s", f)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

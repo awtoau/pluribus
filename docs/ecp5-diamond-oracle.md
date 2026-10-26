@@ -179,6 +179,17 @@ Off-grid hop names also dropped (edge turnarounds, not globals): `W#_H#E#` 453, 
 - Assumed: global-tree pips matched by name pair (location not verifiable); the F5/FX alias explanation beyond `dm_counter`; meaning of `unk_*` header fields (as MachXO2); that `PAR_CLOCKSIGNAL` marks primary clock nets.
 - Not covered: PLL, DCS, SERDES, DSP clocking (no Diamond target uses them; census sample only, no oracle), the other 216 third-party bitstreams in the census, other ECP5 variants (UM/5G), timing.
 
+## Gate (#123)
+
+- `python3.15t scripts/ecp5_gate.py [--workers 2]`: builds missing Diamond designs (3 dies x 12 designs), oracle, compare, one table; baseline `tests/baselines/ecp5_oracle.json` (per target + total, date/commit/conditions inside).
+- Exit 1 if any target's missing/extra/wrong in any category rises, or a baseline target is absent; exit 2 on a build/oracle/compare error. New targets are listed until `--update-baseline`.
+- Headline = matched / (matched + missing + extra + wrong). Verdict map: LIFT_MISSING + ORACLE_ONLY = missing, LIFT_ONLY = extra, MISMATCH = wrong.
+- compare.json is cached on a code stamp (lifters, native_trellis, device-db/ECP5, compare script), so a lifter edit recomputes.
+- Baseline 2026-10-26 (merged main incl. #116, 219 targets): pips 12,876 / 26,521 (48.6%); nets 1,441 / 2,717 (53.0%); connections 1,373 / 4,069 (33.7%); register clocks 429 / 429; sites 5,784 / 5,805.
+- `ecp5_verify_all.py` (nextpnr reference, closed loop) is a change detector only, not in the gate.
+- Added designs: `dm_mux32`, `dm_mux64` (OFX wide muxes), `dm_add_cmp` (CCU2), `dm_ebr_dp` (DP16KD, two clocks), `dm_distram` (DPRAM/RAMW), `dm_dsp` (MULT18X18D), `dm_gsr` (GSR:ENABLED, #118).
+- #118: `dm_gsr` uses `FD1S3AX` with `GSR="ENABLED"`; Diamond writes `GSR:ENABLED`, the bitstream omits it (DB default). Old lifter: 8/8 lifted FF gsr MISMATCH; with the DB default: 8/8 MATCH. LSE-inferred registers are always `GSR:DISABLED`, so no earlier target exercised it.
+
 ## Rerun
 
 ```

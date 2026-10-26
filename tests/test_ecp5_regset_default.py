@@ -19,3 +19,12 @@ def test_regset_default_is_set_for_every_slice_register():
 def test_lifter_has_no_hardcoded_regset_default():
     src = open(os.path.join(REPO, "lifters", "ecp5_lift.py")).read()
     assert '"REGSET", "RESET")' not in src
+
+
+def test_gsr_default_is_enabled_in_db_and_not_hardcoded():
+    """#118: SLICE GSR omitted from a .config means the DB default (ENABLED)."""
+    d = ecp5_lift.plc_enum_defaults(os.path.join(REPO, "device-db"))
+    for sl in "ABCD":
+        assert d[f"SLICE{sl}.GSR"] == "ENABLED"
+    src = open(os.path.join(REPO, "lifters", "ecp5_lift.py")).read()
+    assert '"GSR", "DISABLED")' not in src
