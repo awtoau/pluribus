@@ -1,5 +1,13 @@
 #!/usr/bin/env python3.15t
-"""Round-trip the ECP5 lifter across every available build, in parallel.
+"""CHANGE DETECTOR ONLY: nextpnr-reference round-trip of the ECP5 lifter (not a gate).
+
+- The reference is built by nextpnr from the same input: a closed loop, so 100% here
+  says nothing about vendor behaviour and is never a headline.
+- The ECP5 gate is `scripts/ecp5_gate.py` (Diamond oracle, #123).
+- Use this to see whether a lifter edit moved the open-flow round-trip; a diff of its
+  logs between two commits is the output (scripts/ecp5_verify_totals.py).
+
+Round-trips the ECP5 lifter across every available build, in parallel.
 
 One design passing proves the decode works on one design.  This runs the same
 verification over every ECP5 build directory it can find, because the failure
@@ -122,6 +130,7 @@ def main():
 
     log = setup_logging("ecp5_verify_all")
     builds = find_builds()
+    log.info("CHANGE DETECTOR ONLY (nextpnr reference, closed loop); gate = ecp5_gate.py")
     log.info("%d ECP5 builds found; %d workers; GIL enabled=%s",
              len(builds), args.workers, sys._is_gil_enabled())
 
@@ -137,9 +146,10 @@ def main():
     log.info("---- summary (%.1fs wall) ----", time.time() - t0)
     npass = sum(1 for _, ok, _ in results if ok)
     for name, ok, note in sorted(results):
-        log.info("  %-28s %s%s", name, "PASS" if ok else "FAIL",
+        log.info("  %-28s %s%s", name, "same" if ok else "DIFFERS",
                  "" if ok else f"  {note}")
-    log.info("%d/%d designs passed round-trip", npass, len(results))
+    log.info("CHANGE DETECTOR (nextpnr reference, closed loop; not a gate, not a headline): "
+             "%d/%d designs unchanged vs the nextpnr reference", npass, len(results))
     return 0 if npass == len(results) else 1
 
 

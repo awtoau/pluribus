@@ -41,6 +41,28 @@ import native_config  # noqa: E402
 
 LOG_PATH = os.path.join(REPO, "tmp", "logs", "ecp5_oracle_compare.log")
 SCHEMA_VERSION = 3
+
+
+def code_stamp():
+    """sha1 of the code a compare.json depends on; cached results from other code are stale."""
+    import hashlib
+    top = os.path.dirname(SCRIPTS)
+    files = [os.path.join(SCRIPTS, n) for n in ("ecp5_oracle_compare.py", "db_overrides.py",
+                                                "diamond_oracle_parse.py")]
+    for d in ("lifters", "native_trellis", "device-db/ECP5"):
+        for root, _ds, fs in os.walk(os.path.join(top, d)):
+            files += [os.path.join(root, f) for f in fs
+                      if f.endswith((".py", ".json", ".db", ".yaml"))]
+    h = hashlib.sha1()
+    for f in sorted(files):
+        if os.path.isfile(f):
+            h.update(os.path.relpath(f, top).encode())
+            with open(f, "rb") as fh:
+                h.update(hashlib.sha1(fh.read()).digest())
+    return h.hexdigest()[:16]
+
+
+CODE_STAMP = code_stamp()
 _log_lock = threading.Lock()
 
 
@@ -316,7 +338,8 @@ def compare_target(target, out_root):
     design = L.recover_netlist(pc)
     dsu = design.dsu
 
-    res = {"target": target, "schema_version": SCHEMA_VERSION, "device": device,
+    res = {"target": target, "schema_version": SCHEMA_VERSION, "code_stamp": CODE_STAMP,
+           "device": device,
            "sites": [], "pips": Counter(), "pip_detail": defaultdict(Counter),
            "nets": [], "net_verdicts": Counter(), "conns": Counter(),
            "conn_detail": defaultdict(Counter), "regclk": [], "regclk_verdicts": Counter(),
@@ -871,7 +894,8 @@ def cached(target, out_root):
             r = json.load(fh)
     except (OSError, ValueError):
         return None
-    return r if r.get("schema_version") == SCHEMA_VERSION else None
+    return r if (r.get("schema_version") == SCHEMA_VERSION
+                 and r.get("code_stamp") == CODE_STAMP) else None
 
 
 SUMMARY_KEYS = ("pips", "net_verdicts", "conns", "regclk_verdicts",
