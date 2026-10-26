@@ -71,6 +71,10 @@ def support_deps(m):
     return dep
 
 
+def tiles_partial(tiles, geom):
+    return len(tiles) < sum(1 for x in geom.kind if geom.kind[x] == "LAB") * (geom.ymax - 1)
+
+
 class CycloneIVLift:
     def __init__(self, die, tables):
         self.geom = cg.load(die)
@@ -155,6 +159,15 @@ class CycloneIVLift:
         tiles = tiles if tiles is not None else [(x, y) for x in sorted(geom.kind) if geom.kind[x] == "LAB"
                                                   for y in range(1, geom.ymax)]
         used, masks = self.scan(plane, tiles)
+        tidx = {t: i for i, t in enumerate(tiles)}
+
+        def valid(kind, x, y, n):
+            if kind not in ("LCCOMB", "FF"):
+                return True
+            i = tidx.get((x, y))
+            return i is not None and bool(used[i][n // 2])
+        if tracer is None and not tiles_partial(tiles, geom):
+            tr.valid = valid
         for ti, (x, y) in enumerate(tiles):
             if not used[ti].any():
                 continue

@@ -204,6 +204,17 @@ ANCHOR_CANDS = {"R4": [(dx, 0) for dx in range(-4, 5)],
                 "R24": [(dx, 0) for dx in range(-24, 25)]}
 
 
+TEMPLATE = {}   # (class without row phase, key str) -> mux bit positions seen at other row phases (--template)
+
+
+def template_mask(cls, key, shape):
+    pos = cls.endswith("/0") and TEMPLATE.get((cls.rsplit("/", 1)[0], "|".join(map(str, key))))
+    m = np.zeros(shape, dtype=bool)
+    for f, v in pos or ():
+        m[f, v] = True
+    return m
+
+
 SRCS = []   # source id -> source key tuple (filled in main, read by the workers)
 
 
@@ -211,7 +222,7 @@ def learn_group(cls, key, insts, planes, geom, used_tiles, tiles_of_class):
     """Try every anchor offset for the dst type; keep the one explaining the most sources."""
     best = None
     for off in ANCHOR_CANDS.get(key[0], [(0, 0)]):
-        r = learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class)
+        r = learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class, cls)
         if r is None:
             continue
         sc = (sum(1 for p in r.get("pats", {}).values() if p), len(r["mux"]))
@@ -220,7 +231,7 @@ def learn_group(cls, key, insts, planes, geom, used_tiles, tiles_of_class):
     return best and best[1]
 
 
-def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
+def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class, cls=""):
     """insts: [(design, x, y, src)].  -> dict with mux bits and per-source patterns, or None.
     Streaming: per source only the AND / OR of its windows is kept (a stack of every window was
     1.5 GB for the large LE-input groups)."""
@@ -272,7 +283,7 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
         # tile rule would drop the select bits; keep bits that tell sources apart
         mux = det & anyone & ~every
     else:
-        mux = det & anyone & zero_unused
+        mux = det & anyone & (zero_unused | template_mask(cls, key, shape)) if TEMPLATE else det & anyone & zero_unused
     pos = [tuple(int(t) for t in p) for p in np.argwhere(mux)]
     if not pos:
         # one source and no select bit: the mux has a single legal input (BLK_CLK_BUF <- LAB_CLK)
@@ -306,6 +317,8 @@ def main():
     ap.add_argument("--types", default="", help="comma list of dst types to learn (default all)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--template", default=None, help="earlier table: its mux bits at other row phases are allowed "
+                    "even where the unused-tile rule drops them (row phase 0 loses the second bit row)")
     ap.add_argument("--col-phase", type=int, default=0, help="pool LAB columns by X mod N (0 = per column)")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
@@ -315,6 +328,12 @@ def main():
         log.addHandler(h)
     names = [n for n in cc.designs(a.train) if split_of(n, a.split)]
     geom = one_geom(names)
+    if a.template:
+        for k, v in json.loads(Path(a.template).read_text()).items():
+            if k != "_meta" and v.get("mux"):
+                c, rest = k.split("|", 1)
+                if int(c.rsplit("/", 1)[1]) != 0:
+                    TEMPLATE.setdefault((c.rsplit("/", 1)[0], rest), set()).update(map(tuple, v["mux"]))
     planes = []
     groups = collections.defaultdict(list)
     used = collections.defaultdict(set)

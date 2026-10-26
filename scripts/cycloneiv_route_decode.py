@@ -167,6 +167,7 @@ class Tracer:
         self.dec, self.plane, self.geom = dec, plane, geom
         self.terminals = set(terminals)    # wire types that end a trace (boundary nets)
         self.memo = {}          # (key, x, y) -> (frozenset(drivers), reason)
+        self.valid = None       # optional (kind, x, y, n) -> bool: a driver cell that cannot exist is no candidate
 
     def walk(self, key, x, y, depth, stack):
         if key[0] == "FF" and key[2] in rl.FF_LAB_PORTS:
@@ -186,6 +187,9 @@ class Tracer:
         for c in cands:
             k2, dx, dy = parse_src(c)
             if k2[0] == "DRV":
+                if self.valid is not None and not self.valid(k2[1], x + dx, y + dy, k2[2]):
+                    why = why or "driver cell unused"
+                    continue
                 found.add(("DRV", k2[1], k2[2], x + dx, y + dy))
             elif k2[0] == "CONST":
                 found.add(("CONST", k2[1], 0, 0, 0))
