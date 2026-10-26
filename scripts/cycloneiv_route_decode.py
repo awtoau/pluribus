@@ -75,6 +75,15 @@ class Decoder:
             return cands[0], "ok"
         return None, reason if not cands else "ambiguous pattern"
 
+    def nonzero(self, plane, geom, key, x, y):
+        """True when the first table's mux bits of this group read nonzero (the mux is driven)."""
+        for t in self.tables:
+            g = t.groups.get(f"{rl.tile_class(geom, x, y, t.col_phase, key[0])}|{'|'.join(map(str, key))}")
+            if g is not None:
+                mux, _pats, (ax, ay) = g
+                return bool(read_bits(plane, geom, x + ax, y + ay, mux))
+        return False
+
     def sources(self, plane, geom, key, x, y):
         """All candidate sources from the first table with a pattern hit (several = ambiguous;
         a unique hit in a later table wins over an ambiguous earlier one)."""

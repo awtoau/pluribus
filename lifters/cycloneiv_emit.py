@@ -17,6 +17,11 @@ def emit(des, top="cycloneiv_lifted"):
            f"{len(ports)} boundary inputs, {len(des.unresolved)} unresolved cell inputs",
            f"// NOT LIFTED: {dict(des.not_lifted) or 'nothing recorded'}"]
     out.append(f"module {top}({', '.join(ports)});")
+    out += ["  // 4-input LUT as a mux tree: an X select resolves when both branches agree (as the vendor model)",
+            "  function lut4(input [15:0] m, input a, input b, input c, input d);",
+            "    lut4 = d ? (c ? (b ? (a ? m[15] : m[14]) : (a ? m[13] : m[12])) : (b ? (a ? m[11] : m[10]) : (a ? m[9] : m[8])))",
+            "             : (c ? (b ? (a ? m[7] : m[6]) : (a ? m[5] : m[4])) : (b ? (a ? m[3] : m[2]) : (a ? m[1] : m[0])));",
+            "  endfunction"]
     for p in ports:
         out.append(f"  input {p};")
     nets = set()
@@ -27,15 +32,29 @@ def emit(des, top="cycloneiv_lifted"):
     for n in sorted(nets):
         out.append(f"  wire {n};")
     for l in des.luts:
-        out.append(f"  assign {l['z']} = (16'h{l['init']:04x} >> {{{l['d']}, {l['c']}, {l['b']}, {l['a']}}}) & 1'b1;")
-        out.append(f"  assign {l['cout']} = (16'h{l['init']:04x} >> {{1'b0, {l['cin']}, {l['b']}, {l['a']}}}) & 1'b1;")
+        out.append(f"  assign {l['z']} = lut4(16'h{l['init']:04x}, {l['a']}, {l['b']}, {l['c']}, {l['d']});")
+        out.append(f"  assign {l['cout']} = lut4(16'h{l['init']:04x}, {l['a']}, {l['b']}, {l['cin']}, 1'b0);")
     for f in des.ffs:
-        clk = f"{f['q']}_clk"
-        out.append(f"  wire {clk} = {'~' if f['clk_inv'] else ''}{f['clk']};")
-        out.append(f"  reg {f['q']}_r = 1'b0;")
-        out.append(f"  assign {f['q']} = {f['q']}_r;")
-        out.append(f"  always @(posedge {clk} or negedge {f['clrn']})")
-        out.append(f"    if (!{f['clrn']}) {f['q']}_r <= 1'b0;")
-        out.append(f"    else if ({f['ena']}) {f['q']}_r <= {f['sclr']} ? 1'b0 : {f['sload']} ? {f['asdata']} : {f['d']};")
+        q = f["q"]
+        inv = dict(f.get("inv", {}))
+        inv["clk"] = f["clk_inv"]
+        pin = {}
+        for p in ("clk", "clrn", "ena", "sclr", "sload", "asdata", "d"):
+            pin[p] = f"{q}_{p}"
+            out.append(f"  wire {pin[p]} = {'~' if inv.get(p) else ''}{f[p]};")
+        out.append(f"  reg {q}_t = 1'b0;   // register state (the vendor primitive output)")
+        out.append(f"  reg {q}_r = 1'b0;   // visible q, one non-blocking step later (the vendor q_tmp_dly)")
+        out.append(f"  reg {q}_p = 1'bx;")
+        out.append(f"  assign {q} = {q}_r;")
+        # as the vendor register primitive: async clear is a level, a capture needs a clean 0 -> 1
+        # clock edge (an X -> 1 transition is ignored), ena must be 1; the state changes in the active
+        # region and q follows by a non-blocking assignment, so zero-delay races resolve as in the vendor model
+        out.append(f"  always @({pin['clk']} or {pin['clrn']}) begin")
+        out.append(f"    if ({pin['clrn']} === 1'b0) {q}_t = 1'b0;")
+        out.append(f"    else if ({q}_p === 1'b0 && {pin['clk']} === 1'b1 && {pin['ena']} === 1'b1)")
+        out.append(f"      {q}_t = ({pin['sclr']} === 1'b1) ? 1'b0 : ({pin['sload']} === 1'b1) ? {pin['asdata']} : {pin['d']};")
+        out.append(f"    {q}_p = {pin['clk']};")
+        out.append("  end")
+        out.append(f"  always @({q}_t) {q}_r <= {q}_t;")
     out.append("endmodule")
     return "\n".join(out) + "\n"

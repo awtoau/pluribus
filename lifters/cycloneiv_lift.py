@@ -110,6 +110,11 @@ class CycloneIVLift:
         n = len(tiles)
         return used.reshape(n, 16), masks.reshape(n, 16).astype(np.uint16)
 
+    def pin_inverted(self, plane, x, y, le, port):
+        """Bitstream decode of a control pin inverter (not found yet: clock polarity is the LAB bit
+        CLK_POL, the others read as not inverted and are scored as faults by the gate)."""
+        return False
+
     def lab_bit(self, plane, x, y, df, dv):
         f0, v0 = self.geom.anchor(x, y)
         return plane[f0 + df, v0 + dv]
@@ -137,14 +142,16 @@ class CycloneIVLift:
         if kind == "WIRE":
             _k, typ, s, i, x, y = d
             name = f"w_{typ}_{x}_{y}_{s}_{i}"
+            if not name.replace("_", "").isalnum():       # oracle-named nets: keep a legal, unique identifier
+                name = f"w_o{abs(hash(typ)) % 10**9}"
             des.terminals[name] = ("WIRE", typ, x, y, s, i)
             return name
         return None
 
-    def lift(self, plane, tiles=None):
+    def lift(self, plane, tiles=None, tracer=None):
         geom = self.geom
         des = Design()
-        tr = rd.Tracer(self.dec, plane, geom, terminals=TERMINAL_WIRES)
+        tr = tracer or rd.Tracer(self.dec, plane, geom, terminals=TERMINAL_WIRES)
         tiles = tiles if tiles is not None else [(x, y) for x in sorted(geom.kind) if geom.kind[x] == "LAB"
                                                   for y in range(1, geom.ymax)]
         used, masks = self.scan(plane, tiles)
@@ -289,11 +296,15 @@ class CycloneIVLift:
         des.not_lifted["comb loop edges cut (decode error)"] += cut
 
     def ff_exists(self, tr, plane, x, y, le):
+        if hasattr(tr, "ff_present"):          # oracle debug mode
+            return tr.ff_present(x, y, le)
         for i in (2 * le, 2 * le + 1):
+            if not self.dec.nonzero(plane, self.geom, ("LE_BUFFER", 0, i), x, y):
+                continue          # a zero mux is the idle code, not a selection
             cands, _why = self.dec.sources(plane, self.geom, ("LE_BUFFER", 0, i), x, y)
             if any(c.startswith("DRV|FF|") for c in cands):
                 return True
-        return False
+        return hasattr(tr, "ff_present") and tr.ff_present(x, y, le)
 
     def lift_ff(self, tr, plane, des, x, y, le):
         n = 2 * le + 1
@@ -310,6 +321,11 @@ class CycloneIVLift:
                 des.unresolved.append((name, port, why))
                 net = f"u_{x}_{y}_{le}_{port.lower()}"
                 des.terminals[net] = ("UNRESOLVED", why)
-            ff["d" if port == "DATAD" else port.lower()] = net
-        ff["clk_inv"] = self.lab_bit(plane, x, y, *CLK_POL)
+            pname = "d" if port == "DATAD" else port.lower()
+            ff[pname] = net
+            # pin inversions (LAB control inverters): oracle debug mode reads them from the .vo,
+            # otherwise decoded from the bitstream by pin_inverted()
+            ff.setdefault("inv", {})[pname] = (tr.inverted(("FF", n, port), x, y) if hasattr(tr, "inverted")
+                                               else self.pin_inverted(plane, x, y, le, port))
+        ff["clk_inv"] = ff["inv"]["clk"] if hasattr(tr, "inverted") else self.lab_bit(plane, x, y, *CLK_POL)
         return ff

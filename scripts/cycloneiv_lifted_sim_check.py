@@ -70,16 +70,34 @@ def terminal_nets(d, des):
     """lifted boundary net -> vo net (hierarchical, unescaped), via the RCF net through the element."""
     vo, rcf = d["vo"], d["rcf"]
     node_net = {}
+    oracle_nets = {}
+    for tname, info in des.terminals.items():
+        if info[0] == "WIRE" and str(info[1]).startswith("ORACLE:"):
+            oracle_nets[tname] = info[1][len("ORACLE:"):]
     for net, edges in rcf.items():
         for s, t in edges:
             for nd in (s, t):
                 if nd[0] == "W":
                     node_net.setdefault(nd[1:], net)
     out = {}
+    ib_at = {}
+    for a in vo.atoms.values():
+        m = LOC.match(a.get("location") or "") if False else None
     for name, info in des.terminals.items():
+        if info[0] == "DRV" and info[1] == "IOIBUF":
+            _k, _ck, x, y, n = info
+            for a in vo.atoms.values():
+                if a.get("location") == f"IOIBUF_X{x}_Y{y}_N{n}" and a["type"] == "cycloneive_io_ibuf":
+                    vn = vo_out_net(a, "o")
+                    if vn:
+                        out[name] = vn
+            continue
         if info[0] != "WIRE":
             continue
         _k, typ, x, y, s, i = info
+        if name in oracle_nets:
+            out[name] = oracle_nets[name]
+            continue
         net = node_net.get((typ, x, y, s, i))
         if net is None or net not in vo.atoms:
             continue
@@ -88,6 +106,46 @@ def terminal_nets(d, des):
         vn = vo_out_net(a, port) if port else None
         if vn:
             out[name] = vn
+    return out
+
+
+def race_taint(vo):
+    """Cells downstream of a register whose asynchronous control (clrn / prn / aload) is driven by
+    logic.  Their zero-delay behaviour is a simulator race (the clear glitches while the register
+    outputs it depends on settle) and differs between two correct models; the gate excludes them and
+    says how many.  -> {("lut" | "ff", (x, y, le))}."""
+    drv, readers, cells = {}, {}, {}
+    for a in vo.atoms.values():
+        m = LOC.match(a.get("location") or "")
+        if not m or a["type"] not in ("cycloneive_lcell_comb", "dffeas"):
+            continue
+        kind = "ff" if m.group(1) == "FF" else "lut"
+        key = (kind, (int(m.group(2)), int(m.group(3)), int(m.group(4)) // 2))
+        cells[key] = a
+        for p, _b, d, net, _i, _c in a["conns"]:
+            if not net:
+                continue
+            net = vo.canon(net)
+            if d == "out":
+                drv[net] = key
+            else:
+                readers.setdefault(net, []).append((key, p))
+    seeds = set()
+    for key, a in cells.items():
+        if key[0] != "ff":
+            continue
+        for p, _b, d, net, _i, _c in a["conns"]:
+            if p in ("clrn", "prn", "aload") and net and vo.canon(net) in drv:
+                seeds.add(key)
+    out, todo = set(seeds), list(seeds)
+    while todo:
+        key = todo.pop()
+        for p, _b, d, net, _i, _c in cells[key]["conns"]:
+            if d == "out" and net:
+                for rk, _rp in readers.get(vo.canon(net), []):
+                    if rk not in out:
+                        out.add(rk)
+                        todo.append(rk)
     return out
 
 
@@ -106,11 +164,72 @@ def clock_ports(vo):
     return ck
 
 
-def check(name, tables, steps=STEPS):
+class OracleTracer:
+    """Routing taken from the .vo instead of the bitstream (--oracle): isolates the other decode
+    (LUT mask / carry mode, FF fields, emitter, gate) from routing quality.  Never a result."""
+
+    def __init__(self, d):
+        vo = d["vo"]
+        self.atom_at, self.src, self.ffs = {}, {}, set()
+        for a in vo.atoms.values():
+            m = LOC.match(a.get("location") or "")
+            if m:
+                kind, x, y, n = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
+                self.atom_at[(kind, x, y, n)] = a
+                if kind == "FF":
+                    self.ffs.add((x, y, n // 2))
+                for p, _b, _d, net, _i, _c in a["conns"]:
+                    if net and p in ("combout", "q"):
+                        self.src[vo.canon(net)] = ("DRV", "FF" if kind == "FF" else "LCCOMB", n, x, y)
+            if a["type"] in ("cycloneive_io_ibuf", "cycloneive_clkctrl"):
+                port = "o" if a["type"] == "cycloneive_io_ibuf" else "outclk"
+                for p, _b, _d, net, _i, _c in a["conns"]:
+                    if p == port and net:
+                        self.src[vo.canon(net)] = ("WIRE", "ORACLE:" + vo.canon(net), 0, 0, 0, 0)
+        self.vo = vo
+
+    def ff_present(self, x, y, le):
+        return (x, y, le) in self.ffs
+
+    def inverted(self, key, x, y):
+        kind, n, port = key
+        a = self.atom_at.get((kind, x, y, n))
+        vport = "d" if port == "DATAD" else port.lower()
+        for p, _b, _d, net, inv, _c in (a["conns"] if a else []):
+            if p == vport:
+                return bool(inv)
+        return False
+
+    def trace(self, key, x, y):
+        kind, n, port = key
+        a = self.atom_at.get((kind, x, y, n))
+        if a is None:
+            return None, "oracle: no cell"
+        if kind == "LCCOMB" and port == "DATAC" and a["params"].get("sum_lutc_input") == "cin":
+            return ("CIN", 0, 0, x, y), "oracle"
+        vport = "d" if port == "DATAD" and kind == "FF" else port.lower()
+        for p, _b, _d, net, _i, const in a["conns"]:
+            if p != vport:
+                continue
+            if net is None:
+                if const in ("0", "1"):
+                    return ("CONST", int(const), 0, 0, 0), "oracle"
+                return None, "oracle: unconnected"
+            net = self.vo.canon(net)
+            if kind == "FF" and port == "DATAD":
+                s = self.src.get(net)
+                if s and s[0] == "DRV" and s[1] == "LCCOMB" and (s[3], s[4], s[2]) == (x, y, n - 1):
+                    return ("LUTOUT", 0, 0, x, y), "oracle"
+            s = self.src.get(net)
+            return (s, "oracle") if s else (None, "oracle: net with no known driver")
+        return None, "oracle: pin not in the .vo"
+
+
+def check(name, tables, steps=STEPS, oracle=False):
     d = cc.load(name)
     geom = rl.one_geom([name])
     lift = lf.CycloneIVLift(geom.die, tables)
-    des = lift.lift(d["plane"])
+    des = lift.lift(d["plane"], tracer=OracleTracer(d) if oracle else None)
     work = WORK / name
     work.mkdir(parents=True, exist_ok=True)
     (work / "lifted.v").write_text(em.emit(des))
@@ -130,10 +249,15 @@ def check(name, tables, steps=STEPS):
     l_lut = {(l["x"], l["y"], l["le"]): l for l in des.luts}
     l_ff = {(f["x"], f["y"], f["le"]): f for f in des.ffs}
     probes, missing, extra = [], [], []
+    tainted = race_taint(vo)
+    excluded = []
     for k, a in vo_lut.items():
         for port, lnet in (("combout", lf.comb(*k)), ("cout", lf.cout(*k))):
             vn = vo_out_net(a, port)
             if vn is None:
+                continue
+            if a is not None and ("lut", k) in tainted:
+                excluded.append(f"lut{k}.{port}")
                 continue
             if k in l_lut:
                 probes.append((f"lut{k}.{port}", vn, lnet))
@@ -142,6 +266,9 @@ def check(name, tables, steps=STEPS):
     for k, a in vo_ff.items():
         vn = vo_out_net(a, "q")
         if vn is None:
+            continue
+        if ("ff", k) in tainted:
+            excluded.append(f"ff{k}.q")
             continue
         if k in l_ff:
             probes.append((f"ff{k}.q", vn, lf.qnet(*k)))
@@ -175,30 +302,38 @@ def check(name, tables, steps=STEPS):
         else:
             conns.append(f".{t}(1'bx)")
     tb.append(f"  cycloneiv_lifted L({', '.join(conns)});")
-    tb.append(f"  integer ok [0:{max(len(probes), 1) - 1}], bad [0:{max(len(probes), 1) - 1}], xl [0:{max(len(probes), 1) - 1}], xq [0:{max(len(probes), 1) - 1}];")
+    tb.append(f"  integer ok [0:{max(len(probes), 1) - 1}], bad [0:{max(len(probes), 1) - 1}], xl [0:{max(len(probes), 1) - 1}], xq [0:{max(len(probes), 1) - 1}], fb [0:{max(len(probes), 1) - 1}];")
     tb.append("  integer i, s;")
     tb.append("  initial begin")
-    tb.append(f"    for (i = 0; i < {max(len(probes), 1)}; i = i + 1) begin ok[i] = 0; bad[i] = 0; xl[i] = 0; xq[i] = 0; end")
-    tb += [f"    {esc(p)} = 0;" for p in ins]
-    tb.append(f"    for (s = 0; s < {steps + 8}; s = s + 1) begin")
+    tb.append(f"    for (i = 0; i < {max(len(probes), 1)}; i = i + 1) begin ok[i] = 0; bad[i] = 0; xl[i] = 0; xq[i] = 0; fb[i] = -1; end")
+    # Data first, clocks left undriven (X) until the data has settled: a clock going X -> 0 is a
+    # falling edge, but an inverted clock (~X -> 1) is a rising edge, so inverted-clock registers
+    # capture once at t = 100 ps with settled data, identically in both models.  Clocks driven at
+    # t = 0 would race the data and give a different power-up state in the two simulators.
+    tb += [f"    {esc(p)} = $random;" for p in data]
+    tb.append("    #100;")
+    tb += [f"    {esc(p)} = 0;" for p in sorted(clks)]
+    tb.append("    #100;")
+    tb.append(f"    for (s = 0; s < {steps}; s = s + 1) begin")
     for p in data:
         tb.append(f"      {esc(p)} = $random;")
     tb.append("      #50;")
+    # one clock at a time, each in its own time step: pulsing several together races the register
+    # updates of one domain against the clock edges of the other
     for p in sorted(clks):
         tb.append(f"      {esc(p)} = 1;")
-    tb.append("      #50;")
-    for p in sorted(clks):
+        tb.append("      #50;")
         tb.append(f"      {esc(p)} = 0;")
-    tb.append("      #50;")
-    tb.append("      if (s >= 8) begin")
+        tb.append("      #50;")
+    tb.append("      if (s >= 0) begin")
     for i, (label, vn, ln) in enumerate(probes):
         tb.append(f"        if (L.{ln} === 1'bx || L.{ln} === 1'bz) xl[{i}] = xl[{i}] + 1;"
                   f" else if (Q.{esc(vn)} === 1'bx || Q.{esc(vn)} === 1'bz) xq[{i}] = xq[{i}] + 1;"
-                  f" else if (Q.{esc(vn)} === L.{ln}) ok[{i}] = ok[{i}] + 1; else bad[{i}] = bad[{i}] + 1;")
+                  f" else if (Q.{esc(vn)} === L.{ln}) ok[{i}] = ok[{i}] + 1; else begin bad[{i}] = bad[{i}] + 1; if (fb[{i}] < 0) fb[{i}] = s; end")
     tb.append("      end")
     tb.append("    end")
     for i, (label, vn, ln) in enumerate(probes):
-        tb.append(f"    $display(\"PROBE {i} %0d %0d %0d %0d\", ok[{i}], bad[{i}], xl[{i}], xq[{i}]);")
+        tb.append(f"    $display(\"PROBE {i} %0d %0d %0d %0d %0d\", ok[{i}], bad[{i}], xl[{i}], xq[{i}], fb[{i}]);")
     tb.append("    $finish;")
     tb.append("  end")
     tb.append("endmodule")
@@ -218,15 +353,16 @@ def check(name, tables, steps=STEPS):
     res = {"matched": 0, "wrong": 0, "missing": len(missing), "extra": len(extra), "xq": 0, "wrong_pts": [],
            "missing_pts": missing[:5], "luts": len(des.luts), "ffs": len(des.ffs),
            "unresolved": len(des.unresolved), "terminals": len(des.terminals), "mapped": len(tmap),
-           "not_lifted": dict(des.not_lifted)}
+           "not_lifted": dict(des.not_lifted), "excluded": len(excluded)}
     for ln_ in r.stdout.splitlines():
-        m = re.match(r"PROBE (\d+) (\d+) (\d+) (\d+) (\d+)", ln_)
+        m = re.match(r"PROBE (\d+) (\d+) (\d+) (\d+) (\d+) (-?\d+)", ln_)
         if not m:
             continue
-        i, ok, bad, xl, xq = map(int, m.groups())
+        i, ok, bad, xl, xq, fb = map(int, m.groups())
         if bad:
             res["wrong"] += 1
             res["wrong_pts"].append(probes[i][0])
+            res.setdefault("first_bad", []).append((fb, probes[i][0]))
         elif xl or ok == 0:
             res["missing"] += 1
             res["missing_pts"].append(probes[i][0])
@@ -238,6 +374,7 @@ def check(name, tables, steps=STEPS):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--oracle", action="store_true", help="routing from the RCF (debug: isolates the other decode)")
     ap.add_argument("designs", nargs="*")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--pattern", default="gx150_sp_*")
@@ -253,7 +390,7 @@ def main():
     tot = {"matched": 0, "wrong": 0, "missing": 0, "extra": 0}
     npass = 0
     with ThreadPoolExecutor(a.jobs) as ex:
-        for name, res in ex.map(lambda n: check(n, tables), names):
+        for name, res in ex.map(lambda n: check(n, tables, oracle=a.oracle), names):
             if "error" in res:
                 log(f"{name}: ERROR {res['error']}")
                 continue
@@ -265,7 +402,7 @@ def main():
             log(f"{name}: {'PASS' if ok else 'FAIL'} points matched {res['matched']} / ({res['matched']} + missing "
                 f"{res['missing']} + extra {res['extra']} + wrong {res['wrong']}) = {100 * res['matched'] / max(den, 1):.1f}%; "
                 f"lifted {res['luts']} LUT {res['ffs']} FF; boundary {res['terminals']} (mapped {res['mapped']}), "
-                f"unresolved inputs {res['unresolved']}; wrong {res['wrong_pts'][:3]}; missing {res['missing_pts'][:3]}")
+                f"unresolved inputs {res['unresolved']}; excluded as race-prone {res['excluded']}; wrong {res['wrong_pts'][:3]}; missing {res['missing_pts'][:3]}")
     den = sum(tot.values())
     log(f"SUMMARY {len(names)} designs, {npass} PASS: points matched {tot['matched']} / (matched {tot['matched']} + "
         f"missing {tot['missing']} + extra {tot['extra']} + wrong {tot['wrong']}) = {100 * tot['matched'] / max(den, 1):.2f}%")

@@ -1,0 +1,4 @@
+top = "top"
+purpose = "carry knob carry_dgnd"
+exercises = ["carry"]
+qsf = ["set_location_assignment LCCOMB_X5_Y5_N0 -to l0", "set_location_assignment LCCOMB_X5_Y5_N2 -to l1", "set_location_assignment PIN_28 -to a", "set_location_assignment PIN_30 -to b", "set_location_assignment PIN_31 -to d", "set_location_assignment PIN_32 -to e", "set_location_assignment PIN_33 -to y0", "set_location_assignment PIN_34 -to y1"]

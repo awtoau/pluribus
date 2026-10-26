@@ -18,7 +18,7 @@ LOCAL = 60
 P_LOCAL = 0.85
 
 
-def rnd_design(seed, n_nodes, n_in, n_out, lut_param=False):
+def rnd_design(seed, n_nodes, n_in, n_out, lut_param=False, pin_async=False):
     """lut_param: LUT as a bit-select of a localparam (no width warnings; quartus_map on 20k nodes)."""
     r = random.Random(seed)
     ins = [f"i{k}" for k in range(n_in)]
@@ -54,6 +54,10 @@ def rnd_design(seed, n_nodes, n_in, n_out, lut_param=False):
             clk = r.choice(clks)
             edge = "negedge" if r.random() < 0.1 else "posedge"
             ctl = {c: r.choice(pool) for c in ("en", "sclr", "aclr", "sld") if r.random() < 0.3}
+            if pin_async and "aclr" in ctl:
+                # async clear from an input pin only: a clear driven by logic that depends on
+                # registers glitches at the clock edge in zero-delay simulation (model-dependent race)
+                ctl["aclr"] = r.choice(ins)
             sens = f"{edge} {clk}" + (f" or posedge {ctl['aclr']}" if "aclr" in ctl else "")
             rv = r.randrange(2) if "aclr" in ctl else 0
             decl.append(f"  reg {q};")
@@ -106,6 +110,7 @@ GX_DEVICES = {"gx150": "EP4CGX150DF31C7", "gx110": "EP4CGX110DF31C7"}
 
 SPREAD = 300            # gx150 spread designs
 SPREAD_HALF = 3         # registers pinned to LABs within +-3 of the design's centre
+RB = 150                # gx150_rb_*: race-free gate corpus
 
 
 def gx_specs():
@@ -136,6 +141,24 @@ def gx_specs():
                     'set_global_assignment -name FITTER_EFFORT "FAST FIT"'] + locs,
             "purpose": f"random RTL on EP4CGX150 around LAB X{cx} Y{cy}, {n_nodes} LUT nodes",
             "exercises": ["routing", "lab_controls", "carry", "io", "le_address"]}
+    # gate corpus: same generator, async clear from pins only (no zero-delay race, see rnd_design)
+    for j in range(RB if labs else 0):
+        seed = 12_000_031 + j
+        r = random.Random(seed)
+        n_nodes, n_in, n_out = r.randrange(300, 701), r.randrange(16, 41), r.randrange(12, 31)
+        v = rnd_design(seed, n_nodes, n_in, n_out, lut_param=True, pin_async=True)
+        cx, cy = r.choice(labs)
+        win = [(x, y) for x in range(cx - SPREAD_HALF, cx + SPREAD_HALF + 1)
+               for y in range(cy - SPREAD_HALF, cy + SPREAD_HALF + 1) if (x, y) in labset]
+        regs = re.findall(r"^\s*reg (q\d+);", v, re.M)
+        r.shuffle(win)
+        locs = [f"set_location_assignment LAB_X{x}_Y{y} -to {q}" for q, (x, y) in zip(regs, win)]
+        out[f"gx150_rb_{j:03d}"] = {
+            "top": "top", "verilog": v, "device": GX_DEVICES["gx150"],
+            "qsf": [f"set_global_assignment -name SEED {1 + r.randrange(1000)}",
+                    'set_global_assignment -name FITTER_EFFORT "FAST FIT"'] + locs,
+            "purpose": f"race-free random RTL on EP4CGX150 around LAB X{cx} Y{cy}, {n_nodes} LUT nodes",
+            "exercises": ["routing", "lab_controls", "carry", "io", "gate"]}
     # header-bit probe: same design, other package / speed grade / temperature grade of both dies
     for tag, dev in (("gx150_cf23c8", "EP4CGX150CF23C8"), ("gx150_df27i7", "EP4CGX150DF27I7"),
                      ("gx110_cf23c7", "EP4CGX110CF23C7"), ("gx110_df27c8", "EP4CGX110DF27C8")):
