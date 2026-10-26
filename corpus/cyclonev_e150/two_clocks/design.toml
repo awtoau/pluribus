@@ -1,0 +1,4 @@
+top = "two_clocks"
+purpose = "two clock domains, a counter each, 2-FF synchroniser from A to B"
+exercises = ["multi_clock", "cdc", "dffeas", "carry_chain"]
+qsf = []

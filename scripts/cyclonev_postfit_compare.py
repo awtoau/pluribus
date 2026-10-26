@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(REPO / "corpus" / "cyclonev" / "corpus.db"))
+os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(REPO / "corpus" / os.environ.get("PLURIBUS_CV_CORPUS", "cyclonev") / "corpus.db"))
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 
@@ -78,7 +78,7 @@ def compare_build(bid, ddir):
     from sqlalchemy import delete, insert
     atoms, by_atom, q_driver = load_quartus(bid)
     atoms_by_name = {a['name']: a for a in atoms.values()}
-    lift = CycloneVLift("5CEBA4U19C8")
+    lift = CycloneVLift(os.environ.get("PLURIBUS_CV_DEVICE", "5CEBA4U19C8"))
     pc = lift.parse_config(str(Path(ddir) / "decomp.bt"))
     d = lift.recover_netlist(pc)
     dsu = d.dsu

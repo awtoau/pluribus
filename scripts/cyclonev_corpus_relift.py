@@ -16,7 +16,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 LOG = REPO / "tmp" / "logs" / "cyclonev_corpus_relift.log"
-DEVICE = "5CEBA4U19C8"
+DEVICE = os.environ.get("PLURIBUS_CV_DEVICE", "5CEBA4U19C8")
 STEP_LIMIT_S = 60   # expected < 5 s per step; 60 s = hung, step fails and is logged
 
 
@@ -44,10 +44,10 @@ def step(name, design, cmd):
 def main():
     if "PLURIBUS_SQLITE_PATH" not in os.environ:
         sys.exit("set PLURIBUS_SQLITE_PATH to the corpus DB (copy)")
-    designs = sys.argv[1:] or sorted(p.parent.name for p in (REPO / "corpus" / "cyclonev").glob("*/decomp.bt"))
+    designs = sys.argv[1:] or sorted(p.parent.name for p in (REPO / "corpus" / os.environ.get("PLURIBUS_CV_CORPUS", "cyclonev")).glob("*/decomp.bt"))
     bad = 0
     for d in designs:
-        ddir = REPO / "corpus" / "cyclonev" / d
+        ddir = REPO / "corpus" / os.environ.get("PLURIBUS_CV_CORPUS", "cyclonev") / d
         label = f"cv_corpus_{d}"
         ok = step("load", d, ["python3.15t", "load.py", "--lifter", "cyclonev", "--device", DEVICE,
                               "--label", label, "--config", ddir / "decomp.bt"])

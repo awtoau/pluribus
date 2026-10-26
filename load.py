@@ -449,7 +449,7 @@ def load_anlogic(label, config_path, device, package):
 
 # ── Cyclone V load (ALM/LAB, not Trellis) ─────────────────────────────────────
 
-_CYCLONEV_SUPPORTED_DEVICES = {"5CEBA4U19C8"}
+_CYCLONEV_SUPPORTED_DEVICES = {"5CEBA4U19C8", "5CEBA7U19C8"}
 
 
 def parse_cv_pins_tsv(path):
@@ -496,7 +496,7 @@ def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
     if device not in _CYCLONEV_SUPPORTED_DEVICES:
         die(f"load_cyclonev: device {device!r} not supported. "
             f"CycloneVLift covers only {sorted(_CYCLONEV_SUPPORTED_DEVICES)} "
-            f"(die e50f) for now — see lifters/cyclonev_lift.py.")
+            f"(dies e50f, gt150f) for now — see lifters/cyclonev_lift.py.")
     if not os.path.exists(config_path):
         die(f"Config file not found: {config_path}")
 

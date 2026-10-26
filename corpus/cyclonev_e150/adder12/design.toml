@@ -1,0 +1,4 @@
+top = "adder12"
+purpose = "12-bit registered adder"
+exercises = ["carry_chain", "arith_mode", "dffeas"]
+qsf = []

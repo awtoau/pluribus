@@ -38,14 +38,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-CORPUS = REPO / "corpus" / "cyclonev"
+# PLURIBUS_CV_CORPUS / PLURIBUS_CV_DEVICE: build another die's corpus (corpus/<dir>, same gitignore rule)
+CORPUS = REPO / "corpus" / os.environ.get("PLURIBUS_CV_CORPUS", "cyclonev")
 os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(CORPUS / "corpus.db"))
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 
 import toolchain  # noqa: E402
 
-DEVICE = "5CEBA4U19C8"
+DEVICE = os.environ.get("PLURIBUS_CV_DEVICE", "5CEBA4U19C8")
 LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_corpus_build.log"
 KEEP = {"src", "design.toml"}
 PY = shutil.which("python3.15t") or sys.executable

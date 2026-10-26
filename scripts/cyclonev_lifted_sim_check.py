@@ -38,12 +38,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
-CORPUS = REPO / "corpus" / "cyclonev"
+CORPUS = REPO / "corpus" / os.environ.get("PLURIBUS_CV_CORPUS", "cyclonev")   # PLURIBUS_CV_CORPUS / _DEVICE: other die
 WORK = REPO / "tmp" / "simcheck"
 LOG = REPO / "tmp" / "logs" / "cyclonev_lifted_sim_check.log"
 SIMLIB = Path("/mnt/2tb/opt/altera/quartus-25.1/quartus/eda/sim_lib")
 PRIMS = SIMLIB / "altera_primitives.v"
-DEVICE = "5CEBA4U19C8"
+DEVICE = os.environ.get("PLURIBUS_CV_DEVICE", "5CEBA4U19C8")
 FPLL_MODEL = REPO / "lifters" / "data" / "cyclonev_fpll_model.v"
 MAC_MODEL = REPO / "lifters" / "data" / "cyclonev_mac_model.v"
 PLL_GUARD_PS = 200   # vendor vs our VCO edges differ by <= a few ps (1 ps rounding); 200 ps keeps samples clear

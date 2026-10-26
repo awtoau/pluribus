@@ -132,16 +132,18 @@ _M_LINE_RE = re.compile(r"^m\s+(\S+)")
 # default value (mistral cv-rmux.cc route_all_active_links), so the pad -> spine connection is
 # not an `r` arc.  Data: lifters/data/cyclonev_e50f_clocks.json (scripts/cyclonev_clock_tree_extract.py).
 # Evidence + scoring: docs/cyclonev-postfit-oracle.md "Clock tree".
-_CLOCK_DATA = []
+_CLOCK_DATA = {}
+_DIE_BY_DEVICE = {"5CEBA4U19C8": "e50f", "5CEBA7U19C8": "gt150f"}
 _CMUX_G = ("HG", "VG")                 # global muxes: gclk[i] = output of instance i
 _CMUX_R = ("CR", "HR", "VR")           # regional muxes: rclk[i] = output of instance i
 
 
-def _clock_data():
-    if not _CLOCK_DATA:
-        _CLOCK_DATA.append(json.loads(
-            (Path(__file__).resolve().parent / "data" / "cyclonev_e50f_clocks.json").read_text()))
-    return _CLOCK_DATA[0]
+def _clock_data(device="5CEBA4U19C8"):
+    die = _DIE_BY_DEVICE[device]
+    if die not in _CLOCK_DATA:
+        _CLOCK_DATA[die] = json.loads(
+            (Path(__file__).resolve().parent / "data" / f"cyclonev_{die}_clocks.json").read_text())
+    return _CLOCK_DATA[die]
 
 
 def _node_name(node):
@@ -151,7 +153,7 @@ def _node_name(node):
 def _cmux_source(pc, node):
     """Source node (pad or PLL output) that the configured CMUX instance driving GCLK/RCLK `node`
     selects, or None (instance unconfigured, or the selected input is not modelled)."""
-    data = _clock_data()
+    data = _clock_data(pc.device)
     name = _node_name(node)
     for key, ent in data["cmux"].items():
         for lst, kinds in (("gclk", _CMUX_G), ("rclk", _CMUX_R)):
@@ -193,7 +195,7 @@ def clock_tree_links(pc):
     one candidate (data/e50f-r) whose CMUX instance is configured; 0 or >1 candidates -> no link
     (ambiguity counted in the second return value).  GCLK/RCLK root: the CMUX input.
     """
-    data = _clock_data()
+    data = _clock_data(pc.device)
     srcs = {s for s, _d in pc.arcs}
     dsts = {d for _s, d in pc.arcs}
     links, unresolved = [], defaultdict(int)
@@ -670,8 +672,8 @@ class CycloneVLift:
     has_ebr = False       # M10K content decode is out of scope here (upstream unknown)
     has_iologic = False   # GPIO IOLOGIC config (DDIO etc) not modelled
 
-    _SUPPORTED_DEVICES = {"5CEBA4U19C8"}
-    _DIE = "e50f"
+    _SUPPORTED_DEVICES = set(_DIE_BY_DEVICE)
+    _DIE = "e50f / gt150f (5CEBA7U19C8, die byte 0x13)"
 
     def __init__(self, device, **_kwargs):
         if device not in self._SUPPORTED_DEVICES:

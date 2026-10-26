@@ -1,0 +1,7 @@
+top = "clock_promotion"
+purpose = "one clock promoted to a global network, one to a regional network"
+exercises = ["global_clock", "regional_clock", "clkena", "dffeas"]
+qsf = [
+  "set_instance_assignment -name GLOBAL_SIGNAL \"GLOBAL CLOCK\" -to clkg",
+  "set_instance_assignment -name GLOBAL_SIGNAL \"REGIONAL CLOCK\" -to clkr",
+]
