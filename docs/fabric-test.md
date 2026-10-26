@@ -41,27 +41,35 @@ extra bitstreams — bel pins and wires ride along in parallel.
 python3 scripts/fabric_coverage_plan.py --device LFE5U-12F
 ```
 
-| bitstreams | ECP5 `LFE5U-12F` | MachXO2 `LCMXO2-1200` |
+| bitstreams | ECP5 perfect-packer ceiling | MachXO2 perfect-packer ceiling |
 |---:|---:|---:|
 | 8 | 40.3% | — |
 | 16 | 75.7% | — |
 | **24** | **97.0%** | **99.3%** |
 | 64 | 100.0% | — |
 
-**24 is the knee.** The last 3% costs another 40 bitstreams, because p95 fan-in
-is 24 on both families while the maximum is 64 — the tail is a handful of very
-wide muxes. Pick a point on that curve knowingly; the tool prints it.
+These are upper bounds, not results. Twenty-four is a useful point on the
+fan-in curve, but it is neither a required count nor a cap. In the first
+Cynthion seed-only sweep, 24 real routed configurations measured just **9.61%**
+of configurable arcs per tile type (and 35.77% per physical instance), not 97%.
+The gap is why the suite now varies signature-network topology as well as
+placement and measures every emitted config.
+
+For this test, breadth is cheap: hundreds or thousands of SRAM bitstreams are
+reasonable when each performs only a quick deterministic go/no-go check. Soak
+testing is a separate axis and is not required for the first coverage pass.
 
 ## Usage
 
 ### 1. Generate
 
 ```
-python3 scripts/fabric_test_gen.py --device LFE5U-12F --count 24
+python3 scripts/fabric_test_gen.py --device LFE5U-12F --count 1000
 ```
 
 Writes `tmp/fabric-tests/LFE5U-12F/fabric_test_NN.v` plus `manifest.tsv`
-recording each design's seed and expected signature.
+recording each design's golden-model seed plus placement seed, topology seed,
+and signature-tree fan-in for the board-workspace implementation.
 
 ### 2. Verify in simulation — before touching hardware
 
@@ -99,6 +107,19 @@ ecppack ft00.config ft00.bit
 Load **volatile** (SRAM) rather than writing flash, so a bad build cannot brick
 the board.
 
+For a large candidate pool, first build all candidates, extract their
+`top.config` files, then put the hardware run in a coverage-directed order:
+
+```
+python3 scripts/fabric_coverage_select.py \
+    path/to/seed-*/top.config --json tmp/fabric-selection.json
+```
+
+Selection maximises newly covered configurable arcs per tile type, with
+physical-instance arcs as the tie-breaker. It orders rather than drops
+candidates, so every prefix is useful and the full run still gets the union of
+all coverage. The result records a SHA-256 digest of its exact config inputs.
+
 ### 5. Read the result
 
 **The generator does not build a JTAG readout.** Its designs expose the
@@ -125,8 +146,10 @@ to audit.
 > build compute its own, and take only the count, blocks and round size from the
 > plan.
 
-Report cumulatively, e.g. `18/24 passed — 91% of routing arcs exercised`. A user
-who runs 6 of 24 has ~40%, not an unqualified "pass".
+Report the measured result cumulatively, with configurable arc counts and the
+Trellis database digest. The primary comparable metric is per-tile-type arc
+coverage; report physical-instance coverage separately. Never substitute the
+perfect-packer ceiling for the measured union.
 
 ## Why JTAG rather than pins or SPI
 
@@ -174,10 +197,11 @@ LUTs and flops.
 - **The 18% a PIP sweep misses.** Of ECP5's 1,106,196 wires, 203,948 have no
   uphill PIP — bel-driven outputs and tile-boundary aliases. A pure PIP sweep
   would report "all PIPs covered" having missed nearly a fifth of the wiring.
-- **The coverage figure is a plan, not a measurement.** `fabric_coverage_plan.py`
-  reports what a *perfect* packer would reach. These designs do not yet place
-  against that plan, so the achieved figure is unmeasured and will be lower.
+- **Exact PIP forcing remains future work.** The current suite changes placement,
+  state-bit rotations, tree grouping and fan-in, then greedily orders measured
+  results. nextpnr's pre-route API can bind complete legal routes, but binding an
+  isolated PIP without a source-to-sink net would not prove silicon exercised it.
 - **Type coverage is a separate axis.** EBR, DSP, PLL, DCC, DQS, SERDES and EFB
   are distinct tile types. A slice sweep says nothing about them.
-- **Intermittent defects need a soak.** A single pass cannot measure a rate;
-  #98 bounds it at ≤1.4 × 10⁻⁴ per round at one operating point.
+- **Intermittent defects need a separate soak.** A single pass cannot measure a
+  rate; the first-pass suite deliberately prioritises quick coverage breadth.
