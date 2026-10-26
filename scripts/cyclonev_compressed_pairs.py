@@ -33,9 +33,9 @@ log = logging.getLogger("cyclonev_compressed_pairs")
 
 
 def run(step, cmd, cwd):
-    with open(cwd / f"{step}.log", "w") as fh:
-        r = subprocess.run([str(c) for c in cmd], cwd=cwd, stdout=fh, stderr=subprocess.STDOUT,
-                           timeout=LIMIT_S[step.split("_")[0]])
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, step, log, overall_s=LIMIT_S[step.split("_")[0]], cwd=cwd)  # #122
+    (cwd / f"{step}.log").write_text(r.stdout + r.stderr)
     if r.returncode:
         log.error("%s failed rc=%d (%s)", step, r.returncode, cwd / f"{step}.log")
     return r.returncode == 0
@@ -83,6 +83,7 @@ def sfl_pairs(qb):
     return 1 if fails else 0
 
 
+@heavy_guard.locked("cyclonev_compressed_pairs")
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", default=str(REPO / "corpus" / "cyclonev"))

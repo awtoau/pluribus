@@ -13,15 +13,14 @@ Pluribus already knows the fabric exhaustively, so it can plan the test.  This
 does the planning half: it reads the device database, counts what there is to
 cover, and reports how much of it N bitstreams can reach.
 
-DELIBERATELY NOT EXHAUSTIVE
----------------------------
+THIS IS A CEILING, NOT ACHIEVED COVERAGE
+----------------------------------------
 Full interconnect coverage is a set-cover problem over millions of arcs and is
-bounded below by the worst mux fan-in.  That is the wrong target for a
-confidence check someone else runs on their own board.  The useful fact is the
-shape of the curve: on ECP5 the fan-in median is 20 and p95 is 24, but the
-maximum is 64 -- so a couple of dozen configurations reach most of the fabric
-and the long tail costs far more for very little.  `--plan` prints that
-trade-off so a user picks a point on it knowingly.
+bounded below by the worst mux fan-in. The useful fact here is the best-case
+shape: on ECP5 the fan-in median is 20 and p95 is 24, while the maximum is 64.
+``--plan`` reports what a perfect packer could cover. Real tool output must be
+measured with ``fabric_coverage_select.py``; ordinary seed variation can fall
+far short of this ceiling.
 
 WHAT ONE CONFIGURATION CAN COVER
 --------------------------------
@@ -149,9 +148,9 @@ def main():
         bar = "#" * int(40 * c / total)
         log.info("%9d   %11s   %5.1f%%  %s", n, f"{c:,}", 100 * c / total, bar)
     log.info("")
-    log.info("The knee is the point worth picking: most of the fabric costs a "
-             "couple of dozen configurations, the last few per cent costs "
-             "several times that.")
+    log.info("This is a perfect-packer ceiling, not a claim about generated "
+             "bitstreams. Measure routed top.config files before reporting "
+             "coverage; use more quick candidates whenever they add arcs.")
     return 0
 
 

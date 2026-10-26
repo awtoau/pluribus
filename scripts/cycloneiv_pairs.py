@@ -56,11 +56,9 @@ def main():
             shutil.copyfile(sof, OUT / sof.name)
             for sfx, extra in todo:
                 heavy_guard.wait_available(log, f"quartus_cpf {stem}", MIN_GB)
-                try:
-                    r = subprocess.run([str(qb / "quartus_cpf"), "-c", *extra, sof.name, stem + sfx],
-                                       cwd=OUT, capture_output=True, text=True, timeout=LIMIT_S)
-                except subprocess.TimeoutExpired:
-                    log.error("%s%s: quartus_cpf exceeded %ds", stem, sfx, LIMIT_S)
+                r = heavy_guard.guarded([str(qb / "quartus_cpf"), "-c", *extra, sof.name, stem + sfx],
+                                        "quartus_cpf", log, overall_s=LIMIT_S, cwd=OUT)  # #122
+                if r.timed_out:
                     bad += 1
                     continue
                 if r.returncode:

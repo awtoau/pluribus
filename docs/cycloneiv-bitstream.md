@@ -239,4 +239,4 @@ Every Cyclone IV rule here comes from Cyclone IV oracle runs. No Cyclone V bit p
 - Periphery frames 1..r-1: no CRC found in-frame; how they are protected is unknown.
 - Compressed length-field low bits; header lanes 0 and 3, lane 1 bits 0..23 and 36..37.
 - Compressor not written.
-- Encrypted Cyclone III LS / IV streams: no oracle.
+- Encrypted Cyclone III LS streams: no oracle. Cyclone IV E/GX cannot encrypt ([fpga-encryption.md](fpga-encryption.md)).

@@ -167,14 +167,12 @@ def build_one(d, env, do_oracle):
                 res["oracle"] = r["status"]
             except (OR.ToolError, P.FormatError) as e:
                 res["oracle"] = "failed: " + str(e)
-            try:
-                anno = os.path.join(toolchain.diamond_root(), "ispfpga", "bin", "lin64", "ldbanno")
-                subprocess.run([anno, "-n", "Verilog", "-o", "postpar.vo", "impl1/fuzz_impl1.ncd"],
-                               cwd=d, env=env, capture_output=True, text=True,
-                               timeout=ANNO_TIMEOUT_S)
-                res["postpar_vo"] = os.path.exists(os.path.join(d, "postpar.vo"))
-            except subprocess.TimeoutExpired:
-                res["postpar_vo"] = False
+            anno = os.path.join(toolchain.diamond_root(), "ispfpga", "bin", "lin64", "ldbanno")
+            import heavy_guard
+            a = heavy_guard.guarded([anno, "-n", "Verilog", "-o", "postpar.vo", "impl1/fuzz_impl1.ncd"],
+                                    "ldbanno", overall_s=ANNO_TIMEOUT_S, cwd=d, env=env)  # #122
+            res["postpar_vo"] = os.path.exists(os.path.join(d, "postpar.vo")) and not a.timed_out
+            if a.timed_out:
                 log(f"[warn] {name}: ldbanno exceeded {ANNO_TIMEOUT_S}s")
     res["src_sha256"] = src_hash(d)
     with open(os.path.join(d, "build.json"), "w") as fh:
@@ -201,6 +199,7 @@ def up_to_date(d):
     return json.load(open(bj)).get("src_sha256") == src_hash(d)
 
 
+@heavy_guard.locked("machxo2_construct_build")
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dir", default=DEFAULT_DIR)

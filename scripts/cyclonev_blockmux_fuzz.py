@@ -248,11 +248,11 @@ def run(cmd, cwd, logger, timeout):
     """Returns (ok, combined_text). A timeout is logged with the limit and the
     command; the caller records it as INCONCLUSIVE, never as a pass."""
     logger.info("+ %s", " ".join(str(c) for c in cmd))
-    try:
-        res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        logger.error("TIMEOUT after %ds (limit): %s", timeout, " ".join(str(c) for c in cmd))
-        return False, f"TIMEOUT after {timeout}s"
+    import heavy_guard
+    # per-design limits above stay as the overall backstop; stall 60 s added (#122)
+    res = heavy_guard.guarded(cmd, "blockmux", logger, overall_s=timeout, cwd=cwd)
+    if res.timed_out:
+        return False, f"TIMEOUT (stall 60 s or overall {timeout}s)"
     text = res.stdout + res.stderr
     if res.returncode != 0:
         logger.error("FAILED rc=%d: %s", res.returncode, " ".join(str(c) for c in cmd))

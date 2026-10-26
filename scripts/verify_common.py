@@ -41,10 +41,9 @@ def run_cmd(cmd, cwd, oss_bin=None, env=None, log=None, full_env=False):
     e = env if full_env else {**os.environ, **(env or {})}
     if oss_bin and not full_env:
         e = {**e, "PATH": str(oss_bin) + os.pathsep + e.get("PATH", "")}
-    r = subprocess.run(
-        cmd, cwd=str(cwd), env=e,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    out = r.stdout or ""
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, os.path.basename(str(cmd[0])), cwd=str(cwd), env=e)  # #122
+    out = (r.stdout or "") + (r.stderr or "")
     if log is not None:
         log.write(f"\n$ {' '.join(str(c) for c in cmd)}\n{out}")
     return r.returncode, out

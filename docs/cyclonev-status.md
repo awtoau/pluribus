@@ -21,7 +21,7 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
 ## Status (measured 2026-10-26)
 - **Functional gate** (`scripts/cyclonev_lifted_sim_check.py --all`; lifted Verilog simulated, per output sample matched / wrong / missing):
   - iverilog (default): 256 designs, 256 PASS. Samples: matched 6437030 / 6437030; wrong 0, missing 0. PLL designs run on Questa (encrypted atoms).
-  - Questa (`--sim questa`, `build.vo` on the vendor libraries only, incl. encrypted DSP / PLL atoms): 255 PASS, 1 FAIL (`c_latch_v95_1`: 2 missing = lifted X where the vendor lcell resolves the self-loop at power-up; iverilog scores the same 2 samples as xq). Samples matched 6437030 / 6437032.
+  - Questa (`--sim questa`, `build.vo` on the vendor libraries only, incl. encrypted DSP / PLL atoms): 256 PASS, 0 FAIL. Samples matched 6437032 / 6437032, wrong 0, missing 0.
   - Reference per kind (iverilog): logic, carry, registers, M10K, MLAB: Quartus `build.vo` on the vendor models (RAM/MLAB: plain `cyclonev_atoms.v` + `altera_lnsim.sv`). DSP: `build.vo` on our model, plus lifted vs the design's own RTL. PLL: vendor atoms (Questa) vs our FPLL model.
 
 | kind | designs | PASS | FAIL | matched / samples | wrong | missing |
@@ -54,9 +54,9 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
   - Routing pips: 39,550 / 39,550 against RCF. About half of RCF edges have no native node and are unscored.
   - LUT masks: 98.5%. Flip-flop presence: 98.5%. Pin use and direction: 97.6%.
   - Held-out split (family-level): routing 100% on both halves.
-- **Verification:** `scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz`: stage 5 (iverilog gate) passes; stage 6 (Questa: vendor-library gate + DSP vendor check) fails on `c_latch_v95_1` only (above). Stage 5/6 no longer deadlock on `tmp/heavy.lock` (nested flock). Pad map passes. Selftest FAILS: `regbank16` gives 140 nets vs baseline 139 (61 LUTs, 64 FFs, 608 arcs, 19 pads match); predates the PLL work, untraced (#121).
+- **Verification:** `scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz`: all stages PASS (stage 5 iverilog gate, stage 6 Questa gate + DSP vendor check, selftest, pad map). Stage 5/6 no longer deadlock on `tmp/heavy.lock` (nested flock). Selftest `regbank16` baseline is 140 nets: 61 LUT outputs + 64 FF Q + 15 input pads, checked against the Quartus post-fit `.vo` (its 141 includes `clkena.outclk`, the clock pad net in the lift); 139 was never produced by any lifter commit (#121).
 - **Tests:** `python3 -m pytest tests -q` passes (217).
-- **Gate notes:** self-feeding LUTs are emitted as `fb ? lut[..1..] : lut[..0..]` (X-safe latch). A zero-delay inverting self-loop (`c_latch_v95_1` q3) has no reference in Quartus either; the gate holds its enable input at 0. Step limits: stall (no CPU progress 60 s) + 3x measured backstop (#121).
+- **Gate notes:** self-feeding LUTs (Cyclone V) are emitted as `reg _fb_<z> = 1'b0; always @* _fb_<z> = lut[..{_fb_<z>}..]`: the vendor `cyclonev_lcell_comb` has `combout_tmp = 0` at t=0, so a hold latch powers up at 0, not X (Questa 0 missing on `c_latch_v95_1`). A zero-delay inverting self-loop (`c_latch_v95_1` q3) has no reference in Quartus either; the gate holds its enable input at 0. Step limits: stall (no CPU progress 60 s) + 3x measured backstop (#121).
 
 ## Still open
 1. ~~`_lut_self_latch()`~~ closed 2026-10-24: removed. `c_latch_v95_1` (Quartus-built) showed it wrong (q1 never sets, q2 refused, oscillator emitted as a latch). Detail: `docs/cyclonev-postfit-oracle.md` "Self-feeding LUT latch".

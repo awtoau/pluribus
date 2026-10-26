@@ -91,8 +91,8 @@ def check_one(label, bitpath, device, log):
     oracle = os.path.join(outdir, f"{label}.oracle.config")
     native = os.path.join(outdir, f"{label}.native.config")
 
-    r = subprocess.run([ECPUNPACK, bitpath, oracle],
-                       capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded([ECPUNPACK, bitpath, oracle], "ecpunpack")  # #122
     if r.returncode != 0:
         return label, False, f"ecpunpack failed: {r.stderr[-200:]}"
 

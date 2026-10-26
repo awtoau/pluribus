@@ -398,7 +398,8 @@ def _run_yosys_equiv(gold_v, gate_v, workdir):
         fh.write(gate_v)
     with open(ys, "w") as fh:
         fh.write(_EQ_SCRIPT.format(goldlib=goldlib, gold=gold, gate=gate))
-    res = subprocess.run(["yosys", ys], capture_output=True, text=True)
+    import heavy_guard
+    res = heavy_guard.guarded(["yosys", ys], "yosys equiv")  # #122
     out = res.stdout + res.stderr
     with open(os.path.join(workdir, "yosys.log"), "w") as fh:
         fh.write(out)

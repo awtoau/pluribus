@@ -58,10 +58,9 @@ def main():
         tee(fh, f"[sim] TB  {args.tb}")
 
         # compile
-        cc = subprocess.run(
-            ["iverilog", "-g2012", "-Wall", "-o", vvp, "-s", args.top,
-             args.rtl, args.tb],
-            capture_output=True, text=True)
+        import heavy_guard
+        cc = heavy_guard.guarded(["iverilog", "-g2012", "-Wall", "-o", vvp, "-s", args.top, args.rtl, args.tb],
+                                 "iverilog")  # #122
         for ln in (cc.stdout + cc.stderr).splitlines():
             tee(fh, "  [iverilog]", ln)
         if cc.returncode != 0:
@@ -69,11 +68,8 @@ def main():
             sys.exit(1)
 
         # run (cwd=TMP so the VCD lands there)
-        try:
-            rr = subprocess.run(["vvp", os.path.basename(vvp)], cwd=TMP,
-                                capture_output=True, text=True,
-                                timeout=args.timeout)
-        except subprocess.TimeoutExpired:
+        rr = heavy_guard.guarded(["vvp", os.path.basename(vvp)], "vvp", overall_s=args.timeout, cwd=TMP)  # #122
+        if rr.timed_out:
             tee(fh, "[sim] RUN TIMED OUT")
             sys.exit(2)
 

@@ -1015,7 +1015,8 @@ def _lut_active_positions(init: str) -> set[int]:
 
 def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                       cell_name: str = "", tie_unused: bool = False,
-                      e: str | None = None, f: str | None = None) -> list[str]:
+                      e: str | None = None, f: str | None = None,
+                      selfloop_powerup: bool = False) -> list[str]:
     """Emit an assign for a LUT with no structured fn tag.
 
     First tries _simplify_lut() — for LUTs with ≤2 live inputs this emits a
@@ -1025,6 +1026,9 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
     init: MSB-first truth-table string (string[k] = f(n-1-k)) — 16 chars for
     a 4-input LUT (a-d), 32 for Cyclone V's ALM-half LUT5 (a-e, e required).
     Width is derived from len(init), never assumed (#63).
+    selfloop_powerup: a LUT whose output feeds its own input is emitted as a reg that powers up
+               at 0 and is re-evaluated on every input change (Cyclone V: the vendor
+               cyclonev_lcell_comb has combout_tmp = 0 at t=0; #121).
     cell_name: human cell name to use for the localparam identifier; empty
                string tells us to use z_name instead (avoids _lut_lut_lut_…).
     tie_unused: when True, index positions the INIT does not actually depend on
@@ -1034,6 +1038,19 @@ def _lut_init_to_case(init: str, z_name: str, a: str, b: str, c: str, d: str,
                yosys report a combinational loop through a routed-but-unused LUT
                input.  Gated to GOWIN so MachXO2 emission stays byte-identical.
     """
+    if selfloop_powerup and z_name in (a, b, c, d, e, f):
+        fb = "_fb_" + re.sub(r"[^a-zA-Z0-9_]", "_", z_name)
+        sub = lambda x: fb if x == z_name else x
+        blk = _lut_init_to_case(init, z_name, sub(a), sub(b), sub(c), sub(d), cell_name,
+                                tie_unused, None if e is None else sub(e),
+                                None if f is None else sub(f))
+        head = f"    assign {z_name} = "
+        if not blk[-1].startswith(head):
+            raise ValueError(f"_lut_init_to_case: unexpected self-loop emission {blk[-1]!r}")
+        return blk[:-1] + [f"    reg {fb} = 1'b0;",
+                           f"    always @* {fb} = {blk[-1][len(head):]}",
+                           f"    assign {z_name} = {fb};"]
+
     n = len(init)
     if n == 16:
         if e is not None:
@@ -1199,7 +1216,8 @@ def emit_luts(data: dict) -> list[str]:
             # Pass human name for localparam naming; empty → use z_name (avoids lut_lut_lut…)
             lp_key = _sanitise(cell_human) if cell_human else ""
             blk = _lut_init_to_case(init, z_name, a_expr, b_expr, c_expr, d_expr,
-                                    lp_key, tie_unused=tie_unused, e=e_expr, f=f_expr)
+                                    lp_key, tie_unused=tie_unused, e=e_expr, f=f_expr,
+                                    selfloop_powerup=bool(data.get("is_cyclonev", False)))
             blk[-1] += f"  // {cell_name}  init={init}"
 
         elif fn == "CONST0":

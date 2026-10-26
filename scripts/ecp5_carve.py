@@ -615,8 +615,8 @@ def _squashfs_members(data, name, log):
         for off in offsets:
             with open(img, "wb") as fh:
                 fh.write(data[off:])
-            probe = subprocess.run([tool, "-s", img], capture_output=True,
-                                   text=True)
+            import heavy_guard
+            probe = heavy_guard.guarded([tool, "-s", img], "unsquashfs")  # #122
             if "valid SQUASHFS" not in probe.stdout:
                 continue
             used = off
@@ -626,8 +626,7 @@ def _squashfs_members(data, name, log):
                      name, offsets[:4])
             return
         log.info("  %s: squashfs superblock at %d, unpacking", name, used)
-        r = subprocess.run([tool, "-no-progress", "-force", "-dest", dest, img],
-                           capture_output=True, text=True)
+        r = heavy_guard.guarded([tool, "-no-progress", "-force", "-dest", dest, img], "unsquashfs")  # #122
         if not os.path.isdir(dest):
             log.info("  %s: unsquashfs produced nothing (%s)", name,
                      (r.stderr or r.stdout)[-200:].strip())

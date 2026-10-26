@@ -90,3 +90,14 @@ def test_localparam_fallback_is_msb_first():
     s = _build_msb_first(lambda i: _A(i) & _B(i) & _C(i))   # 3 live -> not simplifiable
     lines = _lut_init_to_case(s, "z", "x", "y", "w", "NC")
     assert any(f"16'b{s}" in ln for ln in lines), lines
+
+
+def test_selfloop_powerup_reg_cyclonev():
+    """Self-feeding LUT -> reg that powers up at 0 (vendor lcell combout_tmp = 0 at t=0), #121."""
+    from verilog import _lut_init_to_case
+    init = "0" * 32 + "1" * 32          # f (self) is the top index bit: z = z
+    out = "\n".join(_lut_init_to_case(init, "Z", "A", "B", "C", "D", e="E", f="Z", selfloop_powerup=True))
+    assert "reg _fb_Z = 1'b0;" in out
+    assert "always @* _fb_Z =" in out and "assign Z = _fb_Z;" in out
+    plain = "\n".join(_lut_init_to_case(init, "Z", "A", "B", "C", "D", e="E", f="Z"))
+    assert "_fb_" not in plain
