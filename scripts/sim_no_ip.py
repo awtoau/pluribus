@@ -46,7 +46,7 @@ _CLK_ALWAYS_RE = re.compile(r"^    always #[\d.]+ (\w+) = ~\1;.*\n", re.M)
 # vvp wall-clock backstop: limit = max(VVP_FLOOR_S, VVP_S_PER_US * run_us).
 # VVP_S_PER_US is re-measured and logged every run ("vvp finished in X s"); the value here
 # is set from the first measured run.  Expiry: killed, logged with limit and elapsed time.
-VVP_S_PER_US = 0.05      # measured 0.015 s per simulated us (1.0 s for ~70 us); 3x
+VVP_S_PER_US = 0.2       # measured ~0.07 s per simulated us with the vendor DP8KC/EHXPLLJ models; 3x
 VVP_FLOOR_S = 10
 
 
@@ -165,6 +165,10 @@ def build_tb(tb, plan, frames, run_ns, ff_names, sck_half_ns, tie=None, undriven
         if "    // ADC data:" not in tb:
             sys.exit("testbench has no '// ADC data:' anchor")
         tb = tb.replace("    // ADC data:", pll_block + "    // ADC data:", 1)
+    # Vendor primitives (DP8KC, ODDRXE, EHXPLLJ) bind GSR_INST.GSRNET / PUR_INST.PURNET by
+    # hierarchical name from the testbench scope (Diamond simulation convention).
+    tb = tb.replace("    // ADC data:", "    GSR GSR_INST (.GSR(1'b1));\n    PUR PUR_INST (.PUR(1'b1));\n\n"
+                    "    // ADC data:", 1)
     helpers = f"""
     // --- SPI master (MCU side): mode 0, MSB first, {sck_half_ns} ns SCK half period ---
     reg [7:0] spi_rx;

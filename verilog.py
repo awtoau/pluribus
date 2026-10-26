@@ -211,6 +211,9 @@ def load_data(conn, bs_id: int) -> dict:
                for r in q("SELECT name, prim, params, pins, not_lifted FROM hard_ip "
                           "WHERE bitstream=:bs_id ORDER BY name")]
 
+    if os.environ.get("PLURIBUS_LEGACY_EBR"):      # A/B against the pre-#127 emission (no hard-IP cells)
+        ebr_cells, ebr_pins, hard_ip = [], {}, []
+
     # Net names: net → (name, description, freq_mhz)
     # `spec_` prefix marks every NON-confirmed name as speculative, right in the
     # identifier — only confirmed names (physical pins, OSC/crystal, const nets)
@@ -677,6 +680,12 @@ def emit_wires(data: dict) -> list[str]:
     for clk_net in set(data.get("clock_input_nets", set())) | set(data.get("pll_input_nets", set())):
         port_nets.add(clk_net)
         port_names.add(_sanitise(resolve_net(clk_net, net_name_map, const_net_map)))
+    # Clock roots driven by a PLL output are plain wires, declared up front (before the
+    # clock-spine aliases that read them) and kept out of the later declaration lists.
+    pll_root_nets = sorted(data.get("pll_roots", {}))
+    for clk_net in pll_root_nets:
+        port_nets.add(clk_net)
+        port_names.add(_sanitise(resolve_net(clk_net, net_name_map, const_net_map)))
 
     # MachXO2 clock-spine unification (issue #65): clock-domain nets merged onto
     # a canonical spine net are driven from that single clock port via an alias
@@ -791,6 +800,11 @@ def emit_wires(data: dict) -> list[str]:
     # any remaining reference (e.g. an EBR behavioural block clocked on the raw
     # spine net) still sees the single unified clock.  FF always-blocks already
     # use the canonical directly (ffs were remapped in load_data).
+    if pll_root_nets:
+        lines.append("    // PLL output clock roots (driven by the EHXPLLJ instance below)")
+        for net in pll_root_nets:
+            lines.append(f"    wire {_sanitise(resolve_net(net, net_name_map, const_net_map))};")
+        lines.append("")
     if clk_unify:
         lines.append(
             f"    // Clock-spine unification — {len(clk_unify)} taps aliased to their"
@@ -2905,8 +2919,6 @@ def main():
             encoding="utf-8").splitlines()
     data["sim_ebr_sweep"] = args.sim_ebr_sweep
     data["pll_fin"] = args.pll_fin
-    if os.environ.get("PLURIBUS_LEGACY_EBR"):      # A/B against the pre-#127 behavioural EBR
-        data["ebr_cells"] = []
 
     # Assemble all sections
     sections = [
