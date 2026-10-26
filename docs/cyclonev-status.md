@@ -40,7 +40,7 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
   - RAM: 18 M10K + 4 MLAB designs from before and 7 added (init contents, ROM, single port, dual clock) pass. Contents, widths, clocks, modes are decoded from the bitstream. `c_rom_vnd_mlab_8` was placed in an M10K by Quartus (counted under M10K).
   - DSP: own `cyclonev_mac` model (vendor atom is encrypted), validated: `build.vo` on it vs source RTL, 11 / 11 designs (`scripts/cyclonev_dsp_model_check.py`). Lifted vs source RTL 1416611 / 1416611.
   - DSP model vs the encrypted vendor atom (`scripts/cyclonev_dsp_vendor_check.py`, Questa): 267 / 267 configs, 51264000 / 51264000 bits after fixing `m9x9` bits above 17 (#121).
-  - PLL: netlist lifted (refclk pad, reset, lock, output counter -> clock net) on our model `lifters/data/cyclonev_fpll_model.v`, measured against the vendor atoms; 3 / 3 PASS, decode 4 / 4 counters. Refclk pad table has one evidenced entry. Detail: `docs/cyclonev-postfit-oracle.md` "PLL".
+  - PLL: netlist lifted (refclk pad, reset, lock, output counter -> clock net) on our model `lifters/data/cyclonev_fpll_model.v`, measured against the vendor atoms; 3 / 3 PASS, decode 4 / 4 counters. Refclk pad table: 13 / 13 FPLL pin-site combinations evidenced (`CLKIN_0_SRC` = 4 + index in the FPLL `clkin` pad list; 12 `c_pllpin_*` designs + the H10 ones, all PASS on Questa). Detail: `docs/cyclonev-postfit-oracle.md` "PLL".
   - Model check (Quartus netlist + models vs `src/`): `model=ok` on every simulated design with a comparable sample, 0 wrong.
 - **Structural (lifter fields vs Quartus post-fit, `scripts/cyclonev_lift_scorecard.py`), matched / total:**
   - The compare applies Quartus's `!` flags, so LUT masks and output buffers are scored as functions of
@@ -68,16 +68,41 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
    - Closed 2026-10-24: `sclr` 2794/2794 and `sload` 2794/2794 (the "93-97%" figure was stale); feedback-only flip-flops are recovered (`ff.present` 2794/2794, extra 0; rule: `uses_fb and FEEDBACK_SEL == slot` in `lifters/cyclonev_lift.py`).
    - `sload` as a signal stays unclaimed: all 2794 Quartus registers tie `sload` to gnd (1344) or vcc (1450). The lifter's const rule (1 iff pin-fed) is the only rule the corpus supports.
    - Not closed: CRAM option bit 6.3 and the CvP bit. `OPT_B` is `ffffff40.2dffffff` in all 237 designs, so the corpus cannot name either bit; naming needs a knob build.
-6. **Re-encode check:** a Quartus rebuild of a one-LUT-bit Verilog change, compared against the edited bitstream, has not been done.
+6. **Re-encode check:** first step done 2026-10-26 (`scripts/cyclonev_reencode.py`, #112), see "Re-encode round trip" below. A one-LUT-bit Verilog-change rebuild is still not done.
 7. **Dies:** only e50f is exercised. The native decoder refuses sx50f, sx120f and any HPS die.
 9. ~~**lifted.v polarity**~~ closed 2026-10-24: LUT tables are over the nets, pad output inverters are NOT rows (rule: `docs/cyclonev-postfit-oracle.md` "Polarity"). Gate: `scripts/cyclonev_lifted_sim_check.py --all`, stage 5 of `cyclonev_verify_all.py`.
 10. ~~**Register controls in lifted.v**~~ closed 2026-10-24: emitted from `ffs.d/clk/ce/lsr` + `ffs.dtype` flags (no schema change). Gate: registered 87 / 87.
 11. ~~**Sim gate not covered (RAM, DSP)**~~ closed 2026-10-24: RAM on the plain vendor models, DSP on our own model. Remaining gaps:
-    - **PLL:** closed 2026-10-26 (3 / 3 PASS on Questa). Open: `CLKIN_0_SRC` -> pad has one evidenced value (needs builds on other refclk pins); phase shift, presets, bypass, fractional mode, cascade, switchover are NOT LIFTED.
+    - **PLL:** closed 2026-10-26 (3 / 3 PASS on Questa). Refclk pad closed 2026-10-26 (see PLL). Open: `CLKIN_0_SRC` = 0 (core / PLL-cascade refclk from the clock network) is detected, not lifted; phase shift, presets, bypass, fractional mode, cascade, switchover are NOT LIFTED.
     - **DSP:** only independent multiplies and sum-of-2 (`m9x9` lane 0, `m18x18_full`, `m27x27`, `M18X19_COMBINED`) are decoded and modelled; accumulate, pre-adder, coefficients, chainout, scan chains, `aclr`, `m9x9` lanes 1-2 give X in the model and are not lifted.
     - **Cross-check:** Questa-Altera Starter installed (`scripts/questa.py`); `--sim questa` and `scripts/cyclonev_dsp_vendor_check.py`, stage 6 of `cyclonev_verify_all.py`.
     - **RAM:** `bidir_dual_port`, widths other than x20 / x40, init outside those layouts, byte enables, ECC: no corpus evidence; the lifter reports the block as `NOT LIFTED` with the reason.
 8. **Not scored field by field:** I/O drive, slew and standard (no variation in the corpus). RAM, MLAB and DSP parameters are checked by simulation only.
+
+## Re-encode round trip (#112 step 1, measured 2026-10-26)
+- Flow: native-decode the original `.rbf` -> lift -> emit `cyclonev_lcell_comb` / `dffeas` from the lifted rows only (masks rebuilt through the LAB-pin <-> port map; adder halves solved into f0 / f2) -> QSF `PIN_*` / `LABCELL_*` / `FF_*` from the lifted ALM place -> map, fit, asm, cpf -> native-decode the new `.rbf` -> `.bt` line diff.
+- Headline = matched / (matched + missing + extra + wrong), per decoded `.bt` line (settings, routes, inverters, options):
+
+| design | stage | matched / total | missing | extra | wrong | raw `.rbf` XOR bits |
+|---|---|---|---|---|---|---|
+| c_cmp_eq_v95_4 (combinational) | A free routing | 89 / 102 (87.3%) | 6 | 6 | 1 | 112 |
+| c_shiftreg_v95_4 (registered) | A | 118 / 131 (90.1%) | 6 | 6 | 1 | 98 |
+| c_adder_v95_4 (carry) | A | 152 / 166 (91.6%) | 6 | 6 | 2 | 298 |
+| same three | B original RCF imported (oracle) | identical to A | | | | identical to A |
+
+- Fault list by category (every count above is one of these):
+  - Constant-GND helper cell (`~QUARTUS_CREATED_GND~I`): 6 missing + 6 extra per design (`TSCLR_DIS`, `TPKREG0/1`, `BSCLR_DIS`, `BPKREG0/1` of one ALM). The lifter drops constant-0 cells, so the lifted netlist has no such cell; Quartus creates its own and puts it in a different tile (original LAB.019.035 / MLAB.045.003 / MLAB.004.001, regenerated LAB.012.003).
+  - `o JTAG_ID`: 1 wrong per design, a checksum-like value that changes with any content difference (counted, not a netlist fault).
+  - LUT mask: 1 wrong (c_adder, `LAB.001.019:LUT_MASK.5` low word `0f0fcccc` vs `3f3ffcfc`): the lifted sum / cout tables fix `f0 ^ in2` and `f0 & in2` but not which of f0 / in2 owns a bit when both depend on the same port; 19 ambiguous bits, the solver picks one split.
+  - Routing (`r` lines), pad settings (`GPIO`), inverters, `DQS16`, clock-mux settings: 0 missing, 0 extra, 0 wrong in the final runs. Fit with the same placement and netlist reproduces the original routes without help.
+- Stage B (RCF import) is accepted (fit msgs 170118, 170239: 80.77% of routes preserved on c_adder, 0 `Cannot route`) and gives the same result as stage A. The RCF there is the original build's, not one generated from lifted data: lifted routes cannot be written as an RCF yet, because about half of the RCF edges have no native node (IO_* path, LAB_INPUT, clock buffers; see the native decoder doc). That is the next category to close.
+- Found while building it: lifting a **native-default** `.bt` loses the clock pad net (`K17 net_in = None`, 0 clock links) where the Mistral `.bt` and native `--mistral-compat` keep it. The default mode emits the SCLK/DCMUX link lines libmistral skips; the lifter's clock-tree resolution does not handle them. `cyclonev_reencode.py` lifts from compat mode.
+- Not covered: registers with clear / sync-clear / load, MLAB, RAM, DSP, PLL, designs with non-default `!` port polarity, and unclaimed bits (the diff sees decoded lines only; ~1.5% of set bits are unclaimed).
+- Cost: map 4 s + fit 7 s + asm 2 s + cpf 0.3 s per design (2026-10-26); the 3-design run is about 40 s once the heavy lock is free. Command: `python3.15t scripts/cyclonev_reencode.py c_cmp_eq_v95_4 c_shiftreg_v95_4 c_adder_v95_4 [--rcf]`.
+
+## Die probe and DSP fuzz (run 2026-10-26)
+- `cyclonev_verify_all.py --compile-workers 2`, stages 1-2: die probe 7 / 7 dies compiled (68.3 s), DSP fuzz 4 / 4 modes confirmed, 0 mismatch / missing (31.2 s). OVERALL PASS; nothing needed fixing.
+- Both are in the default full run (flags only skip them); default `--compile-workers` is now 2.
 
 ## Decision needed first
 - Whether a Cyclone V is in the hardware. The bench markings settle it: an FPGA marked `5CEFA4U19I7` (Cyclone V E, 5CEA4) would need this work.
@@ -90,7 +115,8 @@ Run from the repo root with `python3.15t`.
 python3 -m pytest tests -q                                  # tests
 python3.15t scripts/cyclonev_decode.py IN.rbf OUT.bt        # decode a .rbf
 python3.15t scripts/cyclonev_unpack.py IN.bin OUT.bt        # native by default; --decoder mistral|--crosscheck
-python3.15t scripts/cyclonev_verify_all.py --skip-die-probe --skip-dsp-fuzz
+python3.15t scripts/cyclonev_verify_all.py                  # full run incl. die probe + DSP fuzz
+python3.15t scripts/cyclonev_reencode.py c_cmp_eq_v95_4 c_shiftreg_v95_4 c_adder_v95_4   # round-trip re-encode (#112)
 python3.15t scripts/cyclonev_lifted_sim_check.py --all      # functional gate alone (~2 min), prints the per-kind table
 python3.15t scripts/cyclonev_lifted_sim_check.py --all --sim questa   # same gate, build.vo on the vendor libraries
 python3.15t scripts/cyclonev_dsp_model_check.py             # our cyclonev_mac model vs the source RTL
