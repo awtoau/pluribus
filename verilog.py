@@ -15,6 +15,7 @@ Usage
 """
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -193,6 +194,22 @@ def load_data(conn, bs_id: int) -> dict:
     ebr_init_blocks = {r.block: r for r in
                        q("SELECT block, wid, mode, data_width, n_words, n_nonzero "
                          "FROM ebr_init_blocks WHERE bitstream=:bs_id")}
+
+    # EBR as vendor primitives (issue #127): cells + pins (empty on pre-#127 DBs / GOWIN)
+    import json as _json
+    ebr_cells = [(r.block, r.wid, r.prim, _json.loads(r.params) if isinstance(r.params, str) else r.params,
+                  _json.loads(r.not_lifted) if isinstance(r.not_lifted, str) else r.not_lifted)
+                 for r in q("SELECT block, wid, prim, params, not_lifted FROM ebr_cells "
+                            "WHERE bitstream=:bs_id ORDER BY block")]
+    ebr_pins: dict[str, dict[str, tuple]] = {}
+    for r in q("SELECT block, pin, dir, net, inv, const FROM ebr_pins WHERE bitstream=:bs_id"):
+        ebr_pins.setdefault(r.block, {})[r.pin] = (r.dir, r.net, bool(r.inv), r.const)
+
+    hard_ip = [(r.name, r.prim, _json.loads(r.params) if isinstance(r.params, str) else r.params,
+                _json.loads(r.pins) if isinstance(r.pins, str) else r.pins,
+                _json.loads(r.not_lifted) if isinstance(r.not_lifted, str) else r.not_lifted)
+               for r in q("SELECT name, prim, params, pins, not_lifted FROM hard_ip "
+                          "WHERE bitstream=:bs_id ORDER BY name")]
 
     # Net names: net → (name, description, freq_mhz)
     # `spec_` prefix marks every NON-confirmed name as speculative, right in the
@@ -433,6 +450,11 @@ def load_data(conn, bs_id: int) -> dict:
         clk for clk in clock_domains
         if clk and clk not in pad_nets and clk not in const_net_map
     }
+    # A PLL in the netlist drives its output clock nets; they stop being external ports and
+    # the PLL reference clock becomes the port instead (issue #104).
+    _pll_roots = pll_output_nets({"hard_ip": hard_ip, "clk_unify": clk_unify})
+    clock_input_nets -= set(_pll_roots)
+    pll_input_nets_ = pll_input_nets({"hard_ip": hard_ip}) - pad_nets
 
     return {
         "ffs":              ffs,
@@ -442,11 +464,16 @@ def load_data(conn, bs_id: int) -> dict:
         "efb_ports":        efb_ports,
         "efb_config":       efb_config,
         "clock_input_nets": clock_input_nets,
+        "pll_input_nets":   pll_input_nets_,
+        "pll_roots":        _pll_roots,
         "clk_unify":        clk_unify,
         "ebr_buses":        ebr_buses,
         "ebr_ctrl":         ebr_ctrl,
         "ebr_init_map":     ebr_init_map,
         "ebr_init_blocks":  ebr_init_blocks,
+        "hard_ip":          hard_ip,
+        "ebr_cells":        ebr_cells,
+        "ebr_pins":         ebr_pins,
         "net_name_map":     net_name_map,
         "net_desc_map":     net_desc_map,
         "net_freq_map":     net_freq_map,
@@ -566,6 +593,13 @@ def emit_ports(data: dict, top_name: str) -> list[str]:
         clk_entries.append((f"input  wire {name}",
                             f"clock — {n_ff} FFs (off-fabric PLL/OSC/DCC; drive from testbench)"))
 
+    for net in sorted(data.get("pll_input_nets", set())):
+        name = _sanitise(resolve_net(net, net_name_map, const_net_map))
+        if name in seen_port_names:
+            continue
+        seen_port_names.add(name)
+        clk_entries.append((f"input  wire {name}", "PLL reference clock (CLKI)"))
+
     n_ports = len(pad_entries) + len(clk_entries)
     idx = 0
 
@@ -640,7 +674,7 @@ def emit_wires(data: dict) -> list[str]:
 
     # Clock nets promoted to input ports by emit_ports — exclude from the
     # internal wire declarations so they are ports, not undriven wires.
-    for clk_net in data.get("clock_input_nets", set()):
+    for clk_net in set(data.get("clock_input_nets", set())) | set(data.get("pll_input_nets", set())):
         port_nets.add(clk_net)
         port_names.add(_sanitise(resolve_net(clk_net, net_name_map, const_net_map)))
 
@@ -2090,6 +2124,313 @@ def emit_ebr(data: dict) -> list[str]:
     return lines
 
 
+# ── EBR as vendor primitives (issue #127) ────────────────────────────────────
+_DP_IN = ([f"DIA{i}" for i in range(9)] + [f"ADA{i}" for i in range(13)]
+          + ["CEA", "OCEA", "CLKA", "WEA", "CSA2", "CSA1", "CSA0", "RSTA"]
+          + [f"DIB{i}" for i in range(9)] + [f"ADB{i}" for i in range(13)]
+          + ["CEB", "OCEB", "CLKB", "WEB", "CSB2", "CSB1", "CSB0", "RSTB"])
+_DP_OUT = [f"DOA{i}" for i in range(9)] + [f"DOB{i}" for i in range(9)]
+_PD_IN = ([f"DI{i}" for i in range(18)] + [f"ADW{i}" for i in range(9)] + ["BE1", "BE0"]
+          + ["CEW", "CLKW", "CSW2", "CSW1", "CSW0"] + [f"ADR{i}" for i in range(13)]
+          + ["CER", "OCER", "CLKR", "CSR2", "CSR1", "CSR0", "RST"])
+_PD_OUT = [f"DO{i}" for i in range(18)]
+_EBR_PARAM_DEFAULTS = {
+    "DP8KC": {"DATA_WIDTH_A": 9, "DATA_WIDTH_B": 9, "REGMODE_A": "NOREG", "REGMODE_B": "NOREG",
+              "CSDECODE_A": "0b000", "CSDECODE_B": "0b000", "WRITEMODE_A": "NORMAL",
+              "WRITEMODE_B": "NORMAL", "GSR": "ENABLED", "RESETMODE": "SYNC",
+              "ASYNC_RESET_RELEASE": "SYNC"},
+    "PDPW8KC": {"DATA_WIDTH_W": 18, "DATA_WIDTH_R": 9, "REGMODE": "NOREG", "CSDECODE_W": "0b000",
+                "CSDECODE_R": "0b000", "GSR": "ENABLED", "RESETMODE": "SYNC",
+                "ASYNC_RESET_RELEASE": "SYNC"},
+}
+_ZERO_INIT = "0x" + "0" * 80
+
+
+def _pdpw_pin(pin):
+    """DP8KC hardware pin (A = write, B = read) -> PDPW8KC port name, or None if fixed in the wrapper."""
+    m = re.fullmatch(r"(DI|AD)([AB])(\d+)", pin)
+    if m:
+        kind, side, i = m.group(1), m.group(2), int(m.group(3))
+        if kind == "DI":
+            return f"DI{i + (0 if side == 'A' else 9)}"
+        if side == "A":
+            return {0: "BE0", 1: "BE1"}.get(i) or (f"ADW{i - 4}" if i >= 4 else None)
+        return f"ADR{i}"
+    m = re.fullmatch(r"DO([AB])(\d+)", pin)
+    if m:
+        return f"DO{int(m.group(2)) + (9 if m.group(1) == 'A' else 0)}"
+    return {"CEA": "CEW", "CLKA": "CLKW", "CSA0": "CSW0", "CSA1": "CSW1", "CSA2": "CSW2",
+            "CEB": "CER", "OCEB": "OCER", "CLKB": "CLKR", "CSB0": "CSR0", "CSB1": "CSR1",
+            "CSB2": "CSR2", "RSTB": "RST"}.get(pin)
+
+
+def _ebr_tie(pin, params):
+    """Value for an unrouted input pin.  CS pins follow their CSDECODE (enabled); CE/OCE high."""
+    m = re.fullmatch(r"CS([AB])(\d)", pin)
+    if m:
+        dec = params.get(f"CSDECODE_{m.group(1)}") or params.get("CSDECODE_W" if m.group(1) == "A" else "CSDECODE_R", "0b000")
+        return "1'b" + dec[2:][::-1][int(m.group(2))]
+    return "1'b1" if pin in ("CEA", "CEB", "OCEA", "OCEB") else "1'b0"
+
+
+def _vparam(v):
+    return str(v) if isinstance(v, int) else f'"{v}"'
+
+
+def emit_ebr_prims(data: dict) -> list[str]:
+    """Instantiate each EBR as DP8KC / PDPW8KC with decoded parameters and INITVALs."""
+    cells, pins = data["ebr_cells"], data["ebr_pins"]
+    rn = lambda net: resolve_net(net, data["net_name_map"], data["const_net_map"])
+    lut_driven = data.get("lut_driven_net_ids", set())
+    ff_q = data.get("ff_q_all_wire_ids", set())
+    in_ports = data.get("input_port_names", set())
+    driven: set[str] = set()
+    lines = ["", "    // =========================================================",
+             "    // EBR -- vendor primitives (DP8KC / PDPW8KC), parameters decoded from the tile",
+             "    // config, INITVALs from the recovered .bram_init words (issue #127).",
+             "    // ========================================================="]
+    from lifters import machxo2_ebr
+    for block, wid, prim, params, not_lifted in cells:
+        tag = block.lower()
+        lines.append(f"    // --- EBR {block} (write index {wid}) ---")
+        if prim not in _EBR_PARAM_DEFAULTS:
+            lines.append(f"    // NOT LIFTED: {'; '.join(not_lifted) or prim}")
+            continue
+        for nl in not_lifted:
+            lines.append(f"    // NOT LIFTED: {nl}")
+        bp = pins.get(block, {})
+        words = data["ebr_init_map"].get(block, {})
+        init = machxo2_ebr.initvals([words.get(a, 0) for a in range(1024)]) if any(words.values()) else {}
+        plist = [f'.{k}({_vparam(v)})' for k, v in params.items()]
+        plist += [f'.{k}("{v}")' for k, v in init.items() if v != _ZERO_INIT]
+        conns, seen = [], set()
+
+        def put(port, expr):
+            if port not in seen:
+                seen.add(port)
+                conns.append(f".{port}({expr})")
+
+        for pin, (d, net, inv, const) in sorted(bp.items()):
+            port = pin if prim == "DP8KC" else _pdpw_pin(pin)
+            if d == "in":
+                ex = None
+                if const is not None:
+                    ex = f"1'b{const}"
+                elif net:
+                    e = rn(net)
+                    ex = f"~{e}" if inv else e
+                if port is None:
+                    if ex not in (None, "1'b0", "1'b1"):
+                        lines.append(f"    // NOT LIFTED: {prim} fixes pin {pin}; lift routes it ({ex})")
+                    continue
+                put(port, ex if ex is not None else _ebr_tie(pin, params))
+            else:
+                if port is None:
+                    continue
+                e = rn(net) if net else None
+                if e and e not in ("NC", "1'b0", "1'b1") and e not in driven:
+                    if e in in_ports or e in lut_driven or e in ff_q:
+                        lines.append(f"    // {pin} -> {e}: net has another driver, left unconnected")
+                    else:
+                        driven.add(e)
+                        put(port, e)
+        lines.append(f"    {prim} #(")
+        lines.append(",\n".join(f"        {x}" for x in plist))
+        lines.append(f"    ) ebr_{tag} (")
+        lines.append(",\n".join(f"        {c}" for c in conns))
+        lines.append("    );")
+    data["ebr_read_ports"] = []
+    return lines
+
+
+def emit_ebr_modules(data: dict) -> list[str]:
+    """(* blackbox *) declarations for the primitives in use (yosys cut points; removed for Diamond/sim)."""
+    used = sorted({c[2] for c in data["ebr_cells"] if c[2] in _EBR_PARAM_DEFAULTS})
+    lines = []
+    for prim in used:
+        ins, outs = (_DP_IN, _DP_OUT) if prim == "DP8KC" else (_PD_IN, _PD_OUT)
+        lines += ["", f"// {prim} blackbox: vendor model is cae_library/simulation/verilog/machxo2/{prim}.v",
+                  "(* blackbox *)", f"module {prim} #("]
+        ps = [f"    parameter {k} = {_vparam(v)}" for k, v in _EBR_PARAM_DEFAULTS[prim].items()]
+        ps += [f'    parameter INITVAL_{n:02X} = "{_ZERO_INIT}"' for n in range(32)]
+        lines.append(",\n".join(ps))
+        lines.append(") (")
+        decls = [f"    input wire {p}" for p in ins] + [f"    output wire {p}" for p in outs]
+        lines.append(",\n".join(decls))
+        lines += [");", "endmodule"]
+    return lines
+
+
+# ── PLL as EHXPLLJ (issue #104) ──────────────────────────────────────────────
+_PLL_IN = ["CLKI", "CLKFB", "PHASESEL1", "PHASESEL0", "PHASEDIR", "PHASESTEP", "LOADREG", "STDBY",
+           "PLLWAKESYNC", "RST", "RESETM", "RESETC", "RESETD", "ENCLKOP", "ENCLKOS", "ENCLKOS2",
+           "ENCLKOS3", "PLLCLK", "PLLRST", "PLLSTB", "PLLWE",
+           "PLLADDR4", "PLLADDR3", "PLLADDR2", "PLLADDR1", "PLLADDR0",
+           "PLLDATI7", "PLLDATI6", "PLLDATI5", "PLLDATI4", "PLLDATI3", "PLLDATI2", "PLLDATI1", "PLLDATI0"]
+_PLL_OUT = (["CLKOP", "CLKOS", "CLKOS2", "CLKOS3", "LOCK", "INTLOCK", "REFCLK"]
+            + [f"PLLDATO{i}" for i in range(7, -1, -1)] + ["PLLACK", "DPHSRC", "CLKINTFB"])
+_PLL_PARAMS = {"FIN": "100.0000", "CLKI_DIV": 1, "CLKFB_DIV": 1, "CLKOP_DIV": 1, "CLKOS_DIV": 1,
+               "CLKOS2_DIV": 1, "CLKOS3_DIV": 1, "CLKOP_ENABLE": "ENABLED", "CLKOS_ENABLE": "ENABLED",
+               "CLKOS2_ENABLE": "ENABLED", "CLKOS3_ENABLE": "ENABLED", "CLKOP_CPHASE": 0,
+               "CLKOS_CPHASE": 0, "CLKOS2_CPHASE": 0, "CLKOS3_CPHASE": 0, "CLKOP_FPHASE": 0,
+               "CLKOS_FPHASE": 0, "CLKOS2_FPHASE": 0, "CLKOS3_FPHASE": 0, "FEEDBK_PATH": "CLKOP",
+               "FRACN_ENABLE": "DISABLED", "FRACN_DIV": 0, "PLL_USE_WB": "DISABLED",
+               "CLKOP_TRIM_POL": "RISING", "CLKOP_TRIM_DELAY": 0, "CLKOS_TRIM_POL": "RISING",
+               "CLKOS_TRIM_DELAY": 0, "VCO_BYPASS_A0": "DISABLED", "VCO_BYPASS_B0": "DISABLED",
+               "VCO_BYPASS_C0": "DISABLED", "VCO_BYPASS_D0": "DISABLED", "PREDIVIDER_MUXA1": 0,
+               "PREDIVIDER_MUXB1": 0, "PREDIVIDER_MUXC1": 0, "PREDIVIDER_MUXD1": 0,
+               "OUTDIVIDER_MUXA2": "DIVA", "OUTDIVIDER_MUXB2": "DIVB", "OUTDIVIDER_MUXC2": "DIVC",
+               "OUTDIVIDER_MUXD2": "DIVD", "PLL_LOCK_MODE": 0, "INT_LOCK_STICKY": "ENABLED",
+               "DPHASE_SOURCE": "DISABLED"}
+_PLL_TIE1 = {"ENCLKOP", "ENCLKOS", "ENCLKOS2", "ENCLKOS3"}
+
+
+def pll_output_nets(data: dict) -> dict[str, str]:
+    """{canonical clock net: PLL output port} for every PLL output that roots a clock net."""
+    out: dict[str, str] = {}
+    cu = data.get("clk_unify", {})
+    for _name, prim, _params, pins, _nl in data.get("hard_ip", []):
+        if prim != "EHXPLLJ":
+            continue
+        for port in ("CLKOP", "CLKOS", "CLKOS2", "CLKOS3"):
+            net = (pins.get(port) or {}).get("net")
+            if net:
+                out.setdefault(cu.get(net, net), f"{_name}.{port}")
+    return out
+
+
+def pll_input_nets(data: dict) -> set[str]:
+    return {p["CLKI"]["net"] for _n, prim, _pa, p, _nl in data.get("hard_ip", [])
+            if prim == "EHXPLLJ" and (p.get("CLKI") or {}).get("net")}
+
+
+def _pll_freqs(params, fin):
+    """{output: MHz} for enabled outputs, INT_DIVD or CLKOP feedback; None when not derivable."""
+    fb = params.get("FEEDBK_PATH")
+    ratio = params["CLKFB_DIV"] / params["CLKI_DIV"]
+    if fb == "CLKOP":
+        ratio *= params["CLKOP_DIV"]
+    elif fb != "INT_DIVD":
+        return None
+    fvco = fin * ratio
+    return {o: fvco / params[f"{o}_DIV"] for o in ("CLKOP", "CLKOS", "CLKOS2", "CLKOS3")
+            if params.get(f"{o}_ENABLE") == "ENABLED"}
+
+
+def emit_plls(data: dict) -> list[str]:
+    hip = [h for h in data.get("hard_ip", []) if h[1] == "EHXPLLJ"]
+    if not hip:
+        return []
+    rn = lambda net: resolve_net(net, data["net_name_map"], data["const_net_map"])
+    cu = data.get("clk_unify", {})
+    fin = data.get("pll_fin")
+    lines = ["", "    // =========================================================",
+             "    // PLL -- EHXPLLJ, parameters decoded from the GPLL tile (issue #104)",
+             "    // ========================================================="]
+    used: set[str] = set()
+    for name, _prim, params, pins, not_lifted in hip:
+        params = dict(params)
+        for nl in not_lifted:
+            lines.append(f"    // NOT LIFTED: {nl}")
+        attrs = ""
+        if fin:
+            params["FIN"] = f"{fin:.6f}"
+            fr = _pll_freqs(params, fin)
+            if fr:
+                attrs = "(* " + ", ".join(
+                    [f'FREQUENCY_PIN_CLKI="{fin:.6f}"']
+                    + [f'FREQUENCY_PIN_{o}="{f:.6f}"' for o, f in fr.items()]) + " *)\n    "
+        else:
+            lines.append("    // NOT LIFTED: FIN (input frequency is off-chip; pass --pll-fin MHz)")
+        plist = [f".{k}({_vparam(v)})" for k, v in params.items() if k in _PLL_PARAMS]
+        conns = []
+        for port in _PLL_IN:
+            pin = pins.get(port)
+            if port == "CLKFB":
+                ex = "1'b0"          # CLKOP feedback is patched in below
+            elif pin and pin.get("net"):
+                ex = rn(pin["net"])
+            else:
+                ex = "1'b1" if port in _PLL_TIE1 else "1'b0"
+            conns.append((port, ex))
+        outs = {}
+        for port in ("CLKOP", "CLKOS", "CLKOS2", "CLKOS3", "LOCK", "INTLOCK", "REFCLK", "DPHSRC"):
+            pin = pins.get(port)
+            net = pin.get("net") if pin else None
+            if net:
+                c = cu.get(net, net)
+                e = rn(c)
+                if e in used:
+                    lines.append(f"    // {port} -> {e}: clock net already driven, left unconnected")
+                    continue
+                used.add(e)
+                outs[port] = e
+        if params.get("FEEDBK_PATH") == "CLKOP":
+            if "CLKOP" not in outs:
+                outs["CLKOP"] = f"pll_{name.lower()}_clkop"
+                lines.append(f"    wire {outs['CLKOP']};")
+            conns = [(p, outs["CLKOP"] if p == "CLKFB" else ex) for p, ex in conns]
+        lines.append(f"    {attrs}EHXPLLJ #(")
+        lines.append(",\n".join(f"        {x}" for x in plist))
+        lines.append(f"    ) pll_{name.lower()} (")
+        lines.append(",\n".join([f"        .{p}({e})" for p, e in conns]
+                                + [f"        .{p}({e})" for p, e in outs.items()]))
+        lines.append("    );")
+    return lines
+
+
+def emit_pll_modules(data: dict) -> list[str]:
+    if not any(h[1] == "EHXPLLJ" for h in data.get("hard_ip", [])):
+        return []
+    ps = ",\n".join(f"    parameter {k} = {_vparam(v)}" for k, v in _PLL_PARAMS.items())
+    decls = ",\n".join([f"    input wire {p}" for p in _PLL_IN] + [f"    output wire {p}" for p in _PLL_OUT])
+    return ["", "// EHXPLLJ blackbox: vendor model is cae_library/simulation/verilog/machxo2/EHXPLLJ.v",
+            "(* blackbox *)", "module EHXPLLJ #(", ps, ") (", decls, ");", "endmodule"]
+
+
+def emit_oddrs(data: dict) -> list[str]:
+    """ODDRXE per IOLOGIC output DDR (issue #127); Q drives the pad via data["oddr_pad_q"]."""
+    cells = [h for h in data.get("hard_ip", []) if h[1] in ("ODDRXE", "UNSUPPORTED")]
+    if not cells:
+        return []
+    rn = lambda net: resolve_net(net, data["net_name_map"], data["const_net_map"])
+    lines = ["", "    // =========================================================",
+             "    // IOLOGIC output DDR -- ODDRXE per pad (issue #127)",
+             "    // ========================================================="]
+    data["oddr_pad_q"] = {}
+    for name, prim, params, pins, not_lifted in cells:
+        for nl in not_lifted:
+            lines.append(f"    // NOT LIFTED: {name}: {nl}")
+        if prim != "ODDRXE":
+            continue
+        conns = []
+        for port in ("D0", "D1", "SCLK", "RST"):
+            pin = pins[port]
+            ex = rn(pin["net"]) if pin.get("net") else "1'b0"
+            if pin.get("inv") and ex not in ("1'b0", "1'b1"):
+                ex = f"~{ex}"
+            conns.append(f".{port}({ex})")
+        pp = pins["Q"].get("pad_pin")
+        q = f"oddr_{name.lower()}_q"
+        lines.append(f"    wire {q};")
+        if pp is not None:
+            data["oddr_pad_q"][pp] = q
+        else:
+            lines.append(f"    // NOT LIFTED: {name}: IOLOGIC has no pad (Q unconnected)")
+        lines.append(f'    ODDRXE #(.GSR("{params["GSR"]}")) oddr_{name.lower()} (' + ", ".join(conns)
+                     + f", .Q({q}));")
+    return lines
+
+
+def emit_oddr_modules(data: dict) -> list[str]:
+    if not any(h[1] == "ODDRXE" for h in data.get("hard_ip", [])):
+        return []
+    return ["", "// ODDRXE blackbox: vendor model is the Diamond MachXO2 simulation library ODDRXE.v",
+            "(* blackbox *)", 'module ODDRXE #(parameter GSR = "ENABLED") (',
+            "    input wire D0, input wire D1, input wire RST, input wire SCLK, output wire Q);",
+            "endmodule"]
+
+
 def emit_fplls(data: dict) -> list[str]:
     """Emit a named, parameterized `altpll` instance per recognized Cyclone V
     FPLL tile, instead of leaving the tile invisible (issue #104).
@@ -2292,6 +2633,8 @@ def emit_output_drives(data: dict) -> list[str]:
         if not net_in:
             continue
         driver = resolve_net(net_in, net_name_map, const_net_map)
+        if pin in data.get("oddr_pad_q", {}):          # pad driven by its IOLOGIC DDR register
+            driver = data["oddr_pad_q"][pin]
         if driver in ("NC", "1'b0", "1'b1") or driver == port:
             continue
         assigns.append(f"    assign {port} = {driver};")
@@ -2345,6 +2688,12 @@ def emit_testbench(data: dict, top_name: str) -> list[str]:
             continue
         seen.add(name)
         clocks.append((name, net_freq_map.get(clk_net) or 125.0))
+
+    for net in sorted(data.get("pll_input_nets", set())):      # PLL reference clock (CLKI)
+        name = _sanitise(resolve_net(net, net_name_map, const_net_map))
+        if name not in seen:
+            seen.add(name)
+            clocks.append((name, data.get("pll_fin") or 50.0))
 
     all_in = [n for n, _ in clocks] + adc_ports + in_ports
     L = [
@@ -2532,6 +2881,9 @@ def main():
                     help="Board-specific note file; emitted as header comments")
     ap.add_argument("--tb-out", default=None,
                     help="Also write a simulation testbench to this path (#49)")
+    ap.add_argument("--pll-fin", type=float, default=None,
+                    help="PLL reference clock MHz (off-chip; from board data); sets FIN + "
+                         "FREQUENCY_PIN_* on the EHXPLLJ instance")
     ap.add_argument("--sim-ebr-sweep", action="store_true",
                     help="In the testbench, force a clean incrementing address "
                          "onto each EBR's routed read-address nets so the "
@@ -2552,6 +2904,9 @@ def main():
         data["header_note"] = Path(args.header_note).read_text(
             encoding="utf-8").splitlines()
     data["sim_ebr_sweep"] = args.sim_ebr_sweep
+    data["pll_fin"] = args.pll_fin
+    if os.environ.get("PLURIBUS_LEGACY_EBR"):      # A/B against the pre-#127 behavioural EBR
+        data["ebr_cells"] = []
 
     # Assemble all sections
     sections = [
@@ -2564,8 +2919,10 @@ def main():
         emit_ffs(data),
         emit_alus(data),
         emit_trigger_comment(data),
-        emit_ebr(data),
+        emit_ebr_prims(data) if data.get("ebr_cells") else emit_ebr(data),
         emit_fplls(data),
+        emit_plls(data),
+        emit_oddrs(data),
         emit_hard_cells(data),
         emit_output_drives(data),
         emit_unresolved_pads_comment(data),
@@ -2574,6 +2931,9 @@ def main():
         # sibling module, not nested.  Emitted before the commented SPI model so a
         # reader meets the interface first and the optional behaviour second.
         emit_efb_module(data),
+        emit_ebr_modules(data),
+        emit_pll_modules(data),
+        emit_oddr_modules(data),
         emit_efb_model(data),
     ]
 

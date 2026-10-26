@@ -31,6 +31,11 @@ CLKOP  = "BRANCH_HPBX0200"
 CLKOS  = "BRANCH_HPBX0000"
 CLKOS2 = "BRANCH_HPBX0100"
 
+# PLL reference clock (off-chip, not in the bitstream).  The only Fin whose PLL output set covers the
+# annotated spine rates {62.5, 125, 250} MHz (pll_decode.solve_fin).  Used for FIN / FREQUENCY_PIN_*.
+[pll]
+fin_mhz = 50.0
+
 # Paths relative to this board.toml file.
 # pins_tsv: required — pad location + direction annotations.
 # nets_tsv: optional — human net name annotations.

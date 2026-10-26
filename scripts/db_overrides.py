@@ -20,28 +20,24 @@ other option, word, and mux in the tile is left exactly as the base DB has it.
 # family -> tiletype -> {"enum_options": {enum: {option: bit-token string}}}
 OVERRIDES = {
     "MachXO2": {
-        # Gap 1 — EBR.MODE bit-address bug. The mode-select was keyed on F1B35,
-        # which is set in 0 of 631 corpus EBR blocks; F1B33 AND F1B34 are set in
-        # every active block. With F1B35 the enum never matched and MODE (plus 6
-        # width bits) dropped as unknown. Width bits unchanged; only the two
-        # mode-select bits corrected.
-        #
-        # Gap 2 — EBR1 F1B32 positional-site bit (issue #62).
-        # F1B32 is set in every EBR1 tile placed at column C15 (EBR_R6C15 and
-        # EBR_R6C16), regardless of configuration (mode/width/regmode/writemode).
-        # It is never set in EBR tiles at C2, C11, C18, C21.
-        # Confirmed by corpus cross-check: dp8kc_x4 (auto-placed C15) SET;
-        # dp8kc_x1/x2/x9 (auto-placed C11) all clear.  F1B32 is not listed in
-        # EBR1/bits.db — it is a genuine uncatalogued positional bit.
-        # Named here so the decoder can match and emit it rather than leaving it
-        # as an unknown residue.  It is HARMLESS — it carries no configuration.
+        # EBR1 mode + position (corrects #29 gap 1 and #62 gap 2).
+        # MODE = F0B13 F1B8 F1B20 F1B21 F1B22 (set in every active EBR1 tile);
+        # FIFO8KB adds F1B0.  DP8KC and PDPW8KC encode identically, so the
+        # decoder cannot tell them apart.
+        # F1B32..F1B35 is a 4-bit position code (EBR 3..9 left to right on
+        # LCMXO2-1200), not a mode field: the earlier F1B33+F1B34 / F1B32 rules
+        # held only for the two sites the fuzz corpus used (V07 bitstream:
+        # 5 of 7 blocks left MODE undecoded).  Carries no configuration.
         "EBR1": {"enum_options": {
             "EBR.MODE": {
-                "DP8KC":   "F0B13 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
-                "FIFO8KB": "F0B13 F1B0 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
-                "PDPW8KC": "F0B13 F1B8 F1B20 F1B21 F1B22 F1B33 F1B34",
+                "DP8KC":   "F0B13 F1B8 F1B20 F1B21 F1B22",
+                "FIFO8KB": "F0B13 F1B0 F1B8 F1B20 F1B21 F1B22",
+                "PDPW8KC": "F0B13 F1B8 F1B20 F1B21 F1B22",
             },
-            "EBR.SITE_ID_C15": {"SET": "F1B32"},
+            "EBR.SITE_ID": {
+                str(v): " ".join(("" if v >> i & 1 else "!") + f"F1B{32 + i}" for i in range(4))
+                for v in range(1, 16)
+            },
         }},
         # Item 5 — CIB_CFG2 F3B0: EFB_ENABLE flag (issue #62).
         # F3B0 is set whenever any EFB peripheral (I2C, SPI, TC, UFM) is

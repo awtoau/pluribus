@@ -40,6 +40,8 @@ E.STALL_S = 120
 E.OVERALL_S = 1800
 
 _STUB_RE = re.compile(r"\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+EFB\b.*?\n\s*endmodule\s*\n", re.S)
+_PRIM_STUB_RE = re.compile(
+    r"(?://[^\n]*\n)?\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+(?:DP8KC|PDPW8KC|EHXPLLJ|\w*DDR\w*)\b.*?\n\s*endmodule\s*\n", re.S)
 _TEMPLATE_RE = re.compile(r"module efb_spi_slave \(.*?\n\s*endmodule\s*\n", re.S)
 
 
@@ -47,6 +49,7 @@ def prep_verilog(src):
     """Make the lifted Verilog acceptable to Diamond: drop our EFB stub so the primitive is used."""
     s = _STUB_RE.sub("", src)
     s = _TEMPLATE_RE.sub("", s)
+    s = _PRIM_STUB_RE.sub("", s)       # vendor primitives: Diamond has them built in
     return s
 
 
@@ -112,11 +115,13 @@ def main():
     ap.add_argument("--label", default="V07")
     ap.add_argument("--config", required=True)
     ap.add_argument("--prep-only", action="store_true")
+    ap.add_argument("--verilog", help="lifted Verilog to rebuild (default out/<label>.v)")
+    ap.add_argument("--work", help="work dir name under tmp/rt/ (default <label>)")
     ap.add_argument("--ghosts-as-inputs", action="store_true",
                     help="EXPERIMENT: undriven wires become input ports; synthesis + map only")
     a = ap.parse_args()
     log = E.setup_logging()
-    work = REPO / "tmp" / "rt" / a.label
+    work = REPO / "tmp" / "rt" / (a.work or a.label)
     work.mkdir(parents=True, exist_ok=True)
     cfg = tomllib.loads((Path(a.board) / "board.toml").read_text())
     result = {"label": a.label, "stages": {}}
@@ -126,7 +131,7 @@ def main():
         (work / "result.json").write_text(json.dumps(result, indent=1, sort_keys=True, default=str))
         log.info("[%s] %s", stage, kw)
 
-    v = (REPO / "out" / f"{a.label}.v").read_text()
+    v = Path(a.verilog or REPO / "out" / f"{a.label}.v").read_text()
     pv = prep_verilog(v)
     if a.ghosts_as_inputs:
         import subprocess

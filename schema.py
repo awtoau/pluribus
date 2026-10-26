@@ -195,6 +195,45 @@ ebr_init_blocks = Table("ebr_init_blocks", metadata,
     UniqueConstraint("bitstream", "block"),
 )
 
+# EBR as a vendor primitive (issue #127): one `ebr_cells` row per block (primitive kind +
+# decoded parameters + settings that could not be mapped) and one `ebr_pins` row per
+# primitive pin with the net the lift found on its CIB wire.
+ebr_cells = Table("ebr_cells", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("block",      Text,    nullable=False),
+    Column("wid",        Integer),
+    Column("prim",       Text),
+    Column("params",     JSON,    nullable=False),
+    Column("not_lifted", JSON,    nullable=False),
+    UniqueConstraint("bitstream", "block"),
+)
+ebr_pins = Table("ebr_pins", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("block", Text, nullable=False),
+    Column("pin",   Text, nullable=False),
+    Column("dir",   Text, nullable=False),
+    Column("net",   Text),
+    Column("inv",   Integer, nullable=False),
+    Column("const", Integer),
+    UniqueConstraint("bitstream", "block", "pin"),
+)
+
+# Non-EBR hard IP lifted as a named vendor primitive (PLL, DDR I/O ...; issue #104/#127):
+# `params` the primitive parameters decoded from the tile config, `pins` {port: {dir, net}},
+# `not_lifted` settings with no parameter mapping (reported, never guessed).
+hard_ip = Table("hard_ip", metadata,
+    Column("id",        Integer, primary_key=True, autoincrement=True),
+    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("name",       Text,    nullable=False),
+    Column("prim",       Text,    nullable=False),
+    Column("params",     JSON,    nullable=False),
+    Column("pins",       JSON,    nullable=False),
+    Column("not_lifted", JSON,    nullable=False),
+    UniqueConstraint("bitstream", "name"),
+)
+
 # EFB (Embedded Function Block) config-register preloads from bitstream
 # command 0x72 (docs/cmd-0x72.md).  `sel` is the peripheral selector
 # (0x54=SPI, 0x5e=TC); `kind` is the decoded name; `payload` is the raw

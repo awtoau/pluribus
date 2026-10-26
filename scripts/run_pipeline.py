@@ -247,6 +247,12 @@ def run_one(label, config, pins, package, raw_bin, skip_load, workers,
                 "--out", out_v, "--top", top]
         if header_note and os.path.exists(header_note):
             vcmd += ["--header-note", header_note]
+        if board:
+            import tomllib
+            with open(os.path.join(board, "board.toml"), "rb") as fh:
+                fin = tomllib.load(fh).get("pll", {}).get("fin_mhz")
+            if fin:
+                vcmd += ["--pll-fin", str(fin)]
         run("verilog", label, vcmd)
 
         # Verify stage: yosys lint (hard gate) + sequential-equivalence vs the

@@ -813,6 +813,9 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             schema.hard_cells,
             schema.ebr_init,
             schema.ebr_init_blocks,
+            schema.ebr_cells,
+            schema.ebr_pins,
+            schema.hard_ip,
             schema.efb_config,
         ):
             conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
@@ -1438,6 +1441,57 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                       f"NONZERO contents have no tile mapping and are stored with "
                       f"block=UNMAPPED_WID<n>: "
                       + ", ".join(f"wid {i} ({n} words)" for i, n in unmatched_live))
+
+            # ── ebr_cells / ebr_pins: EBR as DP8KC / PDPW8KC (issue #127) ─────────
+            if not is_ecp5:
+                from lifters import machxo2_ebr
+                dbroot = os.environ.get("TRELLIS_DBROOT")
+                if not dbroot:
+                    sys.path.insert(0, str(_HERE / "scripts"))
+                    import toolchain
+                    dbroot = toolchain.trellis_dbroot()
+                ebr_recs = machxo2_ebr.blocks(
+                    pc, lift, lambda rr, cc, w: resolve_net(design, lift, rr, cc, w),
+                    dbroot)
+                for rec in ebr_recs:
+                    conn.execute(insert(schema.ebr_cells).values(
+                        bitstream=bs_id, block=rec["block"], wid=rec.get("wid"),
+                        prim=rec["prim"], params=rec["params"], not_lifted=rec["not_lifted"]))
+                    pin_rows = [{"bitstream": bs_id, "block": rec["block"], "pin": pin,
+                                 "dir": v["dir"], "net": v["net"], "inv": int(v["inv"]),
+                                 "const": v["const"]} for pin, v in rec["pins"].items()]
+                    if pin_rows:
+                        conn.execute(insert(schema.ebr_pins), pin_rows)
+                print(f"  {len(ebr_recs)} EBR primitive cells "
+                      f"({sum(1 for r in ebr_recs for v in r['pins'].values() if v['net'])} routed pins)")
+
+            # ── hard_ip: PLL as EHXPLLJ (issue #104) ──────────────────────────────
+            if not is_ecp5:
+                from lifters import machxo2_pll
+                hip = machxo2_pll.cells(
+                    pc, lift, design, lambda rr, cc, w: resolve_net(design, lift, rr, cc, w), dbroot)
+                for h in hip:
+                    conn.execute(insert(schema.hard_ip).values(
+                        bitstream=bs_id, name=h["name"], prim=h["prim"], params=h["params"],
+                        pins=h["pins"], not_lifted=h["not_lifted"]))
+                from lifters import machxo2_ioddr
+
+                def _pad_pin(rr, cc, letter):
+                    return conn.execute(select(schema.pad_map.c.pin).where(
+                        schema.pad_map.c.bitstream == bs_id, schema.pad_map.c.row == rr,
+                        schema.pad_map.c.col == cc, schema.pad_map.c.pio == letter)).scalar()
+
+                dd = machxo2_ioddr.cells(
+                    pc, lambda rr, cc, w: resolve_net(design, lift, rr, cc, w), _pad_pin, dbroot)
+                for h in dd:
+                    conn.execute(insert(schema.hard_ip).values(
+                        bitstream=bs_id, name=h["name"], prim=h["prim"], params=h["params"],
+                        pins=h["pins"], not_lifted=h["not_lifted"]))
+                print(f"  {len(dd)} IOLOGIC cell(s): " + ", ".join(f"{h['name']}={h['prim']}" for h in dd))
+                print(f"  {len(hip)} PLL cell(s): "
+                      + ", ".join(f"{h['name']} " + "/".join(f"{k}={v['net']}" for k, v in h['pins'].items()
+                                                              if k.startswith('CLKO') or k == 'CLKI')
+                                  for h in hip))
 
             # ── efb_config (0x72 EFB peripheral config-register preloads) ─────────
             # docs/cmd-0x72.md, docs/efb-config.md: 0x40 I2C1, 0x4a I2C2, 0x54 SPI, 0x5e TC.

@@ -38,6 +38,9 @@ LOG_DIR = REPO / "tmp" / "logs"
 _BLACKBOX_RE = re.compile(
     r"\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+EFB\b.*?\n\s*endmodule\s*\n", re.S)
 _TEMPLATE_RE = re.compile(r"module efb_spi_slave \(.*?\n\s*endmodule\s*\n", re.S)
+_PRIM_STUB_RE = re.compile(
+    r"(?://[^\n]*\n)?\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+(?:DP8KC|PDPW8KC|EHXPLLJ|ODDRXE)\b.*?\n\s*endmodule\s*\n",
+    re.S)
 _CLK_ALWAYS_RE = re.compile(r"^    always #[\d.]+ (\w+) = ~\1;.*\n", re.M)
 
 # vvp wall-clock backstop: limit = max(VVP_FLOOR_S, VVP_S_PER_US * run_us).
@@ -269,9 +272,15 @@ def main():
     if n != 1:
         log.warning("expected 1 EFB blackbox stub, removed %d", n)
     rtl = _TEMPLATE_RE.sub("", rtl)
+    # Vendor primitives (DP8KC / PDPW8KC / EHXPLLJ / ODDRXE) simulate with Diamond's own plain
+    # Verilog models; the stubs are dropped and the models found through iverilog -y.
+    has_pll = "EHXPLLJ #(" in rtl
+    rtl = _PRIM_STUB_RE.sub("", rtl)
     (work / "rtl.v").write_text(rtl)
 
-    plan = plan_clocks(board_cfg, board_dir, Path(args.config).read_text(), args.label, log)
+    # An EHXPLLJ in the netlist makes the PLL model redundant: the testbench drives its CLKI.
+    plan = None if has_pll else plan_clocks(
+        board_cfg, board_dir, Path(args.config).read_text(), args.label, log)
     frames = spi_script(board_dir)
     ff_names = re.findall(r"^    reg (\w+) = 1'b[01];\s*//.*clk=", rtl, re.M)
     log.info("%d FFs, %d SPI frames", len(ff_names), len(frames))
@@ -283,7 +292,10 @@ def main():
     (work / "tb.v").write_text(tb)
 
     vvp = work / "sim.vvp"
-    cmd = ["iverilog", "-g2012", "-o", str(vvp), "-s", "aw2_tb", str(work / "rtl.v"),
+    import toolchain
+    vlib = Path(toolchain.diamond_root()) / "cae_library" / "simulation" / "verilog" / "machxo2"
+    cmd = ["iverilog", "-g2012", "-y", str(vlib), "-Y", ".v", "-o", str(vvp), "-s", "aw2_tb",
+           str(work / "rtl.v"),
            str(REPO / "scripts/efb_open_model.v"), str(REPO / "scripts/pll_model.v"),
            str(work / "tb.v")]
     import heavy_guard
@@ -310,8 +322,8 @@ def main():
         "wb_reads": int(wb.group(1)) if wb else None,
         "wb_writes": int(wb.group(2)) if wb else None,
         "spi_bytes": int(wb.group(3)) if wb else None,
-        "pll": {"fin_mhz": plan["fin"], "outputs_mhz": plan["freqs"],
-                "drive": plan["drive"]} if plan else None,
+        "pll": ({"fin_mhz": plan["fin"], "outputs_mhz": plan["freqs"], "drive": plan["drive"]}
+                if plan else ("EHXPLLJ vendor model" if has_pll else None)),
     }
     (work / (f"summary_tie{args.tie_undriven}.json" if args.tie_undriven is not None else "summary.json")).write_text(json.dumps(summary, indent=1, sort_keys=True))
     for k, v in summary.items():
