@@ -183,6 +183,9 @@ ANCHOR_CANDS = {"R4": [(dx, 0) for dx in range(-4, 5)],
                 "R24": [(dx, 0) for dx in range(-24, 25)]}
 
 
+SRCS = []   # source id -> source key tuple (filled in main, read by the workers)
+
+
 def learn_group(cls, key, insts, planes, geom, used_tiles, tiles_of_class):
     """Try every anchor offset for the dst type; keep the one explaining the most sources."""
     best = None
@@ -203,9 +206,13 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
     ax, ay = off
     ok = lambda x, y: 0 <= x + ax <= geom.xmax and 0 <= y + ay <= geom.ymax  # noqa: E731
     by_src = collections.defaultdict(list)
-    for di, x, y, src in insts:
+    for p in insts:
+        sidx = p & 0x3FFFFF
+        y = (p >> 22) & 127
+        x = (p >> 29) & 127
+        di = p >> 36
         if ok(x, y):
-            by_src[src].append((di, x, y))
+            by_src[SRCS[sidx]].append((di, x, y))
     if not by_src:
         return None
     shape = (WF[1] - WF[0], WV[1] - WV[0])
@@ -226,7 +233,7 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
         return None
     # unused tiles: same class, dst not used in that design
     unused = [(di, x, y) for di in range(len(planes)) for (x, y) in tiles_of_class
-              if (di, x, y) not in used_tiles and ok(x, y)]
+              if ((di << 7 | x) << 7 | y) not in used_tiles and ok(x, y)]
     rng = np.random.default_rng(0)
     if len(unused) > 400:
         unused = [unused[i] for i in rng.choice(len(unused), 400, replace=False)]
@@ -276,17 +283,22 @@ def main():
         log.addHandler(h)
     names = [n for n in cc.designs(a.train) if split_of(n, a.split)]
     geom = one_geom(names)
-    with ThreadPoolExecutor(a.workers) as ex:
-        ds = list(ex.map(cc.load, names))
-    planes = [d["plane"] for d in ds]
-    log.info("%d designs (%s, split %s)", len(ds), a.train, a.split)
+    planes = []
     groups = collections.defaultdict(list)
     used = collections.defaultdict(set)
-    for di, d in enumerate(ds):
-        for key, x, y, src in instances(d["name"], d, geom):
+    sid = {}
+    # instances are packed ints (design, x, y, source id): 15M tuples were > 3 GB
+    for di, nm in enumerate(names):
+        d = cc.load(nm)
+        planes.append(d["plane"])
+        for key, x, y, src in instances(nm, d, geom):
             cls = tile_class(geom, x, y, a.col_phase, key[0])
-            groups[(cls, key)].append((di, x, y, src))
-            used[(cls, key)].add((di, x, y))
+            i = sid.setdefault(src, len(sid))
+            groups[(cls, key)].append((((di << 7 | x) << 7 | y) << 22) | i)
+            used[(cls, key)].add(((di << 7 | x) << 7) | y)
+        del d
+    SRCS.extend(sorted(sid, key=sid.get))
+    log.info("%d designs (%s, split %s), %d distinct sources", len(planes), a.train, a.split, len(sid))
     types = set(a.types.split(",")) if a.types else None
     tiles = collections.defaultdict(list)
     for x in range(geom.xmax + 1):
@@ -312,7 +324,7 @@ def main():
     path.parent.mkdir(parents=True, exist_ok=True)
     tab = {k: {**v, "pats": {"|".join(map(str, s)): p for s, p in v.get("pats", {}).items()}} for k, v in out.items()}
     tab["_meta"] = {"col_phase": a.col_phase, "die": geom.die, "train": a.train, "split": a.split,
-                    "designs": len(ds)}
+                    "designs": len(planes)}
     path.write_text(json.dumps(tab, indent=0, default=list))
     log.info("wrote %s", path)
     return 0

@@ -118,8 +118,9 @@ class Tracer:
     trace() -> (("DRV", kind, n, x, y) | None, reason).  Ambiguous hops are resolved by keeping the
     candidates that reach a driver; more than one distinct driver = ambiguous."""
 
-    def __init__(self, dec, plane, geom):
+    def __init__(self, dec, plane, geom, terminals=()):
         self.dec, self.plane, self.geom = dec, plane, geom
+        self.terminals = set(terminals)    # wire types that end a trace (boundary nets)
         self.memo = {}          # (key, x, y) -> (frozenset(drivers), reason)
 
     def walk(self, key, x, y, depth, stack):
@@ -145,6 +146,8 @@ class Tracer:
                 found.add(("CONST", k2[1], 0, 0, 0))
             elif k2[0] == "CIN":
                 found.add(("CIN", 0, 0, x, y))
+            elif k2[0] in self.terminals:
+                found.add(("WIRE", k2[0], k2[1], k2[2], x + dx, y + dy))
             else:
                 f, w = self.walk(k2, x + dx, y + dy, depth + 1, stack)
                 found |= f
