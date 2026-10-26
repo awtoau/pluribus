@@ -1,0 +1,4 @@
+top = "top"
+purpose = "global network: pll3dom_x"
+construct = "globals"
+variant = "pll3dom_x"
