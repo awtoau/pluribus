@@ -153,7 +153,11 @@ def split_of(name, split):
 
 # Where a wire's mux sits relative to the RCF coordinate (the driving end): candidate anchor
 # offsets per dst type, chosen per group by the learner.  Others: the dst tile itself.
-ANCHOR_CANDS = {"R4": [(dx, 0) for dx in range(-4, 5)], "C4": [(0, dy) for dy in range(-4, 5)]}
+# C4 / C16 muxes can sit one column right of the RCF coordinate (EP4CGX150 C4 23: dx +1, dy +3/+4).
+ANCHOR_CANDS = {"R4": [(dx, 0) for dx in range(-4, 5)],
+                "C4": [(dx, dy) for dx in (0, 1) for dy in range(-4, 5)],
+                "C16": [(dx, dy) for dx in (0, 1) for dy in range(-16, 17)],
+                "R24": [(dx, 0) for dx in range(-24, 25)]}
 
 
 def learn_group(cls, key, insts, planes, geom, used_tiles, tiles_of_class):
