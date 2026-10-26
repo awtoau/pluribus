@@ -22,9 +22,61 @@ import cycloneiv_route_score as rs  # noqa: E402
 log = logging.getLogger("cycloneiv_learner_baseline")
 
 
+def score_design_alias(name, dec, geom):
+    """cycloneiv_route_score.score_design, but a source decoded from the asm tables is a physical wire
+    whose RCF aliases are all returned: matched iff the oracle's name is one of them."""
+    d = cc.load(name)
+    plane, vo = d["plane"], d["vo"]
+    c, why = collections.Counter(), collections.Counter()
+    net_ok = net_all = 0
+    for net, edges in d["rcf"].items():
+        ok_net, any_edge = True, False
+        for src, dst in edges:
+            a, b = rl.node_at(vo, src), rl.node_at(vo, dst)
+            if a is None or b is None:
+                continue
+            any_edge = True
+            bx, by, bkey = b
+            sx, sy, skey_ = a
+            want = rs.skey(skey_ + (sx - bx, sy - by))
+            cands, reason = dec.sources(plane, geom, bkey, bx, by)
+            if not cands:
+                c["missing"] += 1
+                why[(reason, bkey[0])] += 1
+                ok_net = False
+            elif want in cands and (len(cands) == 1 or reason == "ambiguous pattern" and dec.asm is not None):
+                c["matched"] += 1
+                why[("matched", bkey[0])] += 1
+            elif len(cands) > 1:
+                c["missing"] += 1
+                why[("ambiguous pattern", bkey[0])] += 1
+                ok_net = False
+            else:
+                c["wrong"] += 1
+                why[("wrong", bkey[0])] += 1
+                ok_net = False
+        if any_edge:
+            net_all += 1
+            net_ok += ok_net
+    used = {(k, x, y) for k, x, y, _s in rl.instances(name, d, geom)}
+    touched = {(x, y) for _k, x, y in used}
+    import random
+    import zlib
+    rnd = random.Random(zlib.crc32(name.encode()))
+    labs = [(x, y) for x in geom.kind if geom.kind[x] == "LAB" for y in range(1, geom.ymax)]
+    other = rnd.sample([t for t in labs if t not in touched], min(rs.EXTRA_SAMPLE, len(labs)))
+    for (x, y) in list(touched) + other:
+        if x in geom.kind and 0 <= y <= geom.ymax:
+            e = dec.extra_in_tile(plane, geom, x, y, used)
+            c["extra"] += e
+            why[("extra", "tile")] += e
+    return name, c, why, net_ok, net_all
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tables", required=True)
+    ap.add_argument("--asm", action="store_true", help="asm tables first (cycloneiv_route_decode.AsmSource), learner fallback")
     ap.add_argument("--designs", default="gx150_sp_*")
     ap.add_argument("--split", default="odd")
     ap.add_argument("--limit", type=int, default=20)
@@ -33,13 +85,13 @@ def main():
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(message)s", handlers=[
         logging.StreamHandler(), logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_learner_baseline.log", "w")])
-    dec = rd.Decoder(a.tables.split(","))
+    dec = rd.Decoder(a.tables.split(","), asm=rd.AsmSource() if a.asm else None)
     names = [n for n in cc.designs(a.designs) if rl.split_of(n, a.split)][:a.limit]
     geom = rl.one_geom(names)
     tot, why = collections.Counter(), collections.Counter()
     nok = nall = 0
-    with ThreadPoolExecutor(a.workers) as ex:
-        for name, c, w, ok, al in ex.map(lambda n: rs.score_design(n, dec, geom), names):
+    with ThreadPoolExecutor(1 if a.asm else a.workers) as ex:
+        for name, c, w, ok, al in ex.map(lambda n: score_design_alias(n, dec, geom), names):
             tot.update(c)
             why.update(w)
             nok, nall = nok + ok, nall + al

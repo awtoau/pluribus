@@ -51,14 +51,22 @@ class AsmSource:
         self.t = at.Tables(ad.Dec(), path) if path else at.Tables(ad.Dec())
         self._cache = {}
 
-    def sources(self, plane, key, x, y):
+    def decoded(self, plane):
         dec = self._cache.get(id(plane))
         if dec is None:
+            self._cache.clear()               # one design at a time
             dec = self._cache[id(plane)] = self.t.decode_design(plane)
-        rec = dec.get((x, y, tuple(key)))
+        return dec
+
+    def sources(self, plane, key, x, y):
+        rec = self.decoded(plane).get((x, y, tuple(key)))
         if rec is None:
             return None
         return self.t.rcf_names(rec, x, y)
+
+    def extra_at(self, plane, x, y, used):
+        """Muxes of tile (x, y) the asm tables decode to a source but the RCF does not use."""
+        return sum(1 for (dx, dy, key) in self.decoded(plane) if dx == x and dy == y and (key, x, y) not in used)
 
 
 class Decoder:
@@ -82,8 +90,10 @@ class Decoder:
         known single source (an extra connection the RCF does not have)."""
         n = 0
         t = self.tables[0]
+        asm_dec = self.asm.decoded(plane) if self.asm is not None else {}
+        n += sum(1 for (dx, dy, key) in asm_dec if dx == x and dy == y and (key, x, y) not in used)
         for key, (mux, pats, (ax, ay)) in self.groups_in_class(t, rl.tile_class(geom, x, y, t.col_phase)):
-            if (key, x, y) in used or not mux:
+            if (key, x, y) in used or not mux or (x, y, key) in asm_dec:
                 continue
             bits = read_bits(plane, geom, x + ax, y + ay, mux)
             if bits:

@@ -160,14 +160,22 @@ def learn(dec, names):
     labcols = sorted(x for x, k in dec.g.kind.items() if k == "LAB")
     colrank = {x: i for i, x in enumerate(reversed(labcols))}
     cooc = collections.defaultdict(collections.Counter)
-    act = collections.Counter()
+    act = collections.Counter()           # block key -> activations
+    occ = collections.Counter()           # (class, dst rel key) -> occurrences over every LAB tile of the class
+    labtiles = [(x, y) for x, k in dec.g.kind.items() if k == "LAB" for y in range(1, dec.g.ymax)]
     for di, name in enumerate(names):
         d = cc.load(name)
         pips, _ = oracle(name, d, dec.g)
         bytile = collections.defaultdict(list)
         for dn in pips:
             if dn[0] in LAB_DSTS:
-                bytile[(dn[3], dn[4])].append(dn)
+                bytile[(dn[3], dn[4])].append(f"{dn[0]}|{dn[1]}|{dn[2]}")
+        for x, y in labtiles:
+            cls = rl.tile_class(dec.g, x, y, 8)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for dk in bytile.get((x + dx, y + dy), ()):
+                        occ[f"{cls}|{dk}|{dx}|{dy}"] += 1
         gids, recs, blocks = active_groups(dec, d["plane"])
         for G in gids:
             x, y, key = block_key(dec, int(G))
@@ -178,19 +186,20 @@ def learn(dec, names):
             c = cooc[bk]
             for dx in (-1, 0, 1):
                 for dy in (-1, 0, 1):
-                    for dn in bytile.get((x + dx, y + dy), ()):
-                        c[f"{dn[0]}|{dn[1]}|{dn[2]}|{dx}|{dy}"] += 1
+                    for dk in bytile.get((x + dx, y + dy), ()):
+                        c[f"{dk}|{dx}|{dy}"] += 1
         if di % 10 == 9:
             D.log.info("learn A: %d designs, %d block keys (%.0fs)", di + 1, len(act), time.time() - t0)
+    # a block names a destination iff they appear together nearly always, in BOTH directions
     bmap, amb = {}, 0
     for bk, n in act.items():
         if n < 3 or not cooc[bk]:
             continue
-        top, m = cooc[bk].most_common(1)[0]
-        second = cooc[bk].most_common(2)[1][1] if len(cooc[bk]) > 1 else 0
-        if m >= 0.9 * n and second < 0.7 * n:
-            bmap[bk] = top
-        else:
+        cls = bk.split("|", 1)[0]
+        good = [(m, dk) for dk, m in cooc[bk].items() if m >= 0.9 * n and m >= 0.9 * occ.get(f"{cls}|{dk}", 0)]
+        if len(good) == 1:
+            bmap[bk] = good[0][1]
+        elif good:
             amb += 1
     D.log.info("block map: %d keys (%d ambiguous, %d under-sampled)", len(bmap), amb, sum(1 for n in act.values() if n < 3))
     alias = collections.defaultdict(collections.Counter)
