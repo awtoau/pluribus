@@ -96,27 +96,79 @@ def parse_rcf(path):
     return nets
 
 
+class SparsePlane:
+    """Set CRAM bits as a sorted int32 array of frame * NV + v (a dense plane is 38 MiB per
+    EP4CGX150 design, the set bits ~1 MB).  shape = (frames, NV)."""
+
+    def __init__(self, keys, nfr, nv):
+        self.keys = keys
+        self.shape = (nfr, nv)
+
+    def has(self, f, v):
+        """bool array: is (f, v) set; f, v integer arrays (out of range = False)."""
+        nf, nv = self.shape
+        f, v = np.asarray(f), np.asarray(v)
+        ok = (f >= 0) & (f < nf) & (v >= 0) & (v < nv)
+        if not len(self.keys):
+            return ok & False
+        k = np.where(ok, f * nv + v, -1)
+        i = np.minimum(np.searchsorted(self.keys, k), len(self.keys) - 1)
+        return ok & (self.keys[i] == k)
+
+    def __getitem__(self, fv):
+        f, v = fv
+        return bool(self.has(np.array([f]), np.array([v]))[0])
+
+    def rect(self, fa, fb, va, vb):
+        """bool [fb-fa, vb-va] of the rectangle; out-of-range parts are False."""
+        nf, nv = self.shape
+        out = np.zeros((fb - fa, vb - va), dtype=bool)
+        f0, f1 = max(fa, 0), min(fb, nf)
+        v0, v1 = max(va, 0), min(vb, nv)
+        if f0 >= f1 or v0 >= v1:
+            return out
+        fs = np.arange(f0, f1, dtype=np.int64)
+        lo = np.searchsorted(self.keys, fs * nv + v0)
+        hi = np.searchsorted(self.keys, fs * nv + v1)
+        for fi, l, h in zip(range(f0, f1), lo, hi):
+            if h > l:
+                out[fi - fa, self.keys[l:h] - fi * nv - va] = True
+        return out
+
+    def __len__(self):
+        return len(self.keys)
+
+    def sum(self):
+        return len(self.keys)
+
+
 def cram_plane(rbf_bytes, geom=None):
-    """bool array [frame, v] of every configuration bit (frames 1.. incl. periphery)."""
+    """SparsePlane of every configuration bit (frames 1.. incl. periphery)."""
     info = {}
     u = cd.decompress(rbf_bytes, info)
     f, r, n = info["frame"], info["periphery_frames"], info["cram_frames"]
     nfr = r + n
-    vmap = vmap_for(f, tuple(geom.lane_bytes) if geom else (lm.TOP,) + (lm.LANE,) * 7)
-    plane = np.zeros((nfr, len(vmap)), dtype=bool)
+    vmap = vmap_for(f, tuple(geom.lane_bytes) if geom else (lm.TOP,) + (lm.LANE,) * 7,
+                    tuple(map(tuple, geom.lane_swaps)) if geom else ())
+    nv = len(vmap)
+    parts = []
     for fr in range(1, nfr):
         base = cd.PREAMBLE + fr * f
         width = f if fr < r else f - 2     # periphery frames carry no CRC
         chunk = np.frombuffer(u[base:base + width], dtype=np.uint8)
         idx = np.nonzero(np.unpackbits(chunk, bitorder="little"))[0]
-        plane[fr, vmap[idx]] = True
-    return plane
+        if len(idx):
+            parts.append(fr * nv + vmap[idx])
+    keys = np.sort(np.concatenate(parts)).astype(np.int64) if parts else np.zeros(0, dtype=np.int64)
+    return SparsePlane(keys, nfr, nv)
 
 
 @lru_cache(maxsize=None)
-def vmap_for(f, lane_bytes):
+def vmap_for(f, lane_bytes, swaps=()):
     """frame bit -> v (lane-major, lane 7 first).  Bits outside the lane model (lane tails,
-    periphery CRC bytes) get v >= sum(lane_bytes)."""
+    periphery CRC bytes) get v >= sum(lane_bytes).  swaps = ((v, byte, lane), ...): the raw bit
+    (byte, lane) takes position v and the bit that held v takes its column (EP4CE6: LE bits at
+    the lane joins live in the lane tail bytes)."""
     vmap = np.full(f * 8, -1, dtype=np.int64)
     extra = sum(lane_bytes)
     for b in range(f * 8):
@@ -127,6 +179,12 @@ def vmap_for(f, lane_bytes):
         else:
             vmap[b] = extra
             extra += 1
+    where = {int(v): b for b, v in enumerate(vmap)}
+    for v, byte, lane in swaps:
+        b_new = byte * 8 + lane
+        b_old = where[v]
+        vmap[b_old], vmap[b_new] = vmap[b_new], v
+        where[int(vmap[b_old])], where[v] = b_old, b_new
     return vmap
 
 

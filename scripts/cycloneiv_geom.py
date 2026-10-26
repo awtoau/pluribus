@@ -45,6 +45,7 @@ class Geom:
         self.no_lab = {tuple(t) for t in d.get("no_lab", [])}
         # bytes used per bit-lane, lanes in v order (7 first); v = lane-major position
         self.lane_bytes = d.get("lane_bytes", [206] + [207] * 7)
+        self.lane_swaps = d.get("lane_swaps", [])
 
     def v_of(self, bit):
         """frame bit (byte*8 + lane) -> v, or None outside the lane model."""
@@ -103,7 +104,12 @@ def build_ep4ce6():
          "xmax": xmax, "ymax": ymax, "FX": fx, "col_kind": kind,
          "vy0": vy[1] - pitch, "vpitch": pitch,
          "no_lab": [[1, y] for y in range(12, 17)],
-         "DN": m.DN, "dk": m.dk}
+         "DN": m.DN, "dk": m.dk,
+         # LE bits at the lane joins sit in the lane tail bytes: v 206 / 207 -> lane 7 bytes 206 / 207
+         # (measured), v at each later join -> byte 207 of the lane before it (1241 measured; the
+         # others by the same pattern, checked by cycloneiv_lut_check.py)
+         "lane_swaps": [[206, 206, 7], [207, 207, 7]]
+         + [[206 + 207 * (i - 1), 207, 7 - (i - 1)] for i in range(2, 8)]}
     return d
 
 

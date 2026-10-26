@@ -16,6 +16,8 @@ import argparse
 import collections
 import json
 import logging
+import random
+import zlib
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -28,6 +30,7 @@ import cycloneiv_route_decode as rd  # noqa: E402
 import cycloneiv_route_learn as rl  # noqa: E402
 
 log = logging.getLogger("cycloneiv_route_score")
+EXTRA_SAMPLE = 60   # untouched LAB tiles per design checked for extra connections
 
 
 def skey(src):
@@ -97,6 +100,17 @@ def score_design(name, dec, geom):
         if any_edge:
             net_all += 1
             net_ok += ok_net
+    # extra: unused muxes in touched tiles + EXTRA_SAMPLE seeded untouched LAB tiles
+    used = {(k, x, y) for k, x, y, _s in rl.instances(name, d, geom)}
+    touched = {(x, y) for _k, x, y in used}
+    rnd = random.Random(zlib.crc32(name.encode()))
+    labs = [(x, y) for x in geom.kind if geom.kind[x] == "LAB" for y in range(1, geom.ymax)]
+    other = rnd.sample([t for t in labs if t not in touched], min(EXTRA_SAMPLE, len(labs)))
+    for (x, y) in list(touched) + other:
+        if x in geom.kind and 0 <= y <= geom.ymax:
+            e = dec.extra_in_tile(plane, geom, x, y, used)
+            c["extra"] += e
+            why[("extra", "tile")] += e
     return name, c, why, net_ok, net_all
 
 

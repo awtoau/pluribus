@@ -85,7 +85,8 @@ def le_bits(plane, geom, x, y, le):
     vs = [v0 + s * dv for dv in range(-WIN_V, WIN_V + 1)]
     if fa < 0 or fb > nf or min(vs) < 0 or max(vs) >= nv:
         return None
-    return plane[fa:fb][:, vs].reshape(-1)
+    ff, vv = np.meshgrid(np.arange(fa, fb), np.array(vs), indexing="ij")
+    return plane.has(ff, vv).reshape(-1)
 
 
 def collect(name, geom):

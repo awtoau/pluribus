@@ -8,6 +8,8 @@ Decoder(paths).source(plane, geom, dst_key, x, y) -> (src_key_str | None, reason
 """
 import collections
 import json
+
+import numpy as np
 from pathlib import Path
 
 import cycloneiv_route_learn as rl
@@ -30,18 +32,42 @@ def read_bits(plane, geom, x, y, mux):
     if x not in geom.FX:
         return None
     f0, v0 = geom.anchor(x, y)
-    nf, nv = plane.shape
-    on = []
-    for df, dv in mux:
-        f, v = f0 + df + rl.WF[0], v0 + dv + rl.WV[0]
-        if 0 <= f < nf and 0 <= v < nv and plane[f, v]:
-            on.append((df, dv))
-    return tuple(on)
+    if not mux:
+        return ()
+    fs = np.array([f0 + df + rl.WF[0] for df, _ in mux])
+    vs = np.array([v0 + dv + rl.WV[0] for _, dv in mux])
+    hit = plane.has(fs, vs)
+    return tuple(m for m, h in zip(mux, hit) if h)
 
 
 class Decoder:
     def __init__(self, paths):
         self.tables = [Table(p) for p in paths]
+        self._idx = {}
+
+    def groups_in_class(self, t, cls):
+        """[(key tuple, (mux, pats, anchor))] of one table for a tile class."""
+        ix = self._idx.get(id(t))
+        if ix is None:
+            ix = self._idx[id(t)] = collections.defaultdict(list)
+            for k, g in t.groups.items():
+                p = k.split("|")
+                ix[p[0]].append((tuple([p[1]] + [int(q) if q.lstrip("-").isdigit() else q for q in p[2:]]), g))
+        return ix.get(cls, [])
+
+    def extra_in_tile(self, plane, geom, x, y, used):
+        """Count wire/mux groups at tile (x, y) NOT used by the design whose mux bits read as a
+        known single source (an extra connection the RCF does not have)."""
+        n = 0
+        t = self.tables[0]
+        for key, (mux, pats, (ax, ay)) in self.groups_in_class(t, rl.tile_class(geom, x, y, t.col_phase)):
+            if (key, x, y) in used or not mux:
+                continue
+            bits = read_bits(plane, geom, x + ax, y + ay, mux)
+            if bits:
+                got = pats.get(bits)
+                n += bool(got) and len(got) == 1
+        return n
 
     def source(self, plane, geom, key, x, y):
         cands, reason = self.sources(plane, geom, key, x, y)
@@ -53,6 +79,8 @@ class Decoder:
         """All candidate sources from the first table with a pattern hit (several = ambiguous;
         a unique hit in a later table wins over an ambiguous earlier one)."""
         reason, amb = "no table", None
+        if key[0] == "FF" and key[2] in rl.FF_LAB_PORTS:
+            key = rl.ff_lab_key(plane, geom, x, y, key[1], key[2])
         if x not in geom.kind or not 0 <= y <= geom.ymax:
             return [], "off die"
         for t in self.tables:

@@ -82,9 +82,7 @@ FF_LAB_PORTS = {"CLK", "ENA", "CLRN", "SCLR", "SLOAD"}
 def le_bit(plane, geom, x, y, le, df, dv):
     f0, v0 = geom.anchor(x, y)
     s = -1 if le % 2 else 1
-    f, v = f0 + df, v0 + geom.DN[le] + s * dv
-    nf, nv = plane.shape
-    return bool(0 <= f < nf and 0 <= v < nv and plane[f, v])
+    return plane[f0 + df, v0 + geom.DN[le] + s * dv]
 
 
 def ff_lab_key(plane, geom, x, y, n, port):
@@ -112,13 +110,7 @@ def instances(name, d, geom=None):
 
 def window(plane, geom, x, y):
     f0, v0 = geom.anchor(x, y)
-    nf, nv = plane.shape
-    w = np.zeros((WF[1] - WF[0], WV[1] - WV[0]), dtype=bool)
-    fa, fb = max(0, f0 + WF[0]), min(nf, f0 + WF[1])
-    va, vb = max(0, v0 + WV[0]), min(nv, v0 + WV[1])
-    if fa < fb and va < vb:
-        w[fa - f0 - WF[0]:fb - f0 - WF[0], va - v0 - WV[0]:vb - v0 - WV[0]] = plane[fa:fb, va:vb]
-    return w
+    return plane.rect(f0 + WF[0], f0 + WF[1], v0 + WV[0], v0 + WV[1])
 
 
 ROW_PHASE = 4   # R4 / C4 indices rotate with Y mod 4 (an R4 index occurs at one row phase only)
