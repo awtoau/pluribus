@@ -278,7 +278,21 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
   - values `6154` (= CRAM frames), `-6154`, `-12306`, `1`, `-2` recur: bit addresses are coded relative, `frame + 6154 * v` (frame fastest);
   - pairs `(i32 address delta, u32 mask)` with masks `0xff`, `0xff00`, `0xffff`, `0x100`, `0x101`, `0x1`;
   - absolute addresses of known LUT-mask bits do not occur literally (searched `f + 6154 v`, `b * 6154 + f`, `f * 6352 + b`, with frame offsets -45..5).
-  - Not decoded yet.
+  - record framing (verified: 310,180 consecutive records parse, bytes 0x124800..70 MB of the 461 MB): `u32 c` (1..32), `c` x `u16` (group sizes `3,3,...` then the item count n, e.g. `3,3,3,3,3,18`, `3,3,3,3,3,3,3,24`), n x `(i32 position delta, u32 mask)`, then one `i32` separator (mostly 0, else +-65537, +-131073, ...). First record has 4 extra u16 in front.
+  - the 18-item record is the LOCAL_INTERCONNECT shape: 18 = 3 (A choice) x 6 (B choice), items in 6 groups of 3. The learner finds the same 18 sources as patterns over 8 bit positions (2 rows x 4 frames).
+  - the cumulative item positions (decomposed `a * 6154 + b`) span a 6 x 9 window, so they are not the 8 mux bit positions; item meaning (position / mask semantics) and how a routing node selects its record (the other 390 MB, N = 1,802,443 entries) are not decoded.
+  - routing.ddb (88 MB, header `u32 4, 118, 92, N, ...`) and icname (729,374 names + a second `XQ4/...` table) not decoded beyond the name list.
+  - Verdict 2026-10-26: not usable yet; the statistical tables below carry routing.
+
+## EP4CGX150 routing tables from the corpus (2026-10-26, replaces the 80.6% figure)
+
+- Learner now streams per source (AND / OR of windows) instead of stacking windows (1.5 GB for the large LE-input groups), so all 150 crc32-even designs fit in a 2.5 GB cgroup; planes are sparse (`SparsePlane`, ~1 MB per design, was 38 MiB).
+- Held-out (20 designs of the odd half), pooled tables (X mod 8, Y mod 4): pips matched 272,070 / (matched 272,070 + missing 21,492 + extra 1,644 + wrong 195) = 92.10%; nets with every pip matched 13,210 / 22,407 = 58.95%.
+  - extra counted on touched tiles + 60 random untouched LABs per design; an unused mux whose bits read as one known source.
+  - per type, matched / missing / wrong: LE inputs 74,574 / 2,571 / 3 (96.7%), LOCAL_INTERCONNECT 52,137 / 2,858 / 40 (94.7%), C4 48,444 / 2,798 / 17 (94.5%), R4 53,888 / 5,986 / 63 (89.9%), LE_BUFFER 20,823 / 7 / 0 (99.97%), FF pins 5,580 / 515 / 25 (91.2%), LAB_CONTROL_MUX 1,234 / 209 / 7 (85.1%), C16 1,877 / 1,238 / 21 (59.9%), R24 1,681 / 989 / 9 (62.8%).
+  - not covered (zero / no table): clock tree (BLK_CLK_BUF 1 / 2,440, LAB_CLK 93 / 445, SCLK_TO_ROWCLK_BUF 7 / 478, GLOBAL_CLK_*), IO (IO_DATAIN 195 / 327, IOOBUF 5 / 379, BLOCK_INPUT_MUX 307 / 80). Most of the remaining misses are 'ambiguous pattern' (two sources share a pooled pattern): per-column tables resolve those.
+- IO sites (`cycloneiv_io_bits.py`, no geometry needed): each used IOOBUF site has a 36-bit configuration signature (set in >= 95% of designs using the site, in <= 3% of the others), in clusters of 4 consecutive v. Top-row (Y91) and bottom-row (Y0) IO config sits in the periphery frames (e.g. X26/X30/X32/X34 -> frames 26..29), v falls by 136 per IO step of 7 in N (N2, N9, N16, N23). The LAB-column anchor model does not apply to IO rows, so IO-row routing tables (IO_DATAIN, BLOCK_INPUT_MUX, IOOBUF.I) need their own anchors.
+- Memory: a per-column learner (104 columns instead of 8 classes) needs a larger cgroup than 2.5 GB.
 
 ## Gaps
 
