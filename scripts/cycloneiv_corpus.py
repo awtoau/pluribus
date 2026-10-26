@@ -96,13 +96,13 @@ def parse_rcf(path):
     return nets
 
 
-def cram_plane(rbf_bytes):
+def cram_plane(rbf_bytes, geom=None):
     """bool array [frame, v] of every configuration bit (frames 1.. incl. periphery)."""
     info = {}
     u = cd.decompress(rbf_bytes, info)
     f, r, n = info["frame"], info["periphery_frames"], info["cram_frames"]
     nfr = r + n
-    vmap = vmap_for(f)
+    vmap = vmap_for(f, tuple(geom.lane_bytes) if geom else (lm.TOP,) + (lm.LANE,) * 7)
     plane = np.zeros((nfr, len(vmap)), dtype=bool)
     for fr in range(1, nfr):
         base = cd.PREAMBLE + fr * f
@@ -114,23 +114,42 @@ def cram_plane(rbf_bytes):
 
 
 @lru_cache(maxsize=None)
-def vmap_for(f):
-    """frame bit -> v.  Bits outside the LE v model (lane tails, periphery CRC bytes) get v >= NV."""
-    nv = lm.TOP + 7 * lm.LANE
+def vmap_for(f, lane_bytes):
+    """frame bit -> v (lane-major, lane 7 first).  Bits outside the lane model (lane tails,
+    periphery CRC bytes) get v >= sum(lane_bytes)."""
     vmap = np.full(f * 8, -1, dtype=np.int64)
-    extra = nv
+    extra = sum(lane_bytes)
     for b in range(f * 8):
-        try:
-            vmap[b] = lm.v_of(b)
-        except ValueError:
+        byte, lane = divmod(b, 8)
+        order = 7 - lane
+        if byte < lane_bytes[order]:
+            vmap[b] = sum(lane_bytes[:order]) + byte
+        else:
             vmap[b] = extra
             extra += 1
     return vmap
 
 
+def device_of(name):
+    import tomllib
+    t = tomllib.loads((CORPUS / name / "design.toml").read_text())
+    return t.get("device", "EP4CE6E22C8")
+
+
+def geom_of(name):
+    import cycloneiv_geom as cg
+    return cg.load(cg.die_of(device_of(name)))
+
+
 def top_module_only(path):
+    """Filtered .vo; GX atoms (cycloneiv_*) renamed to the E names (cycloneive_*): same cells."""
     import cycloneiv_fuzz_analyze as fa
-    return fa.top_module_only(path)
+    p = fa.top_module_only(path)
+    t = p.read_text()
+    t2 = re.sub(r"\bcycloneiv_", "cycloneive_", t)
+    if t2 != t:
+        p.write_text(t2)
+    return p
 
 
 @lru_cache(maxsize=None)
@@ -140,7 +159,7 @@ def load_vo(name):
 
 def load(name):
     d = CORPUS / name
-    return {"name": name, "plane": cram_plane((d / "bitstream.rbf").read_bytes()),
+    return {"name": name, "plane": cram_plane((d / "bitstream.rbf").read_bytes(), geom_of(name)),
             "rcf": parse_rcf(d / "routing.rcf"), "vo": load_vo(name)}
 
 

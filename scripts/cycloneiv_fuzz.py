@@ -44,6 +44,9 @@ OVERALL_S = {"quartus_map": 30, "quartus_fit": 32, "quartus_asm": 10, "quartus_e
              "quartus_cdb": 6}
 OVERALL_RND_S = {"quartus_map": 180, "quartus_fit": 300, "quartus_asm": 30, "quartus_eda": 60,
                  "quartus_cpf": 6, "quartus_cdb": 30}
+# gx*: EP4CGX150/110.  First values are a measurement run's backstop; cut to 3x the measured worst.
+OVERALL_GX_S = {"quartus_map": 900, "quartus_fit": 2400, "quartus_asm": 120, "quartus_eda": 300,
+                "quartus_cpf": 30, "quartus_cdb": 120}
 MAX_JOBS = 4          # Quartus processes at once (shared box, #122)
 JOB_MIN_GB = 20       # available RAM before a job starts (#122)
 log = logging.getLogger("cycloneiv_fuzz")
@@ -142,11 +145,20 @@ def specs():
                                                  "exercises": ["lut_mask", "le_address", "held_out"]}
     import cycloneiv_rnd_designs
     out.update(cycloneiv_rnd_designs.rnd_specs())
+    out.update(cycloneiv_rnd_designs.gx_specs())
     return out
 
 
 def toml_list(xs):
     return "[" + ", ".join('"' + x.replace("\\", "\\\\").replace('"', '\\"') + '"' for x in xs) + "]"
+
+
+def family_of(device):
+    return "Cyclone IV GX" if device.startswith("EP4CGX") else FAMILY
+
+
+def is_big(name):
+    return name.startswith("rnd_") or name.startswith("gx")
 
 
 def generate():
@@ -156,7 +168,8 @@ def generate():
         (d / "src" / "top.v").write_text(s["verilog"])
         (d / "design.toml").write_text(
             f'top = "{s["top"]}"\npurpose = "{s["purpose"]}"\nexercises = {toml_list(s["exercises"])}\n'
-            f"qsf = {toml_list(s['qsf'])}\n")
+            f"qsf = {toml_list(s['qsf'])}\n"
+            + (f'device = "{s["device"]}"\n' if "device" in s else ""))
     log.info("generated %d designs", len(specs()))
 
 
@@ -221,7 +234,8 @@ def build_one(name):
             shutil.rmtree(p) if p.is_dir() else p.unlink()
     q = d / "quartus"
     q.mkdir()
-    lines = [f'set_global_assignment -name FAMILY "{FAMILY}"', f"set_global_assignment -name DEVICE {DEVICE}",
+    dev = spec.get("device", DEVICE)
+    lines = [f'set_global_assignment -name FAMILY "{family_of(dev)}"', f"set_global_assignment -name DEVICE {dev}",
              f"set_global_assignment -name TOP_LEVEL_ENTITY {spec['top']}",
              "set_global_assignment -name VERILOG_FILE ../src/top.v",
              'set_global_assignment -name EDA_SIMULATION_TOOL "QuestaSim (Verilog)"',
@@ -231,7 +245,7 @@ def build_one(name):
     (q / "build.qsf").write_text("\n".join(lines) + "\n")
     (q / "build.qpf").write_text('QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "build"\n')
     qb = Path(toolchain.quartus_bin())
-    limits = OVERALL_RND_S if name.startswith("rnd_") else OVERALL_S
+    limits = OVERALL_GX_S if name.startswith("gx") else OVERALL_RND_S if is_big(name) else OVERALL_S
     steps = [("quartus_map", [qb / "quartus_map", "build"]), ("quartus_fit", [qb / "quartus_fit", "build"]),
              ("quartus_asm", [qb / "quartus_asm", "build"]),
              ("quartus_eda", [qb / "quartus_eda", "build", "--simulation", "--tool=modelsim", "--format=verilog"]),

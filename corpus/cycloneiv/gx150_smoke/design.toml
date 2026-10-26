@@ -1,0 +1,5 @@
+top = "top"
+purpose = "random RTL smoke build on EP4CGX150DF31C7"
+exercises = ["geometry", "header"]
+qsf = ["set_global_assignment -name SEED 1"]
+device = "EP4CGX150DF31C7"

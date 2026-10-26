@@ -97,9 +97,24 @@ def window(plane, geom, x, y):
     return w
 
 
-def tile_class(geom, x, y):
-    """Per column: LI/wire mux input order differs between LAB columns (measured; not a parity)."""
-    return f"{geom.col_kind(x)}{x}/{geom.row_kind(y)}"
+ROW_PHASE = 4   # R4 / C4 indices rotate with Y mod 4 (an R4 index occurs at one row phase only)
+
+
+
+
+
+def tile_class(geom, x, y, col_phase=0):
+    """Per column (LI/wire mux input order differs between LAB columns) and row phase."""
+    col = f"{x}" if not col_phase else f"m{x % col_phase}"
+    return f"{geom.col_kind(x)}{col}/{geom.row_kind(y)}/{y % ROW_PHASE}"
+
+
+def one_geom(names):
+    """The die geometry shared by every design (hard error on a mixed set)."""
+    dies = {cg.die_of(cc.device_of(n)) for n in names}
+    if len(dies) != 1:
+        raise SystemExit(f"designs span dies {sorted(dies)}: pass a pattern for one die")
+    return cg.load(dies.pop())
 
 
 def split_of(name, split):
@@ -109,12 +124,35 @@ def split_of(name, split):
     return h == (0 if split == "even" else 1)
 
 
+# Where a wire's mux sits relative to the RCF coordinate (the driving end): candidate anchor
+# offsets per dst type, chosen per group by the learner.  Others: the dst tile itself.
+ANCHOR_CANDS = {"R4": [(dx, 0) for dx in range(-4, 5)], "C4": [(0, dy) for dy in range(-4, 5)]}
+
+
 def learn_group(cls, key, insts, planes, geom, used_tiles, tiles_of_class):
+    """Try every anchor offset for the dst type; keep the one explaining the most sources."""
+    best = None
+    for off in ANCHOR_CANDS.get(key[0], [(0, 0)]):
+        r = learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class)
+        if r is None:
+            continue
+        sc = (sum(1 for p in r.get("pats", {}).values() if p), len(r["mux"]))
+        if best is None or sc > best[0]:
+            best = (sc, r)
+    return best and best[1]
+
+
+def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
     """insts: [(design, x, y, src)].  -> dict with mux bits and per-source patterns, or None."""
+    ax, ay = off
+    ok = lambda x, y: 0 <= x + ax <= geom.xmax and 0 <= y + ay <= geom.ymax  # noqa: E731
     by_src = collections.defaultdict(list)
     for di, x, y, src in insts:
-        by_src[src].append((di, x, y))
-    wins = {s: np.stack([window(planes[di], geom, x, y) for di, x, y in v]) for s, v in by_src.items()}
+        if ok(x, y):
+            by_src[src].append((di, x, y))
+    if not by_src:
+        return None
+    wins = {s: np.stack([window(planes[di], geom, x + ax, y + ay) for di, x, y in v]) for s, v in by_src.items()}
     good = [s for s, v in by_src.items() if len(v) >= MIN_SRC]
     if not good:
         return None
@@ -129,20 +167,20 @@ def learn_group(cls, key, insts, planes, geom, used_tiles, tiles_of_class):
     unused = []
     for di in range(len(planes)):
         for (x, y) in tiles_of_class:
-            if (di, x, y) not in used_tiles:
+            if (di, x, y) not in used_tiles and ok(x, y):
                 unused.append((di, x, y))
     rng = np.random.default_rng(0)
     if len(unused) > 400:
         unused = [unused[i] for i in rng.choice(len(unused), 400, replace=False)]
     if unused:
-        uw = np.stack([window(planes[di], geom, x, y) for di, x, y in unused])
+        uw = np.stack([window(planes[di], geom, x + ax, y + ay) for di, x, y in unused])
         zero_unused = ~uw.any(0)
     else:
         zero_unused = np.ones(shape, dtype=bool)
     mux = det & anyone & zero_unused
     pos = [tuple(int(t) for t in p) for p in np.argwhere(mux)]
     if not pos:
-        return {"mux": [], "n": len(insts), "srcs": len(by_src)}
+        return {"mux": [], "n": len(insts), "srcs": len(by_src), "anchor": off}
     pats, conflict = {}, 0
     for s, v in by_src.items():
         w = wins[s]
@@ -151,7 +189,8 @@ def learn_group(cls, key, insts, planes, geom, used_tiles, tiles_of_class):
             conflict += 1
             continue
         pats[s] = sub[0]
-    return {"mux": pos, "n": len(insts), "srcs": len(by_src), "pats": pats, "conflict_srcs": conflict}
+    return {"mux": pos, "n": len(insts), "srcs": len(by_src), "pats": pats, "conflict_srcs": conflict,
+            "anchor": off}
 
 
 def main():
@@ -161,14 +200,15 @@ def main():
     ap.add_argument("--types", default="", help="comma list of dst types to learn (default all)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--col-phase", type=int, default=0, help="pool LAB columns by X mod N (0 = per column)")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     log.setLevel(logging.INFO)
     for h in (logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_route_learn.log", "w"), logging.StreamHandler()):
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
-    geom = cg.load("ep4ce6")
     names = [n for n in cc.designs(a.train) if split_of(n, a.split)]
+    geom = one_geom(names)
     with ThreadPoolExecutor(a.workers) as ex:
         ds = list(ex.map(cc.load, names))
     planes = [d["plane"] for d in ds]
@@ -177,14 +217,14 @@ def main():
     used = collections.defaultdict(set)
     for di, d in enumerate(ds):
         for key, x, y, src in instances(d["name"], d):
-            cls = tile_class(geom, x, y)
+            cls = tile_class(geom, x, y, a.col_phase)
             groups[(cls, key)].append((di, x, y, src))
             used[(cls, key)].add((di, x, y))
     types = set(a.types.split(",")) if a.types else None
     tiles = collections.defaultdict(list)
     for x in range(geom.xmax + 1):
         for y in range(geom.ymax + 1):
-            tiles[tile_class(geom, x, y)].append((x, y))
+            tiles[tile_class(geom, x, y, a.col_phase)].append((x, y))
     out, stats = {}, collections.Counter()
     todo = [(g, v) for g, v in groups.items() if types is None or g[1][0] in types]
     log.info("%d groups", len(todo))
@@ -202,8 +242,10 @@ def main():
     log.info("groups: %s", dict(stats))
     path = Path(a.out) if a.out else REPO / "tmp" / "cycloneiv" / f"route_learn_{a.split}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({k: {**v, "pats": {"|".join(map(str, s)): p for s, p in v.get("pats", {}).items()}}
-                                for k, v in out.items()}, indent=0, default=list))
+    tab = {k: {**v, "pats": {"|".join(map(str, s)): p for s, p in v.get("pats", {}).items()}} for k, v in out.items()}
+    tab["_meta"] = {"col_phase": a.col_phase, "die": geom.die, "train": a.train, "split": a.split,
+                    "designs": len(ds)}
+    path.write_text(json.dumps(tab, indent=0, default=list))
     log.info("wrote %s", path)
     return 0
 

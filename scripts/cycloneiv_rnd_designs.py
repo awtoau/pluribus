@@ -6,6 +6,7 @@ cover every node (so synthesis keeps the logic).  Pins are left to the fitter; a
 fitter SEED varies placement and routing.  Seeded: the same name always regenerates the same text.
 """
 import random
+import re
 
 # (count, LUT nodes range, inputs, outputs): small ones isolate, big ones cover most LABs.
 TIERS = [("s", 40, (20, 120), (8, 24), (4, 16)),
@@ -17,7 +18,8 @@ LOCAL = 60
 P_LOCAL = 0.85
 
 
-def rnd_design(seed, n_nodes, n_in, n_out):
+def rnd_design(seed, n_nodes, n_in, n_out, lut_param=False):
+    """lut_param: LUT as a bit-select of a localparam (no width warnings; quartus_map on 20k nodes)."""
     r = random.Random(seed)
     ins = [f"i{k}" for k in range(n_in)]
     two_clk = r.random() < 0.4
@@ -42,7 +44,11 @@ def rnd_design(seed, n_nodes, n_in, n_out):
         mask = r.randrange(1, 0xFFFF)
         nm = f"n{i}"
         decl.append(f"  wire {nm};")
-        body.append(f"  assign {nm} = 16'h{mask:04x} >> {{{', '.join(src)}}};")
+        if lut_param:
+            decl.append(f"  localparam [15:0] M{i} = 16'h{mask:04x};")
+            body.append(f"  assign {nm} = M{i}[{{{', '.join(src)}}}];")
+        else:
+            body.append(f"  assign {nm} = 16'h{mask:04x} >> {{{', '.join(src)}}};")
         if r.random() < 0.35:
             q = f"q{i}"
             clk = r.choice(clks)
@@ -92,4 +98,48 @@ def rnd_specs():
                          "qsf": [f"set_global_assignment -name SEED {1 + r.randrange(1000)}"],
                          "purpose": f"random RTL, {n_nodes} LUT nodes, {n_in} in / {n_out} out (routing corpus)",
                          "exercises": ["routing", "lab_controls", "carry", "io"]}
+    return out
+
+
+GX_DEVICES = {"gx150": "EP4CGX150DF31C7", "gx110": "EP4CGX110DF31C7"}
+
+
+SPREAD = 300            # gx150 spread designs
+SPREAD_HALF = 3         # registers pinned to LABs within +-3 of the design's centre
+
+
+def gx_specs():
+    """Cyclone IV GX.  Big unconstrained random designs fit too slowly on EP4CGX150 (4.5k nodes > 11
+    min with FAST FIT) and Lite has no place regions, so medium designs get every register pinned to
+    a random LAB in a 7x7 window at a random centre (legal LABs: cycloneiv_device_grid.py)."""
+    import json
+    from pathlib import Path
+    out = {}
+    labs_p = Path(__file__).resolve().parent.parent / "lifters" / "data" / "cycloneiv_ep4cgx150_labs.json"
+    labs = sorted(map(tuple, json.loads(labs_p.read_text())["labs"])) if labs_p.exists() else []
+    labset = set(labs)
+    for j in range(SPREAD if labs else 0):
+        seed = 9_000_017 + j
+        r = random.Random(seed)
+        n_nodes, n_in, n_out = r.randrange(400, 901), r.randrange(16, 41), r.randrange(12, 31)
+        v = rnd_design(seed, n_nodes, n_in, n_out, lut_param=True)
+        cx, cy = r.choice(labs)
+        win = [(x, y) for x in range(cx - SPREAD_HALF, cx + SPREAD_HALF + 1)
+               for y in range(cy - SPREAD_HALF, cy + SPREAD_HALF + 1) if (x, y) in labset]
+        regs = re.findall(r"^\s*reg (q\d+);", v, re.M)
+        # one anchor register per LAB: several per LAB break the LAB-wide control limits (error 170071)
+        r.shuffle(win)
+        locs = [f"set_location_assignment LAB_X{x}_Y{y} -to {q}" for q, (x, y) in zip(regs, win)]
+        out[f"gx150_sp_{j:03d}"] = {
+            "top": "top", "verilog": v, "device": GX_DEVICES["gx150"],
+            "qsf": [f"set_global_assignment -name SEED {1 + r.randrange(1000)}",
+                    'set_global_assignment -name FITTER_EFFORT "FAST FIT"'] + locs,
+            "purpose": f"random RTL on EP4CGX150 around LAB X{cx} Y{cy}, {n_nodes} LUT nodes",
+            "exercises": ["routing", "lab_controls", "carry", "io", "le_address"]}
+    for tag, dev in GX_DEVICES.items():
+        v = rnd_design(7_000_001, 60, 12, 8)
+        out[f"{tag}_smoke"] = {"top": "top", "verilog": v, "device": dev,
+                               "qsf": ["set_global_assignment -name SEED 1"],
+                               "purpose": f"random RTL smoke build on {dev}",
+                               "exercises": ["geometry", "header"]}
     return out

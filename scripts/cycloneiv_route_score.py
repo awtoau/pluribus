@@ -24,49 +24,22 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_geom as cg  # noqa: E402
+import cycloneiv_route_decode as rd  # noqa: E402
 import cycloneiv_route_learn as rl  # noqa: E402
 
 log = logging.getLogger("cycloneiv_route_score")
-
-
-def load_tables(path):
-    raw = json.loads(Path(path).read_text())
-    out = {}
-    for k, v in raw.items():
-        mux = [tuple(p) for p in v["mux"]]
-        pats = {}
-        for s, p in v.get("pats", {}).items():
-            pats.setdefault(tuple(tuple(q) for q in p), []).append(s)
-        out[k] = (mux, pats)
-    return out
-
-
-def gkey(cls, key):
-    return f"{cls}|{'|'.join(map(str, key))}"
 
 
 def skey(src):
     return "|".join(map(str, src))
 
 
-def read_bits(plane, geom, x, y, mux):
-    f0, v0 = geom.anchor(x, y)
-    nf, nv = plane.shape
-    on = []
-    for df, dv in mux:
-        f, v = f0 + df + rl.WF[0], v0 + dv + rl.WV[0]
-        if 0 <= f < nf and 0 <= v < nv and plane[f, v]:
-            on.append((df, dv))
-    return tuple(on)
-
-
-def score_design(name, tables, geom):
+def score_design(name, dec, geom):
     d = cc.load(name)
     plane = d["plane"]
     c = collections.Counter()
     why = collections.Counter()
     net_ok = net_all = 0
-    used = set()
     vo = d["vo"]
     for net, edges in d["rcf"].items():
         ok_net, any_edge = True, False
@@ -76,30 +49,16 @@ def score_design(name, tables, geom):
                 continue
             any_edge = True
             bx, by, bkey = b
-            ax, ay, akey = a
-            s = skey(akey + (ax - bx, ay - by))
-            cls = rl.tile_class(geom, bx, by)
-            g = gkey(cls, bkey)
-            used.add(g + f"@{bx},{by}")
-            t = tables.get(g)
-            if t is None:
-                c["missing"] += 1
-                why[("no table", bkey[0])] += 1
-                ok_net = False
-                continue
-            mux, pats = t
-            got = pats.get(read_bits(plane, geom, bx, by, mux))
+            sx, sy, skey_ = a
+            want = skey(skey_ + (sx - bx, sy - by))
+            got, reason = dec.source(plane, geom, bkey, bx, by)
             if got is None:
                 c["missing"] += 1
-                why[("unknown pattern", bkey[0])] += 1
+                why[(reason, bkey[0])] += 1
                 ok_net = False
-            elif s in got and len(got) == 1:
+            elif got == want:
                 c["matched"] += 1
                 why[("matched", bkey[0])] += 1
-            elif s in got:
-                c["missing"] += 1
-                why[("ambiguous pattern", bkey[0])] += 1
-                ok_net = False
             else:
                 c["wrong"] += 1
                 why[("wrong", bkey[0])] += 1
@@ -122,13 +81,13 @@ def main():
     for h in (logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_route_score.log", "w"), logging.StreamHandler()):
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
-    geom = cg.load("ep4ce6")
-    tables = load_tables(a.tables)
+    dec = rd.Decoder(a.tables.split(","))
     names = [n for n in cc.designs(a.designs) if rl.split_of(n, a.split)]
+    geom = rl.one_geom(names)
     tot, why = collections.Counter(), collections.Counter()
     nok = nall = 0
     with ThreadPoolExecutor(a.workers) as ex:
-        for name, c, w, ok, al in ex.map(lambda n: score_design(n, tables, geom), names):
+        for name, c, w, ok, al in ex.map(lambda n: score_design(n, dec, geom), names):
             tot.update(c)
             why.update(w)
             nok, nall = nok + ok, nall + al
@@ -137,8 +96,14 @@ def main():
     log.info("pips: matched %d / (matched %d + missing %d + extra %d + wrong %d) = %.2f%%", tot["matched"],
              tot["matched"], tot["missing"], tot["extra"], tot["wrong"], 100 * tot["matched"] / max(den, 1))
     log.info("nets: %d / %d all pips matched (%.2f%%)", nok, nall, 100 * nok / max(nall, 1))
-    for k, v in why.most_common(40):
-        log.info("  %-40s %d", k, v)
+    types = sorted({t for _, t in why})
+    log.info("  %-24s %9s %9s %9s %8s   missing by reason", "dst type", "matched", "missing", "wrong", "%")
+    for t in sorted(types, key=lambda t: -sum(v for (r, tt), v in why.items() if tt == t)):
+        m = why[("matched", t)]
+        w = why[("wrong", t)]
+        miss = {r: v for (r, tt), v in why.items() if tt == t and r not in ("matched", "wrong")}
+        tot_t = m + w + sum(miss.values())
+        log.info("  %-24s %9d %9d %9d %7.2f%%   %s", t, m, sum(miss.values()), w, 100 * m / max(tot_t, 1), miss)
     return 0
 
 
