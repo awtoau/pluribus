@@ -258,6 +258,28 @@ Every Cyclone IV rule here comes from Cyclone IV oracle runs. No Cyclone V bit p
 - Not done on GX150: connection-level trace score, FF / LAB-control / IO / carry decode, lifter + emitter, sim gate, M9K / multipliers / PLL.
 - EP4CE6 LUT decode: 996 wrong bits of 1,780,540 + 996 in `rnd_*` (all LEs crossing the bit-lane boundary at v 1241 and 206); the GX150 lane model has no such case. EP4CE6 lane fix pending.
 
+## Quartus device-info (.ddb) decode, Cyclone IV GX (2026-10-26)
+
+Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family in `cycloneive/`. Reader: `scripts/quartus_ddb.py`, dump: `scripts/quartus_ddb_dump.py`.
+
+- Container: 0x73-byte header (u32 0x14, ..., "Version 25.1std.0 ...") then payload.
+  - zlib kinds (icname, routing, asm, place, pad, timing, gid_database): a chain of zlib streams, NOT terminated; each ends with a sync-flush marker `00 00 ff ff` and the next starts with `78 01` (the "invalid stored block lengths" of a single inflate is that boundary). Split on `00 00 ff ff 78 01`, inflate each: 100% of the bytes decode.
+  - xz kinds (hdr, part_info, pcf): one `fd 37 7a 58 5a 00` stream at 0x73 (Python `lzma`).
+  - asmdb / asmdb_dirt: other layout, not decoded.
+- Which stingray is which (`device.db`, SQLite, names base64): STINGRAY1 = EP4CGX15, STINGRAY2 = GX30 (V1 = GX22), STINGRAY3 = GX75 (V1 GX50, V2 GX30A), STINGRAY4 = EP4CGX150 (149,760 LEs), STINGRAY4_V1 = EP4CGX110 (109,424 LEs). Same ddb files (`ddb_stingray4_*`) serve both.
+- Header bit meaning (settled): the option lanes of `quartus_cpf` .rbf output for 6 of our builds (`cycloneiv_header_probe.py`):
+  - lane 1 = `f8 00 20 0d ff` on every EP4CGX150 build (DF31C7, CF23C8, DF27I7) and `f8 00 a0 0d ff` on every EP4CGX110 build (DF31C7, CF23C7, DF27C8). Lane 1 bit 23 = die variant (STINGRAY4 vs STINGRAY4_V1: full die vs fused-down 109,424-LE variant). It does not follow package, speed grade or temperature grade.
+  - lane 0 = `00 73|74 xx yy ff`: byte 2..3 change per build (usercode / checksum); byte 1 = 0x74 on the F484 (CF23) builds and 0x73 on the F672 / F896 builds, so it follows package.
+  - lanes 2..3 identical across all six builds.
+  - A third-party compressed image with lane 1 = `c0 00 20 0d ff`-equivalent bits 0..23 = 0x200dff is therefore the EP4CGX150 variant (full die), not GX110.
+- stingray4 hdr.ddb payload (107 KB): chip description database (device name "EP4CGX150", family, node-type names such as LE_BUFFER, LAB_LINE, C16, GLOBAL_CLK_H; file names `stingray4.ww19.asm.rba`, `stingray4_dirt.xml`). It carries no .rbf header fields.
+- icname: 729,374 name records `u32 len, name, u32 flag` (names like `H4R90C119RT[0]`, `V4R..UP[..]`, `RCLKR..`, `LEIM:R..C..S..I..|...`), then a second table keyed `XQ4/Q4_...`. Names use the vendor R/C grid, not the RCF X/Y frame.
+- asm (461 MB for stingray4): header `u32 4, u32 N=1,802,443, u32 N`, then 1.2 MB of zeros, then variable-width records. Measured so far:
+  - values `6154` (= CRAM frames), `-6154`, `-12306`, `1`, `-2` recur: bit addresses are coded relative, `frame + 6154 * v` (frame fastest);
+  - pairs `(i32 address delta, u32 mask)` with masks `0xff`, `0xff00`, `0xffff`, `0x100`, `0x101`, `0x1`;
+  - absolute addresses of known LUT-mask bits do not occur literally (searched `f + 6154 v`, `b * 6154 + f`, `f * 6352 + b`, with frame offsets -45..5).
+  - Not decoded yet.
+
 ## Gaps
 
 - Fabric not decoded:
