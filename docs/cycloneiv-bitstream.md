@@ -333,6 +333,18 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 - Claims: LUT-mask + used-bit positions cover 718,530 of the image's set bits (33%); routing-mux positions of every LAB 1,174,333 (54%); static bits 225,516; IO 1,940. The 9.9% unclaimed bits are blocks and nets outside the fabric tables (clock tree, IO routing, M9K, multipliers, PLL, transceivers).
 - Not claimed: nothing here shows the logic is correct, only that its statistics match built designs; the lifter and gate are still open.
 
+## Lift of a third-party GX150 image and pin-inverter status (2026-10-26)
+
+`scripts/cycloneiv_lift_image.py` (log `tmp/logs/cycloneiv_lift_image.log`; 18 s, tables `rl_gx_m8f.json`, no asm tables). Counts below are what the lifter emits, not a correctness claim.
+
+- Used LEs 89,283 of 149,760 (59.6%); LUTs 89,283; FFs 25,835.
+- LUT inputs the mask depends on that do not trace to a driver: 246,878. Reasons: ambiguous driver 119,822; FF-pin `zero pattern` 69,960; FF-pin `unknown pattern` 25,348; R4 unknown 4,683 / zero 3,093; LCCOMB unknown 4,528; no LE_BUFFER table 3,631; C4 unknown 3,120.
+- NOT LIFTED: 24,815 FF traces reached with no LE_BUFFER selecting the register; 80 comb-loop edges cut; carry chains entering at LE 0; M9K, multipliers, PLL, transceivers, clock tree, IO routing.
+- Claimed-bit fraction 90.1% (unchanged, see above).
+- Blocker: routing decode quality. Per-pip held-out learner score is 92% (missing 21,978 / extra 1,597 / wrong 201 of 306,754 on 20 designs) but a trace compounds 4-6 hops; on race-free corpus designs the bitstream-routed gate gives matched 333 / (333 + missing 6,489 + extra 88 + wrong 951) = 4.2%. With oracle (RCF) routing the same gate passes 100% (7,773 points; 74/74 FF-control designs). Per-column tables did not improve it (4.24%) and inflate FF false positives (394 vs 211).
+- Pin inverters (clrn / ena / sclr / sload): not decodable from the LE window. Greedy 4-bit decision tables on 240 FF-control designs score 0..0.3% matched for the inverted labels (held-out missing 230..331 each). The inverters are not LE-local bits (LAB-wide control path, to be searched at LAB scope); `CycloneIVLift.pin_inverted` stays False. Clock inversion (LAB bit (-6,-30)) is decoded.
+- The asm.ddb tables (previous section) do not replace the learner yet (issue #136).
+
 ## Gaps
 
 - Fabric not decoded:

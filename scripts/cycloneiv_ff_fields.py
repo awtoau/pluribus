@@ -29,7 +29,8 @@ import cycloneiv_le_locate as ll  # noqa: E402
 import cycloneiv_route_learn as rl  # noqa: E402
 
 log = logging.getLogger("cycloneiv_ff_fields")
-LABELS = ["d_direct", "sload", "sclr", "clrn", "ena", "clk_inv"]
+LABELS = ["d_direct", "sload", "sclr", "clrn", "ena", "clk_inv",
+          "sload_inv", "sclr_inv", "clrn_inv", "ena_inv"]
 
 
 def collect(name, geom):
@@ -43,7 +44,9 @@ def collect(name, geom):
         if b is None:
             continue
         rows.append(b)
-        labs.append([not f["d_lut"], f["sload"], f["sclr"], f["clrn"], f["ena"], f["clkinv"]])
+        labs.append([not f["d_lut"], f["sload"], f["sclr"], f["clrn"], f["ena"], f["clkinv"],
+                     f.get("sload_inv", False), f.get("sclr_inv", False), f.get("clrn_inv", False),
+                     f.get("ena_inv", False)])
         les.append(le)
     return name, np.array(rows, dtype=bool), np.array(labs, dtype=bool), np.array(les)
 

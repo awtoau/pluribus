@@ -64,6 +64,7 @@ def le_features(vo):
             f["ff"] = True
             for port, idle in (("ena", "1"), ("sclr", "0"), ("sload", "0"), ("clrn", "1"), ("asdata", None)):
                 net, inv, const = conn(a, port)
+                f[port + "_inv"] = bool(inv and const is None and net is not None)
                 f[port] = net is not None and const is None or (const is not None and idle is not None
                                                                and const != idle)
             net, inv, _c = conn(a, "clk")
