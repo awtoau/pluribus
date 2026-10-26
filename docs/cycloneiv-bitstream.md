@@ -273,16 +273,9 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
   - lanes 2..3 identical across all six builds.
   - A third-party compressed image has lane 1 = `c0 00 20 0d ff` (first byte differs: option bits; bytes 1..3 = `00 20 0d` as on GX150, GX110 has `00 a0 0d`), so it is the EP4CGX150 variant (full die), not GX110.
 - stingray4 hdr.ddb payload (107 KB): chip description database (device name "EP4CGX150", family, node-type names such as LE_BUFFER, LAB_LINE, C16, GLOBAL_CLK_H; file names `stingray4.ww19.asm.rba`, `stingray4_dirt.xml`). It carries no .rbf header fields.
-- icname: 729,374 name records `u32 len, name, u32 flag` (names like `H4R90C119RT[0]`, `V4R..UP[..]`, `RCLKR..`, `LEIM:R..C..S..I..|...`), then a second table keyed `XQ4/Q4_...`. Names use the vendor R/C grid, not the RCF X/Y frame.
-- asm (461 MB for stingray4): header `u32 4, u32 N=1,802,443, u32 N`, then 1.2 MB of zeros, then variable-width records. Measured so far:
-  - values `6154` (= CRAM frames), `-6154`, `-12306`, `1`, `-2` recur: bit addresses are coded relative, `frame + 6154 * v` (frame fastest);
-  - pairs `(i32 address delta, u32 mask)` with masks `0xff`, `0xff00`, `0xffff`, `0x100`, `0x101`, `0x1`;
-  - absolute addresses of known LUT-mask bits do not occur literally (searched `f + 6154 v`, `b * 6154 + f`, `f * 6352 + b`, with frame offsets -45..5).
-  - record framing (verified: 310,180 consecutive records parse, bytes 0x124800..70 MB of the 461 MB): `u32 c` (1..32), `c` x `u16` (group sizes `3,3,...` then the item count n, e.g. `3,3,3,3,3,18`, `3,3,3,3,3,3,3,24`), n x `(i32 position delta, u32 mask)`, then one `i32` separator (mostly 0, else +-65537, +-131073, ...). First record has 4 extra u16 in front.
-  - the 18-item record is the LOCAL_INTERCONNECT shape: 18 = 3 (A choice) x 6 (B choice), items in 6 groups of 3. The learner finds the same 18 sources as patterns over 8 bit positions (2 rows x 4 frames).
-  - the cumulative item positions (decomposed `a * 6154 + b`) span a 6 x 9 window, so they are not the 8 mux bit positions; item meaning (position / mask semantics) and how a routing node selects its record (the other 390 MB, N = 1,802,443 entries) are not decoded.
-  - routing.ddb (88 MB, header `u32 4, 118, 92, N, ...`) and icname (729,374 names + a second `XQ4/...` table) not decoded beyond the name list.
-  - Verdict 2026-10-26: not usable yet; the statistical tables below carry routing.
+- asm / icname decoded (2026-10-26, [cycloneiv-ddb-format.md](cycloneiv-ddb-format.md)): record = one routing wire (icname gives its vendor name), group = one input of a destination mux, entry = (CRAM bit, role): select bit, or one of the two shared second-level bits programmed iff `b1 == -1`. asm (frame, v) -> plane (FX + 17 - (frame - FX), 6344 - v). Parse ends at EOF; the earlier `u32 c` / `(delta, mask)` reading was the same stream misframed by 4 bytes.
+  - Decoder `scripts/cycloneiv_asm_decode.py` (prepare / learn / score) + `scripts/cycloneiv_asm_tables.py`; tables `lifters/data/cycloneiv_ep4cgx150_asm_names.json` (block -> RCF destination per tile class, RCF source aliases, LE_BUFFER record bases).
+  - The RCF names a wire by its driver column / row, so one asm record has several RCF names; scoring uses the learnt alias sets (see the format doc). routing.ddb (fan-in map) still undecoded.
 
 ## EP4CGX150 routing tables from the corpus (2026-10-26, replaces the 80.6% figure)
 
