@@ -264,6 +264,7 @@ class Design:
     def __init__(self):
         self.luts = []
         self.ffs = []
+        self.ccu2 = []          # one record per CCU2 slice (primitive view, issue #127)
         self.net_name = {}      # dsu-root -> "n<k>"
         self.all_nets = []
         self.dsu = None
@@ -981,6 +982,7 @@ class MachXO2Lift:
                 # -- CCU2 carry --
                 if senum.get("MODE") != "CCU2":
                     continue
+                cc = {}
                 for k in (0, 1):
                     init = pc.lut_init.get((r, c, sl, str(k)))
                     pins = bels.get(f"SLICE{sl}.K{k}")
@@ -1006,6 +1008,8 @@ class MachXO2Lift:
                     fci_sum = "1'b0" if inject else fci
                     ins = {p: resolve(pins.get(p), None) for p in "ABCD"}
                     base = f"r{r}c{c}_{sl}k{k}"
+                    cc[k] = {"init": init, "inject": inject, "ins": ins, "fci": fci, "fkey": fkey,
+                             "fcokey": None, "fci_key": fci_key}
 
                     if fci_sum == "1'b0":
                         l4o = net_of(fkey)          # F == l4o, emit straight out
@@ -1030,6 +1034,7 @@ class MachXO2Lift:
                     fcokey = pins.get("FCO")
                     if fcokey is None:
                         continue
+                    cc[k]["fcokey"] = fcokey
                     # COUT = (~prop & gen) | (prop & CIN), i.e. prop ? CIN : gen
                     # -- the same 2:1 mux, selected by prop (== l4o).
                     #
@@ -1065,6 +1070,21 @@ class MachXO2Lift:
                         "a": gen, "b": fci, "c": l4o, "d": None,
                         "z": net_of(fcokey),
                         "z_used": True,
+                    })
+
+                if len(cc) == 2:
+                    # Primitive view: CCU2D(INIT0, INIT1, CIN, A0..D1) -> S0, S1, COUT.  Every net
+                    # name below was already allocated by the pseudo-LUT pass above.
+                    d.ccu2.append({
+                        "name": f"r{r}c{c}_{sl}",
+                        "init0": cc[0]["init"], "init1": cc[1]["init"],
+                        "inject0": cc[0]["inject"], "inject1": cc[1]["inject"],
+                        "cin": cc[0]["fci"], "ins0": cc[0]["ins"], "ins1": cc[1]["ins"],
+                        "s0": net_name.get(dsu.find(cc[0]["fkey"])),
+                        "s1": net_name.get(dsu.find(cc[1]["fkey"])),
+                        "cout": (net_name.get(dsu.find(cc[1]["fcokey"]))
+                                 if cc[1]["fcokey"] is not None else None),
+                        "cin_driven": cc[0]["fci"] != "1'b0",
                     })
 
         # ---- flip-flops ----
@@ -1192,34 +1212,30 @@ class MachXO2Lift:
                 continue
             bels_here = self.bels_of(r, c)
             ramw_pins = bels_here.get("SLICEC.RAMW", {})
-            # BEL pin mapping confirmed from routing graph (verified at R4C14
-            # against known ADC data nets).  The RAMW is 4-bit wide; each bit
-            # maps to a separate DPRAM slice for read:
-            #   bit 0: RAMW pin "B1" → SLICEA K0/K1 F outputs
-            #   bit 1: RAMW pin "D1" → SLICEB K0/K1 F outputs
-            #   bit 2: RAMW pin "C1" → SLICEC K0/K1 F outputs
-            #   bit 3: RAMW pin "A1" → SLICED K0/K1 F outputs
-            for bit, dpram_sl, ramw_pin in (
-                (0, "A", "B1"), (1, "B", "D1"), (2, "C", "C1"), (3, "D", "A1")
+            # Hardware mapping from the Diamond oracle (scripts/dpram_oracle.py, DPR16X4C):
+            #   DI0..DI3 = RAMW LUT1 inputs A1..D1 (wires A5..D5), WD<n> -> DPRAM slice K input
+            #   DO0 = SLICEA K0.F, DO1 = SLICEA K1.F, DO2 = SLICEB K0.F, DO3 = SLICEB K1.F
+            # (one F output per bit; the earlier B1/D1/C1/A1 -> both K0 and K1 table was wrong).
+            for bit, dpram_sl, k, ramw_pin in (
+                (0, "A", 0, "A1"), (1, "A", 1, "B1"), (2, "B", 0, "C1"), (3, "B", 1, "D1")
             ):
                 d_key = ramw_pins.get(ramw_pin)
                 if d_key is None or not connected(d_key):
                     continue
                 d_net = net_of(d_key)
-                for k in (0, 1):
-                    f_key = bels_here.get(f"SLICE{dpram_sl}.K{k}", {}).get("F")
-                    if f_key is None:
-                        continue
-                    if not connected(f_key):
-                        dsu.union(f_key, f_key)
-                    f_net = net_of(f_key)
-                    d.luts.append({
-                        "name": f"dpram_r{r}c{c}_d{bit}k{k}",
-                        "init": "1010101010101010",  # INIT=0xAAAA: F=A (pass-through)
-                        "a": d_net, "b": None, "c": None, "d": None,
-                        "z": f_net,
-                        "z_used": dsu.find(f_key) in d.used_roots,
-                    })
+                f_key = bels_here.get(f"SLICE{dpram_sl}.K{k}", {}).get("F")
+                if f_key is None:
+                    continue
+                if not connected(f_key):
+                    dsu.union(f_key, f_key)
+                f_net = net_of(f_key)
+                d.luts.append({
+                    "name": f"dpram_r{r}c{c}_d{bit}k{k}",
+                    "init": "1010101010101010",  # INIT=0xAAAA: F=A (pass-through)
+                    "a": d_net, "b": None, "c": None, "d": None,
+                    "z": f_net,
+                    "z_used": dsu.find(f_key) in d.used_roots,
+                })
 
         d.all_nets = sorted(set(net_name.values()), key=lambda s: int(s[1:]))
 

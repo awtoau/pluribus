@@ -1494,6 +1494,30 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     conn.execute(insert(schema.hard_ip).values(
                         bitstream=bs_id, name=h["name"], prim=h["prim"], params=h["params"],
                         pins=h["pins"], not_lifted=h["not_lifted"]))
+                from lifters import machxo2_dpram
+                dp = machxo2_dpram.cells(pc, lambda rr, cc, w: resolve_net(design, lift, rr, cc, w))
+                for h in dp:
+                    conn.execute(insert(schema.hard_ip).values(
+                        bitstream=bs_id, name=h["name"], prim=h["prim"], params=h["params"],
+                        pins=h["pins"], not_lifted=h["not_lifted"]))
+                n_cc = 0
+                for cc in design.ccu2:
+                    pins = {"CIN": {"dir": "in", "net": cc["cin"] if cc["cin_driven"] else None}}
+                    for k, ins in (("0", cc["ins0"]), ("1", cc["ins1"])):
+                        for letter in "ABCD":
+                            pins[f"{letter}{k}"] = {"dir": "in", "net": ins.get(letter)}
+                    pins["S0"] = {"dir": "out", "net": cc["s0"]}
+                    pins["S1"] = {"dir": "out", "net": cc["s1"]}
+                    pins["COUT"] = {"dir": "out", "net": cc["cout"]}
+                    conn.execute(insert(schema.hard_ip).values(
+                        bitstream=bs_id, name=f"{cc['name']}_CCU2", prim="CCU2D",
+                        params={"INIT0": cc["init0"], "INIT1": cc["init1"],
+                                "INJECT1_0": "YES" if cc["inject0"] else "NO",
+                                "INJECT1_1": "YES" if cc["inject1"] else "NO"},
+                        pins=pins, not_lifted=[]))
+                    n_cc += 1
+                print(f"  {n_cc} CCU2D cell(s)")
+                print(f"  {len(dp)} DPR16X4C cell(s) ({sum(1 for h in dp if h['not_lifted'])} with NOT LIFTED notes)")
                 print(f"  {len(dd)} IOLOGIC cell(s): " + ", ".join(f"{h['name']}={h['prim']}" for h in dd))
                 print(f"  {len(hip)} PLL cell(s): "
                       + ", ".join(f"{h['name']} " + "/".join(f"{k}={v['net']}" for k, v in h['pins'].items()

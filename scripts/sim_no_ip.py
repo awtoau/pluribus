@@ -39,7 +39,7 @@ _BLACKBOX_RE = re.compile(
     r"\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+EFB\b.*?\n\s*endmodule\s*\n", re.S)
 _TEMPLATE_RE = re.compile(r"module efb_spi_slave \(.*?\n\s*endmodule\s*\n", re.S)
 _PRIM_STUB_RE = re.compile(
-    r"(?://[^\n]*\n)?\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+(?:DP8KC|PDPW8KC|EHXPLLJ|ODDRXE)\b.*?\n\s*endmodule\s*\n",
+    r"(?://[^\n]*\n)?\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+(?:DP8KC|PDPW8KC|DPR16X4C|CCU2D|EHXPLLJ|ODDRXE)\b.*?\n\s*endmodule\s*\n",
     re.S)
 _CLK_ALWAYS_RE = re.compile(r"^    always #[\d.]+ (\w+) = ~\1;.*\n", re.M)
 

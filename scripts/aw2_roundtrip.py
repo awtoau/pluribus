@@ -41,7 +41,7 @@ E.OVERALL_S = 1800
 
 _STUB_RE = re.compile(r"\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+EFB\b.*?\n\s*endmodule\s*\n", re.S)
 _PRIM_STUB_RE = re.compile(
-    r"(?://[^\n]*\n)?\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+(?:DP8KC|PDPW8KC|EHXPLLJ|\w*DDR\w*)\b.*?\n\s*endmodule\s*\n", re.S)
+    r"(?://[^\n]*\n)?\(\*\s*blackbox\s*\*\)\s*\n\s*module\s+(?:DP8KC|PDPW8KC|DPR16X4C|CCU2D|EHXPLLJ|\w*DDR\w*)\b.*?\n\s*endmodule\s*\n", re.S)
 _TEMPLATE_RE = re.compile(r"module efb_spi_slave \(.*?\n\s*endmodule\s*\n", re.S)
 
 

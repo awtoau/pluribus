@@ -213,11 +213,31 @@ def load_data(conn, bs_id: int) -> dict:
 
     # A/B switch for ablations: PLURIBUS_HIP_OFF=ebr,pll,ddr (PLURIBUS_LEGACY_EBR=1 = all three)
     off = set(os.environ.get("PLURIBUS_HIP_OFF", "").split(",")) | (
-        {"ebr", "pll", "ddr"} if os.environ.get("PLURIBUS_LEGACY_EBR") else set())
+        {"ebr", "pll", "ddr", "dpram", "ccu2"} if os.environ.get("PLURIBUS_LEGACY_EBR") else set())
     if "ebr" in off:
         ebr_cells, ebr_pins = [], {}
     hard_ip = [h for h in hard_ip if not (("pll" in off and h[1] == "EHXPLLJ")
-                                          or ("ddr" in off and h[1] in ("ODDRXE", "UNSUPPORTED")))]
+                                          or ("ddr" in off and h[1] in ("ODDRXE", "UNSUPPORTED"))
+                                          or ("dpram" in off and h[1] == "DPR16X4C")
+                                          or ("ccu2" in off and h[1] == "CCU2D"))]
+
+    # A DPR16X4C stands for the RAMW + DPRAM slices of its tile: drop their pseudo-LUT
+    # pass-throughs (dpram_*) and the slice A/B LUT cells that carry RAM contents.
+    _ram_tiles = {re.match(r"R(\d+)C(\d+)_DPRAM", h[0]).groups() for h in hard_ip if h[1] == "DPR16X4C"}
+    if _ram_tiles:
+        _ram_re = re.compile(r"^(?:dpram|lut)_r(\d+)c(\d+)_(.*)$")
+
+        def _ram_cell(cell):
+            m = _ram_re.match(cell)
+            return bool(m) and m.group(1, 2) in _ram_tiles and (
+                cell.startswith("dpram_") or m.group(3)[:1] in "AB")
+        luts = [x for x in luts if not _ram_cell(x[0])]
+    # A CCU2D stands for its slice's carry expansion (l4 / sum / gen / fco pseudo-LUTs).
+    _cc_slices = {re.match(r"r(\d+)c(\d+)_([A-D])_CCU2", h[0]).groups() for h in hard_ip if h[1] == "CCU2D"}
+    if _cc_slices:
+        _cc_re = re.compile(r"^ccu2_r(\d+)c(\d+)_([A-D])k[01]_")
+        luts = [x for x in luts
+                if not ((m := _cc_re.match(x[0])) and m.groups() in _cc_slices)]
 
     # Net names: net → (name, description, freq_mhz)
     # `spec_` prefix marks every NON-confirmed name as speculative, right in the
@@ -2494,6 +2514,95 @@ def emit_oddr_modules(data: dict) -> list[str]:
             "endmodule"]
 
 
+def emit_dprams(data: dict) -> list[str]:
+    """DPR16X4C per RAMW/DPRAM tile (issue #127); replaces the pseudo-LUT pass-through."""
+    cells = [h for h in data.get("hard_ip", []) if h[1] == "DPR16X4C"]
+    if not cells:
+        return []
+    rn = lambda net: resolve_net(net, data["net_name_map"], data["const_net_map"])
+    driven: set[str] = set()
+    lines = ["", "    // =========================================================",
+             "    // Distributed RAM -- DPR16X4C per RAMW + 2 DPRAM slices (issue #127)",
+             "    // ========================================================="]
+    for name, _prim, params, pins, not_lifted in cells:
+        for nl in not_lifted:
+            lines.append(f"    // NOT LIFTED: {name}: {nl}")
+        conns = []
+        for port in ("DI3", "DI2", "DI1", "DI0", "WAD3", "WAD2", "WAD1", "WAD0", "WRE", "WCK",
+                     "RAD3", "RAD2", "RAD1", "RAD0"):
+            net = (pins.get(port) or {}).get("net")
+            conns.append(".%s(%s)" % (port, rn(net) if net else "1'b0"))
+        for port in ("DO3", "DO2", "DO1", "DO0"):
+            net = (pins.get(port) or {}).get("net")
+            e = rn(net) if net else None
+            if e and e not in ("NC", "1'b0", "1'b1") and e not in driven:
+                driven.add(e)
+                conns.append(f".{port}({e})")
+        lines.append(f'    DPR16X4C #(.initval("{params["initval"]}")) dpram_{name.lower()} (')
+        lines.append(",\n".join(f"        {c}" for c in conns))
+        lines.append("    );")
+    return lines
+
+
+def emit_dpram_modules(data: dict) -> list[str]:
+    if not any(h[1] == "DPR16X4C" for h in data.get("hard_ip", [])):
+        return []
+    ins = ["DI3", "DI2", "DI1", "DI0", "WAD3", "WAD2", "WAD1", "WAD0", "WRE", "WCK",
+           "RAD3", "RAD2", "RAD1", "RAD0"]
+    decls = ",\n".join([f"    input wire {p}" for p in ins]
+                       + [f"    output wire {p}" for p in ("DO3", "DO2", "DO1", "DO0")])
+    return ["", "// DPR16X4C blackbox: vendor model is the Diamond MachXO2 simulation library DPR16X4C.v",
+            "(* blackbox *)", 'module DPR16X4C #(parameter initval = "0x0000000000000000") (', decls, ");",
+            "endmodule"]
+
+
+def emit_ccu2s(data: dict) -> list[str]:
+    """CCU2D per CCU2 slice (issue #127): the vendor carry primitive replaces the pseudo-LUT expansion."""
+    cells = [h for h in data.get("hard_ip", []) if h[1] == "CCU2D"]
+    if not cells:
+        return []
+    rn = lambda net: resolve_net(net, data["net_name_map"], data["const_net_map"])
+
+    def ex(net):
+        if net is None:
+            return "1'b0"
+        return net if net.startswith("1'b") else rn(net)
+
+    driven: set[str] = set()
+    cout_nets = {(p.get("COUT") or {}).get("net") for _n, _pr, _pa, p, _nl in cells}
+    lines = ["", "    // =========================================================",
+             "    // Ripple (CCU2) slices -- CCU2D per slice (issue #127)",
+             "    // ========================================================="]
+    for name, _prim, params, pins, _nl in cells:
+        conns = []
+        cin = (pins.get("CIN") or {}).get("net")
+        cin_ex = ex(cin) if cin else "1'b0"       # None: chain head, nothing drives its carry-in
+        conns.append(".CIN(%s)" % cin_ex)
+        for k in "01":
+            for letter in "ABCD":
+                conns.append(f".{letter}{k}({ex((pins.get(letter + k) or {}).get('net'))})")
+        for port in ("S0", "S1", "COUT"):
+            net = (pins.get(port) or {}).get("net")
+            e = rn(net) if net else None
+            if e and e not in ("NC", "1'b0", "1'b1") and e not in driven:
+                driven.add(e)
+                conns.append(f".{port}({e})")
+        lines.append(f'    CCU2D #(.INIT0(16\'b{params["INIT0"]}), .INIT1(16\'b{params["INIT1"]}), '
+                     f'.INJECT1_0("{params["INJECT1_0"]}"), .INJECT1_1("{params["INJECT1_1"]}")) '
+                     f'ccu2_{name.lower()} (' + ", ".join(conns) + ");")
+    return lines
+
+
+def emit_ccu2_modules(data: dict) -> list[str]:
+    if not any(h[1] == "CCU2D" for h in data.get("hard_ip", [])):
+        return []
+    ins = ["CIN", "A0", "B0", "C0", "D0", "A1", "B1", "C1", "D1"]
+    decls = ",\n".join([f"    input wire {p}" for p in ins] + [f"    output wire {p}" for p in ("S0", "S1", "COUT")])
+    return ["", "// CCU2D blackbox: vendor model is the Diamond MachXO2 simulation library CCU2D.v",
+            "(* blackbox *)", "module CCU2D #(parameter [15:0] INIT0 = 16'h0000, parameter [15:0] INIT1 = 16'h0000,",
+            '    parameter INJECT1_0 = "YES", parameter INJECT1_1 = "YES") (', decls, ");", "endmodule"]
+
+
 def emit_fplls(data: dict) -> list[str]:
     """Emit a named, parameterized `altpll` instance per recognized Cyclone V
     FPLL tile, instead of leaving the tile invisible (issue #104).
@@ -2985,6 +3094,8 @@ def main():
         emit_fplls(data),
         emit_plls(data),
         emit_oddrs(data),
+        emit_dprams(data),
+        emit_ccu2s(data),
         emit_hard_cells(data),
         emit_output_drives(data),
         emit_unresolved_pads_comment(data),
@@ -2996,6 +3107,8 @@ def main():
         emit_ebr_modules(data),
         emit_pll_modules(data),
         emit_oddr_modules(data),
+        emit_dpram_modules(data),
+        emit_ccu2_modules(data),
         emit_efb_model(data),
     ]
 
