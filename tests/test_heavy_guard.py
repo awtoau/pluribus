@@ -23,3 +23,25 @@ def test_stall_guard_kills_idle_process():
 def test_stall_guard_passes_normal_exit():
     r = heavy_guard.run_stall_guarded([sys.executable, "-c", "print('ok')"], "ok", LOG)
     assert not r.timed_out and r.returncode == 0 and r.stdout.strip() == "ok"
+
+
+def test_lock_is_reentrant_for_child_stages(tmp_path, monkeypatch):
+    monkeypatch.setattr(heavy_guard, "LOCK_PATH", str(tmp_path / "l.lock"))
+    with heavy_guard.heavy_lock("outer", LOG):
+        assert os.environ.get(heavy_guard.HELD_ENV)
+        with heavy_guard.heavy_lock("inner", LOG):  # would block forever without the held marker
+            pass
+    assert not os.environ.get(heavy_guard.HELD_ENV)
+
+
+def test_overall_for_known_tools():
+    f = heavy_guard.overall_for
+    assert f(["/x/quartus_fit", "p"]) == heavy_guard.OVERALL_S["quartus_fit"]
+    assert f(["yosys"]) == heavy_guard.OVERALL_S["yosys"]
+    assert f(["/opt/mistral-cv", "decomp"]) == heavy_guard.OVERALL_S["mistral"]
+    assert f(["something_else"]) == heavy_guard.OVERALL_S["other"]
+
+
+def test_guarded_default_limit_and_capture():
+    r = heavy_guard.guarded([sys.executable, "-c", "print('hi')"], "py")
+    assert r.returncode == 0 and r.stdout.strip() == "hi" and not r.timed_out

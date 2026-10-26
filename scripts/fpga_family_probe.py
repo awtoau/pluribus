@@ -24,6 +24,7 @@ MIN_GB = 3
 OUT = os.path.join(REPO, "tmp", "fpga_family", "rbf")
 
 
+@heavy_guard.locked("fpga_family_probe")
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--glob", default="sfl_ep*.sof")
@@ -44,11 +45,9 @@ def main():
             if os.path.exists(os.path.join(OUT, dst)):
                 continue
             heavy_guard.wait_available(log, f"quartus_cpf {stem}", MIN_GB)
-            try:
-                r = subprocess.run([os.path.join(str(qb), "quartus_cpf"), "-c", *extra, sof.name, dst],
-                                   cwd=OUT, capture_output=True, text=True, timeout=LIMIT_S)
-            except subprocess.TimeoutExpired:
-                log.error("%s: quartus_cpf exceeded %ds", dst, LIMIT_S)
+            r = heavy_guard.guarded([os.path.join(str(qb), "quartus_cpf"), "-c", *extra, sof.name, dst],
+                                    "quartus_cpf", log, overall_s=LIMIT_S, cwd=OUT)  # #122
+            if r.timed_out:
                 continue
             if r.returncode:
                 log.error("%s: rc=%d %s", dst, r.returncode, (r.stdout + r.stderr)[-200:].replace("\n", " "))

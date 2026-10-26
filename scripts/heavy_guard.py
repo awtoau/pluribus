@@ -35,6 +35,7 @@ def _lock_path():
 
 LOCK_PATH = _lock_path()
 MIN_AVAILABLE_GB = float(os.environ.get("PLURIBUS_MIN_AVAILABLE_GB", "12"))
+HELD_ENV = "PLURIBUS_HEAVY_HELD"  # set while the lock is held; inherited by child stages
 POLL_S = 5
 LOG_S = 30
 
@@ -73,6 +74,9 @@ def wait_available(log, what="", min_gb=None):
 
 @contextlib.contextmanager
 def heavy_lock(name, log):
+    if os.environ.get(HELD_ENV):  # a parent batch already holds the lock; child stages must not deadlock on it
+        yield
+        return
     os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
     fh = open(LOCK_PATH, "a+")
 
@@ -88,11 +92,45 @@ def heavy_lock(name, log):
     fh.truncate()
     fh.write(f"{name} pid={os.getpid()}\n")
     fh.flush()
+    os.environ[HELD_ENV] = str(os.getpid())
     try:
         yield
     finally:
+        os.environ.pop(HELD_ENV, None)
         fcntl.flock(fh, fcntl.LOCK_UN)
         fh.close()
+
+
+# Overall backstop per external tool (#122); the stall limit (60 s no CPU progress) is the primary guard.
+OVERALL_S = {
+    "quartus_fit": 420,  # 3x 140 s worst quartus_fit (e50f die probe, 2026-10-23)
+    "quartus_asm": 360,  # 3x 120 s cold asm (cyclonev corpus build)
+    "quartus_cpf": 120,  # existing cpf limit, corpus cpf 0.3 s typical
+    "quartus": 60,       # map/eda/sta/sh: 3.7 s / 0.6 s / 0.9 s in the corpus build, ~16x
+    "mistral": 15,       # mistral-cv decomp 1.2 s in the corpus build, existing limit kept
+    "diamondc": 180,     # whole flow 10-20 s (2026-10-24); 3x = 60 s is under the stall limit
+    "other": 300,        # unlisted tool: backstop only, stall guard is primary
+    "diamond_tool": 20,  # ncd/bstool/ldbanno: sub-second to 20 s (ecp5_diamond_oracle TOOL_TIMEOUT_S)
+    "yosys": 300,        # startup 0.05 s; LEC runtime unmeasured, backstop only
+    "iverilog": 60,      # existing cycloneiv_sim_check limit; 0.04 s on the model files
+    "vvp": 120,          # existing sim_replacement default; 0.015 s per simulated us
+    "nextpnr": 300,      # unmeasured here, backstop only
+    "gowin": 300,        # unmeasured here, backstop only
+    "ecp5_tool": 60,     # ecpunpack/ecppack/unsquashfs: sub-second on 1-4 MB images
+}
+
+
+def locked(name):
+    """Decorator: run fn (a batch main) under heavy_lock; re-entrant across child processes."""
+    import functools
+
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(*a, **k):
+            with heavy_lock(name, stdout_log()):
+                return fn(*a, **k)
+        return wrapper
+    return deco
 
 
 def _tree_cpu_s(proc):
@@ -148,3 +186,21 @@ def run_stall_guarded(cmd, what, log, stall_s=60, overall_s=600, **popen_kw):
     r = subprocess.CompletedProcess(cmd, -9 if why else p.returncode, out.read(), err.read())
     r.timed_out = bool(why)
     return r
+
+
+def overall_for(cmd):
+    """OVERALL_S entry for the tool named by cmd[0] (quartus_fit/asm/cpf, diamondc, yosys, ...)."""
+    n = os.path.basename(str(cmd[0]))
+    for pre, key in (("quartus_fit", "quartus_fit"), ("quartus_asm", "quartus_asm"), ("quartus_cpf", "quartus_cpf"),
+                     ("quartus", "quartus"), ("mistral", "mistral"), ("diamondc", "diamondc"), ("pnmainc", "diamondc"),
+                     ("yosys", "yosys"), ("iverilog", "iverilog"), ("vvp", "vvp"), ("nextpnr", "nextpnr"),
+                     ("gw_sh", "gowin"), ("gowin", "gowin"), ("ecp", "ecp5_tool"), ("unsquashfs", "ecp5_tool")):
+        if n.startswith(pre):
+            return OVERALL_S[key]
+    return OVERALL_S["other"]
+
+
+def guarded(cmd, what=None, log=None, overall_s=None, stall_s=60, **popen_kw):
+    """run_stall_guarded with the per-tool OVERALL_S limit and a stdout logger by default (#122)."""
+    return run_stall_guarded(cmd, what or os.path.basename(str(cmd[0])), log or stdout_log(), stall_s,
+                             overall_s or overall_for(cmd), **popen_kw)

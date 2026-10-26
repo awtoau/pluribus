@@ -131,8 +131,9 @@ def main():
     if a.ghosts_as_inputs:
         import subprocess
         (work / "yosys_in.v").write_text(v)       # with the EFB stub: yosys needs its port directions
-        r = subprocess.run(["yosys", "-p", f"read_verilog -sv {work/'yosys_in.v'}; hierarchy -top "
-                            f"{cfg['board']['top']}; proc; check"], capture_output=True, text=True)
+        import heavy_guard
+        r = heavy_guard.guarded(["yosys", "-p", f"read_verilog -sv {work/'yosys_in.v'}; hierarchy -top "
+                                 f"{cfg['board']['top']}; proc; check"], "yosys check")  # #122
         wires = sorted(set(re.findall(r"Wire \S*?\.\\?(\S+) is used but has no driver",
                                       r.stdout + r.stderr)))
         ports = set(re.findall(r"^\s+(?:input|output|inout)\s+wire\s+(\w+)", pv, re.M))
