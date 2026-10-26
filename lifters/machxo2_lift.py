@@ -766,6 +766,17 @@ class MachXO2Lift:
                       if e.get("MODE") == "CCU2"]
         d.plc_carry_applied = self.apply_plc_fixed_conns(
             dsu, self.load_plc_carry_conns(), sorted(set(ccu2_tiles)))
+        # Across a tile boundary the chain runs slice D's FCO -> E1_HFIE0000 -> next tile's FCI
+        # (slice A).  Both slices must be CCU2: a lone chain end must not weld to whatever sits
+        # next to it (the 77-tile fusion in `_load_plc_conns`).  Diamond routes exactly this
+        # (R5C18_FCO -> R5C19_HFIE0000 -> R5C19_FCI, constructs adder/counter/sub/lt/eq).
+        ccu2 = {(r, c, sl) for (r, c, sl), e in pc.slice_enum.items() if e.get("MODE") == "CCU2"}
+        for (r, c, sl) in sorted(ccu2):
+            if sl == "D" and (r, c + 1, "A") in ccu2:
+                ko, ki = self.gkey(r, c, "FCO"), self.gkey(r, c, "E1_HFIE0000")
+                if ko is not None and ki is not None:
+                    dsu.union(ko, ki)
+                    d.plc_carry_applied += 1
 
         # Wide-mux tree.  Unlike the carry chain there is no config bit saying
         # a slice uses its muxes, so this must go in at every PLC tile; the

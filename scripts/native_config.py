@@ -123,14 +123,59 @@ def decode_tile_full(tt, cram, foff, boff, nframes, nbits):
     return arcs, words, enums, unknowns
 
 
+def joint_center_muxes(cram, tilegrid, db_root, family):
+    """Chip-unique `G_` muxes whose option bits are split across CENTER tiles -> {sink: (chosen src, tile)}.
+
+    prjtrellis decodes each tile alone, so a mux half in one tile and half in another (MachXO2
+    `G_VPRXCLKI0`: `G_JPCLKT21` = F25B0 in one tile + F0B0 in the next) picks the last alphabetical
+    option that fits one half (`G_JTCDIVX1`, `G_PCLKCIBVIQT0`).  Diamond routes `JPCLKT21 ->
+    VPRXCLKI0` (docs/machxo2-diamond-oracle.md).  Joint rule: an option is selected iff its bits
+    match in EVERY tile that lists them; the highest total bit count wins, ties go to the later
+    source, as in the per-tile rule.  Only tile TYPES that occur once in the chip take part.
+    """
+    inst = {}
+    count = {}
+    for name, meta in tilegrid.items():
+        if meta["type"].startswith("CENTER"):
+            inst[name] = meta
+            count[meta["type"]] = count.get(meta["type"], 0) + 1
+    where = {}
+    for name, meta in inst.items():
+        if count[meta["type"]] != 1:
+            continue
+        tt = get_tile_type(meta["type"], db_root, family)
+        for sink in tt.muxes:
+            if sink.startswith("G_"):
+                where.setdefault(sink, []).append(name)
+    out = {}
+    for sink, names in where.items():
+        if len(names) < 2:
+            continue
+        opts = {}
+        for name in sorted(names):
+            meta = inst[name]
+            for src, bits in get_tile_type(meta["type"], db_root, family).muxes[sink]:
+                opts.setdefault(src, []).append((name, bits, meta))
+        best, best_n, best_tile = None, 0, None
+        for src in sorted(opts):
+            parts = opts[src]
+            if all(_match(b, cram, m["start_frame"], m["start_bit"]) for (_n, b, m) in parts):
+                n = sum(len(b) for (_n, b, _m) in parts)
+                if n >= best_n and n > 0:
+                    best, best_n, best_tile = src, n, next(nm for (nm, b, _m) in parts if b)
+        out[sink] = (names, best, best_tile)
+    return out
+
+
 def decode_chip_full(cram, tilegrid, db_root=DEFAULT_DB_ROOT, family=FAMILY,
-                     self_check=True):
+                     self_check=True, joint=True):
     """Decode every tile with unknowns.  Returns {tilename: (a, w, e, unk)}.
 
     When ``self_check`` is set, cross-checks (arcs, words, enums) against the
     parity-verified ``native_tile_decode.decode_tile`` and dies on any
     divergence -- so a bug in the coverage port can never silently corrupt the
-    proven tile decode.
+    proven tile decode.  ``joint`` then re-decodes the multi-tile CENTER muxes
+    (MachXO2 only); ``joint=False`` is the prjtrellis-parity result.
     """
     result = {}
     for name, meta in tilegrid.items():
@@ -148,6 +193,14 @@ def decode_chip_full(cram, tilegrid, db_root=DEFAULT_DB_ROOT, family=FAMILY,
                     f"arcs {a!r} vs {ref['arcs']!r}; words {w!r} vs "
                     f"{ref['words']!r}; enums {e!r} vs {ref['enums']!r}")
         result[name] = (a, w, e, unk)
+    if joint and family == "MachXO2":
+        for sink, (names, src, tile) in joint_center_muxes(cram, tilegrid, db_root, family).items():
+            for nm in names:
+                a, w, e, unk = result[nm]
+                a = [x for x in a if x[0] != sink]
+                if nm == tile:
+                    a = sorted(a + [(sink, src)])
+                result[nm] = (a, w, e, unk)
     return result
 
 
