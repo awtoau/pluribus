@@ -38,7 +38,9 @@ class Geom:
         self.kind = {int(k): v for k, v in d["col_kind"].items()}
         self.vy0, self.vpitch = d["vy0"], d["vpitch"]
         self.xmax, self.ymax = d["xmax"], d["ymax"]
-        self.DN = {int(k): v for k, v in d["DN"].items()}
+        dn = {int(k): v for k, v in d["DN"].items()}
+        # DN by LE index 0..15 (the ep4ce6 JSON keys it by the LCCOMB N = 2 * LE)
+        self.DN = {k // 2: v for k, v in dn.items()} if max(dn) > 15 else dn
         self.dk = {int(k): tuple(v) for k, v in d["dk"].items()}
         self.no_lab = {tuple(t) for t in d.get("no_lab", [])}
         # bytes used per bit-lane, lanes in v order (7 first); v = lane-major position
@@ -105,30 +107,38 @@ def build_ep4ce6():
     return d
 
 
-def build_from_locate(die, locate_json, frame_bytes, devices):
+def build_from_locate(die, locate_json, frame_bytes, devices, labs_json=None):
     """Geometry from cycloneiv_le_locate anchors {"x,y": [frame, lane, byte]}.
     - FX[x]: one frame per column (hard error if a column disagrees).
     - Lane sizes: the (top lane, other lanes) byte counts that make v linear in Y over every
       located row; pitch and vy0 from that fit (hard error if none fits)."""
+    import collections
     loc = {tuple(map(int, k.split(","))): tuple(v) for k, v in json.loads(Path(locate_json).read_text()).items()}
-    fx = {}
+    # per column: majority frame; a tile disagreeing with its column is dropped (few-LUT tiles can
+    # give a unique but wrong hit); < 90% agreement in a column = hard error
+    votes = collections.defaultdict(collections.Counter)
     for (x, y), (f, _l, _b) in loc.items():
-        if fx.setdefault(x, f) != f:
-            raise SystemExit(f"column X{x}: anchors in frames {fx[x]} and {f}")
+        votes[x][f] += 1
+    fx, dropped = {}, 0
+    for x, c in votes.items():
+        f, n = c.most_common(1)[0]
+        if n < 0.9 * sum(c.values()):
+            raise SystemExit(f"column X{x}: frames disagree {dict(c)}")
+        fx[x] = f
+        dropped += sum(c.values()) - n
+    loc = {k: v for k, v in loc.items() if v[0] == fx[k[0]]}
     nb = frame_bytes - 2
     best = None
     for top in (nb - 2, nb - 1, nb):
         for lane in (nb - 1, nb):
             sizes = [top] + [lane] * 7
-            vy = {}
+            vy = collections.defaultdict(collections.Counter)
             for (x, y), (f, ln, b) in loc.items():
-                vy.setdefault(y, set()).add(sum(sizes[:7 - ln]) + b)
-            if any(len(s) != 1 for s in vy.values()):
-                raise SystemExit(f"a row has anchors at several v: {vy}")
+                vy[y][sum(sizes[:7 - ln]) + b] += 1
             ys = sorted(vy)
             if len(ys) < 2:
                 raise SystemExit("need anchors on >= 2 rows")
-            vs = {y: next(iter(vy[y])) for y in ys}
+            vs = {y: vy[y].most_common(1)[0][0] for y in ys}
             pitch = (vs[ys[-1]] - vs[ys[0]]) // (ys[-1] - ys[0])
             if all(vs[y] == vs[ys[0]] + pitch * (y - ys[0]) for y in ys):
                 cand = (sizes, vs[ys[0]] - pitch * ys[0], pitch)
@@ -140,18 +150,30 @@ def build_from_locate(die, locate_json, frame_bytes, devices):
         raise SystemExit("no lane-size model makes VY linear")
     sizes, vy0, pitch = best
     xs = sorted(fx)
-    pitch_f = min(b - a for a, b in zip(xs, xs[1:]) if b == a + 1)
-    xmax = max(xs) + 1
+    pitch_f = min(fx[b] - fx[a] for a, b in zip(xs, xs[1:]) if b == a + 1)
     kind = {x: "LAB" for x in xs}
+    # a probed LAB column never located: LAB when both neighbours are located LAB columns exactly
+    # one pitch away on each side (its frame is then fixed)
+    if labs_json:
+        probed = {x for x, _y in json.loads(Path(labs_json).read_text())["labs"]}
+        for x in sorted(probed - set(fx)):
+            if fx.get(x - 1) is not None and fx.get(x + 1) == fx[x - 1] + 2 * pitch_f:
+                fx[x], kind[x] = fx[x - 1] + pitch_f, "LAB"
+        xs = sorted(fx)
+    xmax = max(xs) + 1
     for x in range(0, xmax + 1):
         if x not in fx:
             left = max((k for k in fx if k < x), default=None)
             fx[x] = fx[left] + pitch_f if left is not None else fx[min(xs)] - pitch_f
             kind[x] = "IOL" if x == 0 else "IOR" if x == xmax else "COL"
+    # interior non-LAB columns named by the frames they occupy (EP4CE6: M9K 328 - 35, MUL 60 - 35)
+    for x in range(1, xmax):
+        if kind[x] == "COL" and x - 1 in fx and x + 1 in fx:
+            kind[x] = "M9K" if fx[x + 1] - fx[x - 1] > 200 else "MUL"
     return {"die": die, "devices": devices, "xmax": xmax, "ymax": None, "FX": fx, "col_kind": kind,
             "vy0": vy0, "vpitch": pitch, "lane_bytes": sizes, "no_lab": [],
             "DN": dict(enumerate([0, -3, -8, -11, -16, -19, -24, -27, -38, -41, -46, -49, -54, -57, -62, -65])),
-            "dk": {}, "located_tiles": len(loc)}
+            "dk": {}, "located_tiles": len(loc), "dropped_tiles": dropped}
 
 
 def main():
@@ -160,12 +182,13 @@ def main():
     ap.add_argument("--locate", help="cycloneiv_le_locate JSON (dies other than ep4ce6)")
     ap.add_argument("--frame-bytes", type=int)
     ap.add_argument("--ymax", type=int)
+    ap.add_argument("--labs", help="cycloneiv_device_grid.py legal-LAB JSON")
     ap.add_argument("--devices", default="")
     a = ap.parse_args()
     if a.die == "ep4ce6":
         d = build_ep4ce6()
     else:
-        d = build_from_locate(a.die, a.locate, a.frame_bytes, a.devices.split(","))
+        d = build_from_locate(a.die, a.locate, a.frame_bytes, a.devices.split(","), a.labs)
         d["ymax"] = a.ymax
     out = DATA / f"cycloneiv_{a.die}_geom.json"
     out.write_text(json.dumps(d, indent=1, sort_keys=True) + "\n")

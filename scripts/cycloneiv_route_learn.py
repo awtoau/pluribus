@@ -72,8 +72,30 @@ def node_at(vo, node):
     raise ValueError(node)
 
 
-def instances(name, d):
-    """[(group, x, y, src_key)] for every routed edge of a design."""
+# FF control pins pick one of two LAB lines with a per-LE select bit (LE-relative (frame, v),
+# odd LEs mirrored); EP4CE6 held-out: CLK 1117/1117 LABs, CLRN 277/277 (cycloneiv_lab_controls.py).
+# ENA shares the clock select.  SCLR / SLOAD are single LAB lines.
+FF_SEL = {"CLK": (4, 2), "ENA": (4, 2), "CLRN": (3, 2)}
+FF_LAB_PORTS = {"CLK", "ENA", "CLRN", "SCLR", "SLOAD"}
+
+
+def le_bit(plane, geom, x, y, le, df, dv):
+    f0, v0 = geom.anchor(x, y)
+    s = -1 if le % 2 else 1
+    f, v = f0 + df, v0 + geom.DN[le] + s * dv
+    nf, nv = plane.shape
+    return bool(0 <= f < nf and 0 <= v < nv and plane[f, v])
+
+
+def ff_lab_key(plane, geom, x, y, n, port):
+    """FF control pin -> the LAB line dst it reads: ("LAB<port>", 0, j)."""
+    j = int(le_bit(plane, geom, x, y, n // 2, *FF_SEL[port])) if port in FF_SEL else 0
+    return ("LAB" + port, 0, j)
+
+
+def instances(name, d, geom=None):
+    """[(group, x, y, src_key)] for every routed edge of a design.  With geom, FF control pins are
+    re-expressed as LAB line dsts (ff_lab_key) so the line source is learnt like a mux."""
     vo, out = d["vo"], []
     for net, edges in d["rcf"].items():
         for src, dst in edges:
@@ -82,6 +104,8 @@ def instances(name, d):
                 continue
             bx, by, bkey = b
             ax, ay, akey = a
+            if geom is not None and bkey[0] == "FF" and bkey[2] in FF_LAB_PORTS:
+                bkey = ff_lab_key(d["plane"], geom, bx, by, bkey[1], bkey[2])
             out.append((bkey, bx, by, akey + (ax - bx, ay - by)))
     return out
 
@@ -98,12 +122,15 @@ def window(plane, geom, x, y):
 
 
 ROW_PHASE = 4   # R4 / C4 indices rotate with Y mod 4 (an R4 index occurs at one row phase only)
+# Row phase applies to every type: dropping it for LAB-local types (LE inputs, LE_BUFFER) lowered
+# EP4CE6 held-out LE_BUFFER 99.4% -> 97.0% and LE inputs 74.7% -> 69.2%.
+# Sink types: an unused LUT input may still be driven, so a sink mux bit may be set in up to
+# SINK_UNUSED_MAX of the tiles where the RCF does not use that pin (wires: never).
+SINKS = {"LCCOMB", "FF", "IOOBUF"}
+SINK_UNUSED_MAX = 0.2
 
 
-
-
-
-def tile_class(geom, x, y, col_phase=0):
+def tile_class(geom, x, y, col_phase=0, ktype=None):
     """Per column (LI/wire mux input order differs between LAB columns) and row phase."""
     col = f"{x}" if not col_phase else f"m{x % col_phase}"
     return f"{geom.col_kind(x)}{col}/{geom.row_kind(y)}/{y % ROW_PHASE}"
@@ -159,10 +186,12 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
     shape = next(iter(wins.values())).shape[1:]
     det = np.ones(shape, dtype=bool)        # constant within every well-sampled source
     anyone = np.zeros(shape, dtype=bool)
+    everyone = np.ones(shape, dtype=bool)
     for s in good:
         w = wins[s]
         det &= w.all(0) | (~w).all(0)
         anyone |= w.all(0)
+        everyone &= w.all(0)
     # unused tiles: same class, dst not used in that design
     unused = []
     for di in range(len(planes)):
@@ -174,10 +203,13 @@ def learn_group_at(off, key, insts, planes, geom, used_tiles, tiles_of_class):
         unused = [unused[i] for i in rng.choice(len(unused), 400, replace=False)]
     if unused:
         uw = np.stack([window(planes[di], geom, x + ax, y + ay) for di, x, y in unused])
-        zero_unused = ~uw.any(0)
+        zero_unused = ~uw.any(0) if key[0] not in SINKS else uw.mean(0) <= SINK_UNUSED_MAX
     else:
         zero_unused = np.ones(shape, dtype=bool)
-    mux = det & anyone & zero_unused
+    return finish(det & anyone & zero_unused, by_src, wins, insts, off)
+
+
+def finish(mux, by_src, wins, insts, off):
     pos = [tuple(int(t) for t in p) for p in np.argwhere(mux)]
     if not pos:
         return {"mux": [], "n": len(insts), "srcs": len(by_src), "anchor": off}
@@ -216,8 +248,8 @@ def main():
     groups = collections.defaultdict(list)
     used = collections.defaultdict(set)
     for di, d in enumerate(ds):
-        for key, x, y, src in instances(d["name"], d):
-            cls = tile_class(geom, x, y, a.col_phase)
+        for key, x, y, src in instances(d["name"], d, geom):
+            cls = tile_class(geom, x, y, a.col_phase, key[0])
             groups[(cls, key)].append((di, x, y, src))
             used[(cls, key)].add((di, x, y))
     types = set(a.types.split(",")) if a.types else None
@@ -225,6 +257,7 @@ def main():
     for x in range(geom.xmax + 1):
         for y in range(geom.ymax + 1):
             tiles[tile_class(geom, x, y, a.col_phase)].append((x, y))
+            tiles[tile_class(geom, x, y, a.col_phase, "LCCOMB")].append((x, y))
     out, stats = {}, collections.Counter()
     todo = [(g, v) for g, v in groups.items() if types is None or g[1][0] in types]
     log.info("%d groups", len(todo))

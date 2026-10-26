@@ -34,6 +34,37 @@ def skey(src):
     return "|".join(map(str, src))
 
 
+def score_connections(name, dec, geom):
+    """Per RCF sink with a fabric location: trace from the sink through decoded muxes to a driving
+    cell (bitstream only) and compare with the net's driver atom."""
+    d = cc.load(name)
+    plane, vo = d["plane"], d["vo"]
+    c, why = collections.Counter(), collections.Counter()
+    tr = rd.Tracer(dec, plane, geom)
+    for net, edges in d["rcf"].items():
+        drv = rl.node_at(vo, ("DRV", net))
+        for _src, dst in edges:
+            if dst[0] != "SINK":
+                continue
+            b = rl.node_at(vo, dst)
+            if b is None or drv is None:
+                continue
+            bx, by, bkey = b
+            want = ("DRV", drv[2][1], drv[2][2], drv[0], drv[1])
+            got, reason = tr.trace(bkey, bx, by)
+            kind = f"{bkey[0]}.{bkey[2]}"
+            if got is None:
+                c["missing"] += 1
+                why[(reason, kind)] += 1
+            elif got == want:
+                c["matched"] += 1
+                why[("matched", kind)] += 1
+            else:
+                c["wrong"] += 1
+                why[("wrong", kind)] += 1
+    return name, c, why, 0, 0
+
+
 def score_design(name, dec, geom):
     d = cc.load(name)
     plane = d["plane"]
@@ -75,6 +106,7 @@ def main():
     ap.add_argument("--designs", default="rnd_*")
     ap.add_argument("--split", default="all", choices=["all", "even", "odd"])
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--connections", action="store_true", help="score sink -> driver traces, not single pips")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     log.setLevel(logging.INFO)
@@ -87,7 +119,8 @@ def main():
     tot, why = collections.Counter(), collections.Counter()
     nok = nall = 0
     with ThreadPoolExecutor(a.workers) as ex:
-        for name, c, w, ok, al in ex.map(lambda n: score_design(n, dec, geom), names):
+        fn = score_connections if a.connections else score_design
+        for name, c, w, ok, al in ex.map(lambda n: fn(n, dec, geom), names):
             tot.update(c)
             why.update(w)
             nok, nall = nok + ok, nall + al

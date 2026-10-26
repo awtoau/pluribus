@@ -11,6 +11,7 @@ CRAM.  A unique hit is the tile's anchor; 0 or >1 hits are reported.
 Log tmp/logs/cycloneiv_le_locate.log
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import collections
 import json
 import logging
@@ -100,33 +101,47 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("designs", nargs="+")
     ap.add_argument("--json", default=str(REPO / "tmp" / "cycloneiv" / "le_locate.json"))
+    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--min-luts", type=int, default=MIN_LUTS)
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     log.setLevel(logging.INFO)
     for h in (logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_le_locate.log", "w"), logging.StreamHandler()):
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
-    res = {}
-    for name in a.designs:
+    # each distinct tile is located in the design with the most LUTs there, and again in the
+    # second-best design as a check (conflict = hard failure)
+    with ThreadPoolExecutor(a.workers) as ex:
+        tl = dict(zip(a.designs, ex.map(lambda n: tiles_of(cc.load_vo(n)), a.designs)))
+    per_tile = collections.defaultdict(list)
+    for name, tiles in tl.items():
+        for xy, luts in tiles.items():
+            if len(luts) >= a.min_luts:
+                per_tile[xy].append((len(luts), name))
+    work = collections.defaultdict(list)
+    for xy, c in per_tile.items():
+        for _n, name in sorted(c, reverse=True)[:2]:
+            work[name].append(xy)
+
+    def one(name):
         P = raw_planes((cc.CORPUS / name / "bitstream.rbf").read_bytes())
-        vo = cc.load_vo(name)
-        uniq = amb = none = 0
-        for (x, y), luts in sorted(tiles_of(vo).items()):
-            if len(luts) < MIN_LUTS:
-                continue
-            hits = locate(P, constraints(luts))
-            key = f"{x},{y}"
-            if len(hits) == 1:
-                uniq += 1
-                res.setdefault(key, []).append(hits[0])
-            elif hits:
-                amb += 1
-            else:
-                none += 1
-                log.info("%s X%d Y%d: no position fits %d LUTs", name, x, y, len(luts))
-        log.info("%s: tiles located uniquely %d, ambiguous %d, none %d", name, uniq, amb, none)
+        out = {}
+        for xy in work[name]:
+            hits = locate(P, constraints(tl[name][xy]))
+            out[xy] = hits[0] if len(hits) == 1 else ("ambiguous" if hits else "none")
+        return name, out
+    res = collections.defaultdict(list)
+    stat = collections.Counter()
+    with ThreadPoolExecutor(a.workers) as ex:
+        for name, out in ex.map(one, sorted(work)):
+            for xy, h in out.items():
+                stat[h if isinstance(h, str) else "unique"] += 1
+                if not isinstance(h, str):
+                    res[f"{xy[0]},{xy[1]}"].append(h)
     conflicts = {k: v for k, v in res.items() if len(set(map(tuple, v))) > 1}
-    log.info("tiles %d, conflicting across designs %d", len(res), len(conflicts))
+    checked = sum(1 for v in res.values() if len(v) > 1)
+    log.info("tile locates %s; tiles %d, checked in 2 designs %d, conflicting %d", dict(stat), len(res),
+             checked, len(conflicts))
     Path(a.json).parent.mkdir(parents=True, exist_ok=True)
     Path(a.json).write_text(json.dumps({k: v[0] for k, v in res.items()}, indent=0))
     return 0 if not conflicts else 1

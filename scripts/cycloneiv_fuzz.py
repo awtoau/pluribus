@@ -44,9 +44,10 @@ OVERALL_S = {"quartus_map": 30, "quartus_fit": 32, "quartus_asm": 10, "quartus_e
              "quartus_cdb": 6}
 OVERALL_RND_S = {"quartus_map": 180, "quartus_fit": 300, "quartus_asm": 30, "quartus_eda": 60,
                  "quartus_cpf": 6, "quartus_cdb": 30}
-# gx*: EP4CGX150/110.  First values are a measurement run's backstop; cut to 3x the measured worst.
-OVERALL_GX_S = {"quartus_map": 900, "quartus_fit": 2400, "quartus_asm": 120, "quartus_eda": 300,
-                "quartus_cpf": 30, "quartus_cdb": 120}
+# gx*: EP4CGX150/110, 3x the worst of 300 gx150_sp builds (2026-10-26, 4 jobs): map 12.1 s,
+# fit 31.6 s, asm 3.9 s, eda 2.2 s, cpf 0.8 s, cdb 1.7 s.
+OVERALL_GX_S = {"quartus_map": 37, "quartus_fit": 95, "quartus_asm": 12, "quartus_eda": 7,
+                "quartus_cpf": 3, "quartus_cdb": 6}
 MAX_JOBS = 4          # Quartus processes at once (shared box, #122)
 JOB_MIN_GB = 20       # available RAM before a job starts (#122)
 log = logging.getLogger("cycloneiv_fuzz")
