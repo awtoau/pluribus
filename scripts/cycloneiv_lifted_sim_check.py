@@ -34,6 +34,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO / "lifters"))
 import cycloneiv_corpus as cc  # noqa: E402
+import heavy_guard  # noqa: E402
 import cycloneiv_emit as em  # noqa: E402
 import cycloneiv_geom as cg  # noqa: E402
 import cycloneiv_lift as lf  # noqa: E402
@@ -344,12 +345,16 @@ def check(name, tables, steps=STEPS, oracle=False):
            str(cc.top_module_only(cc.CORPUS / name / "postfit.vo")), str(work / "models.v"),
            str(sc.SIMLIB / "altera_primitives.v"), str(work / "lifted.v")]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=SIM_LIMIT_S)
+        r = heavy_guard.guarded(cmd, f"{name} iverilog", overall_s=SIM_LIMIT_S)
+        if r.timed_out:
+            return name, {"error": f"iverilog exceeded {SIM_LIMIT_S}s or stalled"}
         if r.returncode:
             return name, {"error": "iverilog compile: " + r.stderr.strip()[-400:]}
-        r = subprocess.run(["vvp", str(work / "sim.vvp")], capture_output=True, text=True, timeout=SIM_LIMIT_S)
-    except subprocess.TimeoutExpired:
-        return name, {"error": f"exceeded {SIM_LIMIT_S}s"}
+        r = heavy_guard.guarded(["vvp", str(work / "sim.vvp")], f"{name} vvp", overall_s=SIM_LIMIT_S)
+        if r.timed_out:
+            return name, {"error": f"vvp exceeded {SIM_LIMIT_S}s or stalled"}
+    except OSError as e:
+        return name, {"error": f"simulator start failed: {e}"}
     res = {"matched": 0, "wrong": 0, "missing": len(missing), "extra": len(extra), "xq": 0, "wrong_pts": [],
            "missing_pts": missing[:5], "luts": len(des.luts), "ffs": len(des.ffs),
            "unresolved": len(des.unresolved), "terminals": len(des.terminals), "mapped": len(tmap),
