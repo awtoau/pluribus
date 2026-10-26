@@ -193,9 +193,16 @@ def mlab_cell(tile, alm, half, raw, kv, w, perm):
 
 
 # ---- FPLL -----------------------------------------------------------------------------------------
-# Reference-clock pad per (FPLL tile, CLKIN_0_SRC): corpus evidence only (c_pll_vnd_*, 3/3 designs on H10,
-# Quartus pll_clkin_0_src = "clk_0").  Other values / tiles: NOT LIFTED, never guessed.
-FPLL_REFCLK_PAD = {((54, 37), 4): "GPIO.038.045.0:COMBOUT"}
+# Reference-clock pad per (FPLL tile, CLKIN_0_SRC): CLKIN_0_SRC = 4 + position in the FPLL `clkin` pad list,
+# evidenced by Quartus builds with the refclk pinned (c_pll_vnd_*: H10; c_pllpin_*: the rest, #112).
+# Values below 4 and pads without a build: NOT LIFTED, never guessed.
+FPLL_REFCLK_PAD = {
+    ((54, 37), 4): "GPIO.038.045.0:COMBOUT", ((54, 37), 5): "GPIO.044.045.0:COMBOUT",   # H10, G13
+    ((0, 37), 4): "GPIO.014.045.0:COMBOUT", ((0, 37), 5): "GPIO.022.045.0:COMBOUT",     # K7, G10
+    ((54, 0), 4): "GPIO.038.000.0:COMBOUT", ((54, 0), 5): "GPIO.046.000.0:COMBOUT",     # U13, T15
+    ((54, 0), 6): "GPIO.054.018.0:COMBOUT",                                             # L17
+    ((0, 0), 4): "GPIO.022.000.0:COMBOUT", ((0, 0), 5): "GPIO.029.000.0:COMBOUT",       # P9, R10
+}
 # Settings the model covers: value None = any value (analog / lock-filter, no effect on simulation).
 _FPLL_KNOWN = {"FPLL_ENABLE": "1", "NREVERT_INVERT": "1", "FRACTIONAL_DIVISION_SETTING": "00000001",
                "VCO_DIV": "0", "TCLK_SEL": "0", "CTRL_OVERRIDE_SETTING": "0", "CNT_IN_SRC": "0",
