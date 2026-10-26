@@ -98,9 +98,17 @@ def main():
             by["ghost-D (EBR OUTREG bypass)"].append(n)
         else:
             by["renamed/not-in-dsu"].append(n)
+    with db.engine().connect() as c:
+        pins = defaultdict(Counter)
+        for n, ct, pin in c.execute(text("select net, cell_type, pin from net_fanout where bitstream=:b"), {"b": b}):
+            pins[n][f"{ct}.{re.sub(r'[0-9]+$', '#', pin)}"] += 1
     log.info("undriven-and-read nets: %d", len(und))
     for cls, ns in sorted(by.items(), key=lambda x: -len(x[1])):
         log.info("  %-28s %d", cls, len(ns))
+        tot = Counter()
+        for n in ns:
+            tot.update(pins[n])
+        log.info("      sink pins: %s", dict(tot.most_common(8)))
         for n in ns[:a.list]:
             log.info("      %s  roots(col,row,wire)=%s", n, roots.get(n, [])[:4])
     return 0

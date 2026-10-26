@@ -235,18 +235,12 @@ class Ctx:
                 return "global_drop"       # chip-global clock net: no fabric key
             return "unresolved_drop"
         hops, d = int(m.group(1)), name[0]
-        if d == "E" and col + hops > self.max_col and col == self.max_col:
-            mh = re.match(r"^E\d+_H(\d+)([EW])(\d+)$", name)
-            if mh and mh.group(1) != "06":
-                return "h_right_flip"
-        if d == "W" and col - hops < 0:
-            if col == 0:
-                mh = re.match(r"^W\d+_H(\d+)([EW])(\d+)$", name)
-                if mh and mh.group(1) != "06":
-                    return "h_left_flip"
-            return "left_stub_drop"
         if (d == "E" and col + hops > self.max_col) or (d == "W" and col - hops < 0):
-            return "walkback_hstub"   # off-die E/W name with no rule: generic walk-back
+            mh = re.match(r"^[EW]\d+_H(\d+)([EW])(\d+)$", name)
+            if mh:                      # span folds at the edge: mirror column, opposite direction
+                p = col + hops if d == "E" else col - hops
+                return f"h_fold_{mh.group(1)}_{'R' if p > self.max_col else 'L'}"
+            return "walkback_hstub" if d == "E" else "left_stub_drop"
         mvs = re.match(r"^[NS]\d+_V(\d+)([NS])(\d+)$", name)
         if mvs and ((d == "N" and row - hops < 0)
                     or (d == "S" and row + hops > self.max_row)):

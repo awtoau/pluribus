@@ -462,45 +462,22 @@ class MachXO2Lift:
             max_col  = self.chip.get_max_col()
             max_row  = self.chip.get_max_row()
 
-            # Right-edge horizontal span: an off-right-edge E{N}_H##{E|W}{idx}
-            # stub (not H06) is the opposite-direction H## wire of the same
-            # index at max_col.  Other off-die names take the walk-back below.
-            # Kept: removing it raises net faults (#119, ablation).
-            if is_east and col + hops > max_col and col == max_col:
-                hme = re.match(r'^E\d+_H(\d+)([EW])(\d+)$', name)
-                if hme and hme.group(1) != "06":
-                    flip = "W" if hme.group(2) == "E" else "E"
-                    cname = f"H{hme.group(1)}{flip}{hme.group(3)}"
-                    gc = self.rg.globalise_net(row, max_col, cname)
+            # Horizontal span whose hop leaves the die.  A span folds at the edge:
+            # the wire named D, segment k at off-die position p is the SAME wire as the
+            # opposite-direction one (same index+segment) at the mirror column
+            # q = -1 - p (left) or 2*max_col + 1 - p (right).  Diamond's turnaround arcs
+            # (H06W0000@C1 -> H06E0003@C3, H06E0001 -> H06W0004, ...) fit this for every
+            # off-die distance, H02 and H06 (docs/machxo2-diamond-oracle.md, #119).
+            mh = re.match(r'^[EW]\d+_H(\d+)([EW])(\d+)$', name)
+            if mh and ((is_east and col + hops > max_col) or (wire[0] == 'W' and col - hops < 0)):
+                p = col + hops if is_east else col - hops
+                q = 2 * max_col + 1 - p if p > max_col else -1 - p
+                if 0 <= q <= max_col:
+                    flip = "W" if mh.group(2) == "E" else "E"
+                    gc = self.rg.globalise_net(row, q, f"H{mh.group(1)}{flip}{mh.group(3)}")
                     if gc.loc.x >= 0 and gc.loc.y >= 0:
-                        return (gc.loc.x, gc.loc.y, gc.id)
-
-            # Symmetric guard for W-direction wires at the left edge.
-            # h_left_flip and the left-stub drop below are kept: removing either
-            # raises net faults (#119, ablation).
-            if not is_east and wire[0] == 'W' and col - hops < 0:
-                if col == 0:
-                    # General left-edge horizontal span (net_merge_gap defect):
-                    # an off-left-edge W{N}_H##{E|W}{idx} stub is the same
-                    # physical wire as the opposite-direction H## wire of the
-                    # same index at col 0 (mirror of the top-edge vertical fix,
-                    # on the column axis).  Remap it onto that continuation.
-                    hmw = re.match(r'^W\d+_H(\d+)([EW])(\d+)$', name)
-                    if hmw and hmw.group(1) != "06":
-                        flip = "E" if hmw.group(2) == "W" else "W"
-                        cname = f"H{hmw.group(1)}{flip}{hmw.group(3)}"
-                        gc = self.rg.globalise_net(row, 0, cname)
-                        if gc.loc.x >= 0 and gc.loc.y >= 0:
-                            return (gc.loc.x, gc.loc.y, gc.id)
-                elif col - hops == -1:
-                    # H06W stub 1 col off the die: Diamond turns it around at
-                    # the edge (H06W{i}01 -> H06E{i}04 at C2, #105); it is the
-                    # H06E wire of the same index+segment at col 0.
-                    mw = re.match(r'^W\d_H06W(\d+)$', name)
-                    if mw:
-                        gc = self.rg.globalise_net(row, 0, f"H06E{mw.group(1)}")
-                        if gc.loc.x >= 0 and gc.loc.y >= 0:
-                            return self._v02_alias(gc.loc.x, gc.loc.y, gc.id)
+                        return self._v02_alias(gc.loc.x, gc.loc.y, gc.id)
+            if wire[0] == 'W' and col - hops < 0:
                 return None
 
             # Vertical span whose hop runs off the top/bottom edge.
