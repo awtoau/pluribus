@@ -205,6 +205,27 @@ def cd_crc16(buf):
     return crc16(bytes(buf))
 
 
+# Option-RAM die byte: strip 6, bits 19..26, LSB first (= low byte of the Mistral variant idcode).
+# Evidence: 0x05 in every e50f corpus .rbf, 0x13 in the 5CEBA7 builds (docs/cyclonev-ddb-format.md "Die map").
+DIE_BYTE_STRIP, DIE_BYTE_BIT0 = 6, 19
+DEVICE_BY_DIE_BYTE = {0x05: "5CEBA4U19C8", 0x13: "5CEBA7U19C8"}
+
+
+def die_byte(data):
+    a = np.frombuffer(data, np.uint8, count=0x84 + 4 * 40)
+    return sum(1 << k for k in range(8)
+               if a[0x84 + (DIE_BYTE_STRIP >> 3) + ((DIE_BYTE_BIT0 + k) << 2)] & (0x80 >> (DIE_BYTE_STRIP & 7)))
+
+
+def detect_device(data):
+    """Representative model name for the die byte of an uncompressed-header .rbf; ContainerError if unsupported."""
+    db = die_byte(data)
+    if db not in DEVICE_BY_DIE_BYTE:
+        raise ContainerError(f"option-RAM die byte {db:#04x}: no tables for this die (known: "
+                             + ", ".join(f"{k:#04x}={v}" for k, v in sorted(DEVICE_BY_DIE_BYTE.items())) + ")")
+    return DEVICE_BY_DIE_BYTE[db]
+
+
 def load_rbf(tables, data, geo=None, need_framed=False, strict=True):
     geo = geo or Geometry(tables["geom"])
     b = Bits(geo)
@@ -213,6 +234,8 @@ def load_rbf(tables, data, geo=None, need_framed=False, strict=True):
     if len(a) < geo.cram_off:
         raise ContainerError(f"rbf too short ({len(a)} < {geo.cram_off}): wrong die?")
     b.problems = container_problems(a, geo)
+    if len(a) >= 0x84 + 4 * 40 and die_byte(data) != tables["model"]["idcode"] & 0xFF:
+        b.problems.append(f"die byte {die_byte(data):#04x} != model {tables['model']['name']} ({tables['model']['idcode'] & 0xFF:#04x})")
     if strict and b.problems:
         raise ContainerError("not a Cyclone V .rbf of this die: " + "; ".join(b.problems) + " (--force to decode anyway)")
     # ORAM: 32 strips x 40 bits
@@ -1068,6 +1091,8 @@ def encode_rbf(tables, bits, compress=None):
 # ---- API ---------------------------------------------------------------------------------------
 
 def decode(data, device="5CEBA4U19C8", overrides=True, claims=False, compat=False, tables=None, strict=True):
+    if device == "auto":
+        device = detect_device(data)
     tb = tables or nt.load(device)
     ov = None
     if overrides:
@@ -1082,7 +1107,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("rbf")
     ap.add_argument("bt")
-    ap.add_argument("--device", default="5CEBA4U19C8")
+    ap.add_argument("--device", default="5CEBA4U19C8", help="model name, or 'auto' = pick the die from the option-RAM die byte")
     ap.add_argument("--no-overrides", action="store_true", help="bootstrap tables exactly (differential runs)")
     ap.add_argument("--mistral-compat", action="store_true", help="reproduce libmistral quirks (SCLK/DCMUX link skip)")
     ap.add_argument("--force", action="store_true", help="decode even if the container checks fail")

@@ -111,7 +111,7 @@ def main():
     if "PLURIBUS_SQLITE_PATH" not in os.environ:
         sys.exit("set PLURIBUS_SQLITE_PATH to the corpus DB copy (never the live one)")
     times = {}
-    designs = sorted(p.parent.name for p in (REPO / "corpus" / "cyclonev").glob("*/decomp.bt")
+    designs = sorted(p.parent.name for p in (REPO / "corpus" / os.environ.get("PLURIBUS_CV_CORPUS", "cyclonev")).glob("*/decomp.bt")
                      if p.parent.name not in EXCLUDED)
     if a.split:
         designs = designs[0::2] if a.split == "even" else designs[1::2]

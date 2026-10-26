@@ -11,7 +11,7 @@ Steps (log: tmp/logs/cyclonev_unpack.log):
 Refuses to overwrite an existing output (same contract as trellis_unpack.py).
 Decision: #114.
 
-  python3.15t scripts/cyclonev_unpack.py IN.bin OUT.bt [--device 5CEBA4U19C8] [--rbf KEEP.rbf]
+  python3.15t scripts/cyclonev_unpack.py IN.bin OUT.bt [--device 5CEBA4U19C8|auto] [--rbf KEEP.rbf]
 """
 import argparse
 import logging
@@ -60,7 +60,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("bin")
     ap.add_argument("bt")
-    ap.add_argument("--device", default="5CEBA4U19C8")
+    ap.add_argument("--device", default="5CEBA4U19C8", help="model name, or 'auto' = pick the die from the option-RAM die byte")
     ap.add_argument("--rbf", help="where to keep the stripped .rbf (default: <bt>.rbf)")
     ap.add_argument("--decoder", choices=("native", "mistral"), default="native",
                     help="native: scripts/cyclonev_decode.py (docs/cyclonev-native-decoder.md); mistral: mistral-cv")
@@ -91,6 +91,13 @@ def main():
         body = normalise(raw)
     log.info("%s: %d bytes -> %d validated (preamble kept); first bytes %s", a.bin, len(raw),
              len(body), body[:4].hex())
+    if a.device == "auto":
+        import cyclonev_decode as nd0
+        try:
+            a.device = nd0.detect_device(body)
+        except nd0.ContainerError as e:
+            die(str(e))
+        log.info("die byte %#04x -> %s", nd0.die_byte(body), a.device)
     os.makedirs(os.path.dirname(os.path.abspath(rbf)), exist_ok=True)
     open(rbf, "wb").write(body)
     os.makedirs(os.path.dirname(os.path.abspath(a.bt)), exist_ok=True)
