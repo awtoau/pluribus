@@ -65,7 +65,7 @@ def test_fpll_netlist_and_unmodelled():
     assert rec["outs"] == {"locked": {0: "n3"}, "clkout": {5: "n4"}} and rec["params"]["C_EN"] == "9'b000100000"
     rec = hard.fpll_cell(("FPLL", 54, 37), {**kv, ("M_CNT_BYPASS_EN", None): "1"}, nets)
     assert "M_CNT_BYPASS_EN" in rec["unmodelled"]
-    assert "refclk pad" in hard.fpll_cell(("FPLL", 0, 37), kv, nets)["unmodelled"]
+    assert "refclk pad" in hard.fpll_cell(("FPLL", 0, 37), {**kv, ("CLKIN_0_SRC", None): "2"}, nets)["unmodelled"]
 
 
 def test_dsp_unknown_mode_is_reported():

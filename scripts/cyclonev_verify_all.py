@@ -534,9 +534,9 @@ def _main():
     # worker-count default also means fewer Quartus processes launched
     # before that gate has data to act on, so both matter.
     ap.add_argument("--compile-workers", type=int,
-                     default=min(20, os.cpu_count() or 20),
-                     help="producer pool size for Quartus compiles "
-                          "(default: min(20, os.cpu_count()))")
+                     default=2,
+                     help="producer pool size for Quartus compiles (default 2: shared-box cap; "
+                          "die probe 68 s + DSP fuzz 31 s at 2 workers, 2026-10-26)")
     ap.add_argument("--decompile-workers", type=int, default=4,
                      help="consumer pool size for mistral-cv decompile + compare (default: 4)")
     ap.add_argument("--reference-bt", type=Path, default=REFERENCE_BT,

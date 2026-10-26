@@ -331,7 +331,18 @@ Method: (a) reference = the design's own source RTL, simulated directly; (b) our
 - Corpus: `c_pll_vnd_m2d1_1`, `c_pll_vnd_m4d1_2`, `c_pll_vnd_m3d2_1` (50 MHz in, 75 / 100 / 100 + 200 MHz out).
 - Decode (`lifters/cyclonev_hard.py fpll_cell`): f = ref * M / N / C, M = `M_CNT_HI+LO`, N = `N_CNT_HI+LO`, C = `DPRIO0_CNT_HI.c + LO.c` of counters with `Cc_COUT_EN`; unset hi / lo are 1. 4 / 4 output counters match the Quartus defparams.
 - Netlist (lifter):
-  - refclk pad: `CLKIN_0_SRC` = 4 on `FPLL.054.037` -> H10 (`GPIO.038.045.0:COMBOUT`), 3 / 3 designs; the only evidenced value, other values / tiles are NOT LIFTED.
+  - refclk pad: `CLKIN_0_SRC` = 4 + position of the pad in the FPLL's `clkin` list (Mistral `data/e50f-fpll.txt`). 13 / 13 pin-site combinations built with the refclk pinned (`c_pllpin_*` plus the H10 `c_pll_vnd_*`); PLL site forced with `set_location_assignment FRACTIONALPLL_X<x>_Y<y>_N0 -to p|general[0].gpll~FRACTIONAL_PLL`:
+
+| FPLL tile | value 4 | 5 | 6 | 7 |
+|---|---|---|---|---|
+| 054.037 | H10 | G13 | - | - |
+| 000.037 | K7 | G10 | H10 | G13 |
+| 054.000 | U13 | T15 | L17 | - |
+| 000.000 | P9 | R10 | U13 | T15 |
+
+  - Table: `lifters/cyclonev_hard.py` `FPLL_REFCLK_PAD`; the 12 new designs all PASS the Questa gate (decode 1/1 each).
+  - `CLKIN_0_SRC` = 0: refclk from a fabric register or another PLL's output (both measured), i.e. the clock network; detected, NOT LIFTED (reason in the lifted comment).
+  - A refclk on a pin without a PLL route is a fitter error (177020), no bitstream. `PL_AUX_BG_POWERDOWN` appears on the left-top tile; treated as analog.
   - reset: routed net into `FPLL:NRESET0`; `NREVERT_INVERT` = 1 <-> Quartus `nreset_invert = "true"` (active-high).
   - lock: `FPLL:LOCK0` routed net.
   - output counter c -> `FPLL:CLKOUT.c` -> CMUX `PLLIN` -> GCLK -> SCLK (clock-tree table): C3 = 100 MHz LAB domain, C5 = 200 MHz MLAB domain in `m4d1_2`, confirmed by the sim gate.

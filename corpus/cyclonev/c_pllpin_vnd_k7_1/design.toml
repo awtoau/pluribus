@@ -1,0 +1,7 @@
+top = "c_pllpin_vnd_k7_1"
+purpose = "altera_pll 50 MHz x2/1, refclk on pin K7 [vendor]"
+exercises = ["pll", "fpll", "refclk_pin"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001", "set_location_assignment PIN_K7 -to refclk"]
+construct = "pllpin"
+variant = "K7"
+width = 1

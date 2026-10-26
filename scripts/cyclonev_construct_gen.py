@@ -384,6 +384,55 @@ def pll(n, mult, div, outs):
             f'.refclk(refclk), .fboutclk(), .fbclk(1\'b0));\nendmodule\n')
 
 
+# Refclk-pin designs (#112 loose end): same PLL as m2d1, refclk on a chosen pin (+ optional PLL site).
+# Pins = the `clkin` lists of mistral data/e50f-fpll.txt for package U19 (index = position in the list).
+PLL_PINS = (
+    ("G13", None), ("T15", None), ("U13", None), ("L17", None), ("K7", None), ("G10", None),
+    ("P9", None), ("R10", None),
+    ("H10", "X0_Y38_N0"), ("G13", "X0_Y38_N0"), ("U13", "X0_Y1_N0"), ("T15", "X0_Y1_N0"),
+)
+
+
+def pll_src_design(n, kind):
+    """Other refclk sources: fabric register ("core"), pin without a dedicated PLL route ("gpio"), PLL cascade."""
+    head = f"module {n} (input refclk, input rst, output [3:0] q, output locked);\n"
+    cnt = "  reg [3:0] c0;\n  always @(posedge oc[0]) c0 <= c0 + 1;\n  assign q = c0;\n"
+    prm = ('#(.fractional_vco_multiplier("false"), .reference_clock_frequency("50.0 MHz"), .operation_mode("direct"), '
+           '.number_of_clocks(1), .output_clock_frequency0("100.0 MHz"), .phase_shift0("0 ps"), .duty_cycle0(50), '
+           '.pll_type("General"), .pll_subtype("General"))')
+    if kind == "core":
+        return (head + "  wire [0:0] oc;\n  reg r;\n  always @(posedge refclk) r <= ~r;\n" + cnt +
+                f"  altera_pll {prm} p (.rst(rst), .outclk(oc), .locked(locked), .refclk(r), .fboutclk(), .fbclk(1'b0));\n"
+                "endmodule\n")
+    if kind == "cascade":
+        prm2 = prm.replace("50.0 MHz", "100.0 MHz").replace('output_clock_frequency0("100.0 MHz")', 'output_clock_frequency0("200.0 MHz")')
+        return (head + "  wire [0:0] oc, oc1;\n  wire lk1;\n" + cnt +
+                f"  altera_pll {prm} p1 (.rst(rst), .outclk(oc1), .locked(lk1), .refclk(refclk), .fboutclk(), .fbclk(1'b0));\n"
+                f"  altera_pll {prm2} p (.rst(rst), .outclk(oc), .locked(locked), .refclk(oc1[0]), .fboutclk(), .fbclk(1'b0));\n"
+                "endmodule\n")
+    return (head + "  wire [0:0] oc;\n" + cnt +
+            f"  altera_pll {prm} p (.rst(rst), .outclk(oc), .locked(locked), .refclk(refclk), .fboutclk(), .fbclk(1'b0));\n"
+            "endmodule\n")
+
+
+# Not in the corpus (the sim gate cannot drive them), kept as the generator for the evidence builds (#112):
+#   core    : refclk from a fabric register          -> CLKIN_0_SRC = 0
+#   cascade : refclk from another PLL's outclk       -> CLKIN_0_SRC = 0
+#   gpio    : refclk on a pin without a PLL route    -> fitter error 177020, no bitstream
+PLL_SRC = ()
+
+
+def pll_pin_designs():
+    out = []
+    for pin, site in PLL_PINS:
+        nm = f"c_pllpin_vnd_{pin.lower()}{'_' + site.lower()[:site.index('_N')].replace('_', '') if site else ''}_1"
+        qsf = [f"set_location_assignment PIN_{pin} -to refclk"]
+        if site:
+            qsf.append(f"set_location_assignment FRACTIONALPLL_{site} -to p|general[0].gpll~FRACTIONAL_PLL")
+        out.append((nm, pin, qsf))
+    return out
+
+
 # construct -> (generator, widths, variants, purpose, exercises)
 SIMPLE = {
     "counter": (counter, WIDTHS, "free-running up counter", ["counter", "carry"]),
@@ -485,6 +534,23 @@ def main():
         (d / "design.toml").write_text(toml(
             nm, "pll", f"m{mult}d{div}", outs, f"altera_pll 50 MHz x{mult}/{div}, {outs} output(s), counters on outputs [vendor]",
             ["pll", "fpll"], "vnd"))
+        names.append(nm)
+    for nm, pin, qsf in pll_pin_designs():
+        d = CORPUS / nm
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        (d / "src" / f"{nm}.v").write_text(pll(nm, 2, 1, 1))
+        (d / "design.toml").write_text(toml(
+            nm, "pllpin", pin, 1, f"altera_pll 50 MHz x2/1, refclk on pin {pin} [vendor]",
+            ["pll", "fpll", "refclk_pin"], "vnd", qsf))
+        names.append(nm)
+    for kind, qsf in PLL_SRC:
+        nm = f"c_pllsrc_vnd_{kind}_1"
+        d = CORPUS / nm
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        (d / "src" / f"{nm}.v").write_text(pll_src_design(nm, kind))
+        (d / "design.toml").write_text(toml(
+            nm, "pllsrc", kind, 1, f"altera_pll refclk source: {kind} [vendor]", ["pll", "fpll", "refclk_src"],
+            "vnd", qsf))
         names.append(nm)
     log.info("generated %d designs", len(names))
 
