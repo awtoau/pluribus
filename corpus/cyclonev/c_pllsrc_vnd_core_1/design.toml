@@ -1,7 +1,0 @@
-top = "c_pllsrc_vnd_core_1"
-purpose = "altera_pll refclk source: core [vendor]"
-exercises = ["pll", "fpll", "refclk_src"]
-qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001"]
-construct = "pllsrc"
-variant = "core"
-width = 1

@@ -415,7 +415,11 @@ def pll_src_design(n, kind):
             "endmodule\n")
 
 
-PLL_SRC = (("core", []), ("gpio", ["set_location_assignment PIN_A12 -to refclk"]), ("cascade", []))
+# Not in the corpus (the sim gate cannot drive them), kept as the generator for the evidence builds (#112):
+#   core    : refclk from a fabric register          -> CLKIN_0_SRC = 0
+#   cascade : refclk from another PLL's outclk       -> CLKIN_0_SRC = 0
+#   gpio    : refclk on a pin without a PLL route    -> fitter error 177020, no bitstream
+PLL_SRC = ()
 
 
 def pll_pin_designs():
@@ -424,7 +428,7 @@ def pll_pin_designs():
         nm = f"c_pllpin_vnd_{pin.lower()}{'_' + site.lower()[:site.index('_N')].replace('_', '') if site else ''}_1"
         qsf = [f"set_location_assignment PIN_{pin} -to refclk"]
         if site:
-            qsf.append(f"set_location_assignment FRACTIONALPLL_{site} -to {{p|general[0].gpll~FRACTIONAL_PLL}}")
+            qsf.append(f"set_location_assignment FRACTIONALPLL_{site} -to p|general[0].gpll~FRACTIONAL_PLL")
         out.append((nm, pin, qsf))
     return out
 

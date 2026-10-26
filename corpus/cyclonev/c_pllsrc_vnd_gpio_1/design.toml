@@ -1,7 +1,0 @@
-top = "c_pllsrc_vnd_gpio_1"
-purpose = "altera_pll refclk source: gpio [vendor]"
-exercises = ["pll", "fpll", "refclk_src"]
-qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001", "set_location_assignment PIN_A12 -to refclk"]
-construct = "pllsrc"
-variant = "gpio"
-width = 1

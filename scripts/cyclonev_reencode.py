@@ -109,6 +109,82 @@ def port_nets(lt, init_key, pins_key):
     return nets, mask
 
 
+
+def arith_mask(g):
+    """Quartus lut_mask of an adder half from the lifted sum / cout rows.
+
+    cyclonev_lcell_comb (shared_arith off): f0 = mask[15:0](a,b,c,d), in2 = ~mask[47:32](a,b,c,f),
+    sum = cin ^ f0 ^ in2, cout = maj(cin, f0, in2).  Per (a,b,c): the f0[d] / in2[f] bits are solved by
+    brute force against the lifted sum(cin=0), cout(cin=0), cout(cin=1) tables.  With no cout row only
+    f0 ^ in2 is known: in2 = 0 (as Quartus does for the last bit).  Returns (mask, nets, notes)."""
+    sm = g.get("sum") or next(iter(g.values()))
+    co = g.get("cout")
+    half, mode = sm["half"], sm["mode"]
+    nets, constv = {}, {}
+    for port in "abcdf":
+        lp = lab_pin(half, mode, port)
+        net = sm[next((l for l, q in sm["pins"].items() if q == lp), "")] if lp else None
+        if lp is None or is_const(net):
+            nets[port], constv[port] = "1'b0", (1 if (net or "").endswith("1") else 0)
+            nets[port] = f"1'b{constv[port]}"
+        else:
+            nets[port] = net
+
+    def row_val(row, vals, cin):
+        idx = 0
+        for l, q in row["pins"].items():
+            bit = cin if q == "CIN" else next((vals[p] for p in "abcdf" if lab_pin(half, mode, p) == q), 0)
+            if bit:
+                idx |= 1 << "abcdef".index(l)
+        return int(row["init"][63 - idx])
+
+    def point(a, b, c, d, f):
+        v = {"a": a, "b": b, "c": c, "d": d, "f": f}
+        for p, cv in constv.items():
+            v[p] = cv
+        return v
+    f0 = [0] * 16
+    f2 = [0] * 16
+    amb = 0
+    for abc in range(8):
+        a, b, c = abc & 1, abc >> 1 & 1, abc >> 2 & 1
+        if any(p in constv and constv[p] != x for p, x in (("a", a), ("b", b), ("c", c))):
+            continue
+        pts = {}
+        for d in (0, 1):
+            for f in (0, 1):
+                v = point(a, b, c, d, f)
+                s0 = row_val(sm, v, 0)
+                c0, c1 = (row_val(co, v, 0), row_val(co, v, 1)) if co else (None, None)
+                pts[(d, f)] = (s0, c0, c1)
+        sols = []
+        for f0d in range(4):
+            for i2 in range(4):
+                ok = True
+                for (d, f), (s0, c0, c1) in pts.items():
+                    if ("d" in constv and d != constv["d"]) or ("f" in constv and f != constv["f"]):
+                        continue
+                    x, y = f0d >> d & 1, i2 >> f & 1
+                    ok &= (x ^ y) == s0
+                    if co:
+                        ok &= (x & y) == c0 and (x | y) == c1
+                if ok:
+                    sols.append((f0d, i2))
+        if not sols:
+            amb += 1
+            continue
+        if len(sols) > 1:
+            amb += 1
+            if not co:
+                sols = [s for s in sols if s[1] == 0] or sols
+        f0d, i2 = sols[0]
+        for d in (0, 1):
+            f0[a | b << 1 | c << 2 | d << 3] = f0d >> (constv.get("d", d)) & 1
+            f2[a | b << 1 | c << 2 | d << 3] = 1 - (i2 >> (constv.get("f", d)) & 1)   # slot 3 of the index = f
+    mask = sum(b << i for i, b in enumerate(f0)) | sum(b << (32 + i) for i, b in enumerate(f2))
+    return mask, nets, amb
+
+
 def lcell_n(alm, half):
     return alm * 6 + 3 * HALF.index(half)
 
@@ -150,8 +226,13 @@ def emit(d, names=None):
         x, y, alm, half = key
         base = g.get("sum") or next(iter(g.values()))
         arith = bool(base.get("arith"))
-        ik, pk = ("comb_init", "comb_pins") if arith else ("init", "pins")
-        pn, mask = port_nets(base, ik, pk)
+        if arith:
+            mask, pn, amb = arith_mask(g)
+            pn["e"] = "1'b0"
+            if amb:
+                notes["adder bits with ambiguous / unsolved f0,f2"] += amb
+        else:
+            pn, mask = port_nets(base, "init", "pins")
         inst = (names or {}).get(("lut", base["name"])) or f"lc_{x}_{y}_{alm}{half}"
         conn = {f"data{p}": v for p, v in pn.items()}
         outs = {}
@@ -191,7 +272,7 @@ def emit(d, names=None):
         inst = (names or {}).get(("ff", ff["name"])) or f"ff_{ff['x']}_{ff['y']}_{ff['alm']}{ff['half']}{ff['slot']}"
         nets.update(n for n in (ff["q"], ff["d"], ff["clk"]) if n and not n.startswith("1'b"))
         ena = ff["ce"] or "1'b1"
-        body.append(f"dffeas #(.power_up(\"low\")) {esc(inst)} (.clk({ff['clk']}), .d({ff['d']}), .ena({ena}), "
+        body.append(f"dffeas #(.power_up(\"low\"), .is_wysiwyg(\"true\")) {esc(inst)} (.clk({ff['clk']}), .d({ff['d']}), .ena({ena}), "
                     f".clrn(1'b1), .sclr(1'b0), .sload(1'b0), .asdata(1'b0), .aload(1'b0), .q({ff['q']}));")
         qsf.append(f"set_location_assignment FF_X{ff['x']}_Y{ff['y']}_N{ff_n(ff['alm'], ff['half'], ff['slot'])} "
                    f"-to {tcl(inst)}")
@@ -209,7 +290,7 @@ def esc(name):
 
 
 def tcl(name):
-    return "{" + name + "}"
+    return "\"" + name + "\""
 
 
 # ---- quartus -------------------------------------------------------------------------------------
@@ -240,9 +321,11 @@ def quartus(work, rcf_file, top):
 
 # ---- diff ----------------------------------------------------------------------------------------
 
-def bt_of(rbf):
+def bt_of(rbf, compat=False):
+    """Native decode -> .bt lines.  compat=True for the lifter input: the default mode also emits the SCLK/DCMUX
+    links libmistral skips, and the lifter's clock-tree resolution then loses the clock pad net."""
     import cyclonev_decode as nd
-    m = nd.decode(open(rbf, "rb").read(), DEVICE)
+    m = nd.decode(open(rbf, "rb").read(), DEVICE, compat=compat)
     return m.bt_lines()
 
 
@@ -332,7 +415,7 @@ def run_design(design, rcf, skip_quartus):
     os.makedirs(work, exist_ok=True)
     orig_rbf = os.path.join(src, "bitstream.rbf")
     orig_bt = bt_of(orig_rbf)
-    open(os.path.join(work, "orig.bt"), "w").write("\n".join(orig_bt) + "\n")
+    open(os.path.join(work, "orig.bt"), "w").write("\n".join(bt_of(orig_rbf, compat=True)) + "\n")
     lift = CycloneVLift(DEVICE)
     pc = lift.parse_config(os.path.join(work, "orig.bt"))
     d = lift.recover_netlist(pc)

@@ -199,12 +199,14 @@ def mlab_cell(tile, alm, half, raw, kv, w, perm):
 FPLL_REFCLK_PAD = {
     ((54, 37), 4): "GPIO.038.045.0:COMBOUT", ((54, 37), 5): "GPIO.044.045.0:COMBOUT",   # H10, G13
     ((0, 37), 4): "GPIO.014.045.0:COMBOUT", ((0, 37), 5): "GPIO.022.045.0:COMBOUT",     # K7, G10
+    ((0, 37), 6): "GPIO.038.045.0:COMBOUT", ((0, 37), 7): "GPIO.044.045.0:COMBOUT",     # H10, G13
     ((54, 0), 4): "GPIO.038.000.0:COMBOUT", ((54, 0), 5): "GPIO.046.000.0:COMBOUT",     # U13, T15
     ((54, 0), 6): "GPIO.054.018.0:COMBOUT",                                             # L17
     ((0, 0), 4): "GPIO.022.000.0:COMBOUT", ((0, 0), 5): "GPIO.029.000.0:COMBOUT",       # P9, R10
+    ((0, 0), 6): "GPIO.038.000.0:COMBOUT", ((0, 0), 7): "GPIO.046.000.0:COMBOUT",       # U13, T15
 }
 # Settings the model covers: value None = any value (analog / lock-filter, no effect on simulation).
-_FPLL_KNOWN = {"FPLL_ENABLE": "1", "NREVERT_INVERT": "1", "FRACTIONAL_DIVISION_SETTING": "00000001",
+_FPLL_KNOWN = {"FPLL_ENABLE": "1", "PL_AUX_BG_POWERDOWN": None, "NREVERT_INVERT": "1", "FRACTIONAL_DIVISION_SETTING": "00000001",
                "VCO_DIV": "0", "TCLK_SEL": "0", "CTRL_OVERRIDE_SETTING": "0", "CNT_IN_SRC": "0",
                "CLKIN_0_SRC": None, "BWCTRL": None, "CP_CURRENT": None, "LOCK_FILTER_CFG_SETTING": None,
                "UNLOCK_FILTER_CFG_SETTING": None, "VCO0PH_EN": None, "M_CNT_HI_DIV_SETTING": None,
@@ -242,7 +244,8 @@ def fpll_cell(tile, kv, nets=None):
             why.append(f"{key}={val}")
     clkin = hx("CLKIN_0_SRC", None, 2)
     if ((x, y), clkin) not in FPLL_REFCLK_PAD:
-        why.append(f"refclk pad for CLKIN_0_SRC={clkin} (no corpus evidence)")
+        why.append(f"refclk from the clock network (CLKIN_0_SRC=0: core / PLL cascade)" if clkin == 0 else
+                   f"refclk pad for CLKIN_0_SRC={clkin} (no corpus evidence)")
     for need in ("refclk", "nreset"):
         if not nets.get(need):
             why.append(f"{need} net not found")

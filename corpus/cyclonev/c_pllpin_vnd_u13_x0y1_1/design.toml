@@ -1,7 +1,7 @@
 top = "c_pllpin_vnd_u13_x0y1_1"
 purpose = "altera_pll 50 MHz x2/1, refclk on pin U13 [vendor]"
 exercises = ["pll", "fpll", "refclk_pin"]
-qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001", "set_location_assignment PIN_U13 -to refclk", "set_location_assignment FRACTIONALPLL_X0_Y1_N0 -to {p|general[0].gpll}"]
+qsf = ["set_global_assignment -name VERILOG_INPUT_VERSION VERILOG_2001", "set_location_assignment PIN_U13 -to refclk", "set_location_assignment FRACTIONALPLL_X0_Y1_N0 -to p|general[0].gpll~FRACTIONAL_PLL"]
 construct = "pllpin"
 variant = "U13"
 width = 1
