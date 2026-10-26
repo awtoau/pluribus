@@ -1469,7 +1469,8 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             if not is_ecp5:
                 from lifters import machxo2_pll
                 hip = machxo2_pll.cells(
-                    pc, lift, design, lambda rr, cc, w: resolve_net(design, lift, rr, cc, w), dbroot)
+                    pc, lift, design, lambda rr, cc, w: resolve_net(design, lift, rr, cc, w), dbroot,
+                    device=device, package=package)
                 for h in hip:
                     conn.execute(insert(schema.hard_ip).values(
                         bitstream=bs_id, name=h["name"], prim=h["prim"], params=h["params"],

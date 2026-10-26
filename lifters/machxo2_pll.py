@@ -4,6 +4,7 @@ Parameters come from the decoded GPLL tile; pin wiring from the tile's `.fixed_c
 (`S<n>E<m>_` = tile n rows south / m columns east of the PLL tile).  Settings that are
 tool-derived or off-chip are reported in `not_lifted`, never guessed.
 """
+import json
 import re
 from pathlib import Path
 
@@ -52,7 +53,19 @@ def pin_table(dbroot, family, tiletype):
     return ins, outs
 
 
-def cells(pc, lift, design, resolve, dbroot, family="MachXO2"):
+def dedicated_clki_pin(dbroot, family, device, package, side):
+    """Package pin of the PLL's dedicated reference input (iodb function <side>_GPLLT_IN), or None."""
+    iodb = json.loads((Path(dbroot) / family / device / "iodb.json").read_text())
+    want = f"{side}_GPLLT_IN"
+    for m in iodb["pio_metadata"]:
+        if m.get("function") == want:
+            for pin, loc in iodb["packages"].get(package, {}).items():
+                if (loc["row"], loc["col"], loc["pio"]) == (m["row"], m["col"], m["pio"]):
+                    return int(pin)
+    return None
+
+
+def cells(pc, lift, design, resolve, dbroot, family="MachXO2", device=None, package=None):
     """[{name, prim, params, pins, not_lifted}] for each GPLL tile of the design."""
     rc_to_name = {rc: n for n, rc in lift.tile_rc.items()}
     res = []
@@ -90,6 +103,9 @@ def cells(pc, lift, design, resolve, dbroot, family="MachXO2"):
             nl.append("reference clock mux not routed (internal oscillator or unrouted)")
         else:
             pins["CLKI"] = {"dir": "in", "net": resolve(r, c, refsrc)}
+            # JREFCLK3 selects the dedicated <side>_GPLLT_IN pad: CLKI has to sit on that package pin
+            if refsrc.endswith("JREFCLK3") and device and package:
+                pins["CLKI"]["pad_pin"] = dedicated_clki_pin(dbroot, family, device, package, side)
         fb = params.get("FEEDBK_PATH", "CLKOP")
         if fb not in ("INT_DIVD", "CLKOP"):
             nl.append(f"FEEDBK_PATH {fb}: feedback wiring not lifted")

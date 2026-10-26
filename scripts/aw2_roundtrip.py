@@ -69,7 +69,7 @@ def ghosts_as_inputs(v, wires):
     return v, len(names)
 
 
-def lpf_for(label):
+def lpf_for(label, verilog=""):
     """LOCATE/IOBUF per resolved pad from the DB (port names are the emitted ones).
 
     Bank VCCIO is board data, not in the bitstream: the decoded type OUTPUT_LVTTL33 is the
@@ -105,6 +105,22 @@ def lpf_for(label):
             attrs += f" PULLMODE={pull}"
         lines.append(f'LOCATE COMP "{port}" SITE "{pin}";')
         lines.append(f'IOBUF PORT "{port}" {attrs};')
+    # PLL reference input on the dedicated GPLLT_IN pad (hard_ip CLKI.pad_pin): the pad has no PIO
+    # config in the bitstream, so its standard follows the bank rule above.
+    with db.engine().connect() as c:
+        hips = c.execute(text("select pins from hard_ip where bitstream=:b and prim='EHXPLLJ'"),
+                         {"b": bs}).fetchall()
+    for (pins,) in hips:
+        pins = json.loads(pins) if isinstance(pins, str) else pins
+        clki = pins.get("CLKI") or {}
+        m = re.search(r"input\s+wire\s+(\w+)\s*,?\s*//\s*PLL reference clock", verilog)
+        if clki.get("pad_pin") and m:
+            pin = clki["pad_pin"]
+            loc = iodb["packages"].get("TQFP100", {}).get(str(pin), {})
+            bank = bank_of.get((loc.get("row"), loc.get("col"), loc.get("pio")))
+            io = "LVCMOS25" if bank in v25_banks else "LVCMOS33"
+            lines.append(f'LOCATE COMP "{m.group(1)}" SITE "{pin}";')
+            lines.append(f'IOBUF PORT "{m.group(1)}" IO_TYPE={io};')
     return "\n".join(lines) + "\n"
 
 
@@ -146,7 +162,7 @@ def main():
         work.mkdir(parents=True, exist_ok=True)
         log.info("%d undriven internal wires promoted to inputs", nghost)
     (work / "fuzz.v").write_text(pv)
-    (work / "fuzz.lpf").write_text((lpf_for(a.label) if not a.ghosts_as_inputs else
+    (work / "fuzz.lpf").write_text((lpf_for(a.label, pv) if not a.ghosts_as_inputs else
                                     "BLOCK RESETPATHS;\nBLOCK ASYNCPATHS;\n") + "\n")
     (work / "fuzz.ldf").write_text(E.LDF % E.STY)
     (work / "run.tcl").write_text(E.TCL if not a.ghosts_as_inputs else E.TCL_MAP_ONLY)
