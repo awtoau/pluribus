@@ -53,7 +53,8 @@ def setup_logging() -> None:
 def run(cmd: list[str], cwd: Path, timeout: float, what: str) -> subprocess.CompletedProcess:
     """Run a command, logging failures. Timeout is per-caller with a stated basis."""
     t0 = time.monotonic()
-    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    import heavy_guard
+    p = heavy_guard.guarded(cmd, what, overall_s=timeout, cwd=cwd)  # #122
     LOG.debug("%s took %.1f s rc=%d", what, time.monotonic() - t0, p.returncode)
     return p
 

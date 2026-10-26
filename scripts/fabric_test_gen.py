@@ -10,10 +10,9 @@ way to ask "is this die actually good?".  These designs answer that at the
 confidence-check level: flash them, read a signature back over JTAG, get a
 per-test pass/fail and a cumulative coverage figure.
 
-Deliberately NOT exhaustive; see scripts/fabric_coverage_plan.py for the curve
-that sets the count.  ~24 configurations reach 97% of ECP5 routing arcs and
-99.3% on MachXO2, because coverage is bounded by mux fan-in (p95 = 24 on both
-families) and everything else rides along in parallel.
+See scripts/fabric_coverage_plan.py for the perfect-packer ceiling and
+scripts/fabric_coverage_select.py for achieved coverage. Twenty-four reaches a
+97% *ceiling* on ECP5; real routing is measured and can be much lower.
 
 READOUT: THIS GENERATOR DOES NOT PROVIDE ONE
 --------------------------------------------
@@ -134,6 +133,15 @@ def golden(blocks, cycles, seed_base):
     return sig & 0xFFFFFFFF
 
 
+def coverage_variant(index):
+    """Placement and signature-network variant handed to board gateware."""
+    placement_seed = index + 1
+    topology_seed = (placement_seed * 0x9E3779B9) & 0xFFFFFFFF or 1
+    # Fan-in two adds too many registered tree nodes to the 185-block Cynthion
+    # implementation. Three and four both pass full-density placement.
+    return placement_seed, topology_seed, (3, 4)[index % 2]
+
+
 def emit_design(idx, blocks, cycles, seed_base, expect, family):
     """One test design: LFSR farm -> XOR signature -> JTAG user register."""
     taps = [TAPS[b % len(TAPS)] for b in range(blocks)]
@@ -240,17 +248,19 @@ def main():
         (outdir / f"{name}.v").write_text(
             emit_design(i, args.blocks, args.cycles, seed_base, exp,
                         args.family))
-        manifest.append((name, seed_base, exp))
+        manifest.append((name, seed_base, exp, *coverage_variant(i)))
         log.info("  %s  seed_base=0x%08x  expect=0x%08x", name, seed_base, exp)
 
     mf = outdir / "manifest.tsv"
     with open(mf, "w") as fh:
-        fh.write("# design\tseed_base\texpected_signature\n")
+        fh.write("# design\tseed_base\texpected_signature\tplacement_seed\t"
+                 "topology_seed\ttree_fanin\n")
         fh.write(f"# device={args.device} blocks={args.blocks} "
                  f"cycles={args.cycles} "
                  f"negative_control={args.negative_control}\n")
-        for n, s, e in manifest:
-            fh.write(f"{n}\t0x{s:08x}\t0x{e:08x}\n")
+        for n, s, e, placement, topology, fanin in manifest:
+            fh.write(f"{n}\t0x{s:08x}\t0x{e:08x}\t{placement}\t"
+                     f"0x{topology:08x}\t{fanin}\n")
     log.info("wrote %d designs + %s", len(manifest), mf)
     log.info("next: synthesise with yosys+nextpnr+ecppack, then read ER1 over "
              "JTAG; see docs/fabric-test.md")

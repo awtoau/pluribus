@@ -55,11 +55,8 @@ def run_yosys(verilog_path: str, top: str) -> tuple[int, list[str]]:
         f"proc; "
         f"check"
     )
-    result = subprocess.run(
-        ["yosys", "-p", script],
-        capture_output=True,
-        text=True,
-    )
+    import heavy_guard
+    result = heavy_guard.guarded(["yosys", "-p", script], "check_verilog yosys")  # #122
     lines = (result.stdout + result.stderr).splitlines()
     return result.returncode, lines
 
@@ -81,7 +78,8 @@ def run_yosys_lec(new_v: str, baseline_v: str, top: str) -> tuple[bool, list[str
         f"equiv_make gold gate equiv; hierarchy -top equiv; "
         f"equiv_induct; equiv_status"
     )
-    result = subprocess.run(["yosys", "-p", script], capture_output=True, text=True)
+    import heavy_guard
+    result = heavy_guard.guarded(["yosys", "-p", script], "check_verilog equiv")  # #122
     lines = (result.stdout + result.stderr).splitlines()
     proven = unproven = None
     for ln in lines:

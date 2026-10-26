@@ -249,13 +249,13 @@ def run_oracle(bitpath, out, device, idcode=None):
     reported when the retry is not applicable.
     """
     cmd = [ECPUNPACK, bitpath, out]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, "ecpunpack")  # #122
     if r.returncode != 0:
         first = r.stderr.strip()[-200:]
         if idcode is None:
             return False, f"ecpunpack rc={r.returncode}: {first}", None
-        r = subprocess.run(cmd + ["--idcode", f"0x{idcode:08x}"],
-                           capture_output=True, text=True)
+        r = heavy_guard.guarded(cmd + ["--idcode", f"0x{idcode:08x}"], "ecpunpack")  # #122
         if r.returncode != 0:
             return False, (f"ecpunpack rc={r.returncode}: {first} "
                            f"(retry with --idcode 0x{idcode:08x}: "
@@ -319,15 +319,42 @@ WIDEMUX_UNKNOWN_RE = re.compile(r"^unknown:\s+(F5|FX)\w*")
 
 
 def census_widemux(text):
-    """How hard does this design lean on the wide-mux path the lifter skips?"""
-    arcs_in = 0
-    unknown_bits = 0
+    """Wide-mux arcs (F# <- F5x/FXx_SLICE), split by what they really are.
+
+    In a MODE=CCU2 slice the arc is bit aliasing with CCU2.INJECT1 (same bit in
+    bits.db, #116), not a wide mux.  `widemux_arcs` counts only the real ones;
+    `widemux_ccu2_alias_arcs` the aliases (the old total was the sum)."""
+    real = alias = unknown_bits = 0
+    cur = []                    # [(sink, src)] of the tile block being read
+    modes = {}
+
+    def flush():
+        nonlocal real, alias
+        for sink, _src in cur:
+            m = re.match(r"^F([0-7])$", sink)
+            if m and modes.get("ABCD"[int(m.group(1)) // 2]) == "CCU2":
+                alias += 1
+            else:
+                real += 1
+        cur.clear()
+        modes.clear()
+
     for ln in text.splitlines():
-        if WIDEMUX_SINK_RE.match(ln):
-            arcs_in += 1
+        if ln.startswith(".tile"):
+            flush()
+            continue
+        m = re.match(r"^arc:\s+(\S+)\s+(F5[A-D]|FX[A-D])_SLICE\s*$", ln)
+        if m:
+            cur.append((m.group(1), m.group(2)))
+            continue
+        m = re.match(r"^enum:\s+SLICE([A-D])\.MODE\s+(\S+)", ln)
+        if m:
+            modes[m.group(1)] = m.group(2)
         elif WIDEMUX_UNKNOWN_RE.match(ln):
             unknown_bits += 1
-    return dict(widemux_arcs=arcs_in, widemux_unknown_bits=unknown_bits)
+    flush()
+    return dict(widemux_arcs=real, widemux_ccu2_alias_arcs=alias,
+                widemux_unknown_bits=unknown_bits)
 
 
 def check_netlist(design, cens):

@@ -1,67 +1,70 @@
-"""heavy_guard: lock exclusivity across processes; RAM wait returns once threshold is met."""
 import logging
 import os
-import subprocess
 import sys
-import threading
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 import heavy_guard  # noqa: E402
 
-log = logging.getLogger("test_heavy_guard")
-
-# Child: take the lock, print HELD, exit when stdin closes.
-CHILD = (
-    "import sys, logging; sys.path.insert(0, %r); import heavy_guard\n"
-    "heavy_guard.LOCK_PATH = %r\n"
-    "with heavy_guard.heavy_lock('child', logging.getLogger('c')):\n"
-    "    print('HELD', flush=True); sys.stdin.read()\n"
-)
+LOG = logging.getLogger("test_heavy_guard")
 
 
-def test_lock_excludes_second_process(tmp_path, monkeypatch):
-    lock = str(tmp_path / "heavy.lock")
-    monkeypatch.setattr(heavy_guard, "LOCK_PATH", lock)
-    monkeypatch.setattr(heavy_guard, "POLL_S", 0.05)
-    child = subprocess.Popen(
-        [sys.executable, "-c", CHILD % (os.path.join(REPO, "scripts"), lock)],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-    try:
-        assert child.stdout.readline().strip() == "HELD"
-        got = threading.Event()
-
-        def parent():
-            with heavy_guard.heavy_lock("parent", log):
-                got.set()
-
-        th = threading.Thread(target=parent, daemon=True)
-        th.start()
-        # Child holds the lock: parent must not acquire while it is alive.
-        assert not got.wait(0.5)
-        child.stdin.close()          # child exits, lock released
-        assert got.wait(10)          # parent acquires: bounded by child exit + 1 poll
-        th.join(10)
-    finally:
-        child.kill()
-        child.wait()
+def test_lock_is_shared_across_worktrees():
+    # the git common dir is identical for every worktree of one repo
+    assert os.path.basename(heavy_guard.LOCK_PATH) == "pluribus-heavy.lock"
+    assert os.path.basename(os.path.dirname(heavy_guard.LOCK_PATH)) == ".git"
 
 
-def test_wait_available_returns_when_threshold_lowered(monkeypatch):
-    monkeypatch.setattr(heavy_guard, "POLL_S", 0.05)
-    monkeypatch.setattr(heavy_guard, "available_gb", lambda: 4.0)
-    done = threading.Event()
+def test_stall_guard_kills_idle_process():
+    r = heavy_guard.run_stall_guarded(
+        [sys.executable, "-c", "import time\nwhile True: time.sleep(5)"], "idle", LOG, stall_s=2, overall_s=30)
+    assert r.timed_out and r.returncode == -9
 
-    def waiter():
-        heavy_guard.wait_available(log, "t", min_gb=1e6)   # unreachable
-        done.set()
 
-    th = threading.Thread(target=waiter, daemon=True)
-    th.start()
-    assert not done.wait(0.3)        # blocked while threshold unmet
-    # Same call with a reachable threshold returns promptly.
-    heavy_guard.wait_available(log, "t", min_gb=1.0)
-    # Unblock the first waiter by making RAM look plentiful.
-    monkeypatch.setattr(heavy_guard, "available_gb", lambda: 2e6)
-    assert done.wait(5)
-    th.join(5)
+def test_stall_guard_passes_normal_exit():
+    r = heavy_guard.run_stall_guarded([sys.executable, "-c", "print('ok')"], "ok", LOG)
+    assert not r.timed_out and r.returncode == 0 and r.stdout.strip() == "ok"
+
+
+def test_lock_is_reentrant_for_child_stages(tmp_path, monkeypatch):
+    monkeypatch.setattr(heavy_guard, "LOCK_PATH", str(tmp_path / "l.lock"))
+    with heavy_guard.heavy_lock("outer", LOG):
+        assert os.environ.get(heavy_guard.HELD_ENV)
+        with heavy_guard.heavy_lock("inner", LOG):  # would block forever without the held marker
+            pass
+    assert not os.environ.get(heavy_guard.HELD_ENV)
+
+
+def test_overall_for_known_tools():
+    f = heavy_guard.overall_for
+    assert f(["/x/quartus_fit", "p"]) == heavy_guard.OVERALL_S["quartus_fit"]
+    assert f(["yosys"]) == heavy_guard.OVERALL_S["yosys"]
+    assert f(["/opt/mistral-cv", "decomp"]) == heavy_guard.OVERALL_S["mistral"]
+    assert f(["something_else"]) == heavy_guard.OVERALL_S["other"]
+
+
+def test_guarded_default_limit_and_capture():
+    r = heavy_guard.guarded([sys.executable, "-c", "print('hi')"], "py")
+    assert r.returncode == 0 and r.stdout.strip() == "hi" and not r.timed_out
+
+
+def test_batch_runs_in_own_capped_scope(tmp_path):
+    import shutil
+    import subprocess
+    import pytest
+    if not shutil.which("systemd-run"):
+        pytest.skip("no systemd-run")
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "import logging, os, sys\n"
+        f"sys.path.insert(0, {os.path.dirname(heavy_guard.__file__)!r})\n"
+        "import heavy_guard\n"
+        "with heavy_guard.heavy_lock('probe', logging.getLogger('p')):\n"
+        "    cg = open('/proc/self/cgroup').read()\n"
+        "    mx = open('/sys/fs/cgroup' + cg.strip().split('::')[1] + '/memory.max').read().strip()\n"
+        "    print(cg.strip().split('/')[-1], mx)\n")
+    env = {k: v for k, v in os.environ.items() if k not in ("PLURIBUS_SCOPE", "PLURIBUS_HEAVY_HELD", "PLURIBUS_NO_ISOLATE")}
+    env["PLURIBUS_HEAVY_LOCK"] = str(tmp_path / "l.lock")
+    r = subprocess.run([sys.executable, str(probe)], capture_output=True, text=True, env=env, timeout=60)
+    unit, mx = r.stdout.split()
+    assert unit.startswith("run-") and unit.endswith(".scope")
+    assert int(mx) == int(heavy_guard.BATCH_MAX_GB * 2**30)

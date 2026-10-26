@@ -44,12 +44,12 @@ def main():
     with heavy_guard.heavy_lock("quartus_device_install", log):
         heavy_guard.wait_available(log, "dev_install", 4)
         log.info("+ %s", " ".join(cmd))
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=LIMIT_S)
+        r = heavy_guard.guarded(cmd, "quartus device install", log, overall_s=LIMIT_S)  # #122
         log.info("rc=%d\n%s", r.returncode, (r.stdout + r.stderr)[-3000:])
         if r.returncode:
             return 1
-        v = subprocess.run([str(qb / "quartus_sh"), "--tcl_eval", "get_family_list"],
-                           capture_output=True, text=True, timeout=120)
+        v = heavy_guard.guarded([str(qb / "quartus_sh"), "--tcl_eval", "get_family_list"], "quartus_sh", log,
+                                overall_s=120)  # #122
         log.info("get_family_list: %s", v.stdout.strip())
         missing = [f for f in a.family if f not in v.stdout]
         if missing:

@@ -18,7 +18,7 @@ test that cannot report failure is indistinguishable from one that found none.
 
 WHAT THIS DOES
 --------------
-Reads a generated manifest (design, seed, expected signature) and emits the
+Reads a generated manifest (design, seeds, topology, expected signature) and emits the
 fabric_build.py invocations that realise it, one per configuration.  It prints
 commands rather than running them: the build tooling lives in another repo with
 its own toolchain, and a script that silently shells into a sibling checkout is
@@ -79,7 +79,12 @@ def read_manifest(path):
             continue
         f = ln.split("\t")
         if len(f) >= 3:
-            designs.append((f[0], f[1], f[2]))
+            designs.append({
+                "name": f[0], "seed_base": f[1], "expected": f[2],
+                "placement_seed": f[3] if len(f) > 3 else None,
+                "topology_seed": f[4] if len(f) > 4 else None,
+                "tree_fanin": f[5] if len(f) > 5 else None,
+            })
     return designs, meta
 
 
@@ -97,6 +102,8 @@ def main():
     ap.add_argument("--min-luts", type=int, default=None,
                     help="refuse to build below this utilisation; #98 used a "
                          "floor so the test could not silently shrink")
+    ap.add_argument("--work-root", default="tmp/fabric-coverage",
+                    help="one build directory per candidate under this path")
     args = ap.parse_args()
     log = setup_logging()
 
@@ -134,15 +141,24 @@ def main():
     log.info("")
     log.info("Run these in the workspace that owns the gateware:")
     log.info("")
-    for name, seed, exp in designs:
+    for design in designs:
+        name, seed, exp = (design["name"], design["seed_base"],
+                           design["expected"])
         cmd = [f"python3 {args.build_script}", f"--blocks {blocks}"]
+        if design["placement_seed"]:
+            cmd.append(f"--seed {design['placement_seed']}")
+        if design["topology_seed"]:
+            cmd.append(f"--topology-seed {design['topology_seed']}")
+        if design["tree_fanin"]:
+            cmd.append(f"--tree-fanin {design['tree_fanin']}")
+        cmd.append(f"--build-dir {args.work_root}/{name}")
         if args.emit_golden:
             cmd.append(f"--golden {exp}")
         if round_bits is not None:
             cmd.append(f"--round-bits {round_bits}")
         if args.min_luts:
             cmd.append(f"--min-luts {args.min_luts}")
-        log.info("  # %s  (seed %s)", name, seed)
+        log.info("  # %s  (golden-model seed %s)", name, seed)
         log.info("  %s", " ".join(cmd))
     log.info("")
     log.info("Then load VOLATILE (SRAM, not flash) and read the JTAG registers; "

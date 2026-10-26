@@ -152,7 +152,8 @@ def _run(cmd, cwd, env=None, log=None):
     e.pop("PYTHONPATH", None)
     if env:
         e.update(env)
-    r = subprocess.run(cmd, cwd=cwd, env=e, capture_output=True, text=True)
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, os.path.basename(str(cmd[0])), cwd=cwd, env=e)  # #122
     out = r.stdout + r.stderr
     if log is not None:
         log.write(f"\n$ {' '.join(str(c) for c in cmd)}\n{out}")

@@ -51,10 +51,10 @@ def designs(root, only=None):
 
 def mistral_bt(rbf, out):
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    try:
-        r = subprocess.run([toolchain.mistral_cv(), "decomp", DEVICE, rbf, out], capture_output=True, text=True,
-                           timeout=DECOMP_LIMIT_S)
-    except subprocess.TimeoutExpired:
+    import heavy_guard
+    r = heavy_guard.guarded([toolchain.mistral_cv(), "decomp", DEVICE, rbf, out], "mistral-cv",
+                            overall_s=DECOMP_LIMIT_S)  # #122
+    if r.timed_out:
         raise RuntimeError(f"mistral-cv decomp exceeded {DECOMP_LIMIT_S}s on {rbf}")
     if r.returncode:
         raise RuntimeError(f"mistral-cv rc={r.returncode}: {r.stderr[-300:]}")

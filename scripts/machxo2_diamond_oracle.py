@@ -114,10 +114,9 @@ class ToolError(Exception):
 
 def run_tool(argv, cwd, env, log_path):
     t0 = time.monotonic()
-    try:
-        r = subprocess.run(argv, cwd=cwd, env=env, capture_output=True,
-                           text=True, timeout=TOOL_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
+    import heavy_guard
+    r = heavy_guard.guarded(argv, os.path.basename(argv[0]), overall_s=TOOL_TIMEOUT_S, cwd=cwd, env=env)  # #122
+    if r.timed_out:
         raise ToolError(f"{os.path.basename(argv[0])} timed out: limit "
                         f"{TOOL_TIMEOUT_S}s, elapsed {time.monotonic() - t0:.2f}s")
     dt = time.monotonic() - t0

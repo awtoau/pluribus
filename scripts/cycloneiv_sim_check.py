@@ -147,12 +147,14 @@ def check(name, bitmaps, steps, flip=0):
     cmd = ["iverilog", "-g2012", "-o", str(work / "sim.vvp"), str(work / "tb.v"),
            str(fa.top_module_only(d / "postfit.vo")), str(work / "models.v"),
            str(SIMLIB / "altera_primitives.v"), str(work / "decoded.v")]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=IVERILOG_LIMIT_S)
-        if r.returncode:
-            return name, f"iverilog compile failed: {r.stderr.strip()[-300:]}", None
-        r = subprocess.run(["vvp", str(work / "sim.vvp")], capture_output=True, text=True, timeout=IVERILOG_LIMIT_S)
-    except subprocess.TimeoutExpired:
+    import heavy_guard
+    r = heavy_guard.guarded(cmd, "iverilog", overall_s=IVERILOG_LIMIT_S)  # #122
+    if r.timed_out:
+        return name, f"exceeded {IVERILOG_LIMIT_S}s", None
+    if r.returncode:
+        return name, f"iverilog compile failed: {r.stderr.strip()[-300:]}", None
+    r = heavy_guard.guarded(["vvp", str(work / "sim.vvp")], "vvp", overall_s=IVERILOG_LIMIT_S)
+    if r.timed_out:
         return name, f"exceeded {IVERILOG_LIMIT_S}s", None
     res = [ln for ln in r.stdout.splitlines() if ln.startswith("RESULT")]
     if not res:
