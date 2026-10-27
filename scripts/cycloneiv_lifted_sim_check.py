@@ -226,10 +226,10 @@ class OracleTracer:
         return None, "oracle: pin not in the .vo"
 
 
-def check(name, tables, steps=STEPS, oracle=False):
+def check(name, tables, steps=STEPS, oracle=False, phys=None, phys_fallback=False):
     d = cc.load(name)
     geom = rl.one_geom([name])
-    lift = lf.CycloneIVLift(geom.die, tables)
+    lift = lf.CycloneIVLift(geom.die, tables, phys=phys, phys_fallback=phys_fallback)
     des = lift.lift(d["plane"], tracer=OracleTracer(d) if oracle else None)
     work = WORK / name
     work.mkdir(parents=True, exist_ok=True)
@@ -387,15 +387,21 @@ def main():
     ap.add_argument("--tables", default=str(REPO / "tmp" / "cycloneiv" / "rl_gx_m8c.json"))
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--phys", action="store_true", help="LCCOMB inputs traced on asm record ids (cycloneiv_phys_trace)")
+    ap.add_argument("--phys-fallback", action="store_true", help="with --phys: learner trace where the physical one is open")
     a = ap.parse_args()
     names = a.designs or [n for n in cc.designs(a.pattern) if rl.split_of(n, a.split)]
     if a.limit:
         names = names[:a.limit]
     tables = a.tables.split(",")
+    phys = None
+    if a.phys:
+        import cycloneiv_phys_trace as pt
+        phys = pt.Phys()
     tot = {"matched": 0, "wrong": 0, "missing": 0, "extra": 0}
     npass = 0
     with ThreadPoolExecutor(a.jobs) as ex:
-        for name, res in ex.map(lambda n: check(n, tables, oracle=a.oracle), names):
+        for name, res in ex.map(lambda n: check(n, tables, oracle=a.oracle, phys=phys, phys_fallback=a.phys_fallback), names):
             if "error" in res:
                 log(f"{name}: ERROR {res['error']}")
                 continue

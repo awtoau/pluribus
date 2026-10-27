@@ -33,6 +33,8 @@ def main():
     ap.add_argument("--tables", default=str(REPO / "tmp" / "cycloneiv" / "rl_gx_m8f.json"))
     ap.add_argument("--tag", default="image")
     ap.add_argument("--max-tiles", type=int, default=0, help="debug: first N LAB tiles only")
+    ap.add_argument("--phys", action="store_true", help="LCCOMB inputs traced on asm record ids (cycloneiv_phys_trace)")
+    ap.add_argument("--phys-fallback", action="store_true", help="with --phys: learner trace where the physical one is open")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     (REPO / "tmp" / "lift_image").mkdir(parents=True, exist_ok=True)
@@ -40,7 +42,11 @@ def main():
     for h in (logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_lift_image.log", "w"), logging.StreamHandler()):
         h.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         log.addHandler(h)
-    lift = cl.CycloneIVLift(cg.die_of("EP4CGX150"), a.tables.split(","))
+    phys = None
+    if a.phys:
+        import cycloneiv_phys_trace as pt
+        phys = pt.Phys()
+    lift = cl.CycloneIVLift(cg.die_of("EP4CGX150"), a.tables.split(","), phys=phys, phys_fallback=a.phys_fallback)
     plane = cc.cram_plane(Path(a.image).read_bytes(), lift.geom)
     log.info("plane: %d set bits", len(plane))
     tiles = [(x, y) for x in sorted(lift.geom.kind) if lift.geom.kind[x] == "LAB" for y in range(1, lift.geom.ymax)]

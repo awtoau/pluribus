@@ -80,9 +80,21 @@ def tiles_partial(tiles, geom):
 
 
 class CycloneIVLift:
-    def __init__(self, die, tables):
+    def __init__(self, die, tables, phys=None, phys_fallback=False):
+        """tables: learner mux tables (cycloneiv_route_learn).  phys: a cycloneiv_phys_trace.Phys -> LCCOMB
+        inputs are traced on asm record ids (issue #138); the learner then serves FF pins, the LE_BUFFER
+        comb/reg select and carry / constant codes only (and, with phys_fallback, any pin the physical
+        trace leaves open)."""
         self.geom = cg.load(die)
         self.dec = rd.Decoder(tables)
+        self.phys, self.phys_fallback = phys, phys_fallback
+
+    def tracer(self, plane):
+        if self.phys is None:
+            return rd.Tracer(self.dec, plane, self.geom, terminals=TERMINAL_WIRES)
+        import cycloneiv_phys_trace as pt
+        return pt.PhysTracer(self.phys, plane, self.geom, learner=self.dec, terminals=TERMINAL_WIRES,
+                             fallback=self.phys_fallback)
 
     # -- per-tile primitives ------------------------------------------------------------
     def le_bit(self, plane, x, y, le, df, dv):
@@ -159,7 +171,7 @@ class CycloneIVLift:
     def lift(self, plane, tiles=None, tracer=None):
         geom = self.geom
         des = Design()
-        tr = tracer or rd.Tracer(self.dec, plane, geom, terminals=TERMINAL_WIRES)
+        tr = tracer or self.tracer(plane)
         tiles = tiles if tiles is not None else [(x, y) for x in sorted(geom.kind) if geom.kind[x] == "LAB"
                                                   for y in range(1, geom.ymax)]
         used, masks = self.scan(plane, tiles)
