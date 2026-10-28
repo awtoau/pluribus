@@ -246,6 +246,16 @@ def gen():
     log.info("generated %d designs (%d site pairs + %d pin pairs)", 2 * (len(pairs) + len(ps)), len(pairs), len(ps))
 
 
+def trim_quartus(d):
+    """Regenerable compile junk of a specimen build: the db / incremental_db dirs and the
+    duplicate build.rbf (bitstream.rbf is the kept copy).  ~7.6 MB of 15 per design; the 5k-design
+    sweep hit ENOSPC without this.  Real outputs (rbf / rcf / vo / rpt / pin / logs) stay."""
+    import shutil
+    for p in ("quartus/db", "quartus/incremental_db"):
+        shutil.rmtree(d / p, ignore_errors=True)
+    (d / "quartus" / "build.rbf").unlink(missing_ok=True)
+
+
 def build(match, jobs, force):
     names = sorted(p.name for p in CORPUS.iterdir()
                    if p.name.startswith(("gxspec_", "gxbase_")) and fnmatch.fnmatch(p.name, match)
@@ -263,6 +273,7 @@ def build(match, jobs, force):
         heavy_guard.wait_available(log, n, JOB_MIN_GB)
         t0 = time.monotonic()
         f = fz.build_one(n)
+        trim_quartus(CORPUS / n)
         log.info("%s: %s (%.1fs)", n, "ok" if f is None else f"FAIL at {f}", time.monotonic() - t0)
         if f:
             bad[n] = f
