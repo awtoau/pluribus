@@ -39,8 +39,95 @@ one of them does not hold.
 | context-dependent bits | a bit only changes when a second setting is present (e.g. output-register bit with the register enabled) | 2^k factorial over the k interacting parameters, k small; otherwise single-variable laws | `measured` with `scope.context = {setting: value}`; a claim outside its context tuple is `pattern-predicted` |
 | IP blocks need combinations | M9K mode x width x port x clocking is a product space (~5 x 9 x 2 x 8); DSP similar | measure each axis alone (the checklist), predict the product | axis entries `measured`; cross terms `pattern-predicted` by `m9k-axes-independent` until a factorial sample confirms |
 | options only settable by stream options | header frame 0 option bits (159 unknown), compression flags — set by `quartus_cpf`, not by the design | separate option-sweep specimens (one option per pair) | `measured` with `subject_kind = stream-option` |
-| unobservable bits | bits no legal design sets (redundancy, test, factory) | none; they cannot be measured | `unknown` with reason `unobservable`; counted in the inventory, never predicted |
+| unobservable bits | bits no legal design sets (redundancy, test, factory) | none; they cannot be measured | `never-exercised` after evidence of absence (next subsection); counted in the inventory, never predicted, never "understood" |
 | coordinate map between sources | asm frame axis != plane frame axis near M9K/DSP columns (AFX != FX on 7 LAB columns; vendor x not a pure mirror, +1 after each M9K/DSP pair, 24/104 columns) | per-column anchor specimen (one LE_BUFFER fan-out per column) | the map itself is a claim: `pattern-predicted` per column until that column has an anchor |
+
+### Never-exercised bits (Dan, 2026-10-29)
+
+Specimens come from the vendor fitter, so a bit the fitter never sets is invisible to the method.
+"Never set in N builds" and "not yet tried" look identical until the absence is itself recorded.
+
+Categories, and how each is told apart from "not yet tried":
+
+| category | why the fitter never sets it | distinguishing test | bounded by |
+|---|---|---|---|
+| cost-model preference | a legal pip the fitter never picks (longer, slower, worse congestion) | RCF forcing succeeds -> it was preference, now `measured`; refused with Info 170085 -> not this category | ddb fan-out (the pip exists) |
+| illegal / unusable choice | pip or mode the device rules forbid (a listed mux input whose source wire never exists at that tile; a mode the primitive rejects at compile) | RCF forcing refused (170085) at every source/sink pairing that names it; Quartus error on the primitive parameter | ddb fan-out lists it, fitter legality rejects it |
+| mode- / IP-context only | bit changes only inside a mode the specimen set has not entered (DCS, HSSI, remote update, M9K ECC, PLL reconfig) | enumerate the primitive's mode parameters; a bit never flipped by any single-parameter pair of that primitive is context-dependent, not absent | primitive parameter lists (WYSIWYG) + handbook mode tables |
+| stream-option only | set by `quartus_cpf` / device options, not by the design (header frame 0: 159 unknown) | option sweep, one option per pair | the options list of the tool |
+| spare / reserved / test / redundancy | no vendor table references the bit; no option or primitive touches it | no asm entry, no ddb node, no primitive parameter, zero set across the corpus AND the third-party image set | nothing — these are the residue |
+| other-tool reachable | set by a different Quartus version / setting / hand-edited stream, not by ours | corpus of third-party images: a bit set there but never by us is reachable, so `unknown(reason=unasked)`, never `never-exercised` | the image corpus |
+
+Reach extension by RCF-as-input (forced routes):
+
+- Quartus honours a back-annotated route when the alternative is legal and refuses an illegal one
+  (Info 170085, element dropped and rerouted). So the bound on reach is LEGALITY, not fitter
+  preference: every ddb pip that forcing can name is reachable in principle; a forcing refusal at
+  every pairing is evidence the pip is illegal at that tile.
+- Forcing covers routing only. Cell/IP configuration bits are reached by parameters; stream
+  options by `quartus_cpf`. Each has its own "all attempts refused" form.
+- Not every refusal is legality: a refusal with the wrong sink port, a source the chain cannot
+  place, or a conflicting LOCATION is a bad specimen. An absence record counts only refusals
+  where the diagnostic names the forced element.
+
+Evidence of absence (one `evidence(kind=absence)` row per bit set, never per bit):
+
+| field | content |
+|---|---|
+| bits | the scope (frames x v, or a tile class x offset band) |
+| builds | N designs that touch the enclosing tile/block and never set any of them |
+| forced | K forcing attempts naming the element, each with the refusal diagnostic (170085 or compile error) |
+| settings | tool versions, seeds, fitter effort, optimisation modes tried |
+| corpus | third-party image set checked (count, which set never any of the bits) |
+| static | what references the bits: none / asm group / ddb node / primitive parameter |
+| commit | when recorded |
+
+Tier `never-exercised` (believed unreachable):
+
+- Assigned only from an absence row with `forced >= 1` for routing-class bits (or every parameter
+  of the owning primitive tried for cell-class bits) AND zero set across the image corpus.
+- Not `verified`, not "understood", not predicted from. Inventory shows it as its own line with
+  its absence evidence summary; coverage % counts it in the denominator (below).
+- Without the absence row the bit is `unknown(reason=unasked)`; "we never saw it" is not evidence.
+
+Denominator split:
+
+- `die_bits = shown_reachable + not_shown_reachable`. `shown_reachable` = bits with at least one
+  measured, vendor-decoded or image-corpus hit; `not_shown_reachable` = `never-exercised` +
+  `unknown`. Coverage is reported twice: known / shown_reachable (the method's own progress; can
+  reach 100 %) and known / die_bits (what a lift can trust; never reaches 100 % while any
+  `never-exercised` remains).
+- A lifted image sets a bit in `never-exercised` or `unknown` -> that bit is a FAULT in the lift
+  report, counted beside missing/extra/wrong, and the bit is immediately promoted to
+  `unknown(reason=seen-in-image)` with the image as evidence. Hand-edited streams, other Quartus
+  versions and settings can set bits our fitter never does; the lifter must report them, never
+  ignore them as noise.
+
+Static sources that bound the reachable set, in order of strength:
+
+| source | bounds | does not bound |
+|---|---|---|
+| routing.ddb fan-out (14.9 M real inputs) | which mux inputs exist per tile (legal pip universe) | whether the fitter can be made to pick one; cell/IP bits |
+| asm.ddb groups (51.6 M entries, 7.6 M distinct positions) | which (frame, v) cells routing can ever touch | the 1.5 M out-of-band entries (M9K bulk / interface) and cells no entry names |
+| WYSIWYG primitive parameter lists | cell/IP configuration bits | which parameter combinations the compiler accepts |
+| `quartus_cpf` option list | stream-option bits | — |
+| third-party image corpus | bits SOME tool set (reachable by existence) | meaning |
+| nothing | the residue: cells no table, parameter, option or image references | — |
+
+A bit in the residue after every row above is the only candidate for `never-exercised` on
+static grounds; it still needs the absence row before it gets the tier.
+
+Later hit (a bit finally exercised):
+
+- A specimen, audit or lifted image sets a `never-exercised` bit -> `claim_events(hit)`; tier
+  becomes `measured` (specimen) or `unknown(reason=seen-in-image)` (image), the absence row is
+  kept and marked `superseded` (its "forced refused" entries are now data about the fitter, not
+  about the silicon).
+- The absence CATEGORY that was claimed (illegal / reserved / ...) is the pattern here: every
+  other `never-exercised` set assigned on the same grounds (same forcing diagnostic, same static
+  residue rule) goes `suspect` and gets re-tried first in the audit queue. The loop in section 3
+  applies unchanged; the "pattern" is the absence rule.
+- `shown_reachable` grows, both coverage ratios move, the ledger records which.
 
 ### Cost (build-bound)
 
@@ -72,7 +159,8 @@ else rests on a pattern, so the pattern must carry its evidence and be audited (
 | `pattern-predicted` | a law fitted to measured parents and applied beyond them | LOCAL_LINE translation to 9,356 LABs; class-wide `specimen` entries; LUT INIT anchor law; `afx_map` mirror |
 | `statistical` | voted / learnt over many builds; no single build proves it | phys-map `wires` / `lis` / `defaults` / `cells` votes; `asm_names` alias sets; 1c clock-polarity fit |
 | `eliminated` | the only remaining candidate after every other meaning in a finite set is measured | not used yet (M9K residual bits will be the first) |
-| `unknown` | nothing attributes a meaning; carries a `reason` (`unasked`, `unforceable`, `unobservable`, `conflict`) | inventory classes 4a–4e, 5c, 6 |
+| `never-exercised` | believed unreachable by the vendor fitter: an absence row (N builds, K refused forcings, settings, zero image-corpus hits, static residue) — section 1; not verified, not understood, not predicted from | none assigned yet (needs the absence rows) |
+| `unknown` | nothing attributes a meaning; carries a `reason` (`unasked`, `unforceable`, `seen-in-image`, `orphan`, `conflict`) | inventory classes 4a–4e, 5c, 6 |
 
 A derived claim's tier is the WEAKEST tier in its evidence chain: asm bits are `vendor-decoded`,
 but placing them needs `afx_map` (`statistical`), so the placed asm claim is `statistical` until the
@@ -92,7 +180,8 @@ it is `statistical`.
 | `superseded` | replaced by a stronger-tier claim with the same subject + scope (the statistical->exact replacement rule in recovery-process.md) |
 
 "Verified" means `oracle-verified` or `verified-by-sampling`; nothing else. Inventory/ledger
-headlines report tier x status, never a single word.
+headlines report tier x status, never a single word, and two coverage ratios: over
+`shown_reachable` and over `die_bits` (section 1, denominator split).
 
 ### Prediction record (one row of `claims`, section 4)
 
@@ -150,6 +239,7 @@ becomes `unknown(reason=conflict)` or gets its own measured claim). "Mostly hold
 - A pattern's `verified_scope` widens only to the hull of its confirmed scopes, never beyond (a law confirmed at columns 10, 37, 58, 100 is verified for interior LAB columns 10–100, not for edge columns or M9K-adjacent ones — those are separate classes per the edge rule).
 - Graduation to `verified-by-sampling` per the N rule in section 2; still `pattern-predicted` tier.
 - A `statistical` claim confirmed by a specimen does not get promoted; it is `superseded` by the new `measured` claim (same subject, narrower scope) and the remaining statistical scope stays `statistical`.
+- A `never-exercised` bit that gets hit is promoted as in section 1 ("Later hit"); the absence rule that assigned it is treated as a pattern, so its other assignments go `suspect` and head the audit queue.
 
 ### Sampling rule — errors must surface without a contradiction
 
@@ -168,14 +258,14 @@ pattern + scope, never per bit: per-bit expansion is computed (numpy, as the inv
 # the decoder script + the DB file hash; oracle compares cite the design set.
 evidence = Table("evidence", metadata,
     Column("id",          Integer, primary_key=True, autoincrement=True),
-    Column("kind",        Text, nullable=False),   # specimen-pair | vendor-decode | oracle-compare | audit | elimination
+    Column("kind",        Text, nullable=False),   # specimen-pair | vendor-decode | oracle-compare | audit | elimination | absence | image-hit
     Column("family",      Text, nullable=False),
     Column("device",      Text, nullable=False),
     Column("build_base",  Integer, ForeignKey("postfit_builds.id")),    # NULL for vendor-decode
     Column("build_spec",  Integer, ForeignKey("postfit_builds.id")),
     Column("tool_version", Text),
     Column("stable",      Boolean),                 # rebuild gave identical bits (NULL = not rebuilt)
-    Column("result",      JSON, nullable=False),    # raw diff [[frame, v], ...] or decoder output digest
+    Column("result",      JSON, nullable=False),    # raw diff [[frame, v], ...]; decoder digest; absence: {builds, forced:[{element, diag}], settings, corpus, static}
     Column("commit",      Text, nullable=False),
     Column("created_at",  DateTime(timezone=True)),
     UniqueConstraint("kind", "build_base", "build_spec"),
@@ -205,7 +295,7 @@ claims = Table("claims", metadata,
     Column("scope",        JSON, nullable=False),  # {class, x:[lo,hi], y:[lo,hi], columns, widths, context}
     Column("scope_key",    Text, nullable=False),  # canonical string of scope (for the unique constraint)
     Column("meaning",      JSON, nullable=False),  # the answer: [[frame_rel, v_rel], ...] or wire id or law instance
-    Column("tier",         Text, nullable=False),  # measured | vendor-decoded | pattern-predicted | statistical | eliminated | unknown
+    Column("tier",         Text, nullable=False),  # measured | vendor-decoded | pattern-predicted | statistical | eliminated | never-exercised | unknown
     Column("status",       Text, nullable=False),
     Column("pattern_id",   Text, ForeignKey("claim_patterns.id")),   # NULL unless pattern-predicted
     Column("evidence_ids", JSON, nullable=False),  # direct supporting evidence (measured: the pair; predicted: the parents)
@@ -252,7 +342,8 @@ lift_provenance = Table("lift_provenance", metadata,
 | everything predicted by pattern P | `SELECT * FROM claims WHERE pattern_id = :P` (plus `SUM(n_bits)` for the bits at stake) |
 | everything resting on specimen S | `SELECT * FROM claims WHERE evidence_ids LIKE '%"S"%'` (SQLite: `json_each(evidence_ids)`; PG: `@>`), UNION the claims of every pattern whose `parents` contain S |
 | what changes if S is wrong | the query above, then `SELECT pattern_id, COUNT(*), SUM(n_bits) ... GROUP BY pattern_id` — the blast radius by pattern; plus `lift_provenance` rows citing those claim ids for the netlist impact |
-| coverage by tier per class per commit | `SELECT inventory_class, tier, status, SUM(n_bits) FROM claims WHERE device=:d GROUP BY 1,2,3`; the inventory's `--record` writes this breakdown per class instead of the fixed `LEDGER_TIER` map; unknown = die bits of the class minus the sum |
+| coverage by tier per class per commit | `SELECT inventory_class, tier, status, SUM(n_bits) FROM claims WHERE device=:d GROUP BY 1,2,3`; the inventory's `--record` writes this breakdown per class instead of the fixed `LEDGER_TIER` map; unknown = die bits of the class minus the sum; `shown_reachable` = die bits minus (`never-exercised` + `unknown`) |
+| image sets a bit outside shown_reachable | `SELECT * FROM claims WHERE tier IN ('never-exercised','unknown')` intersected with the image's set cells (numpy); each hit -> `evidence(image-hit)` + `claim_events(hit)` + a lift fault |
 | audit queue | `SELECT pattern_id, scope FROM claims WHERE status IN ('suspect','open') ORDER BY (status='suspect') DESC, n_bits DESC` excluding scopes already in `claim_events(event='audited')` |
 
 ### How the lifters consume it
@@ -271,7 +362,8 @@ lift_provenance = Table("lift_provenance", metadata,
 | conflict hiding — two exact sources disagree and one silently wins | disagreement is a first-class status (`conflict`), shown as its own inventory line, never resolved by tier precedence |
 | performance at ~4 x 10^7 die bits | no per-bit table; claims at pattern + scope (~10^4–10^5 rows); per-tile overrides are rows with one-tile scope; expansion in numpy |
 | bureaucracy — every answer needs five fields filled by hand | the specimen tools write evidence + claims automatically from the pair (the design.toml already carries tool version, date, purpose); the register script derives tier from kind; hand-written rows are the exception (patterns), ~1 per law |
-| vocabulary drift ("decoded", "partial", "table-only", "mixed") | the six tiers + seven statuses are the only values; the register script dies on anything else |
+| vocabulary drift ("decoded", "partial", "table-only", "mixed") | the seven tiers + seven statuses are the only values; the register script dies on anything else |
+| absence inflation — "never-exercised" used to make coverage over `shown_reachable` look complete | the tier needs an absence row with forced refusals and a corpus check; the die_bits ratio is always printed beside it; any image hit on the tier is a lift fault |
 
 ## 6. Adoption plan
 
