@@ -22,6 +22,14 @@ already documented. This doc makes the method binding, not advisory.
   3. **Open projects** — prjtrellis, mistral, apicula, X-Ray: both a source and a format Rosetta
 - **Statistics over random builds is not a source.** Pooled/voted/learnt tables are banned as a
   decode path. Allowed only as a change detector (like real-design LUT counts).
+- **Where statistics IS fine (not a table source):**
+  - **Triage:** frequency of set bits across images/corpus to rank which unknown regions matter.
+  - **Hypotheses:** a fitted pattern (e.g. an address law) is a prediction; a specimen then verifies it.
+  - **Outlier flags:** disagreements between sources point at a bug to investigate.
+  - **Measurement:** coverage %, per-hop accuracy, held-out hit rates.
+  - **Last-resort fallback** where no exact route exists yet: allowed only as its own tier
+    ("statistical, unverified") shown separately in the inventory, and replaced as soon as an exact
+    source covers it. Never mixed into verified counts.
 - Write the decision in a numbered issue per table (cells, routing, clocks, IO): which source,
   why, and the fallback. An approximation proposal must include the ceiling math (below).
 - Precedent: every successful family followed this. MachXO2/ECP5 = vendored DB + small fuzz
