@@ -69,7 +69,7 @@ def ghosts_as_inputs(v, wires):
     return v, len(names)
 
 
-def lpf_for(label, verilog=""):
+def lpf_for(label, verilog="", device="LCMXO2-1200", package="TQFP100"):
     """LOCATE/IOBUF per resolved pad from the DB (port names are the emitted ones).
 
     Bank VCCIO is board data, not in the bitstream: the decoded type OUTPUT_LVTTL33 is the
@@ -79,7 +79,7 @@ def lpf_for(label, verilog=""):
     import db
     from sqlalchemy import text
     import verilog   # port-name sanitising lives with the emitter
-    iodb = json.loads((REPO / "device-db/MachXO2/LCMXO2-1200/iodb.json").read_text())
+    iodb = json.loads((REPO / "device-db/MachXO2" / device / "iodb.json").read_text())
     bank_of = {(m["row"], m["col"], m["pio"]): m["bank"] for m in iodb["pio_metadata"]}
     lines = ["BLOCK RESETPATHS;", "BLOCK ASYNCPATHS;", ""]
     seen = set()
@@ -116,7 +116,7 @@ def lpf_for(label, verilog=""):
         m = re.search(r"input\s+wire\s+(\w+)\s*,?\s*//\s*PLL reference clock", verilog)
         if clki.get("pad_pin") and m:
             pin = clki["pad_pin"]
-            loc = iodb["packages"].get("TQFP100", {}).get(str(pin), {})
+            loc = iodb["packages"].get(package, {}).get(str(pin), {})
             bank = bank_of.get((loc.get("row"), loc.get("col"), loc.get("pio")))
             io = "LVCMOS25" if bank in v25_banks else "LVCMOS33"
             lines.append(f'LOCATE COMP "{m.group(1)}" SITE "{pin}";')
@@ -162,7 +162,7 @@ def main():
         work.mkdir(parents=True, exist_ok=True)
         log.info("%d undriven internal wires promoted to inputs", nghost)
     (work / "fuzz.v").write_text(pv)
-    (work / "fuzz.lpf").write_text((lpf_for(a.label, pv) if not a.ghosts_as_inputs else
+    (work / "fuzz.lpf").write_text((lpf_for(a.label, pv, cfg["board"]["device"], cfg["board"]["package"]) if not a.ghosts_as_inputs else
                                     "BLOCK RESETPATHS;\nBLOCK ASYNCPATHS;\n") + "\n")
     (work / "fuzz.ldf").write_text(E.LDF % E.STY)
     (work / "run.tcl").write_text(E.TCL if not a.ghosts_as_inputs else E.TCL_MAP_ONLY)
