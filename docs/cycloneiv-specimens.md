@@ -102,6 +102,20 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
   block-exclusivity, remaining transform gaps).  That is track 2 of #141 (routing.ddb fan-out /
   group attribution), not more specimens.
 
+## Block checklists and order (Dan, 2026-10-29; ranking rule in recovery-process.md)
+
+Order: M9K → LAB core classes (LOCAL_LINE sink ports, control stripe, LE modes, LE_BUFFER) →
+LI/R4/C4 interior → multiplier → IO/periphery → edges/corners last. Edges are NOT first.
+
+M9K checklist (one M9K, pinned site, one change per pair, raw diff; tick each):
+- [ ] data: word 0 bit 0 init vs all-zero → 1 cell expected; then words 1,2,4,8,… (address law), bits 1,2,4,8 (bit law); widths ×1,×2,×4,×8,×9,×16,×18,×32,×36
+- [ ] mode: single-port / simple dual / true dual / ROM / FIFO; one change per pair
+- [ ] clocking: clock-enable, aclr, read-during-write, output register on/off, address register on/off
+- [ ] ports: each address / data / byte-enable / write-enable pin routed (one pin, one far-end per build)
+- [ ] column position: same pair at ≥3 M9K sites per column and in every M9K column (8) — confirm the single-offset rule
+
+Mark each box with the commit that verified it; unticked boxes appear in the inventory top-10.
+
 ## Cost
 
 - One specimen pair ≈ 15 s of Quartus (measured 2026-10-28); the matrix is a few thousand

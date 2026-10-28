@@ -96,6 +96,23 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
   Never slide back to decoder matching to keep going.
 - Agent briefs quote this section; they do not paraphrase it.
 
+### Priority order (binding; Dan, 2026-10-29)
+
+- **Target = die coverage %, not one image.** Metric: % of the die's configuration bits with a
+  verified meaning (`scripts/cycloneiv_bit_inventory.py`). A single image only breaks ties.
+- **Rank work by unknown bits converted per specimen.** Big, regular blocks first (M9K = 36 % of
+  the die, uniform columns); small/irregular last.
+- **Easy and large before hard and small.** Edges, corners and one-off pin cases come AFTER the
+  interior class they truncate is fully known: an edge is a deviation from the interior pattern,
+  so the pattern must exist first.
+- **Tick every box of a block before the next block** (a checklist per block, see
+  docs/cycloneiv-specimens.md "Block checklists"): partial coverage of many blocks is worse than
+  complete coverage of one, because completeness is what lets an elimination argument close the
+  remaining bits.
+- **Elimination counts.** Once a block's checklist is complete, every remaining set bit in that
+  block is, by elimination, a named unknown to attack next; record that count in the inventory.
+- Re-rank after every inventory run; the doc's top-10 table is the queue.
+
 ## Case study: Cyclone IV (#141)
 
 - The method was documented in four places before the deviation (#108, CLAUDE.md device-db rule,

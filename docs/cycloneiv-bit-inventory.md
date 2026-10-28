@@ -86,6 +86,8 @@ Tool: `scripts/cycloneiv_bit_inventory.py --image <path>` (read-only; log `tmp/l
 
 ## Findings
 
+- Queue order is the priority rule in docs/recovery-process.md (die coverage %, big/regular first,
+  edges last); the M9K checklist is in docs/cycloneiv-specimens.md.
 - M9K bands are 36 % of the die; any M9K content/mode specimen outranks everything else by bits.
 - Class 6 (28 % of the die, 601 k image set bits) is LAB-column cells with no asm entry, no LUT / used bit, no specimen: the control stripe and the LUT-frame remainder are the biggest pieces.
 - Verified coverage is 6.3 % of the die and 31.4 % of the image's set bits (almost all LUT INIT); routing bits are decoded but unverified.
