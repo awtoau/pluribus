@@ -117,13 +117,14 @@ def pass_ff_cones(bs_id, n_workers):
             if ce and not ce.startswith("1'b"): ff_d_nets.add(ce)
 
         # Load full reachability_rev (used for input cones)
+        # streamed (no fetchall): the Row objects of ~2 M rows cost ~1 GB and are not needed after indexing
         rev_rows = conn.execute(
             select(
                 schema.reachability_rev.c.dst,
                 schema.reachability_rev.c.src,
                 schema.reachability_rev.c.min_hops,
             ).where(schema.reachability_rev.c.bitstream == bs_id)
-        ).fetchall()
+        )
         rev_index = defaultdict(list)
         for dst, src, h in rev_rows:
             # Exclude paths that cross a FF Q boundary — src that is another FF's Q
@@ -138,7 +139,7 @@ def pass_ff_cones(bs_id, n_workers):
                 schema.reachability.c.dst,
                 schema.reachability.c.min_hops,
             ).where(schema.reachability.c.bitstream == bs_id)
-        ).fetchall()
+        )
         fwd_index = defaultdict(list)
         for src, dst, h in fwd_rows:
             # Exclude paths that cross a FF D/CE boundary
