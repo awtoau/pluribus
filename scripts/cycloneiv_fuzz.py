@@ -28,6 +28,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CORPUS = REPO / "corpus" / "cycloneiv"
+# Quartus scratch (alt0754_* dirs) goes on disk, not /tmp tmpfs: a wide sweep's litter blew the
+# /tmp user quota (2026-10-28). build_one reaps entries idle >30 min (live chains touch theirs).
+QTMP = REPO / "tmp" / "quartus_tmp"
 sys.path.insert(0, str(REPO / "scripts"))
 import heavy_guard  # noqa: E402
 import toolchain  # noqa: E402
@@ -182,8 +185,10 @@ def run(step, cmd, cwd, logdir, limits=OVERALL_S):
     overall = limits[step]
     logdir.mkdir(parents=True, exist_ok=True)
     t0 = time.monotonic()
+    QTMP.mkdir(parents=True, exist_ok=True)
     proc = subprocess.Popen([str(c) for c in cmd], cwd=cwd, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, errors="replace")
+                            stderr=subprocess.STDOUT, text=True, errors="replace",
+                            env=dict(os.environ, TMPDIR=str(QTMP)))
     lines = queue.Queue()
 
     def pump():
@@ -231,7 +236,21 @@ def run(step, cmd, cwd, logdir, limits=OVERALL_S):
     return True
 
 
+def reap_qtmp():
+    """Remove Quartus scratch idle >30 min (a live chain touches its dir continuously)."""
+    if not QTMP.is_dir():
+        return
+    cutoff = time.time() - 1800
+    for p in QTMP.iterdir():
+        try:
+            if p.lstat().st_mtime < cutoff:
+                shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def build_one(name):
+    reap_qtmp()
     d = CORPUS / name
     spec = tomllib.loads((d / "design.toml").read_text())
     for p in d.iterdir():
