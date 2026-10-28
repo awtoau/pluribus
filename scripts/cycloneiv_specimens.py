@@ -52,10 +52,12 @@ JOB_MIN_GB = 8           # floor per job start: a specimen Quartus chain peaks ~
 POSITIONS = 3            # tiles per class a generalisation must agree on
 # driver -> sink displacements: short R4 / C4 both ways, a diagonal, R24 / C16 reach
 DISPS = [(3, 0), (-3, 0), (0, 3), (0, -3), (5, 3), (20, 0), (-20, 0), (0, 14), (0, -14)]
-# matching windows, (|dx|max, |dy|max).  DST: mux block tile vs the wire's RCF coordinate
-# (ANCHOR_CANDS of cycloneiv_route_learn widened by 1).  SRC: source record node tile
-# (fitter x = XMIRROR - vx) vs the source wire's RCF coordinate (wire spans; R4 4 tiles, R24 24).
-DST_WIN = {"R4": (5, 1), "C4": (2, 5), "R24": (25, 1), "C16": (2, 17), "LOCAL_INTERCONNECT": (0, 1)}
+# matching windows, (|dx|max, |dy|max).  DST: mux block tile vs the wire's RCF coordinate.
+# The RCF names a wire by its DRIVER end, so the driver mux is within ~1 tile of that coordinate
+# (measured: R4 mux at dx -1..0, C4 at dy -1; wider windows let an unrelated same-source block
+# match as a unique decoy - the first same-tile conflict, 2026-10-28).  SRC: source record node
+# tile vs the source wire's RCF coordinate (home tile vs driver-dependent alias, small offsets).
+DST_WIN = {"R4": (1, 1), "C4": (1, 1), "R24": (2, 2), "C16": (2, 2), "LOCAL_INTERCONNECT": (0, 1)}
 SRC_WIN = {"R4": (5, 2), "C4": (2, 5), "R24": (25, 2), "C16": (2, 17), "LE_BUFFER": (2, 1)}
 # RCF type -> vendor name families that may carry it (cross-type naming quirk, ddb-format doc)
 SRC_FAMS = {"R4": ("H4", "V4"), "C4": ("V4", "H4"), "R24": ("H24", "V16"), "C16": ("V16", "H24")}
