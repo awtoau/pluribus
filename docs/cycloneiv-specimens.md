@@ -107,3 +107,7 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
 - One specimen pair ≈ 15 s of Quartus (measured 2026-10-28); the matrix is a few thousand
   builds, embarrassingly parallel across 32 cores within the 20 GB free-RAM rule — minutes to
   low hours of wall-clock, re-runnable at will.
+
+## Raw-diff specimens (forced single-hop)
+
+- Binding rules: [recovery-process.md](recovery-process.md) "Specimen rules for agents".  Tier 0/1 tool: `scripts/cycloneiv_forced.py`.
