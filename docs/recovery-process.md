@@ -14,6 +14,17 @@ already documented. This doc makes the method binding, not advisory.
   enumerate that region outright. A pattern that fails verification never degrades to "mostly
   holds" — it reverts to enumeration.
 
+## How the code is built (binding; Dan, 2026-10-29)
+
+Applies to every phase below: lifters, decoders, specimen solvers, gates, inventories.
+- **Free-threaded Python (NoGIL, python3.15t), proven here.** `sys._is_gil_enabled()` stays `False` across the stack; the whole pipeline is one interpreter.
+- **Threads everywhere.** Parallelism = threads (`ThreadPoolExecutor`, `build_pool.map_adaptive`), never `multiprocessing`/`ProcessPoolExecutor`. External EDA tools (Quartus, Diamond, yosys) are the only subprocesses. Per-device read-only data is built once and shared by all threads (8 concurrent ECP5 85F lifts = ~2 GB, #148).
+- **Efficiency over stability.** A bug in one thread can crash the whole run; accepted. Stall timeouts and memory leases bound the damage; every run rebuilds from scratch anyway.
+- **numpy is the numeric core and is already highly optimised.** Bit planes, group decode, graph walks and set operations are vectorised numpy over dense arrays (the die is finite: 39.4 M cells, 14.9 M routing edges, all in memory or `mmap`'d). Measured against Rust and SQL (#144, `docs/rust-candidates.md`): nothing earns a Rust rewrite; vendor tools dominate every gate's wall time.
+- **When something is slow:** better algorithm, then numpy vectorisation (dense bitmap + gather, sort + diff, dtype downcast), then threads over independent items, then an SQL index. Rust only for a measured >= 5-10x on a stage that dominates a pipeline.
+- **Memory is the limit, not CPU.** Every heavy job holds a memory lease (`docs/memory-budget.md`); peaks are measured (`scripts/mem_report.py`), not guessed. Read-only tables are `mmap`'d numpy arrays or one shared in-process object.
+- Why this matters for recovery: brute force over the whole die is only cheap because of this stack (dense arrays, shared tables, threads); a pattern that needs per-process copies or Python object graphs per design is the wrong design.
+
 ## Phase 0 — data-source decision (before any recovery code)
 
 - Enumerate the sources, in order of strength:
