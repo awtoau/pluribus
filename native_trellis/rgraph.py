@@ -22,6 +22,7 @@ import copy
 import os
 import sys
 from collections import namedtuple
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
@@ -140,6 +141,36 @@ def _ecp5_pio_count(ttype):
     return 0
 
 
+def _templates_of(spec):
+    return _slice_templates() if spec[0] == "slice" else _pio_templates(spec[1])
+
+
+class _BelMap(Mapping):
+    """{(x,y): {bel_name: Bel}} view: Bels are rebuilt from the shared templates per access, so the
+    ~1.5 KB-per-bel object graph (RId tuples, pin dicts) is never stored.  Read-only."""
+
+    def __init__(self, specs):
+        self._specs = specs
+
+    def __getitem__(self, loc):
+        specs = self._specs[loc]
+        col, row = loc
+        out = {}
+        for spec in specs:
+            for bname, btype, bz, pins in _templates_of(spec):
+                out[bname] = Bel(bname, btype, bz, {p: RId(col, row, w) for p, w in pins.items()})
+        return out
+
+    def __contains__(self, loc):
+        return loc in self._specs
+
+    def __iter__(self):
+        return iter(self._specs)
+
+    def __len__(self):
+        return len(self._specs)
+
+
 def _fresh(s):
     """Same text, new object (str(s) returns s itself)."""
     return (s + "\0")[:-1]
@@ -194,7 +225,8 @@ class NativeRoutingGraph:
         # per-location structures
         self.wires = {}   # (x,y) -> set(name)
         self.arcs = {}    # (x,y) -> list[Arc]   (stored at the processing tile)
-        self.bels = {}    # (x,y) -> {bel_name: Bel}
+        self._bel_specs = {}                # (x,y) -> [("slice", 0) | ("pio", n)]
+        self.bels = _BelMap(self._bel_specs)  # (x,y) -> {bel_name: Bel}, built on access
 
         if tiledb is None:
             from . import tiledb as _tiledb
@@ -224,8 +256,8 @@ class NativeRoutingGraph:
                     self.wires[loc] = ws
                 else:
                     cur.update(ws)
-            for loc, bm in bels.items():
-                self.bels.setdefault(loc, {}).update(bm)
+            for loc, specs in bels.items():
+                self._bel_specs.setdefault(loc, []).extend(specs)
 
     def _build_chunk(self, names, threaded=False):
         """(arcs, wires, bels) for a run of tilegrid tiles; touches no shared state.
@@ -257,14 +289,12 @@ class NativeRoutingGraph:
             else:
                 ws.add(name)
 
-        def add_bels(col, row, templates):
-            belmap = bels.setdefault((col, row), {})
-            for bname, btype, bz, pins in templates:
-                rpins = {}
-                for pin, wname in pins.items():
+        def add_bels(col, row, spec):
+            # bel pin wires are part of the wire set; the Bel objects themselves are built on access
+            bels.setdefault((col, row), []).append(spec)
+            for _bn, _bt, _bz, pins in _templates_of(spec):
+                for wname in pins.values():
                     wire(col, row, wname)
-                    rpins[pin] = RId(col, row, wname)
-                belmap[bname] = Bel(bname, btype, bz, rpins)
 
         for name in names:
             row, col = self.geom.tile_rc[name]
@@ -304,7 +334,7 @@ class NativeRoutingGraph:
             # builders are CommonBels in prjtrellis — shared verbatim between
             # ECP5 and MachXO2; only the tile type name differs.
             if ttype == self._plc_type:
-                add_bels(col, row, _slice_templates())
+                add_bels(col, row, ('slice', 0))
 
             # ECP5 PIO bels.  MachXO2 pads ride JQ/JA joint nodes and need no
             # bel; ECP5 pads have a real PIO bel whose pins are the *_PIO
@@ -312,7 +342,7 @@ class NativeRoutingGraph:
             if self.family == "ECP5":
                 npio = _ecp5_pio_count(ttype)
                 if npio:
-                    add_bels(col, row, _pio_templates(npio))
+                    add_bels(col, row, ('pio', npio))
         return arcs, wires, bels
 
     # --- pytrellis-compatible-ish accessors (Stage E wraps these) -----------
