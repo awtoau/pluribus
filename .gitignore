@@ -112,7 +112,4 @@ sources/cycloneiv-corpus/*
 !sources/cycloneiv-corpus/README.md
 
 # Third-party commercial binaries (private): manifest + README tracked only
-!sources/haltech/
-sources/haltech/*
-!sources/haltech/manifest.json
-!sources/haltech/README.md
+sources/haltech
