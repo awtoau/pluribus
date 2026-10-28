@@ -13,6 +13,7 @@ import datetime
 import json
 import logging
 import re
+import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -101,6 +102,9 @@ def diff(a, b):
 def build_all(names, jobs):
     def one(n):
         f = fz.build_one(n)
+        for sub in ("quartus/db", "quartus/incremental_db"):   # regenerable; the 5k-design sweep hit ENOSPC
+            shutil.rmtree(CORPUS / n / sub, ignore_errors=True)
+        (CORPUS / n / "quartus" / "build.rbf").unlink(missing_ok=True)
         log.info("%s: %s", n, "ok" if f is None else f"FAIL at {f}")
         return n, f
     with ThreadPoolExecutor(jobs) as ex:
@@ -128,6 +132,11 @@ def tier(jobs):
 
 
 LAB = (10, 10)
+PFX = "gxll"          # design-name prefix; X10 Y10 keeps the original names
+
+
+def lab_file(suffix=""):
+    return REPO / "tmp" / (f"cycloneiv_forced_lab{'' if PFX == 'gxll' else '_' + PFX[4:]}{suffix}.json")
 
 
 def pair_designs(pairs):
@@ -142,7 +151,7 @@ def pair_designs(pairs):
                  "    u0 (.combout(u0_o));\n"
                  '  cycloneiv_lcell_comb #(.lut_mask(16\'hFFFF), .sum_lutc_input("datac"), .dont_touch("on"))\n'
                  f"    u1 ({conn}.combout(y));\nendmodule\n")
-            out[f"gxll_{src:02d}_{snk:02d}_{kind}"] = (
+            out[f"{PFX}_{src:02d}_{snk:02d}_{kind}"] = (
                 v, [f"set_location_assignment {lc(*LAB, src)} -to u0",
                     f"set_location_assignment {lc(*LAB, snk)} -to u1", pin], f"LOCAL_LINE u0@N{src} -> u1@N{snk}")
     return out
@@ -163,20 +172,20 @@ def lab(jobs):
     build_all([n for n in ds if not (CORPUS / n / "routing.rcf").exists()], jobs)
     res = {}
     for a, b in pairs:
-        n = f"gxll_{a:02d}_{b:02d}"
+        n = f"{PFX}_{a:02d}_{b:02d}"
         if not ((CORPUS / (n + "_s") / "routing.rcf").exists() and (CORPUS / (n + "_b") / "routing.rcf").exists()):
             log.info("MISSING build %s", n)
             continue
         on, off = diff(n + "_s", n + "_b")
         res[n] = {"src": a, "snk": b, "hop": rcf_hop(n + "_s"), "on": on, "off": off}
-    (REPO / "tmp" / "cycloneiv_forced_lab.json").write_text(json.dumps(res))
+    lab_file().write_text(json.dumps(res))
     log.info("lab grid: %d / %d pairs diffed", len(res), len(pairs))
 
 
 def rebuild(frac, seed, jobs):
     """Rebuild a random fraction of the grid (specimen + base); every bit set must be identical."""
     import random
-    res = json.loads((REPO / "tmp" / "cycloneiv_forced_lab.json").read_text())
+    res = json.loads(lab_file().read_text())
     names = sorted(res)
     pick = random.Random(seed).sample(names, max(1, int(len(names) * frac)))
     build_all([n + k for n in pick for k in ("_s", "_b")], jobs)
@@ -224,13 +233,13 @@ def predict(tab, src, snk):
 
 def holdout(frac, seed, jobs):
     import random
-    res = json.loads((REPO / "tmp" / "cycloneiv_forced_lab.json").read_text())
+    res = json.loads(lab_file().read_text())
     tab = lab_table(res)
     keys = sorted(tab)
     held = random.Random(seed).sample(keys, int(len(keys) * frac))
     train = {k: v for k, v in tab.items() if k not in held}
     pred = {k: predict(train, *k) for k in held}
-    names = [f"gxll_{a:02d}_{b:02d}" for a, b in held]
+    names = [f"{PFX}_{a:02d}_{b:02d}" for a, b in held]
     build_all([n + k for n in names for k in ("_s", "_b")], jobs)
     hit = miss = nopred = 0
     for (a, b), n in zip(held, names):
@@ -244,15 +253,52 @@ def holdout(frac, seed, jobs):
             miss += 1
             log.info("MISS %s predicted %s built %s", n, pred[(a, b)], on)
     log.info("holdout: %d pairs, hit %d, miss %d, no-prediction %d", len(held), hit, miss, nopred)
-    (REPO / "tmp" / "cycloneiv_forced_lab_table.json").write_text(
+    lab_file("_table").write_text(
         json.dumps({f"{a},{b}": v for (a, b), v in sorted(tab.items())}))
+
+
+def compare(labs):
+    """Each LAB's grid vs X10 Y10 in (frame, v) coordinates: best single (dframe, dv) offset, then
+    count pairs whose bit set equals X10's shifted by it; every other pair is listed."""
+    import collections
+    nv = cc.load_plane_only("gxll_00_02_s").shape[1]
+    ref = json.loads((REPO / "tmp" / "cycloneiv_forced_lab.json").read_text())
+    fv = lambda bs: sorted((b // nv, b % nv) for b in bs)   # noqa: E731
+    for lb in labs:
+        x, y = lb
+        f = REPO / "tmp" / f"cycloneiv_forced_lab_{x}x{y}.json"
+        res = json.loads(f.read_text())
+        offs = collections.Counter()
+        for k, v in res.items():
+            r = ref.get(k.replace(f"gxll{x}x{y}", "gxll"))
+            if r and len(r["on"]) == len(v["on"]):
+                for (f1, v1), (f0, v0) in zip(fv(v["on"]), fv(r["on"])):
+                    offs[(f1 - f0, v1 - v0)] += 1
+        (df, dv), cnt = offs.most_common(1)[0]
+        same, bad = 0, []
+        for k, v in sorted(res.items()):
+            r = ref[k.replace(f"gxll{x}x{y}", "gxll")]
+            want = [(a + df, b + dv) for a, b in fv(r["on"])]
+            if want == fv(v["on"]) and not v["off"]:
+                same += 1
+            else:
+                bad.append(k)
+        hop_same = sum(1 for k, v in res.items() if v["hop"] and v["hop"][3:] == ref[k.replace(f"gxll{x}x{y}", "gxll")]["hop"][3:])
+        log.info("LAB X%d Y%d vs X10 Y10: best offset (dframe %d, dv %d) %d bit votes; %d / %d pairs match; "
+                 "hop (I, port) identical %d / %d", x, y, df, dv, cnt, same, len(res), hop_same, len(res))
+        for k in bad:
+            log.info("  NOMATCH %s: LAB %s vs X10Y10 %s", k, fv(res[k]["on"]), fv(ref[k.replace(f"gxll{x}x{y}", "gxll")]["on"]))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("tier", "lab", "rebuild", "holdout"))
+    ap.add_argument("cmd", choices=("tier", "lab", "rebuild", "holdout", "compare"))
     ap.add_argument("--jobs", type=int, default=6)
+    ap.add_argument("--lab", default="10,10", help="LAB X,Y for lab/rebuild/holdout")
     a = ap.parse_args()
+    global LAB, PFX
+    LAB = tuple(int(v) for v in a.lab.split(","))
+    PFX = "gxll" if LAB == (10, 10) else f"gxll{LAB[0]}x{LAB[1]}"
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     log.setLevel(logging.INFO)
     fz.log.setLevel(logging.INFO)
@@ -264,6 +310,8 @@ def main():
         tier(a.jobs)
     elif a.cmd == "lab":
         lab(a.jobs)
+    elif a.cmd == "compare":
+        compare([(58, 30), (37, 60), (100, 75)])
     elif a.cmd == "rebuild":
         rebuild(0.1, 20261028, a.jobs)
     else:
