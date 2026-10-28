@@ -642,6 +642,11 @@ def test_one(rec, log, do_lift=True):
     return out
 
 
+def _proc_one(rec, do_lift):
+    """ProcessPool entry (--mode procs): own interpreter, own routing graph per process."""
+    return test_one(rec, setup_logging("ecp5_corpus_test"), do_lift)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", default=MANIFEST)
@@ -653,8 +658,12 @@ def main():
     # lifts were measured at ~27 GB RSS combined.  Decode-only runs are cheap
     # and can use many more workers, so --no-lift pairs well with a high count.
     ap.add_argument("--workers", type=int, default=4,
-                    help="parallel workers (memory scales with this on 85F "
-                         "lifts; 4 needs roughly 16 GB, 8 roughly 30 GB)")
+                    help="parallel workers (threads mode shares one graph per device: "
+                         "8 concurrent 85F lifts peak ~2.2 GB, #146)")
+    ap.add_argument("--mode", choices=["threads", "procs"], default="threads",
+                    help="threads (default): workers share one routing graph per device in one "
+                         "process; procs: old per-process mode, each worker builds its own "
+                         "(A/B and memory comparison, #146)")
     ap.add_argument("--only", help="substring filter on label")
     ap.add_argument("--no-lift", action="store_true")
     ap.add_argument("--extra", action="append", default=[],
@@ -747,9 +756,17 @@ def main():
                       indent=2, sort_keys=True)
         os.replace(tmp, args.out)
 
-    with heavy_guard.heavy_lock("ecp5_corpus_test", log), \
-            concurrent.futures.ThreadPoolExecutor(args.workers) as ex:
-        futs = [ex.submit(test_one, e, log, not args.no_lift) for e in entries]
+    if args.mode == "procs":
+        import multiprocessing as mp
+        pool = concurrent.futures.ProcessPoolExecutor(args.workers,
+                                                      mp_context=mp.get_context("spawn"))
+    else:
+        pool = concurrent.futures.ThreadPoolExecutor(args.workers)
+    with heavy_guard.heavy_lock("ecp5_corpus_test", log), pool as ex:
+        if args.mode == "procs":
+            futs = [ex.submit(_proc_one, e, not args.no_lift) for e in entries]
+        else:
+            futs = [ex.submit(test_one, e, log, not args.no_lift) for e in entries]
         for f in concurrent.futures.as_completed(futs):
             results.append(f.result())
             with _lock:

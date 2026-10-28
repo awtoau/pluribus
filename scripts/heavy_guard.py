@@ -77,6 +77,8 @@ def wait_available(log, what="", min_gb=None):
 # PLURIBUS_MIN_AVAILABLE_GB) only.  Unmeasured jobs are absent on purpose: workers_for() refuses them.
 JOB_GB = {
     "ecp5_85f_lift_process": 7.5,    # graph + one target, 85F, per process
+    "ecp5_85f_lift_threads_base": 1.0,   # 85F, threads mode, graph (no arcs) + first lift: 0.85 measured (#146)
+    "ecp5_85f_lift_thread_extra": 0.25,  # marginal per further concurrent 85F lift: (2.15-0.85)/7 = 0.19 measured
     "ecp5_graph_45f": 3.3,           # routing graph (+ signature), shared across threads of one process
     "ecp5_graph_25f": 1.9,
     "ecp5_target_extra_25f": 0.35,   # marginal RSS of one more concurrent 25F target on a shared graph
