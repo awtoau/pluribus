@@ -217,7 +217,7 @@ def test_expectation_confirmed_becomes_measured_claim_and_promotes_unknown():
         assert e == ("confirmed", cid)
         u = conn.execute(select(S.unknowns.c.status).where(S.unknowns.c.id == s["unk_expected"])).scalar()
         assert u == "promoted"
-        assert len(Q.open_expectations(conn, "fam")) == 0
+        assert [x["subject_key"] for x in Q.open_expectations(conn, "fam")] == ["c"]   # only the child-scope one remains
 
 
 def test_expectation_refuted_makes_pattern_suspect():
