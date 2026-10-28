@@ -299,12 +299,23 @@ class Solver:
         return ft
 
     def fired(self, name):
-        """{(block, source record)} of non-select fired groups."""
+        """{(block, source record, group)} of non-select fired groups."""
         P = self.P
         plane = cc.load_plane_only(name)
         gids, recs, blocks = P.dec.active(plane)
         keep = P.dec.npred[gids] < P.dec.gsize[gids]
-        return set(zip(blocks[keep].tolist(), recs[keep].tolist()))
+        return set(zip(blocks[keep].tolist(), recs[keep].tolist(), gids[keep].tolist()))
+
+    def gsel(self, G, tx, ty):
+        """The fired group's select-entry position relative to the block tile anchor: identifies
+        WHICH input of the block fired (a block can hold several muxes sharing second-level bits,
+        each driving its own wire - the group, not the block, names the answer)."""
+        dec = self.P.dec
+        s, n = int(dec.gstart[G]), int(dec.gsize[G])
+        b0 = np.asarray(dec.b0[s:s + n])
+        j = s + (int(np.argmax(b0 == 1)) if (b0 == 1).any() else 0)
+        f0, v0 = self.P.g.anchor(tx, ty)
+        return f"{int(dec.pf[j]) - f0},{int(dec.pv[j]) - v0}"
 
     def src_ok(self, a, s, loose=False):
         """May record s be the wire the RCF names a?  (type family + node-tile window).
@@ -334,18 +345,13 @@ class Solver:
         # other nets' edges still participate in matching for the all-different constraint.
         # Pad-path edges re-routed between twins are real but unanchored - the first per-tile
         # conflicts (2026-10-28) were exactly those, matched to lookalike IO-row LI muxes.
-        targets = {"gxspec_pi": ("a~input",), "gxspec_po": ("y",)}.get(name[:9], ("n",))
-        edge_net = {}
-        edges = []
-        for net, lst in rcf.items():
-            for a, b in lst:
-                if a[0] == "W" and b[0] == "W" and b[1] in DST_WIN:
-                    edges.append((a, b))
-                    edge_net[(a, b)] = net
+        on_path = self.target_path(name, rcf)
+        edges = [(a, b) for lst in rcf.values() for a, b in lst
+                 if a[0] == "W" and b[0] == "W" and b[1] in DST_WIN]
         rec, match = {}, {}
-        bytile = collections.defaultdict(list)       # block tile -> live (block, src) pairs
-        for B, s in pool:
-            bytile[(int(P.btx[B]), int(P.bty[B]))].append((B, s))
+        bytile = collections.defaultdict(list)       # block tile -> live (block, src, group) triples
+        for B, s, G in pool:
+            bytile[(int(P.btx[B]), int(P.bty[B]))].append((B, s, G))
         stats = collections.Counter(edges_total=len(edges), fired_pairs=len(pool))
 
         loose = len(pool) <= LOOSE_POOL_MAX
@@ -355,12 +361,12 @@ class Solver:
             out = []
             for tx in range(b[2] - wx, b[2] + wx + 1):
                 for ty in range(b[3] - wy, b[3] + wy + 1):
-                    for (B, s) in bytile.get((tx, ty), ()):
+                    for (B, s, G) in bytile.get((tx, ty), ()):
                         if a in rec:
                             if s == rec[a]:
-                                out.append((B, s))
+                                out.append((B, s, G))
                         elif self.src_ok(a, s, loose):
-                            out.append((B, s))
+                            out.append((B, s, G))
             return out
 
         pending = list(edges)
@@ -369,11 +375,11 @@ class Solver:
             for a, b in pending:
                 cs = cands(a, b)
                 if len(cs) == 1:
-                    B, s = cs[0]
+                    B, s, G = cs[0]
                     if a in rec and rec[a] != s:
                         return {"error": f"chain conflict at {a}: records {rec[a]} vs {s}"}
                     rec[a] = s
-                    match[(a, b)] = (B, s)
+                    match[(a, b)] = (B, s, G)
                     t = (int(P.btx[B]), int(P.bty[B]))
                     bytile[t] = [p for p in bytile[t] if p[0] != B]
                     progress = True
@@ -387,18 +393,19 @@ class Solver:
             cs = cands(a, b)
             stats["edge_ambiguous" if len(cs) > 1 else "edge_no_candidate"] += 1
             unmatched.append({"edge": [list(a[1:]), list(b[1:])], "rec_known": a in rec,
-                              "cands": [self.pair_info(B, s) for B, s in cs[:8]]})
+                              "cands": [self.pair_info(*c) for c in cs[:8]]})
         wires, lis, bufs = [], [], []
-        for (a, b), (B, s) in match.items():
+        for (a, b), (B, s, G) in match.items():
             stats["edge_matched"] += 1
-            if edge_net[(a, b)] not in targets:
+            if (a, b) not in on_path:
                 stats["off_target_matched"] += 1
                 continue
             tx, ty, key = int(P.btx[B]), int(P.bty[B]), str(P.keys[int(P.bkey[B])])
+            gs = self.gsel(G, tx, ty)
             if a[1] == "LE_BUFFER":
                 bufs.append([a[5] // 2, (int(P.fam[s]) - 16) // 2])   # RCF I//2 = LE = (family-16)//2
             if b[1] == "LOCAL_INTERCONNECT":
-                lis.append({"tile": [tx, ty], "key": key, "val": [b[3] - ty, b[5]],
+                lis.append({"tile": [tx, ty], "key": key, "gsel": gs, "val": [b[3] - ty, b[5]],
                             "dst": list(b[1:]), "src_rec": s})
                 continue
             rb = rec.get(b)
@@ -408,12 +415,44 @@ class Solver:
             if rb == s:
                 return {"error": f"self-loop at {b}"}
             val = [int(P.fam[rb]), int(P.vx[rb]) - (XMIRROR - tx), int(P.vy[rb]) - ty]
-            wires.append({"tile": [tx, ty], "key": key, "val": val,
+            wires.append({"tile": [tx, ty], "key": key, "gsel": gs, "val": val,
                           "dst": list(b[1:]), "src_rec": s, "out_rec": rb})
         return {"design": name, "stats": dict(stats), "wires": wires, "lis": lis, "lebuf_i_fam": bufs,
                 "unmatched": unmatched}
 
-    def pair_info(self, B, s):
+    def target_path(self, name, rcf):
+        """The W->W edges of the ONE path under test: from the driver's LE_BUFFER (or the pin) to
+        the sink cell's LI / to the pad.  Walked backward from the sink end, so the y1-pad branch
+        of net n and every other net stay out of the emitted entries (they still take part in
+        matching).  Sink location from the design's own qsf."""
+        import tomllib
+        t = tomllib.loads((CORPUS / name / "design.toml").read_text())
+        locs = {m.group(3): (int(m.group(1)), int(m.group(2)))
+                for q in t["qsf"] for m in [re.match(r"set_location_assignment LCCOMB_X(\d+)_Y(\d+)_N\d+ -to (l\d)", q)] if m}
+        kind = name[:9]
+        if kind == "gxspec_po":
+            net, terminal = "y", lambda nd: nd[0] == "W" and nd[1] == "BLOCK_INPUT_MUX"
+        elif kind == "gxspec_pi":
+            lab = locs["l1"]
+            net, terminal = "a~input", lambda nd: nd[0] == "W" and nd[1] == "LOCAL_INTERCONNECT" and (nd[2], nd[3]) == lab
+        else:
+            lab = locs["l2"]
+            net, terminal = "n", lambda nd: nd[0] == "W" and nd[1] == "LOCAL_INTERCONNECT" and (nd[2], nd[3]) == lab
+        driver_of = {}
+        ends = []
+        for a, b in rcf.get(net, ()):
+            if b[0] == "W":
+                driver_of[b] = a
+            if b[0] == "W" and terminal(b):
+                ends.append(b)
+        out = set()
+        for nd in ends:
+            while nd in driver_of and driver_of[nd][0] == "W":
+                out.add((driver_of[nd], nd))
+                nd = driver_of[nd]
+        return out
+
+    def pair_info(self, B, s, _G=None):
         P = self.P
         return {"block": int(B), "tile": [int(P.btx[B]), int(P.bty[B])], "key": str(P.keys[int(P.bkey[B])]),
                 "src": [int(s), self.fam_type.get(int(P.fam[s]), "?"), XMIRROR - int(P.vx[s]), int(P.vy[s]),
@@ -494,11 +533,13 @@ def abort_check(agg, n_solved):
 
 
 def aggregate(names):
-    """solved/*.json -> exact.json.  Edge rule (docs/cycloneiv-specimens.md): edge-tile
-    observations NEVER pool into a class - always per-tile entries.  Interior: a (class|key)
-    entry needs >= 2 distinct tiles agreeing; a single interior tile stays per-tile; a class
-    disagreement demotes every observation of that (class, key) to per-tile entries; a
-    SAME-TILE disagreement is a decode bug: evidence written, hard exit."""
+    """solved/*.json -> exact.json.  The unit of generalisation is (class, block key, GROUP
+    select position): one block can hold several muxes sharing second-level bits, each driving
+    its own wire, so a key's entry is the LIST of its groups' outputs.  Edge rule
+    (docs/cycloneiv-specimens.md): edge-tile observations NEVER pool into a class - always
+    per-tile entries.  Interior: a (class|key|gsel) answer needs >= 2 distinct tiles agreeing;
+    a single interior tile stays per-tile; a class disagreement demotes that gsel to per-tile
+    entries; a SAME-(tile, gsel) disagreement is a decode bug: evidence written, hard exit."""
     obs = {"wires": collections.defaultdict(list), "lis": collections.defaultdict(list)}
     tot = collections.Counter()
     buf_bad = []
@@ -515,36 +556,52 @@ def aggregate(names):
         for kind in ("wires", "lis"):
             for o in r[kind]:
                 tx, ty = o["tile"]
-                obs[kind][(tclass(tx, ty), o["key"])].append((tx, ty, tuple(o["val"]), n))
+                obs[kind][(tclass(tx, ty), o["key"])].append((tx, ty, o["gsel"], tuple(o["val"]), n))
         buf_bad += [[n] + b for b in r["lebuf_i_fam"] if b[0] != b[1]]
     out = {"class": {"x_mod": XM, "y_mod": YM}, "wires": {}, "lis": {},
            "wires_tile": {}, "lis_tile": {}, "same_tile_conflicts": [], "class_conflicts": []}
     for kind in ("wires", "lis"):
         for (cls, key), lst in sorted(obs[kind].items()):
-            per_tile = collections.defaultdict(set)
-            for tx, ty, val, n in lst:
-                per_tile[(tx, ty)].add(val)
-            bad = {t: vs for t, vs in per_tile.items() if len(vs) > 1}
+            per_tg = collections.defaultdict(set)              # (tile, gsel) -> vals
+            for tx, ty, gs, val, n in lst:
+                per_tg[((tx, ty), gs)].add(val)
+            bad = {k: vs for k, vs in per_tg.items() if len(vs) > 1}
             if bad:
                 out["same_tile_conflicts"].append({"kind": kind, "class": cls, "key": key,
-                                                   "tiles": {f"{t[0]},{t[1]}": sorted(map(list, vs)) for t, vs in bad.items()},
+                                                   "tiles": {f"{t[0]},{t[1]}|{gs}": sorted(map(list, vs)) for (t, gs), vs in bad.items()},
                                                    "obs": [list(o) for o in lst]})
                 continue
-            for (tx, ty), vs in per_tile.items():     # edge tiles: always their own entries
+
+            def add_tile(t, val):
+                e = out[f"{kind}_tile"].setdefault(f"{t[0]},{t[1]}|{key}", {"val": []})
+                if list(val) not in e["val"]:
+                    e["val"].append(list(val))
+            per_gsel = collections.defaultdict(dict)           # gsel -> {interior tile: val}
+            for ((tx, ty), gs), vs in per_tg.items():
                 if is_edge(tx, ty):
-                    out[f"{kind}_tile"][f"{tx},{ty}|{key}"] = {"val": list(next(iter(vs)))}
-            interior = {t: next(iter(vs)) for t, vs in per_tile.items() if not is_edge(*t)}
-            vals = set(interior.values())
-            if len(vals) == 1 and len(interior) >= 2:
-                out[kind][f"{cls}|{key}"] = {"val": list(vals.pop()), "n": len(lst), "tiles": len(interior)}
-            elif len(vals) == 1 and interior:          # single interior tile: exact but not generalised
-                for (tx, ty), v in interior.items():
-                    out[f"{kind}_tile"][f"{tx},{ty}|{key}"] = {"val": list(v)}
-            elif len(vals) > 1:
-                out["class_conflicts"].append({"kind": kind, "class": cls, "key": key,
-                                               "vals": sorted(map(list, vals)), "obs": [list(o) for o in lst]})
-                for (tx, ty), v in interior.items():
-                    out[f"{kind}_tile"][f"{tx},{ty}|{key}"] = {"val": list(v)}
+                    add_tile((tx, ty), next(iter(vs)))         # edge tiles: always their own entries
+                else:
+                    per_gsel[gs][(tx, ty)] = next(iter(vs))
+            vals_out, nobs = [], 0
+            for gs, tiles in per_gsel.items():
+                vals = set(tiles.values())
+                if len(vals) == 1 and len(tiles) >= 2:
+                    v = vals.pop()
+                    if list(v) not in vals_out:
+                        vals_out.append(list(v))
+                    nobs += len(tiles)
+                elif len(vals) == 1:                           # single interior tile: exact, not generalised
+                    for t, v in tiles.items():
+                        add_tile(t, v)
+                else:
+                    out["class_conflicts"].append({"kind": kind, "class": cls, "key": key, "gsel": gs,
+                                                   "vals": sorted(map(list, vals)),
+                                                   "obs": [list(o) for o in lst if o[2] == gs]})
+                    for t, v in tiles.items():
+                        add_tile(t, v)
+            if vals_out:
+                out[kind][f"{cls}|{key}"] = {"val": vals_out, "n": nobs,
+                                             "tiles": len({t for ts in per_gsel.values() for t in ts})}
     out["stats"] = dict(tot)
     (WORK / "exact.json").write_text(json.dumps(out, indent=0))
     log.info("aggregate: %d specimens (%d errors); edges matched %d / %d (ambiguous %d, no candidate %d, "
@@ -568,11 +625,13 @@ def verify():
     e = json.loads((WORK / "exact.json").read_text())
     by = collections.defaultdict(collections.Counter)
     for k, v in e["wires"].items():
-        by[S.fam_type.get(v["val"][0], "?")]["class_entries"] += 1
+        for val in v["val"]:
+            by[S.fam_type.get(val[0], "?")]["class_entries"] += 1
     for k, v in e["wires_tile"].items():
-        by[S.fam_type.get(v["val"][0], "?")]["tile_entries"] += 1
-    by["LI"]["class_entries"] = len(e["lis"])
-    by["LI"]["tile_entries"] = len(e["lis_tile"])
+        for val in v["val"]:
+            by[S.fam_type.get(val[0], "?")]["tile_entries"] += 1
+    by["LI"]["class_entries"] = sum(len(v["val"]) for v in e["lis"].values())
+    by["LI"]["tile_entries"] = sum(len(v["val"]) for v in e["lis_tile"].values())
     for t in sorted(by):
         log.info("  %-6s %s", t, dict(by[t]))
     # edge / pin coverage (docs/cycloneiv-specimens.md reporting format)
@@ -600,13 +659,13 @@ def verify():
     agree = collections.Counter()
     for k, v in e["wires"].items():
         old = pm["wires"].get(k)
-        if old is not None:
-            agree["wires_agree" if list(old) == v["val"] else "wires_DISAGREE"] += 1
+        if old is not None and list(old) and not isinstance(old[0], list):
+            agree["wires_agree" if list(old) in v["val"] else "wires_DISAGREE"] += 1
     lim = json.loads(LI_MAP.read_text()) if LI_MAP.exists() else {"lis": {}}
     for k, v in e["lis"].items():
         old = lim["lis"].get(k) or pm["lis"].get(k)
-        if old is not None:
-            agree["lis_agree" if list(old) == v["val"] else "lis_DISAGREE"] += 1
+        if old is not None and list(old) and not isinstance(old[0], list):
+            agree["lis_agree" if list(old) in v["val"] else "lis_DISAGREE"] += 1
     log.info("vs voted maps: %s; class conflicts %d, per-tile entries %d",
              dict(agree), len(e["class_conflicts"]), len(e["wires_tile"]) + len(e["lis_tile"]))
 
@@ -630,7 +689,7 @@ def merge():
     # winner per (class, li); a stale voted key under another block key would race the exact one
     if LI_MAP.exists():
         lim = json.loads(LI_MAP.read_text())
-        exact_cls_li = {(k.split("|", 1)[0], v["val"][1]) for k, v in e["lis"].items()}
+        exact_cls_li = {(k.split("|", 1)[0], val[1]) for k, v in e["lis"].items() for val in v["val"]}
         drop = [k for k, v in lim["lis"].items()
                 if (k.split("|", 1)[0], v[1]) in exact_cls_li and f'{k}' not in e["lis"]]
         for k in drop:

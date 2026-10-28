@@ -74,6 +74,12 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
   disagreement ⇒ enumerate every position of that class (brute-force-first rule).  A single
   interior observation stays a per-tile entry (`wires_tile` / `lis_tile` in the phys map) until
   a second position confirms it.
+- **The unit of generalisation is the GROUP, not the block** (found by the first sweep's
+  conflicts): one block = groups sharing second-level bits can hold SEVERAL muxes, each driving
+  its own wire.  Answers are keyed (class, block key, group select position) and a map entry
+  carries the list of its groups' outputs; the tracer's backward walk (record → driver block →
+  fired source) is unaffected.  Corollary: a design using two outputs of a shared-bit block at
+  once defeats the block-exclusivity firing rule — neither fires (decode gap, counted).
 - Held-out specimens verify the generalised map; the fixed 76-design gate set verifies
   composition end-to-end.
 - Every specimen answer must agree with the routing.ddb fan-out decode wherever that overlaps

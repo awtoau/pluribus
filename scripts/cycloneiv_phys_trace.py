@@ -222,8 +222,13 @@ class Phys:
             cls, key = k.split("|", 1)
             kid = self.key_id.get(key)
             return (int(cls), kid) if kid is not None else None
-        self.wires = {key_of(k): tuple(v) for k, v in m["wires"].items() if key_of(k)}
-        self.lis = {key_of(k): tuple(v) for k, v in m["lis"].items() if key_of(k)}
+
+        def norm(v):
+            """value -> tuple of output tuples: voted entries are one triple/pair, exact specimen
+            entries a LIST of them (one per group of a shared-second-level-bit block)."""
+            return tuple(tuple(x) for x in v) if v and isinstance(v[0], (list, tuple)) else (tuple(v),)
+        self.wires = {key_of(k): norm(v) for k, v in m["wires"].items() if key_of(k)}
+        self.lis = {key_of(k): norm(v) for k, v in m["lis"].items() if key_of(k)}
         # supplement lis from li_map.json when available (issue #139)
         if os.path.exists(LI_MAP):
             lm = json.load(open(LI_MAP))
@@ -231,10 +236,10 @@ class Phys:
             for k, v in lm["lis"].items():
                 kk = key_of(k)
                 if kk is not None and kk not in self.lis:
-                    self.lis[kk] = tuple(v)
+                    self.lis[kk] = (tuple(v),)
                     n_new += 1
             log.info("li_map: %d new entries from %s (%d total lis)", n_new, LI_MAP, len(self.lis))
-        self.li_inv = {(c, v[1]): (kid, v[0]) for (c, kid), v in self.lis.items()}
+        self.li_inv = {(c, dy_i[1]): (kid, dy_i[0]) for (c, kid), vs in self.lis.items() for dy_i in vs}
         # per-tile exact entries (specimen fuzzer, issue #141): edge tiles and un-generalised
         # interior tiles; they override the class tables where present
         def tile_key_of(k):
@@ -244,9 +249,10 @@ class Phys:
                 return None
             tx, ty = map(int, tile.split(","))
             return (tx, ty, kid)
-        self.wires_tile = {tile_key_of(k): tuple(v) for k, v in m.get("wires_tile", {}).items() if tile_key_of(k)}
-        self.lis_tile = {tile_key_of(k): tuple(v) for k, v in m.get("lis_tile", {}).items() if tile_key_of(k)}
-        self.li_tile_inv = {(tx, ty + dy, i): (kid, dy) for (tx, ty, kid), (dy, i) in self.lis_tile.items()}
+        self.wires_tile = {tile_key_of(k): norm(v) for k, v in m.get("wires_tile", {}).items() if tile_key_of(k)}
+        self.lis_tile = {tile_key_of(k): norm(v) for k, v in m.get("lis_tile", {}).items() if tile_key_of(k)}
+        self.li_tile_inv = {(tx, ty + dy, i): (kid, dy)
+                            for (tx, ty, kid), vs in self.lis_tile.items() for dy, i in vs}
         self.defaults = {key_of(k): {code_off(*d, SWIN) for d in v} for k, v in m["defaults"].items() if key_of(k)}
         self.cells = {int(f): tuple(v) for f, v in m["cells"].items()}
         self.rec2block = self.build_rec2block()
@@ -258,13 +264,16 @@ class Phys:
         nk = len(self.keys)
         packed = cls * nk + self.bkey
         uniq, inv = np.unique(packed, return_inverse=True)
+        multi = []                          # multi-output entries (shared-bit blocks): applied per value
         fam = np.full(len(uniq), -1, np.int32)
         dvx = np.zeros(len(uniq), np.int32)
         dvy = np.zeros(len(uniq), np.int32)
         for i, p in enumerate(uniq.tolist()):
-            v = self.wires.get((p // nk, p % nk))
-            if v is not None:
-                fam[i], dvx[i], dvy[i] = v
+            vs = self.wires.get((p // nk, p % nk))
+            if vs is not None:
+                fam[i], dvx[i], dvy[i] = vs[0]
+                if len(vs) > 1:
+                    multi.append((i, vs[1:]))
         f, ddx, ddy = fam[inv], dvx[inv], dvy[inv]
         vxb = XMIRROR - self.btx.astype(np.int32) + ddx
         vyb = self.bty.astype(np.int32) + ddy
@@ -276,11 +285,20 @@ class Phys:
         r2b[recs[good]] = bl[good]
         r2b[dup] = -2                       # two blocks claim one record: inconsistent, reported by verify
         self.rec_conflicts = int(dup.sum())
-        for (tx, ty, kid), (fam, dvx, dvy) in self.wires_tile.items():   # exact per-tile overrides
+        for i, extra in multi:              # further outputs of the same blocks
+            for b in np.flatnonzero(inv == i).tolist():
+                for fm, dx, dy in extra:
+                    r = self.rec_of(fm, XMIRROR - int(self.btx[b]) + dx, int(self.bty[b]) + dy)
+                    if r >= 0:
+                        r2b[r] = b
+        for (tx, ty, kid), vs in self.wires_tile.items():   # exact per-tile overrides
             b = self.block_at(tx, ty, kid)
-            r = self.rec_of(fam, XMIRROR - tx + dvx, ty + dvy)
-            if b >= 0 and r >= 0:
-                r2b[r] = b
+            if b < 0:
+                continue
+            for fm, dx, dy in vs:
+                r = self.rec_of(fm, XMIRROR - tx + dx, ty + dy)
+                if r >= 0:
+                    r2b[r] = b
         return r2b
 
     def rec_of(self, fam, vx, vy):
