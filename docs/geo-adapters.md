@@ -35,3 +35,7 @@ One module per family under `scripts/geo_devices/`; `scripts/geo_data.py` dispat
 ## Later families
 - ECP5 and Gowin: tile grid from `device-db/ECP5` / the Gowin chipdb only (no pins, no design); same page.
 - Evidence for the page headline numbers stays in the family DB; nothing in the payload is a source of truth.
+
+## Status
+- Done: `cycloneiv`, `machxo2` (perimeter packages only; BGA / WLCSP of MachXO2 need a matrix package builder without the FBGA letter notes).
+- ECP5 adapter: awtoau/pluribus#154. Gowin adapter: awtoau/pluribus#155. Both need the page to open with an empty pin layer.
