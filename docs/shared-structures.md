@@ -20,7 +20,7 @@ Measured 2026-10-29, python3.15t, 85F designs, PSS peak, box shared with other a
 | decode tables / tilegrid (`native_config`, `native_bitstream`) | scripts/ | not audited | device | ? | not audited (other owner) |
 
 ## Concurrency today
-- `ecp5_corpus_test.py`: threads (default) sharing one graph per device; `--mode procs` = old per-process mode (A/B).
+- `ecp5_corpus_test.py`: threads sharing one graph per device (the process mode was removed, #149).
 - Graph cache: strong per-process (`PLURIBUS_RGRAPH_CACHE=weak` restores the old free-when-idle behaviour, which rebuilt the graph for serial lifts).
 - Not audited: Gowin, Cyclone IV/V lifters, reach* (SQL-bound), MachXO2 sweeps.
 
@@ -76,3 +76,24 @@ Concurrent jobs in the 28 GB lease budget (budget x 0.8 = 22.4 GB planned, `heav
 | ddb_trace score | 3.7 GB | 6 | 2.6 GB | 8 |
 | bit_inventory | 3.0 GB | 7 | 2.6 GB | 8 |
 | reach2 fnirsi | 1.5 GB | 14 | 0.7 GB | 32 |
+
+## Round 3 (#149): process pools removed, A/B on real inputs, 2026-10-29
+
+Every converted script now runs a `ThreadPoolExecutor` in one process; external tools (yosys, ecpunpack) and the `load.py` stage CLI stay subprocesses.
+Peak = PSS summed over the process tree (`scripts/ab_measure.py`), box shared with other agents (walls +-20%).
+
+| script (input, workers) | outputs | wall procs -> threads | PSS procs -> threads |
+|---|---|---|---|
+| ecp5_corpus_test (11 designs 12F..85F, 4) | results JSON identical | 34.6 -> 34.6 s (59 s with per-job leases: 3 s lease ramp x 11 jobs) | 2.88 -> 2.06 GB |
+| lifter_equiv_corpus (1000 fuzz targets, 8) | identical (61 equivalent, 929 decoded, 9 no_bit); only yosys timing/MEM tail differs | 29.5 -> 38.7 s | 0.60 -> 0.13 GB |
+| unknown_bits_census (600 bitstreams, 8) | JSON identical | 15.2 -> 18.8 s | 0.41 -> 0.08 GB |
+| native_corpus_parity (400 fuzz bitstreams, 8) | report identical (318 ok, 82 DIVERGED, 13,882 tiles) | 7.5 -> 9.7 s | 0.62 -> 0.10 GB |
+| validate_fuzz (40 targets, 4) | 38/40 validate.txt identical to serial; 2 SQLite "database is locked" (also under procs) | 4.6 -> 4.7 s | 0.41 -> 0.35 GB |
+| ecp5_share_bench | procs variant removed | | |
+
+- Short jobs (< 1 s each) take one lease for the pool (workers x `JOB_GB`); a per-job lease costs the 3 s `LEASE_RAMP_S` each.
+- Threads are 0-30% slower in wall on the small-job sweeps (yosys spawn from a multi-threaded process, shared-object refcount contention) for 4-8x less memory.
+- Per-thread state: `lifter_equiv_corpus` keeps one `MachXO2Lift` per worker thread (`threading.local`); pin map loaded once under a lock.
+- `native_corpus_parity`: fd 1 is pointed at /dev/null once (pytrellis C++ output); the log writes to a dup of the original stdout.
+- Not converted: `cpu_sanity_check.py` (one pinned subprocess per CPU to test each core; a thread cannot isolate a core's fault from the shared process) and stage-CLI subprocess pools (`ecp5_verify_all.py`, `*_verify_all.py`, `machxo2_oracle_*`): they spawn one python CLI per job from threads; in-process mains are a separate change.
+- Guard: `tests/test_threads_only.py` fails on `multiprocessing` / `ProcessPoolExecutor` / `os.fork` in tracked code.
