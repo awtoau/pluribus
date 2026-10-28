@@ -1,11 +1,11 @@
 #!/usr/bin/env python3.15t
-"""Die map with one EP4CGX150 image's KNOWN cells overlaid + the zero-vs-one encoding measurements (issue #141).
+"""Image analysis for the geo explorer: one EP4CGX150 image's KNOWN cells per tile + the zero-vs-one encoding measurements (issue #141).
 
   python3.15t scripts/geo_image_overlay.py --image <image.bin|.rbf> [--stage all|attrib|encoding]
-  python3.15t scripts/geo_image_overlay.py --repin     # page only, from the cached tmp/geo/image_overlay_data.json
+  python3.15t scripts/geo_image_overlay.py --repin     # rebuild tmp/geo/explorer.html (alias of scripts/geo_explorer.py)
 Needs >= 20 GB MemAvailable (peak ~4 GB).  Reuses the inventory's class assignment (cycloneiv_bit_inventory
 imported read-only; its claim logic is repeated here only to carry a tile OWNER per cell).
-Outputs (tmp/geo/, not committed): image_tiles.csv, image_tiles.geojson, image_encoding.json, image_overlay.html.
+Outputs (tmp/geo/, not committed): image_tiles.csv, image_tiles.geojson, image_encoding.json, image_overlay_data.json (the explorer's image layer).
 Log tmp/logs/geo_image_overlay.log.  Method + approximations: docs/geo-image-overlay.md.
 """
 import argparse
@@ -29,7 +29,6 @@ log = logging.getLogger("geo_image_overlay")
 
 import os  # noqa: E402
 os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(REPO / "databases/cycloneiv/gx150.db"))   # specimen evidence rows
-import geo_pins  # noqa: E402
 import cycloneiv_bit_inventory as bi  # noqa: E402  (read-only reuse: Inv, CLASSES, CID, forced_table, ...)
 
 NV, LANE_V = bi.NV, bi.LANE_V
@@ -548,177 +547,22 @@ def ce_images():
 
 
 # ---------------------------------------------------------------------------------------------
-# part 2: html
+# cache for the explorer's image layer (scripts/geo_data.py reads it)
 # ---------------------------------------------------------------------------------------------
-PAGE = r"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Known cells on the die</title>
-<style>
-:root{--bg:#fbfbfa;--fg:#1d1d1b;--mut:#6b6b66;--card:#fff;--line:#d9d8d3;--ver:#2f9e6a;--evi:#e0a31b;--unk:#9a9992;--ovh:#4f7fd0;--bad:#d23a3a;--lab:#4f7fd0;--m9k:#9b59b6;--mul:#d9693a;--io:#3aa7a7;--accent:#2a5bd7}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#17181a;--fg:#e8e8e4;--mut:#9a9a94;--card:#202225;--line:#38393c;--ver:#46c08a;--evi:#f0b93a;--unk:#6c6d71;--ovh:#6c9bf0;--bad:#ff6b6b;--lab:#6c9bf0;--m9k:#c08be0;--mul:#f08a5a;--io:#55c4c4;--accent:#7fa2ff}}
-:root[data-theme=dark]{--bg:#17181a;--fg:#e8e8e4;--mut:#9a9a94;--card:#202225;--line:#38393c;--ver:#46c08a;--evi:#f0b93a;--unk:#6c6d71;--ovh:#6c9bf0;--bad:#ff6b6b;--lab:#6c9bf0;--m9k:#c08be0;--mul:#f08a5a;--io:#55c4c4;--accent:#7fa2ff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px}
-h1{font-size:20px;margin:0 0 2px}p.sub{margin:0 0 12px;color:var(--mut)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
-canvas{display:block;border-radius:6px;cursor:crosshair;max-width:100%}
-.scroll{overflow:auto;max-height:78vh}
-fieldset{border:0;padding:0;margin:0 0 10px}legend{font-weight:600;margin-bottom:4px}
-label{display:flex;gap:6px;align-items:center;margin:2px 0;cursor:pointer}
-.sw{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none}
-#info{min-height:150px;font-variant-numeric:tabular-nums}#info b{font-weight:600}
-table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}td,th{padding:1px 3px}td:not(:first-child),th:not(:first-child){text-align:right}
-th{font-weight:600;color:var(--mut);border-bottom:1px solid var(--line)}
-.note{color:var(--mut);font-size:12px;margin-top:8px}
-#bm{image-rendering:pixelated;cursor:crosshair}
-input[type=range]{width:100%}
-.blegend{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 12px;margin-top:8px}.blegend b,.blegend .note{grid-column:1/-1}
-/*__PINS_CSS__*/
-</style></head><body>
-<h1>EP4CGX150 die: which cells of one image are known</h1>
-<p class="sub">One tile per cell (x across, y up). Data: a single third-party EP4CGX150 image classified by the bit inventory. Click a tile to inspect its cells.</p>
-<div class="wrap">
-<div><div class="card" style="overflow:auto"><canvas id="c" role="img" aria-label="Die tile map, colour by known share of the image's set bits"></canvas></div></div>
-<aside id="side">
-<!--__PANEL_BAR__-->
-<details class="pnl" id="pn-ctl" open><summary>Colour, layers and size</summary><div class="pb">
-<fieldset><legend>Colour by</legend>
-<label><input type="radio" name="mode" value="share" checked> (a) Known share of set bits</label>
-<label><input type="radio" name="mode" value="dens"> (b) Set-bit density of the image</label>
-<label><input type="radio" name="mode" value="cap"> (c) Known-cell capacity (die-wide)</label>
-<label><input type="radio" name="mode" value="kind"> (d) Tile kind</label></fieldset>
-<fieldset><legend>Show tiles</legend>
-<label><input type="checkbox" data-k="LAB" checked><span class="sw" style="background:var(--lab)"></span>LAB</label>
-<label><input type="checkbox" data-k="M9K" checked><span class="sw" style="background:var(--m9k)"></span>M9K memory</label>
-<label><input type="checkbox" data-k="MUL" checked><span class="sw" style="background:var(--mul)"></span>Multiplier</label>
-<label><input type="checkbox" data-k="IO" checked><span class="sw" style="background:var(--io)"></span>IO (ring)</label></fieldset>
-<fieldset><legend>Overlays</legend>
-<label><input type="checkbox" id="oZero" checked><span class="sw" style="border:2px solid var(--bad)"></span>Set bits but none known</label>
-<label><input type="checkbox" id="oSel" checked> Selected tile</label></fieldset>
-<!--__SIZE_HTML__-->
-<div id="legend"></div></div></details>
-<details class="pnl" id="pn-info" open><summary>Hovered tile</summary><div class="pb"><div id="info">Hover a tile.</div></div></details>
-<details class="pnl" id="pn-insp" open><summary>Tile inspector</summary><div class="pb"><span id="ititle" style="color:var(--mut)">click a tile on the map</span>
-<div class="scroll" style="max-height:420px;margin-top:8px"><canvas id="bm" width="10" height="10"></canvas></div>
-<div id="bmi" class="note" style="min-height:2.6em">Frames run left to right, v runs upward. Hover a cell.</div></div></details>
-<details class="pnl" id="pn-bleg"><summary>Bitmap legend and options</summary><div class="pb"><div class="blegend">
-<label style="cursor:default"><span class="sw" style="background:var(--ver)"></span>verified class, set</label>
-<label style="cursor:default"><span class="sw" style="background:var(--evi)"></span>evidence class, set</label>
-<label style="cursor:default"><span class="sw" style="background:var(--unk)"></span>unknown class, set</label>
-<label style="cursor:default"><span class="sw" style="background:var(--ovh)"></span>CRC bytes (checksum), set</label>
-<label><input type="checkbox" id="tint" checked> Tint unset cells by their class tier</label>
-<label><input type="checkbox" id="onlyset"> Only set cells</label>
-<label>Cell size <input type="range" id="csz" min="0" max="16" value="0"></label>
-<div class="note">Verified = LUT INIT bits (compared with vendor netlists, 100 % over 301 builds). Evidence = a mapping exists without a per-bit oracle (LE-used bit, clock polarity, routing tables, translated routing specimens). Unknown = no meaning attributed. Evidence also covers table-only routing cells: <i>known</i> here means "has a proposed meaning", and is weaker than verified.</div></div></div></details>
-<!--__PINS_HTML__-->
-<details class="pnl" id="pn-notes"><summary>Notes</summary><div class="pb"><div class="note" style="margin:0">Row binning is by band [VY-68, VY+1] (70 v). Cells of classes 1, 2 and 3 are owned by the tile that generated them; the rest are binned by frame band and v row. Frames FX+16..FX+17 of a LAB column are shared with the next column band.</div></div></details>
-</aside></div>
-<script>
-const D=__DATA__;
-const NX=D.nx,NY=D.ny,T=D.t,CL=D.cls,KN=D.kinds;
-// tile row: [x,y,kind,cells,set,sv,se,su,so,capv,cape,s2a,fa,w,tmpl]
-const grid=new Map();T.forEach(t=>grid.set(t[0]*1000+t[1],t));
-const cv=document.getElementById('c'),ctx=cv.getContext('2d');let S=10,M=2;
-const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const kv=k=>(k=="IOL"||k=="IOR"||k=="IOROW")?"IO":k;
-const TV={V:'--ver',E:'--evi',U:'--unk',O:'--ovh'};
-let mode="share",hover=null,sel=null;const vis={LAB:1,M9K:1,MUL:1,IO:1};
-const maxDens=Math.max(...T.map(t=>t[3]?t[4]/t[3]:0));
-function ramp(f){f=Math.max(0,Math.min(1,f));const a=[247,247,240],b=[34,70,160];return `rgb(${a.map((x,i)=>Math.round(x+(b[i]-x)*f)).join(',')})`}
-function tile(t,px,py){const k=kv(KN[t[2]]);
- if(mode=="share"){const tot=t[5]+t[6]+t[7];ctx.fillStyle=css('--line');ctx.globalAlpha=.4;ctx.fillRect(px,py,S-1,S-1);ctx.globalAlpha=1;
-  if(tot>0){let y=py+S-1;for(const [n,c] of [[t[5],'--ver'],[t[6],'--evi'],[t[7],'--unk']]){const h=(S-1)*n/tot;ctx.fillStyle=css(c);ctx.fillRect(px,y-h,S-1,h);y-=h}}}
- else if(mode=="dens"){ctx.fillStyle=ramp(Math.sqrt((t[3]?t[4]/t[3]:0)/maxDens));ctx.fillRect(px,py,S-1,S-1)}
- else if(mode=="cap"){ctx.fillStyle=ramp((t[9]+t[10])/Math.max(t[3],1));ctx.fillRect(px,py,S-1,S-1)}
- else{ctx.fillStyle=css('--'+{LAB:'lab',M9K:'m9k',MUL:'mul',IO:'io'}[k]);ctx.fillRect(px,py,S-1,S-1)}}
-function draw(){size();const w=cv.width,h=cv.height;ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
- const z=document.getElementById('oZero').checked;
- for(const t of T){const k=kv(KN[t[2]]);const px=M+t[0]*S,py=M+(NY-1-t[1])*S;
-  if(!vis[k]){ctx.fillStyle=css('--line');ctx.globalAlpha=.3;ctx.fillRect(px,py,S-1,S-1);ctx.globalAlpha=1;continue}
-  tile(t,px,py);
-  if(z&&(t[5]+t[6]+t[7])>0&&(t[5]+t[6])==0){ctx.strokeStyle=css('--bad');ctx.lineWidth=1.5;ctx.strokeRect(px+.5,py+.5,S-2,S-2)}}
- const o=document.getElementById('oSel').checked;
- for(const [t,c] of [[sel,'--accent'],[hover,'--fg']]){if(!t||(t===sel&&!o))continue;const px=M+t[0]*S,py=M+(NY-1-t[1])*S;ctx.strokeStyle=css(c);ctx.lineWidth=2;ctx.strokeRect(px-1,py-1,S+1,S+1)}
- pinsDraw();legend()}
-function legend(){const L=document.getElementById('legend');let h="";
- if(mode=="share")h=[['--ver','verified-class set bits'],['--evi','evidence-class'],['--unk','unknown-class']].map(([c,n])=>`<label style="cursor:default"><span class="sw" style="background:${css(c)}"></span>${n}</label>`).join("")+`<div class="note" style="margin:2px 0 0">Bar height = share of the tile's set bits (CRC bytes excluded).</div>`;
- else if(mode=="kind")h=["LAB","M9K","MUL","IO"].map(x=>`<label style="cursor:default"><span class="sw" style="background:${css('--'+{LAB:'lab',M9K:'m9k',MUL:'mul',IO:'io'}[x])}"></span>${x}</label>`).join("");
- else{const m=mode=="dens"?maxDens:1;h=`<div style="height:10px;border-radius:3px;background:linear-gradient(90deg,${ramp(0)},${ramp(1)})"></div><div class="note" style="margin:2px 0 0;display:flex;justify-content:space-between"><span>0</span><span>${mode=="dens"?"set / cells (sqrt scale), max "+(100*maxDens).toFixed(1)+" %":"known cells / cells, 100 %"}</span></div>`}
- L.innerHTML=h}
-// ---- decoded blobs
-let CT=null,SB=null,SOFF=null;
-async function inflate(b64){const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
- return new Uint8Array(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer())}
-async function init(){try{CT=await inflate(D.C);SB=await inflate(D.S);
- SOFF=new Array(T.length);let o=0;T.forEach((t,i)=>{SOFF[i]=o;o+=Math.ceil(t[13]*70/8)});}catch(e){document.getElementById('bmi').textContent="Bitmaps need DecompressionStream (a current browser)."}
- draw()}
-function cellsOf(t){const i=T.indexOf(t);return {off:D.tp[t[14]][0],soff:SOFF[i],w:t[13]}}
-function bit(soff,k){return (SB[soff+(k>>3)]>>(7-(k&7)))&1}
-function breakdown(t){ // per class: cells, set
- if(!CT)return "";const c=cellsOf(t),n=new Array(CL.length+1).fill(0),s=new Array(CL.length+1).fill(0);
- for(let i=0;i<t[13];i++)for(let r=0;r<70;r++){const k=i*70+r,cl=CT[c.off+k];if(!cl)continue;n[cl]++;if(bit(c.soff,k))s[cl]++}
- let h="<table><tr><th>class</th><th>cells</th><th>set</th></tr>";
- for(let q=1;q<=CL.length;q++)if(n[q]){h+=`<tr><td><span class="sw" style="background:${css(TV[CL[q-1][1]])};margin-right:4px"></span>${CL[q-1][0]}</td><td>${n[q]}</td><td>${s[q]}</td></tr>`}
- return h+"</table>"}
-const pc=(a,b)=>b?(100*a/b).toFixed(1)+" %":"-";
-function infoHtml(t){const tot=t[5]+t[6]+t[7];
- return `<b>X${t[0]} Y${t[1]}</b> &nbsp;${KN[t[2]]}<table><tr><td>Cells in tile</td><td>${t[3].toLocaleString()}</td></tr><tr><td>Image set bits</td><td>${t[4].toLocaleString()} (${pc(t[4],t[3])})</td></tr>
- <tr><td>verified / evidence / unknown set</td><td>${t[5]} / ${t[6]} / ${t[7]}</td></tr><tr><td>Known share of set bits</td><td>${pc(t[5]+t[6],tot)}</td></tr>
- <tr><td>of which routing cells fired by decode</td><td>${t[11]}</td></tr><tr><td>CRC-byte set bits (excluded)</td><td>${t[8]}</td></tr>
- <tr><td>Known-cell capacity</td><td>${(t[9]+t[10]).toLocaleString()} (${pc(t[9]+t[10],t[3])}); verified ${t[9]}</td></tr></table>`+breakdown(t)}
-cv.addEventListener('mousemove',e=>{const r=cv.getBoundingClientRect(),sx=cv.width/r.width;const x=Math.floor(((e.clientX-r.left)*sx-M)/S),y=NY-1-Math.floor(((e.clientY-r.top)*sx-M)/S);
- const t=grid.get(x*1000+y);hover=t||null;draw();const I=document.getElementById('info');I.innerHTML=t?infoHtml(t):"Hover a tile."});
-cv.addEventListener('mouseleave',()=>{hover=null;draw()});
-cv.addEventListener('click',e=>{const r=cv.getBoundingClientRect(),sx=cv.width/r.width;const x=Math.floor(((e.clientX-r.left)*sx-M)/S),y=NY-1-Math.floor(((e.clientY-r.top)*sx-M)/S);
- const t=grid.get(x*1000+y);if(t){sel=t;inspect(t);draw()}});
-// ---- inspector bitmap
-const bm=document.getElementById('bm'),bx=bm.getContext('2d');let bsel=null,bsc=1;
-function inspect(t){bsel=t;document.getElementById('ititle').textContent=`X${t[0]} Y${t[1]} ${KN[t[2]]}: frames ${t[12]}..${t[12]+t[13]-1}, ${t[13]} x 70 cells`;drawBm()}
-function drawBm(){const t=bsel;if(!t||!CT)return;const c=cellsOf(t),w=t[13];
- const z=+document.getElementById('csz').value;bsc=z||Math.max(1,Math.min(14,Math.floor(900/w)));
- bm.width=w*bsc;bm.height=70*bsc;const tint=document.getElementById('tint').checked,only=document.getElementById('onlyset').checked;
- bx.fillStyle=css('--card');bx.fillRect(0,0,bm.width,bm.height);
- const col={};for(const k in TV)col[k]=css(TV[k]);
- for(let i=0;i<w;i++)for(let r=0;r<70;r++){const k=i*70+r,cl=CT[c.off+k];if(!cl)continue;const s=bit(c.soff,k),tr=CL[cl-1][1];
-  if(!s&&(only||!tint))continue;bx.globalAlpha=s?1:.16;bx.fillStyle=col[tr];bx.fillRect(i*bsc,(69-r)*bsc,bsc>2?bsc-1:bsc,bsc>2?bsc-1:bsc)}
- bx.globalAlpha=1}
-bm.addEventListener('mousemove',e=>{const t=bsel;if(!t||!CT)return;const rc=bm.getBoundingClientRect(),sx=bm.width/rc.width;
- const i=Math.floor((e.clientX-rc.left)*sx/bsc),r=69-Math.floor((e.clientY-rc.top)*sx/bsc);if(i<0||i>=t[13]||r<0||r>69)return;
- const c=cellsOf(t),k=i*70+r,cl=CT[c.off+k];const v=70*t[1]-48+r;
- document.getElementById('bmi').innerHTML=cl?`frame ${t[12]+i}, v ${v} (tile row ${r}): class <b>${CL[cl-1][0]}</b> ${CL[cl-1][2]} [${{V:'verified',E:'evidence',U:'unknown',O:'overhead'}[CL[cl-1][1]]}], ${bit(c.soff,k)?'<b>set</b>':'clear'}`:`frame ${t[12]+i}, v ${v}: not owned by this tile`});
-['tint','onlyset','csz'].forEach(id=>document.getElementById(id).oninput=drawBm);
-document.querySelectorAll('input[name=mode]').forEach(i=>i.onchange=()=>{mode=i.value;draw()});
-document.querySelectorAll('[data-k]').forEach(i=>i.onchange=()=>{vis[i.dataset.k]=i.checked?1:0;draw()});
-['oZero','oSel'].forEach(id=>document.getElementById(id).onchange=draw);
-
-matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{draw();drawBm()});
-/*__PINS_JS__*/
-init();
-</script></body></html>
-"""
-
-
-def emit_html(rows, blobs, g, cls_info):
+def emit_cache(rows, blobs, g, cls_info):
     kidx = {k: i for i, k in enumerate(KINDS)}
     t = [[r["x"], r["y"], kidx[r["kind"]], r["cells"], r["set"], r["set_ver"], r["set_evi"], r["set_unk"], r["set_ovh"],
           r["cap_ver"], r["cap_evi"], r["cls_set"].get("2a", 0), r["fa"], r["w"], r["tmpl"]] for r in rows]
     data = dict(nx=g.xmax + 1, ny=YROWS, kinds=KINDS, t=t, cls=cls_info, **blobs)
     (GEO / "image_overlay_data.json").write_text(json.dumps(data, separators=(",", ":")))
-    write_page(data)
-
-
-def write_page(data):
-    """Page = embedded tile data + pin layer from device_pins (scripts/geo_pins.py, docs/geo-pins.md)."""
-    pins = geo_pins.load_pins()
-    html = geo_pins.inject(PAGE.replace("__DATA__", json.dumps(data, separators=(",", ":"))), pins)
-    (GEO / "image_overlay.html").write_text(html)
-    log.info("wrote image_overlay.html %.2f MB, %d pins (%d with die site)", len(html) / 1e6, len(pins["p"]), sum(r[4] is not None for r in pins["p"]))
+    log.info("wrote image_overlay_data.json; build the page with scripts/geo_explorer.py")
 
 
 # ---------------------------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--image")
-    ap.add_argument("--repin", action="store_true", help="rebuild image_overlay.html from tmp/geo/image_overlay_data.json (no image, light)")
+    ap.add_argument("--repin", action="store_true", help="rebuild tmp/geo/explorer.html from the cached image layer and device_pins (no image, light)")
     ap.add_argument("--stage", default="all", choices=("all", "attrib", "encoding"))
     a = ap.parse_args()
     if not a.image and not a.repin:
@@ -728,7 +572,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler(REPO / "tmp/logs/geo_image_overlay.log", "w")])
     if a.repin:
-        write_page(json.loads((GEO / "image_overlay_data.json").read_text()))
+        import geo_explorer
+        sys.argv = ["geo_explorer"]
+        geo_explorer.main()
         return
     import heavy_guard
     bi.need_ram(20)
@@ -754,7 +600,7 @@ def main():
         if a.stage in ("all", "attrib"):
             blobs = pack_bitmaps(C, sm, g, rows, nper, nfr)
             cls_info = [[cid, TIER[i + 1], name] for i, (cid, name, _t) in enumerate(CLS)]
-            # emit_html runs after the lease is released
+            # emit_cache runs after the lease is released
         if a.stage in ("all", "encoding"):
             enc = encoding(C, sm, plane, dec, g, tiles, meta, H, Hs, fired)
             enc["outside_tiles"] = extra
@@ -764,7 +610,7 @@ def main():
             log.info("wrote image_encoding.json")
 
     if blobs is not None:
-        emit_html(rows, blobs, g, cls_info)
+        emit_cache(rows, blobs, g, cls_info)
 
 if __name__ == "__main__":
     main()
