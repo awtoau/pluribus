@@ -74,6 +74,20 @@ Tool: `scripts/import_legacy_lift.py` (generic: any old pluribus SQLite file, an
   22 stuck registers #127): claims stay `open` with `confidence_basis` naming the reason; they are
   listed by `framework_status.py` as open, never parked (the private corpus is not declared done).
 
+## First run (2026-10-29, the private archive, label V02 → `databases/machxo2/archive-v02.db`)
+
+- Import: every table count equal (nets 4,262, luts 2,611, ffs 1,112, net_fanout 9,647, pad_map 45,
+  arcs 12,326, ebr_init 6,144, net_names 1,962, cell_names 1,720, hard_cells 8, hard_cell_ports 172
+  from the old efb_ports 33 + ebr_ports 139); no column dropped. Claims 16,503 (all `open`;
+  vendor-decoded 16,221, measured 282 = 45 pads from the board TSV + 237 confirmed net names);
+  expectations 3,445 (1,725 non-confirmed net annotations + 1,720 cell names); 1 evidence row.
+- `reach.py --replace` 4.4 s, `reach2.py` ~10 s, reach3/reach4 ran clean under a 3 GB lease.
+- `--validate` (lift_summary vs the old file): 17 / 18 fields equal; `n_patterns` 12 → 0 — reach3's
+  shift-register pass finds no chain on the re-imported netlist where the archive held 12 rows.
+  Open finding (a changed detector since the archive was written, or a regression) — to be filed.
+- No design oracle exists for this archive (V02 is no longer a reference), so no claim was
+  promoted: 16,503 open, 0 confirmed, 0 refuted. The `--ingest` path is exercised by the fixture test.
+
 ## Commands
 
 ```
