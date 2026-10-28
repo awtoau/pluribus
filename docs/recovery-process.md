@@ -73,6 +73,27 @@ already documented. This doc makes the method binding, not advisory.
 - Count faulty cones (root causes) beside faulty points: one wrong input poisons a whole carry
   chain and inflates point counts.
 
+## Done criterion — the corpus is the acceptance test (Dan, 2026-10-29)
+
+- Per family, ONE declared corpus (`corpus_members`, `required = 1`) and one gate script. The gate
+  writes every run into `gate_runs` / `gate_results` (`provenance.corpus.record_gate_run`) with
+  matched / missing / extra / wrong per category; headline = matched / (matched + missing +
+  extra + wrong) (scoring-faults rules: missing and extra are faults).
+- **Done = every required member at headline 100 % in every category with wrong = 0** in the latest
+  run. Then `done_criteria.state = met`; every open `unknowns` / `expectations` row of the family
+  is classified `not-required-by-corpus` and parked — never deleted, still queryable, still
+  distinguishable (unknown with no hypothesis vs expected-by pattern/matcher).
+- A later failing run re-opens EXACTLY the items its failing cone rests on: `gate_results.failing_claims`
+  (from `lift_provenance.claim_ids` of the mismatching objects) → those claims `suspect`, their
+  patterns `suspect` (siblings too), parked unknowns / expectations on those scopes `open`, audits
+  queued with reason `corpus-fail`; `done_criteria.state = open`.
+- Nothing more needs solving once the corpus passes; the parked queue is what a widened corpus
+  would re-open. Status: `scripts/framework_status.py` (per family, per database).
+- Today: ECP5 corpus = the 240 Diamond-oracle targets of `tests/baselines/ecp5_oracle.json`;
+  MachXO2 = the four `machxo2_gate.py` sets; Gowin = `gowin_lec.py` designs; Cyclone V =
+  `postfit_builds` ok rows; Cyclone IV = NO required member yet — the gate set must be declared
+  before its done state means anything (`claims_register.py` logs this).
+
 ## Tripwires — stop and review the premise when any fires
 
 - A report asks for "more corpus coverage" — the signature of a statistical dead end.
