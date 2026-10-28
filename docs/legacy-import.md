@@ -13,6 +13,11 @@ Tool: `scripts/import_legacy_lift.py` (generic: any old pluribus SQLite file, an
 - Target: `PLURIBUS_SQLITE_PATH=databases/<family>/<name>.db` (new schema; `schema.init()` runs
   there). The private project's file stays under `databases/machxo2/` (gitignored); its name never
   appears in a committed file or issue.
+- Finding (2026-10-29): the private archive DB's only `bitstreams` row is label **V02**
+  (`DS1302_V02.bin.config`), not V07; no kept database holds a V07 lift. V02 is no longer a
+  reference (Dan), so the importer is exercised on this archive as the mechanism test, and the
+  V07 import waits for a V07 lift (or a V07 archive) to exist. The earlier V02 pipeline
+  databases were deleted the same day.
 - `--family` (machxo2 / ecp5 / gowin / cyclonev / anlogic) — sets `bitstreams.family` and the
   tier mapping.
 
