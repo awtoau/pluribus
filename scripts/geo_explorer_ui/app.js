@@ -341,7 +341,7 @@ const Panels=(()=>{
   if(go&&m.length){const onmap=m.filter(i=>PR[i][F.tile]>=0);goPin(ST.tab==='pkg'||!onmap.length?m[0]:onmap[0])}else render()}
  function counts(){const bon=PR.filter(p=>p[F.bonded]).length,nex=PR.filter(p=>siteOf(p)==2).length,site=PR.filter(p=>siteOf(p)==0).length,cf=PR.filter(p=>p[F.conflicts].length).length,np=PR.filter(p=>p[F.pair]>=0).length/2;
   $('pcnt').innerHTML=`<b>${PR.length}</b> balls in ${NCOL*NROW} matrix positions (${NCOL*NROW-PR.length} with no pin in table): <b>${site}</b> with die site, <b>${PR.length-site-nex}</b> no site yet, <b>${nex}</b> no site expected (supply / NC). Bonded ${bon}. Conflicts flagged ${cf}. ${np} differential pairs.`;
-  $('pinhead').textContent=`Pins (${G.device}${G.package})`}
+  $('pinhead').textContent=`Pins (${G.device} ${G.package.name})`}
  function group(id,items,on){$(id).innerHTML=items.map(([name,n,sw,key,cid])=>`<label class="lg"><input type="checkbox" id="${cid}" data-k="${esc(key)}" checked><span class="dot" style="${sw}"></span>${esc(name)}<span class="n">${n}</span></label>`).join('');
   $(id).querySelectorAll('input').forEach(c=>{persist(c);const f=()=>{on(c.dataset.k,c.checked?1:0);render()};c.addEventListener('change',f);on(c.dataset.k,c.checked?1:0)})}
  function filters(){const rc=SP.map(()=>[0,0]);PR.forEach(p=>{rc[p[F.role]][0]++;if(p[F.tile]>=0)rc[p[F.role]][1]++});
