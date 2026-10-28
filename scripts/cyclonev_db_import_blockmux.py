@@ -392,24 +392,15 @@ def build_all_rows(mistral_root, log):
     return all_rows, counts_by_target
 
 
-def insert_rows(conn, rows, log):
+def insert_rows(conn, rows, log, chunk=5000):
+    """SQLAlchemy Core insert (schema.cv_block_muxes; JSON columns serialised by the JSON type)."""
+    from sqlalchemy import insert
     cols = ["source_file", "dump_target", "ram_space", "subtype", "mux", "stype",
             "bcount", "span", "variant", "is_2d", "bits", "values",
             "default_value", "default_value_idx"]
-    json_cols = {"bits", "values"}
-    placeholders = ",".join("?" * len(cols))
-    quoted_cols = ",".join(f'"{c}"' for c in cols)  # "values"/"mux" are reserved words in SQL
-    sql = f"INSERT INTO cv_block_muxes ({quoted_cols}) VALUES ({placeholders})"
-    values = [
-        tuple(
-            (json.dumps(r[c]) if c in json_cols else (int(r[c]) if c == "is_2d" else r[c]))
-            for c in cols
-        )
-        for r in rows
-    ]
-    conn.executemany(sql, values)
-    if db.BACKEND == "sqlite":
-        conn.commit()
+    t = schema.cv_block_muxes
+    for i in range(0, len(rows), chunk):
+        conn.execute(insert(t), [{c: (bool(r[c]) if c == "is_2d" else r[c]) for c in cols} for r in rows[i:i + chunk]])
 
 
 def main():
@@ -429,14 +420,11 @@ def main():
 
     all_rows, counts_by_target = build_all_rows(args.mistral_root, log)
 
-    conn = db.connect_threadsafe()
-    conn.execute("DELETE FROM cv_block_muxes")
-    if db.BACKEND == "sqlite":
-        conn.commit()
-
+    from sqlalchemy import delete
     _wait_for_ram(args.max_ram_pct, log, "block-mux insert pass")
-    insert_rows(conn, all_rows, log)
-    conn.close()
+    with db.engine().begin() as conn:      # always-rebuild in one transaction
+        conn.execute(delete(schema.cv_block_muxes))
+        insert_rows(conn, all_rows, log)
 
     log.info(f"inserted {len(all_rows)} rows across {len(counts_by_target)} dump_target(s) "
               f"in {time.time()-t0:.1f}s")

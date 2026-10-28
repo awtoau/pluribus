@@ -567,25 +567,17 @@ def _make_bulk_insert(conn, table, cols, die_id, lock):
     regardless of thread count, so this just makes that explicit rather than
     relying on sqlite3's own internal locking to serialize silently.
     """
-    import json
-    placeholders = ",".join("?" * (len(cols) + 1))
-    sql = f"INSERT INTO {table} (die,{','.join(cols)}) VALUES ({placeholders})"
-    json_cols = _json_cols(cols)
+    from sqlalchemy import insert
+    t = schema.metadata.tables[table]
+    stmt = insert(t)
 
     def _insert(rows):
         if not rows:
             return
-        values = [
-            (die_id,) + tuple(
-                json.dumps(r[c]) if c in json_cols else r[c]
-                for c in cols
-            )
-            for r in rows
-        ]
+        values = [dict({c: r[c] for c in cols}, die=die_id) for r in rows]   # JSON columns: the JSON type serialises
         with lock:
-            conn.executemany(sql, values)
-            if db.BACKEND == "sqlite":
-                conn.commit()  # commit per batch, not per die -- bounds the WAL too
+            with db.engine().begin() as wconn:   # one transaction per batch, not per die -- bounds the WAL too
+                wconn.execute(stmt, values)
 
     return _insert
 
@@ -607,27 +599,20 @@ def import_die_routes(mistral_root, die, chunk_workers, batch_lines, max_ram_pct
         if not os.path.isfile(p):
             db.die(f"missing {p} ({kind}) — is --mistral-root correct?")
 
-    conn = db.connect_threadsafe()
-    if db.BACKEND == "postgres":
-        row = conn.run("SELECT id, tile_sx FROM cv_dies WHERE name = :d", d=die)
-        if not row:
-            db.die(f"die {die!r} not found in cv_dies — run scripts/cyclonev_db_import.py first")
-        die_id, tile_sx = row[0]
-    else:
-        row = conn.execute("SELECT id, tile_sx FROM cv_dies WHERE name = ?", (die,)).fetchone()
+    from sqlalchemy import delete, select
+    with db.engine().begin() as conn:
+        row = conn.execute(select(schema.cv_dies.c.id, schema.cv_dies.c.tile_sx)
+                           .where(schema.cv_dies.c.name == die)).fetchone()
         if not row:
             db.die(f"die {die!r} not found in cv_dies — run scripts/cyclonev_db_import.py first")
         die_id, tile_sx = row
+        # Always-rebuild: delete this die's rows from all 5 tables before any streamed insert begins
+        # (a re-run never sees a partial old + new mix even if interrupted mid-stream).
+        for tbl in (schema.cv_route_muxes, schema.cv_route_lines, schema.cv_route_drivers, schema.cv_p2r, schema.cv_p2p):
+            conn.execute(delete(tbl).where(tbl.c.die == die_id))
 
     ROUTES_WIDTH[0] = tile_sx  # routes.cc's "width" param = tile_sx (generator.cc call site)
-
-    # Always-rebuild: delete this die's rows from all 5 tables before any
-    # streamed insert begins (so a re-run never sees a partial leftover mix
-    # of old + new rows even if it is interrupted mid-stream).
-    for tbl in ("cv_route_muxes", "cv_route_lines", "cv_route_drivers", "cv_p2r", "cv_p2p"):
-        conn.execute(f"DELETE FROM {tbl} WHERE die = ?", (die_id,))
-    if db.BACKEND == "sqlite":
-        conn.commit()
+    conn = None
 
     write_lock = threading.Lock()
     n_routes = run_streamed(
@@ -670,7 +655,6 @@ def import_die_routes(mistral_root, die, chunk_workers, batch_lines, max_ram_pct
                        die_id, write_lock)(p2p_rows)
     n_p2r, n_p2p = len(p2r_rows), len(p2p_rows)
     del p2r_rows, p2p_rows
-    conn.close()
 
     dt = time.time() - t_die
     log.info(f"{die}: inserted routes={n_routes} lines={n_lines} rdriver={n_rdriver} "
