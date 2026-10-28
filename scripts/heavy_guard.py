@@ -92,6 +92,8 @@ JOB_GB = {
     "reach2_stage": 2.1,             # reach2.py V02, 2.65 M rows (not re-measured; fnirsi now 0.61, was 1.5)
     "lifter_equiv_target": 0.1,      # per worker thread: 8 threads + yosys children peak 0.13 GB PSS total (#149)
     "unknown_bits_census": 0.05,     # per worker thread, MachXO2 decode: 8 threads peak 0.08 GB PSS total (#149)
+    "validate_fuzz_target": 0.3,     # ecpunpack + load.py child per worker thread (provisional, re-set from ab_measure)
+    "native_corpus_parity": 0.05,    # per worker thread: 8 threads peak 0.10 GB PSS total (#149)
     "bench_reach_sql": 3.0,          # scripts/bench_reach_sql.py: reach + reach2 children on one DB copy
 }
 BATCH_FILL = 0.8   # fraction of BATCH_MAX_GB planned for workers; the rest is headroom for peaks

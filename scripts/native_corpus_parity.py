@@ -7,12 +7,10 @@ Compares the pure-Python native tile decode against the pytrellis oracle
   * every ``diamond-fuzz/targets/*/impl1/fuzz_impl1.bit`` that exists, and
   * any real vendor bitstreams supplied via ``PLURIBUS_VENDOR_BITSTREAMS``.
 
-Parallelism is at the BITSTREAM level: one whole bitstream per worker, each
-with its OWN CRAM + its OWN pytrellis Chip / native DB view.  We do NOT thread
-across tiles within a bitstream (that hits free-threaded refcount cache-line
-contention on shared objects).  ``concurrent.futures.ProcessPoolExecutor``
-gives every worker fully independent hot data, so scaling is clean and the C++
-pytrellis oracle never races another thread.  Runs under python3.14t.
+Parallelism is at the BITSTREAM level: one whole bitstream per worker thread
+(``ThreadPoolExecutor``), each with its OWN CRAM + its OWN pytrellis Chip; the
+tile databases, tilegrid and pytrellis database are loaded once and read-only.
+Tiles within a bitstream are not threaded (workers=1).  Runs under python3.15t.
 
 native path:  native_bitstream CRAM -> native_tile_decode -> canonical sets
 oracle path:  fuzz .bit -> pytrellis read_bit+deserialise (independent parse);
@@ -28,7 +26,7 @@ import os
 import sys
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -48,14 +46,15 @@ DEVICE = "LCMXO2-1200"
 MAX_DIV_DETAIL = 40   # per-bitstream cap on divergence lines carried back
 
 # ---------------------------------------------------------------------------
-# per-worker (per-process) state -- loaded once by the pool initializer
+# shared read-only state -- loaded once in main() before the pool starts
 # ---------------------------------------------------------------------------
 _W = {}
 
 
-def _worker_init():
-    # Silence pytrellis' chatty C++ stdout so it does not flood the log; real
-    # results and errors travel back through return values / exceptions.
+def _init():
+    """Load the shared decoders/databases once.  Returns the original stdout stream
+    (fd 1 is pointed at /dev/null so pytrellis' chatty C++ output cannot flood the log)."""
+    out = os.fdopen(os.dup(1), "w")
     devnull = os.open(os.devnull, os.O_WRONLY)
     os.dup2(devnull, 1)
     import native_bitstream
@@ -72,6 +71,7 @@ def _worker_init():
     _W["_bit_path_for_oracle"] = _bit_path_for_oracle
     _W["compare"] = compare
     _W["tilegrid"] = ntd.load_tilegrid(DEVICE, DB)
+    return out
 
 
 def _oracle_can(path, pb):
@@ -175,13 +175,14 @@ def discover():
 
 
 def run_pool(items, workers):
-    """Run check_bitstream over items with a process pool; return (results, wall)."""
+    """Run check_bitstream over items with a thread pool; return (results, wall)."""
+    import heavy_guard
     results = []
     t0 = time.perf_counter()
-    with ProcessPoolExecutor(max_workers=workers,
-                             initializer=_worker_init) as ex:
-        # chunksize amortises IPC; ordering irrelevant (each result self-labels).
-        for r in ex.map(check_bitstream, items, chunksize=4):
+    with heavy_guard.lease(workers * heavy_guard.JOB_GB["native_corpus_parity"],
+                           "native_corpus_parity", heavy_guard.stdout_log()), \
+            ThreadPoolExecutor(max_workers=workers) as ex:
+        for r in ex.map(check_bitstream, items):
             results.append(r)
     return results, time.perf_counter() - t0
 
@@ -200,10 +201,11 @@ def main():
     os.makedirs(os.path.join(REPO, "tmp"), exist_ok=True)
     logpath = os.path.join(REPO, "tmp", "native_corpus_parity.log")
     fh = open(logpath, "w")
+    stdout = _init()
 
     def log(*a):
         msg = " ".join(str(x) for x in a)
-        print(msg)
+        print(msg, file=stdout, flush=True)
         fh.write(msg + "\n")
         fh.flush()
 
