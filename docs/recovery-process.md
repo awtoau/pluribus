@@ -105,12 +105,12 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
 - **Easy and large before hard and small.** Edges, corners and one-off pin cases come AFTER the
   interior class they truncate is fully known: an edge is a deviation from the interior pattern,
   so the pattern must exist first.
-- **Tick every box of a block before the next block** (a checklist per block, see
-  docs/cycloneiv-specimens.md "Block checklists"): partial coverage of many blocks is worse than
-  complete coverage of one, because completeness is what lets an elimination argument close the
-  remaining bits.
-- **Elimination counts.** Once a block's checklist is complete, every remaining set bit in that
-  block is, by elimination, a named unknown to attack next; record that count in the inventory.
+- **Work a block's checklist easiest-box-first** (docs/cycloneiv-specimens.md "Block checklists"):
+  each ticked box adds to die coverage on its own, so partial progress counts.
+- **A stuck box does not block the queue.** Two failed attempts → park it as a numbered issue
+  with the evidence, move to the next box or block; the inventory keeps it visible.
+- **Elimination is a tool, not a gate.** When a block's remaining unknown set bits are few, name
+  them and attack them by elimination; do not hold other blocks back to reach that point.
 - Re-rank after every inventory run; the doc's top-10 table is the queue.
 
 ## Case study: Cyclone IV (#141)
