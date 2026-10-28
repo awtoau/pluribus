@@ -1,6 +1,6 @@
 # Cyclone IV GX150 configuration-bit inventory
 
-Tool: `scripts/cycloneiv_bit_inventory.py --image <path>` (read-only; log `tmp/logs/cycloneiv_bit_inventory.log`, JSON `tmp/cycloneiv_bit_inventory.json`). Issue #141.
+Tool: `scripts/cycloneiv_bit_inventory.py --image <path> --record` (run with `--record` after every checklist item: appends one line to `docs/coverage-history.jsonl`, the coverage-over-time ledger; read-only otherwise; log `tmp/logs/cycloneiv_bit_inventory.log`, JSON `tmp/cycloneiv_bit_inventory.json`). Issue #141.
 
 ## Method
 

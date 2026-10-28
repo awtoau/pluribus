@@ -119,7 +119,7 @@ def git(*args):
     return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True, check=True).stdout.strip()
 
 
-def record(out, hdr_ver, hdr_known, hdr_unk):
+def record(out, hdr_ver, hdr_known, hdr_unk, commit=None, ts=None, source="live", dirty=None):
     """Append ONE line to the coverage ledger (single O_APPEND write; existing lines never rewritten)."""
     import datetime
     import os
@@ -134,9 +134,11 @@ def record(out, hdr_ver, hdr_known, hdr_unk):
         assert v + e + u == t, r["id"]
         classes.append(dict(id=r["id"], name=r["name"], tier_label=r["tier"], die_bits=t, verified=v, evidence=e,
                             unknown=u, image_set=r["set"]))
-    line = dict(ts=datetime.datetime.now().astimezone().isoformat(timespec="seconds"), commit=git("rev-parse", "HEAD"),
-                subject=git("log", "-1", "--format=%s"), dirty=bool(git("status", "--porcelain", "--untracked-files=no")),
-                source="live", die_bits=out["die_bits"], verified=out["verified"], evidence=out["evidence"],
+    commit = commit or git("rev-parse", "HEAD")
+    if dirty is None:
+        dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
+    line = dict(ts=ts or datetime.datetime.now().astimezone().isoformat(timespec="seconds"), commit=commit,
+                subject=git("log", "-1", "--format=%s", commit), dirty=dirty, source=source, die_bits=out["die_bits"], verified=out["verified"], evidence=out["evidence"],
                 unknown=out["unknown"], image_set_total=out["set_total"], classes=classes)
     assert line["verified"] + line["evidence"] + line["unknown"] == line["die_bits"]
     data = (json.dumps(line, separators=(",", ":")) + "\n").encode()
