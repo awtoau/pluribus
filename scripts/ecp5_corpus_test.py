@@ -48,6 +48,7 @@ Logs to ./tmp/logs/ecp5_corpus_test.log; results JSON to tmp/ecp5_corpus_results
 """
 import argparse
 import concurrent.futures
+import contextlib
 import difflib
 import json
 import logging
@@ -503,7 +504,22 @@ def check_netlist(design, cens):
 # per-file pipeline
 # ---------------------------------------------------------------------------
 
+def lift_lease_gb(dev):
+    """Declared per-lift RSS on a graph shared by all threads (JOB_GB, docs/shared-structures.md)."""
+    if "85F" in dev:
+        return heavy_guard.JOB_GB["ecp5_85f_lift_threads_base"]
+    if "45F" in dev:
+        return heavy_guard.JOB_GB["ecp5_graph_45f"] + heavy_guard.JOB_GB["ecp5_target_extra_25f"]
+    return heavy_guard.JOB_GB["ecp5_graph_25f"] + heavy_guard.JOB_GB["ecp5_target_extra_25f"]
+
+
 def test_one(rec, log, do_lift=True):
+    """One corpus file; a lift holds a heavy_guard lease for its declared RSS."""
+    with contextlib.ExitStack() as stack:
+        return _test_one(rec, log, do_lift, stack)
+
+
+def _test_one(rec, log, do_lift, stack):
     heavy_guard.wait_available(log, rec.get("label") or rec.get("local", ""))
     path = os.path.join(REPO, rec["local"]) if "local" in rec else rec["path"]
     label = rec.get("label") or os.path.basename(path)
@@ -541,6 +557,8 @@ def test_one(rec, log, do_lift=True):
         with _lock:
             log.info("%-46s SKIP unsupported family (%s %s)", label, family, dev)
         return out
+    if do_lift:
+        stack.enter_context(heavy_guard.lease(lift_lease_gb(dev), f"ecp5_corpus_test {label[:40]}", log))
     # Record whether claim 2 is even available for this family, so a missing
     # oracle is never silently read as an oracle pass.
     out["oracle_tool"] = support["oracle"]
@@ -642,28 +660,18 @@ def test_one(rec, log, do_lift=True):
     return out
 
 
-def _proc_one(rec, do_lift):
-    """ProcessPool entry (--mode procs): own interpreter, own routing graph per process."""
-    return test_one(rec, setup_logging("ecp5_corpus_test"), do_lift)
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", default=MANIFEST)
     ap.add_argument("--carved", default=CARVED_MANIFEST,
                     help="carve manifest (scripts/ecp5_carve.py --manifest-out) "
                          "supplying vendor provenance for scanned .bit files")
-    # Lifting is the memory-hungry stage, not decoding: an LFE5U-85F lift holds
-    # the full routing graph plus the union-find, and eight concurrent 85F
-    # lifts were measured at ~27 GB RSS combined.  Decode-only runs are cheap
-    # and can use many more workers, so --no-lift pairs well with a high count.
+    # Threads in one process share one routing graph per device (#148); each
+    # lift also holds a per-job heavy_guard lease (JOB_GB), so the box budget
+    # bounds real concurrency.  Decode-only runs are cheap: --no-lift + many workers.
     ap.add_argument("--workers", type=int, default=4,
-                    help="parallel workers (threads mode shares one graph per device: "
-                         "8 concurrent 85F lifts peak ~2.2 GB, #148)")
-    ap.add_argument("--mode", choices=["threads", "procs"], default="threads",
-                    help="threads (default): workers share one routing graph per device in one "
-                         "process; procs: old per-process mode, each worker builds its own "
-                         "(A/B and memory comparison, #148)")
+                    help="worker threads (docs/shared-structures.md: 8 concurrent 85F "
+                         "lifts = 2.05 GB RSS, #148)")
     ap.add_argument("--only", help="substring filter on label")
     ap.add_argument("--no-lift", action="store_true")
     ap.add_argument("--extra", action="append", default=[],
@@ -756,17 +764,8 @@ def main():
                       indent=2, sort_keys=True)
         os.replace(tmp, args.out)
 
-    if args.mode == "procs":
-        import multiprocessing as mp
-        pool = concurrent.futures.ProcessPoolExecutor(args.workers,
-                                                      mp_context=mp.get_context("spawn"))
-    else:
-        pool = concurrent.futures.ThreadPoolExecutor(args.workers)
-    with heavy_guard.heavy_lock("ecp5_corpus_test", log), pool as ex:
-        if args.mode == "procs":
-            futs = [ex.submit(_proc_one, e, not args.no_lift) for e in entries]
-        else:
-            futs = [ex.submit(test_one, e, log, not args.no_lift) for e in entries]
+    with concurrent.futures.ThreadPoolExecutor(args.workers) as ex:
+        futs = [ex.submit(test_one, e, log, not args.no_lift) for e in entries]
         for f in concurrent.futures.as_completed(futs):
             results.append(f.result())
             with _lock:
