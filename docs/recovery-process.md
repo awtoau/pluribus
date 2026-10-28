@@ -37,6 +37,9 @@ already documented. This doc makes the method binding, not advisory.
   generator inputs AND the provenance — vendor tool + version, build date. Sources + toml are
   git-tracked; bulky outputs stay on disk and are reused (solvers cache against them). A build is
   redone only when the tool version changes deliberately, and then as a new provenance entry.
+  The queryable index is the `postfit_builds` table (`schema.py`), rebuilt by
+  `scripts/corpus_register.py --family <f>` (full rescan — derived index, rebuild is the
+  migration); run it after every build batch. Check the DB before regenerating anything.
 - Declare ONE fixed gate set in the issue; every number ever reported cites it. A changed set is
   a new baseline, stated as such.
 - Headline per the scoring-faults rules: matched / (matched + missing + extra + wrong). Missing
