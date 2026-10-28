@@ -559,8 +559,6 @@ PAGE = r"""<!doctype html>
 :root[data-theme=dark]{--bg:#17181a;--fg:#e8e8e4;--mut:#9a9a94;--card:#202225;--line:#38393c;--ver:#46c08a;--evi:#f0b93a;--unk:#6c6d71;--ovh:#6c9bf0;--bad:#ff6b6b;--lab:#6c9bf0;--m9k:#c08be0;--mul:#f08a5a;--io:#55c4c4;--accent:#7fa2ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px}
 h1{font-size:20px;margin:0 0 2px}p.sub{margin:0 0 12px;color:var(--mut)}
-.wrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;margin:0 auto}
-@media (max-width:900px){.wrap{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
 canvas{display:block;border-radius:6px;cursor:crosshair;max-width:100%}
 .scroll{overflow:auto;max-height:78vh}
@@ -574,29 +572,15 @@ th{font-weight:600;color:var(--mut);border-bottom:1px solid var(--line)}
 #bm{image-rendering:pixelated;cursor:crosshair}
 input[type=range]{width:100%}
 .blegend{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 12px;margin-top:8px}.blegend b,.blegend .note{grid-column:1/-1}
-@media (min-width:901px){.wrap>div:last-child{position:sticky;top:0;align-self:start;max-height:calc(100vh - 16px);overflow:auto}}
 /*__PINS_CSS__*/
 </style></head><body>
 <h1>EP4CGX150 die: which cells of one image are known</h1>
 <p class="sub">One tile per cell (x across, y up). Data: a single third-party EP4CGX150 image classified by the bit inventory. Click a tile to inspect its cells.</p>
 <div class="wrap">
-<div>
-<div class="card" style="overflow:auto"><canvas id="c" role="img" aria-label="Die tile map, colour by known share of the image's set bits"></canvas></div>
-<div class="card" id="insp"><b>Tile inspector</b> <span id="ititle" style="color:var(--mut)">click a tile on the map</span>
-<div class="blegend"><b>Bitmap legend</b>
-<label style="cursor:default"><span class="sw" style="background:var(--ver)"></span>verified class, set</label>
-<label style="cursor:default"><span class="sw" style="background:var(--evi)"></span>evidence class, set</label>
-<label style="cursor:default"><span class="sw" style="background:var(--unk)"></span>unknown class, set</label>
-<label style="cursor:default"><span class="sw" style="background:var(--ovh)"></span>CRC bytes (checksum), set</label>
-<label><input type="checkbox" id="tint" checked> Tint unset cells by their class tier</label>
-<label><input type="checkbox" id="onlyset"> Only set cells</label>
-<label>Cell size <input type="range" id="csz" min="0" max="16" value="0"></label>
-<div class="note">Verified = LUT INIT bits (compared with vendor netlists, 100 % over 301 builds). Evidence = a mapping exists without a per-bit oracle (LE-used bit, clock polarity, routing tables, translated routing specimens). Unknown = no meaning attributed. Evidence also covers table-only routing cells: <i>known</i> here means "has a proposed meaning", and is weaker than verified.</div>
-<div class="scroll" style="max-height:560px;margin-top:8px"><canvas id="bm" width="10" height="10"></canvas></div>
-<div id="bmi" class="note" style="min-height:2.6em">Frames run left to right, v runs upward. Hover a cell.</div></div>
-</div>
-<div>
-<div class="card">
+<div><div class="card" style="overflow:auto"><canvas id="c" role="img" aria-label="Die tile map, colour by known share of the image's set bits"></canvas></div></div>
+<aside id="side">
+<!--__PANEL_BAR__-->
+<details class="pnl" id="pn-ctl" open><summary>Colour, layers and size</summary><div class="pb">
 <fieldset><legend>Colour by</legend>
 <label><input type="radio" name="mode" value="share" checked> (a) Known share of set bits</label>
 <label><input type="radio" name="mode" value="dens"> (b) Set-bit density of the image</label>
@@ -609,14 +593,25 @@ input[type=range]{width:100%}
 <label><input type="checkbox" data-k="IO" checked><span class="sw" style="background:var(--io)"></span>IO (ring)</label></fieldset>
 <fieldset><legend>Overlays</legend>
 <label><input type="checkbox" id="oZero" checked><span class="sw" style="border:2px solid var(--bad)"></span>Set bits but none known</label>
-<label><input type="checkbox" id="oSel" checked> Selected tile</label>
-<label><input type="checkbox" id="fit" checked> Fit map to window</label>
-<label>Map zoom <input type="range" id="zoom" min="6" max="56" value="10"></label></fieldset>
-<div id="legend"></div></div>
-<div class="card"><div id="info">Hover a tile.</div></div>
+<label><input type="checkbox" id="oSel" checked> Selected tile</label></fieldset>
+<!--__SIZE_HTML__-->
+<div id="legend"></div></div></details>
+<details class="pnl" id="pn-info" open><summary>Hovered tile</summary><div class="pb"><div id="info">Hover a tile.</div></div></details>
+<details class="pnl" id="pn-insp" open><summary>Tile inspector</summary><div class="pb"><span id="ititle" style="color:var(--mut)">click a tile on the map</span>
+<div class="scroll" style="max-height:420px;margin-top:8px"><canvas id="bm" width="10" height="10"></canvas></div>
+<div id="bmi" class="note" style="min-height:2.6em">Frames run left to right, v runs upward. Hover a cell.</div></div></details>
+<details class="pnl" id="pn-bleg"><summary>Bitmap legend and options</summary><div class="pb"><div class="blegend">
+<label style="cursor:default"><span class="sw" style="background:var(--ver)"></span>verified class, set</label>
+<label style="cursor:default"><span class="sw" style="background:var(--evi)"></span>evidence class, set</label>
+<label style="cursor:default"><span class="sw" style="background:var(--unk)"></span>unknown class, set</label>
+<label style="cursor:default"><span class="sw" style="background:var(--ovh)"></span>CRC bytes (checksum), set</label>
+<label><input type="checkbox" id="tint" checked> Tint unset cells by their class tier</label>
+<label><input type="checkbox" id="onlyset"> Only set cells</label>
+<label>Cell size <input type="range" id="csz" min="0" max="16" value="0"></label>
+<div class="note">Verified = LUT INIT bits (compared with vendor netlists, 100 % over 301 builds). Evidence = a mapping exists without a per-bit oracle (LE-used bit, clock polarity, routing tables, translated routing specimens). Unknown = no meaning attributed. Evidence also covers table-only routing cells: <i>known</i> here means "has a proposed meaning", and is weaker than verified.</div></div></div></details>
 <!--__PINS_HTML__-->
-<div class="note">Row binning is by band [VY-68, VY+1] (70 v). Cells of classes 1, 2 and 3 are owned by the tile that generated them; the rest are binned by frame band and v row. Frames FX+16..FX+17 of a LAB column are shared with the next column band.</div>
-</div></div>
+<details class="pnl" id="pn-notes"><summary>Notes</summary><div class="pb"><div class="note" style="margin:0">Row binning is by band [VY-68, VY+1] (70 v). Cells of classes 1, 2 and 3 are owned by the tile that generated them; the rest are binned by frame band and v row. Frames FX+16..FX+17 of a LAB column are shared with the next column band.</div></div></details>
+</aside></div>
 <script>
 const D=__DATA__;
 const NX=D.nx,NY=D.ny,T=D.t,CL=D.cls,KN=D.kinds;
@@ -629,10 +624,6 @@ const TV={V:'--ver',E:'--evi',U:'--unk',O:'--ovh'};
 let mode="share",hover=null,sel=null;const vis={LAB:1,M9K:1,MUL:1,IO:1};
 const maxDens=Math.max(...T.map(t=>t[3]?t[4]/t[3]:0));
 function ramp(f){f=Math.max(0,Math.min(1,f));const a=[247,247,240],b=[34,70,160];return `rgb(${a.map((x,i)=>Math.round(x+(b[i]-x)*f)).join(',')})`}
-function fitS(){const card=cv.parentElement,w=card.clientWidth-26,top=card.getBoundingClientRect().top;const h=Math.max(360,innerHeight-Math.max(top,0)-28);return Math.max(4,Math.min(56,Math.floor(Math.min((w-2*M)/NX,(h-2*M)/NY))))}
-let fit=true;function setFit(on){fit=on;const e=document.getElementById('fit');if(e)e.checked=on}
-function size(){if(fit){S=fitS();document.getElementById('zoom').value=S}const w=NX*S+2*M,h=NY*S+2*M;if(cv.width!=w)cv.width=w;if(cv.height!=h)cv.height=h}
-function setZoom(v){setFit(false);S=v;document.getElementById('zoom').value=v;draw()}
 function tile(t,px,py){const k=kv(KN[t[2]]);
  if(mode=="share"){const tot=t[5]+t[6]+t[7];ctx.fillStyle=css('--line');ctx.globalAlpha=.4;ctx.fillRect(px,py,S-1,S-1);ctx.globalAlpha=1;
   if(tot>0){let y=py+S-1;for(const [n,c] of [[t[5],'--ver'],[t[6],'--evi'],[t[7],'--unk']]){const h=(S-1)*n/tot;ctx.fillStyle=css(c);ctx.fillRect(px,y-h,S-1,h);y-=h}}}
@@ -698,8 +689,6 @@ bm.addEventListener('mousemove',e=>{const t=bsel;if(!t||!CT)return;const rc=bm.g
 document.querySelectorAll('input[name=mode]').forEach(i=>i.onchange=()=>{mode=i.value;draw()});
 document.querySelectorAll('[data-k]').forEach(i=>i.onchange=()=>{vis[i.dataset.k]=i.checked?1:0;draw()});
 ['oZero','oSel'].forEach(id=>document.getElementById(id).onchange=draw);
-document.getElementById('zoom').oninput=e=>{setFit(false);S=+e.target.value;draw()};
-document.getElementById('fit').onchange=e=>{fit=e.target.checked;draw()};addEventListener('resize',()=>{if(fit)draw()});
 
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{draw();drawBm()});
 /*__PINS_JS__*/
