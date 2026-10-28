@@ -82,6 +82,10 @@ JOB_GB = {
     "ecp5_target_extra_25f": 0.35,   # marginal RSS of one more concurrent 25F target on a shared graph
     "quartus_fit_small": 1.06,       # quartus_fit RSS, corpus-size Cyclone V design (map: 0.53)
     "cyclonev_sim_job": 0.07,        # load.py / verilog.py child of lifted_sim_check (iverilog path)
+    "quartus_chain_cyc4": 1.5,       # map/fit/asm chain, Cyclone IV GX specimen (peak ~1.3, docs/rust-candidates.md)
+    "cyc4_dec_active": 2.5,          # Dec.active on EP4CGX150 (asm tables + plane)
+    "cyc4_tracer": 3.7,              # ddb_trace score, 3 designs
+    "cyc4_bit_inventory": 3.0,       # scripts/cycloneiv_bit_inventory.py
 }
 BATCH_FILL = 0.8   # fraction of BATCH_MAX_GB planned for workers; the rest is headroom for peaks
 
@@ -95,6 +99,88 @@ def workers_for(job, cap, base_gb=0.0):
 
 SCOPE_ENV = "PLURIBUS_SCOPE"  # set once the batch runs in its own capped cgroup scope
 BATCH_MAX_GB = float(os.environ.get("PLURIBUS_BATCH_MAX_GB", "28"))
+
+# Memory leases: a counting semaphore in GB across every process on the box, so concurrent jobs
+# (agents, sweeps, analyses) share the budget instead of each assuming it owns the machine.
+# heavy_lock stays for whole-batch exclusivity; lease() is the fine-grained path and lets
+# jobs run side by side while their declared peaks fit.  Memory pressure (swap thrash) is what
+# degrades speed and takes the box down, not job count.
+LEASE_PATH = LOCK_PATH + ".leases"
+LEASE_BUDGET_GB = float(os.environ.get("PLURIBUS_LEASE_BUDGET_GB", str(BATCH_MAX_GB)))
+LEASE_RAMP_S = 3.0  # a freshly admitted job reaches its peak allocation within seconds; MemAvailable lags until then
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def lease_ledger():
+    """Live leases {token: {pid, gb, name, t}} (stale pids dropped); read-only snapshot for status tools."""
+    import json
+    try:
+        with open(LEASE_PATH) as fh:
+            raw = fh.read()
+        data = json.loads(raw) if raw.strip() else {}
+    except FileNotFoundError:
+        return {}
+    return {k: v for k, v in data.items() if _alive(v["pid"])}
+
+
+@contextlib.contextmanager
+def lease(gb, name, log, budget_gb=None):
+    """Hold `gb` GB of the shared memory budget while the body runs.
+
+    Admitted when sum(live leases) + gb <= budget, AVAILABLE RAM - gb >= MIN_AVAILABLE_GB, and no lease
+    is younger than LEASE_RAMP_S.  A job larger than the whole budget runs alone (empty ledger).
+    Waits poll every POLL_S and log every LOG_S (a silent wait looks like a hang); no expiry.
+    """
+    import json
+    import uuid
+    budget = LEASE_BUDGET_GB if budget_gb is None else budget_gb
+    token = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    os.makedirs(os.path.dirname(LEASE_PATH), exist_ok=True)
+
+    def try_admit():
+        with open(LEASE_PATH, "a+") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.seek(0)
+            raw = fh.read()
+            data = json.loads(raw) if raw.strip() else {}
+            data = {k: v for k, v in data.items() if _alive(v["pid"])}
+            used = sum(v["gb"] for v in data.values())
+            now = time.time()
+            fits = (used + gb <= budget) or not data
+            ramp_ok = all(now - v["t"] >= LEASE_RAMP_S for v in data.values())
+            ram_ok = available_gb() - gb >= MIN_AVAILABLE_GB
+            ok = fits and ramp_ok and ram_ok
+            if ok:
+                data[token] = {"pid": os.getpid(), "gb": gb, "name": name, "t": now}
+            fh.seek(0)
+            fh.truncate()
+            fh.write(json.dumps(data))
+            return ok
+
+    _wait(try_admit, f"{name}: waiting for {gb:g} GB of the {budget:g} GB memory budget "
+                     f"(leased {sum(v['gb'] for v in lease_ledger().values()):.1f}, "
+                     f"avail {available_gb():.1f})", log)
+    try:
+        yield
+    finally:
+        with open(LEASE_PATH, "a+") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.seek(0)
+            raw = fh.read()
+            data = json.loads(raw) if raw.strip() else {}
+            data.pop(token, None)
+            fh.seek(0)
+            fh.truncate()
+            fh.write(json.dumps(data))
 
 
 def isolate_in_scope():

@@ -5,7 +5,8 @@
 
 Admission (checked before each job starts, polled every POLL_S):
   - workers in flight < max_workers (default cores - 4, headroom for the desktop and other agents)
-  - MemAvailable - reserve_gb >= per_job_gb (a Quartus chain peaks ~1.3 GB; 2.0 leaves margin)
+  - a heavy_guard.lease(per_job_gb): the box-wide GB budget shared with every other sweep/agent
+    (a Quartus chain peaks ~1.3 GB; 2.0 leaves margin) and the AVAILABLE-RAM floor
   - disk free >= disk_floor_gb (ENOSPC hit twice on 2026-10-28)
   - STAGGER_S since the last start, so MemAvailable reflects the previous job before the next check
 If nothing is in flight and memory is still short for ADMIT_ANYWAY_S, one job is admitted anyway
@@ -15,12 +16,16 @@ Threads, not processes: jobs are subprocess waits plus numpy/bit work, safe unde
 import logging
 import os
 import shutil
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts"))
+import heavy_guard  # noqa: E402
+
 log = logging.getLogger("build_pool")
 
 POLL_S = 1.0            # admission re-check; MemAvailable moves on a ~second scale
@@ -49,7 +54,7 @@ def map_adaptive(fn, items, per_job_gb=2.0, reserve_gb=10.0, max_workers=None, d
             with cv:
                 now = time.monotonic()
                 free_disk = shutil.disk_usage(REPO).free / 2**30
-                ok_mem = mem_available_gb() - reserve_gb >= per_job_gb
+                ok_mem = True  # RAM is gated by the shared lease in run()
                 ok_slot = state["inflight"] < max_workers
                 ok_time = now - state["last_start"] >= STAGGER_S
                 if free_disk < disk_floor_gb:
@@ -67,7 +72,8 @@ def map_adaptive(fn, items, per_job_gb=2.0, reserve_gb=10.0, max_workers=None, d
     def run(item):
         admit()
         try:
-            return fn(item)
+            with heavy_guard.lease(per_job_gb, "build_pool", log):
+                return fn(item)
         finally:
             with cv:
                 state["inflight"] -= 1
