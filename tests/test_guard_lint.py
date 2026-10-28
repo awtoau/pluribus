@@ -28,6 +28,7 @@ ALLOW = {
     ("fuzz_lec.py", "run_candidate"): "runs verilog.py (python) only; the yosys call is guarded",
     ("run_pipeline.py", "main"): "runs pluribus python stages only",
     ("sim_no_ip.py", "main"): "runs verilog.py (python) only; iverilog is guarded",
+    ("cycloneiv_corpus_fetch.py", "analyze_one"): "one quartus_cpf .sof->.rbf conversion with subprocess timeout CPF_TIMEOUT_S",
 }
 ALLOW_FILES = {"heavy_guard.py": "implements the guard"}
 
