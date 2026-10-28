@@ -245,6 +245,9 @@ def build(match, jobs, force):
     bad = {}
 
     def one(n):
+        if ABORT.exists():
+            bad[n] = "aborted"
+            return
         heavy_guard.wait_available(log, n, JOB_MIN_GB)
         t0 = time.monotonic()
         f = fz.build_one(n)
@@ -394,28 +397,77 @@ class Solver:
                         P.dec.names.get(int(s), "")]}
 
 
-def solve(match, force):
+def solve(match, force, watch=False):
+    """One pass by default.  --watch pipelines with a running build: solves each pair the moment
+    both twins have an RCF, streams the incremental aggregate, ends when the build reports done
+    and nothing is left (a systematic matching fault then shows after a dozen solves, not after
+    the batch)."""
+    import threading
     (WORK / "solved").mkdir(parents=True, exist_ok=True)
-    names = sorted(p.name for p in CORPUS.iterdir()
-                   if p.name.startswith("gxspec_") and fnmatch.fnmatch(p.name, match)
-                   and (p / "routing.rcf").exists())
-    todo = [n for n in names if force or not (WORK / "solved" / f"{n}.json").exists()]
-    log.info("solve: %d specimens (%d cached)", len(todo), len(names) - len(todo))
-    if todo:
-        S = Solver()
-        t0 = time.time()
+    build_log = REPO / "tmp" / "logs" / "cycloneiv_specimens_build.out"
+    S = None
+    done = set() if force else {p.stem for p in (WORK / "solved").glob("gxspec_*.json")}
+    t0 = time.time()
+    while True:
+        ready = sorted(p.name for p in CORPUS.iterdir()
+                       if p.name.startswith("gxspec_") and fnmatch.fnmatch(p.name, match)
+                       and (p / "routing.rcf").exists()
+                       and (CORPUS / p.name.replace("gxspec_", "gxbase_") / "routing.rcf").exists())
+        todo = [n for n in ready if n not in done]
+        if todo:
+            S = S or Solver()
 
-        def one(n):
-            r = S.solve_one(n)
-            (WORK / "solved" / f"{n}.json").write_text(json.dumps(r, indent=0))
-            return n, r
-        with ThreadPoolExecutor(8) as ex:
-            for i, (n, r) in enumerate(ex.map(one, todo)):
-                if "error" in r:
-                    log.info("%s: ERROR %s", n, r["error"])
-                elif i % 20 == 19 or len(todo) <= 8:
-                    log.info("%s: %s (%d / %d, %.0fs)", n, r["stats"], i + 1, len(todo), time.time() - t0)
-    aggregate(names)
+            def one(n):
+                r = S.solve_one(n)
+                (WORK / "solved" / f"{n}.json").write_text(json.dumps(r, indent=0))
+                return n, r
+            with ThreadPoolExecutor(8) as ex:
+                for i, (n, r) in enumerate(ex.map(one, todo)):
+                    if "error" in r:
+                        log.info("%s: ERROR %s", n, r["error"])
+                    elif i % 50 == 49 or len(todo) <= 8:
+                        log.info("%s: %s (%d / %d, %.0fs)", n, r["stats"], i + 1, len(todo), time.time() - t0)
+            done.update(todo)
+            agg = aggregate(sorted(done))
+            abort_check(agg, len(done))
+        if not watch:
+            break
+        built_done = build_log.exists() and "build done" in build_log.read_text()[-2000:]
+        if built_done and not todo:
+            break
+        threading.Event().wait(20)   # poll for newly built pairs; builds take ~15 s each
+    if not done:
+        log.info("solve: nothing ready")
+
+
+ABORT = WORK / "ABORT"
+
+
+def abort_check(agg, n_solved):
+    """Fail-fast over the streamed solves: a broken matcher must not consume the batch.
+    Kills the running build batch (heavy-lock pid), leaves an ABORT sentinel, hard exit."""
+    t = agg["stats"]
+    why = None
+    if n_solved >= 20 and t.get("edge_matched", 0) == 0:
+        why = f"{n_solved} solves, zero matched edges"
+    elif n_solved >= 20 and t.get("specimens_error", 0) > 0.5 * n_solved:
+        why = f"{t.get('specimens_error')} / {n_solved} specimens errored"
+    elif n_solved >= 50 and not (agg["wires"] or agg["lis"] or agg["wires_tile"] or agg["lis_tile"]):
+        why = f"{n_solved} solves, zero exact entries"
+    if why is None:
+        return
+    ABORT.write_text(why + "\n")
+    log.error("ABORT: %s - killing the build batch", why)
+    try:
+        pid = int(re.search(r"pid=(\d+)", Path(heavy_guard.LOCK_PATH).read_text()).group(1))
+        import psutil
+        p = psutil.Process(pid)
+        for c in p.children(recursive=True) + [p]:
+            c.kill()
+        log.error("killed build batch pid %d", pid)
+    except Exception as e:                                     # lock free / already gone
+        log.error("no build batch killed (%s)", e)
+    sys.exit(3)
 
 
 def aggregate(names):
@@ -484,6 +536,7 @@ def aggregate(names):
         log.error("SAME-TILE conflicts: %d (see %s) - two exact answers for one mux; decode bug, stopping",
                   len(out["same_tile_conflicts"]), WORK / "exact.json")
         sys.exit(2)
+    return out
 
 
 # ---------------------------------------------------------------- verify / merge
@@ -571,6 +624,7 @@ def main():
     ap.add_argument("--match", default="*")
     ap.add_argument("--jobs", type=int, default=20)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--watch", action="store_true", help="solve: pipeline with a running build")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     log.setLevel(logging.INFO)
@@ -582,7 +636,7 @@ def main():
     elif a.cmd == "build":
         return build(a.match, a.jobs, a.force)
     elif a.cmd == "solve":
-        solve(f"gxspec_{a.match}" if not a.match.startswith("gx") else a.match, a.force)
+        solve(f"gxspec_{a.match}" if not a.match.startswith("gx") else a.match, a.force, a.watch)
     elif a.cmd == "verify":
         verify()
     else:
