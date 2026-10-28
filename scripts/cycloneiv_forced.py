@@ -127,9 +127,130 @@ def tier(jobs):
     (REPO / "tmp" / "cycloneiv_forced_tier.json").write_text(json.dumps(rep))
 
 
+LAB = (10, 10)
+
+
+def pair_designs(pairs):
+    """Same-LAB LOCAL_LINE grid: u0@N<src> -> u1@N<snk>, constant masks, base = u1 input open."""
+    out = {}
+    pin = "set_location_assignment PIN_B9 -to y"
+    for src, snk in pairs:
+        for kind in ("s", "b"):
+            conn = ".dataa(u0_o), " if kind == "s" else ""
+            v = ("module top(output y);\n  wire u0_o;\n"
+                 '  cycloneiv_lcell_comb #(.lut_mask(16\'h0000), .sum_lutc_input("datac"), .dont_touch("on"))\n'
+                 "    u0 (.combout(u0_o));\n"
+                 '  cycloneiv_lcell_comb #(.lut_mask(16\'hFFFF), .sum_lutc_input("datac"), .dont_touch("on"))\n'
+                 f"    u1 ({conn}.combout(y));\nendmodule\n")
+            out[f"gxll_{src:02d}_{snk:02d}_{kind}"] = (
+                v, [f"set_location_assignment {lc(*LAB, src)} -to u0",
+                    f"set_location_assignment {lc(*LAB, snk)} -to u1", pin], f"LOCAL_LINE u0@N{src} -> u1@N{snk}")
+    return out
+
+
+def rcf_hop(name):
+    """(LOCAL_LINE I, port) the RCF reports for net u0_o, or None."""
+    t = (CORPUS / name / "routing.rcf").read_text()
+    m = re.search(r"signal_name = u0_o \{\s*(\w+):X(\d+)Y(\d+)S0I(\d+);\s*dest = \( u1, \w+ \), route_port = (\w+);", t)
+    return None if not m else [m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4)), m.group(5)]
+
+
+def lab(jobs):
+    pairs = [(a, b) for a in range(0, 32, 2) for b in range(0, 32, 2) if a != b]
+    ds = pair_designs(pairs)
+    for n, (v, q, p) in ds.items():
+        write_design(n, v, q, p)
+    build_all([n for n in ds if not (CORPUS / n / "routing.rcf").exists()], jobs)
+    res = {}
+    for a, b in pairs:
+        n = f"gxll_{a:02d}_{b:02d}"
+        if not ((CORPUS / (n + "_s") / "routing.rcf").exists() and (CORPUS / (n + "_b") / "routing.rcf").exists()):
+            log.info("MISSING build %s", n)
+            continue
+        on, off = diff(n + "_s", n + "_b")
+        res[n] = {"src": a, "snk": b, "hop": rcf_hop(n + "_s"), "on": on, "off": off}
+    (REPO / "tmp" / "cycloneiv_forced_lab.json").write_text(json.dumps(res))
+    log.info("lab grid: %d / %d pairs diffed", len(res), len(pairs))
+
+
+def rebuild(frac, seed, jobs):
+    """Rebuild a random fraction of the grid (specimen + base); every bit set must be identical."""
+    import random
+    res = json.loads((REPO / "tmp" / "cycloneiv_forced_lab.json").read_text())
+    names = sorted(res)
+    pick = random.Random(seed).sample(names, max(1, int(len(names) * frac)))
+    build_all([n + k for n in pick for k in ("_s", "_b")], jobs)
+    bad = 0
+    for n in pick:
+        on, off = diff(n + "_s", n + "_b")
+        if on != res[n]["on"] or off != res[n]["off"] or rcf_hop(n + "_s") != res[n]["hop"]:
+            bad += 1
+            log.error("UNSTABLE %s", n)
+    log.info("rebuild: %d pairs, %d unstable", len(pick), bad)
+
+
+def lab_table(res):
+    """{(src, snk): (C, D, Q, P)}: C/D depend on source only, Q on sink+port, P on (source, sink)."""
+    t = {}
+    for v in res.values():
+        on = sorted(v["on"])
+        c = [b for b in on if b // 10000 == 419]
+        d = [b for b in on if b // 10000 == 425]
+        rest = [b for b in on if b not in c + d]
+        if len(c) != 1 or len(d) != 1 or len(rest) != 2:
+            log.error("unexpected band layout %s", on)
+            sys.exit(2)
+        t[(v["src"], v["snk"])] = {"C": c[0], "D": d[0], "P": rest[0], "Q": rest[1], "port": v["hop"][4]}
+    return t
+
+
+def predict(tab, src, snk):
+    """Bit set for a held-out pair from the training table: C/D by source, Q by (sink, port),
+    P additive h(src) + g(snk).  A PREDICTION only - the held-out build decides."""
+    ref = [(a, b) for (a, b) in tab if a == src]
+    c, d, port = tab[ref[0]]["C"], tab[ref[0]]["D"], tab[ref[0]]["port"]
+    q = next((t["Q"] for (a, b), t in tab.items() if b == snk and t["port"] == port), None)
+    # P = P(src, s0) + P(s', snk) - P(s', s0) over a source s' seen at both sinks
+    p = None
+    for (a, b) in ref:
+        for (a2, b2), t2 in tab.items():
+            if a2 != src and b2 == snk and (a2, b) in tab and tab[(a2, b)]["port"] == tab[(a2, snk)]["port"] == port:
+                p = tab[(src, b)]["P"] + t2["P"] - tab[(a2, b)]["P"]
+                break
+        if p is not None:
+            break
+    return sorted(x for x in (c, d, p, q) if x is not None) if p is not None and q is not None else None
+
+
+def holdout(frac, seed, jobs):
+    import random
+    res = json.loads((REPO / "tmp" / "cycloneiv_forced_lab.json").read_text())
+    tab = lab_table(res)
+    keys = sorted(tab)
+    held = random.Random(seed).sample(keys, int(len(keys) * frac))
+    train = {k: v for k, v in tab.items() if k not in held}
+    pred = {k: predict(train, *k) for k in held}
+    names = [f"gxll_{a:02d}_{b:02d}" for a, b in held]
+    build_all([n + k for n in names for k in ("_s", "_b")], jobs)
+    hit = miss = nopred = 0
+    for (a, b), n in zip(held, names):
+        on, off = diff(n + "_s", n + "_b")
+        if pred[(a, b)] is None:
+            nopred += 1
+            log.info("NO PREDICTION %s", n)
+        elif pred[(a, b)] == on and not off:
+            hit += 1
+        else:
+            miss += 1
+            log.info("MISS %s predicted %s built %s", n, pred[(a, b)], on)
+    log.info("holdout: %d pairs, hit %d, miss %d, no-prediction %d", len(held), hit, miss, nopred)
+    (REPO / "tmp" / "cycloneiv_forced_lab_table.json").write_text(
+        json.dumps({f"{a},{b}": v for (a, b), v in sorted(tab.items())}))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("tier",))
+    ap.add_argument("cmd", choices=("tier", "lab", "rebuild", "holdout"))
     ap.add_argument("--jobs", type=int, default=6)
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
@@ -139,7 +260,14 @@ def main():
         h.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         log.addHandler(h)
         fz.log.addHandler(h)
-    tier(a.jobs)
+    if a.cmd == "tier":
+        tier(a.jobs)
+    elif a.cmd == "lab":
+        lab(a.jobs)
+    elif a.cmd == "rebuild":
+        rebuild(0.1, 20261028, a.jobs)
+    else:
+        holdout(0.1, 20261029, a.jobs)
 
 
 if __name__ == "__main__":
