@@ -40,3 +40,39 @@ Measured 2026-10-29, python3.15t, 85F designs, PSS peak, box shared with other a
 ## Next candidates
 - Share `_clock_geom` per device; audit `native_config` decode tables.
 - Same audit for Gowin / Cyclone IV/V lifters.
+
+## Round 2 (#149): RAM by pipeline, measured 2026-10-29
+
+Tool: `scripts/mem_report.py STAGE|--script FILE [--tracemalloc]` (peak RSS split anonymous vs file-backed, per-phase marks, top allocations; leases first).
+Anonymous = heap + numpy = real pressure. File-backed = `np.load(mmap_mode='r')` pages: shared page cache, reclaimable, one copy for all processes.
+tracemalloc inflates Python-object-heavy runs 3x (reach2: 7 GB vs 1.5 GB): lease declared peaks come from the untraced run.
+
+| pipeline (real input) | RSS before | RSS after | anon before -> after | wall before -> after | fix |
+|---|---|---|---|---|---|
+| ECP5 85F lift, 1 | 5.98 GB | 0.68 GB | | 24 -> 10.9 s | arcs dropped, tiles/bels built on access (#148, #149) |
+| ECP5 85F lifts, 8 threads | not run (extrap. 8 x 6 GB by process) | 2.05 GB | | 25 s | same |
+| Dec.active (asm_active) | 2.10 GB | 1.11 GB | 1.51 -> 0.40 | 1.1 -> 0.7 s | all tables mmap, names lazy, flat index cached on disk, int32 temporaries |
+| ddb_trace score x3 | 3.26 GB | 2.51 GB | 2.52 -> 1.70 | 6.9 -> 5.9 s | same (Dec) |
+| bit_inventory | 2.63 GB | 2.34 GB | 1.03 | ~9 s | Dec; fails at the end on missing evidence rows (not memory) |
+| reach2 fnirsi | 1.48 GB | 0.61 GB | | 17.6 -> 14.3 s | stream rows instead of fetchall (ff_cones sha256 identical) |
+| reach fnirsi / ddb_fanout / lift_ecp5 25F / corpus_register / cram decode / MachXO2 lift | 0.29 / 0.87 / 0.34 / 0.11 / 0.17 / 0.05 GB | unchanged | | | below 1 GB, not worth touching |
+
+Acceptance: `Dec.active` gids/records/blocks sha256 identical on 6 designs; `rgraph_signature` (wires, bels, arcs) identical on LFE5U-25F and LCMXO2-1200; 13-design lift digest identical; ff_cones identical.
+
+Still large:
+- Tracer anonymous 1.7 GB: per-die int64 tables of 17 M groups/units (`group_edges` k/dest, `Pairs`, `udest`, 130 MB each), `li_of` dict (66 MB), route-learner tuples (100 MB). Next: downcast to int32 and persist as mmap files.
+- File-backed 1.1 GB of Dec tables: one copy in page cache for any number of processes.
+- 85F lift 0.68 GB: 3.8 M wire-name set entries (no duplicate strings: interning measured 0 gain).
+- Not audited: `native_config` decode tables, Gowin / Cyclone V lifters (tests only, small).
+- Lease telemetry under-reports subprocess jobs (profile_stages leases from the parent): numbers above come from wait4 rusage / `/proc` sampling.
+
+Concurrent jobs in the 28 GB lease budget (budget x 0.8 = 22.4 GB planned, `heavy_guard.workers_for`):
+
+| job | per job before | before | per job after | after |
+|---|---|---|---|---|
+| ECP5 85F lifts, processes | 7.5 GB | 2 | 1.0 GB | 22 |
+| ECP5 85F lifts, threads of one process | 0.8 + 0.2 per extra | n/a | | 100+ (CPU-bound, use <= 8) |
+| Dec.active | 2.5 GB | 8 | 1.2 GB | 18 |
+| ddb_trace score | 3.7 GB | 6 | 2.6 GB | 8 |
+| bit_inventory | 3.0 GB | 7 | 2.6 GB | 8 |
+| reach2 fnirsi | 1.5 GB | 14 | 0.7 GB | 32 |

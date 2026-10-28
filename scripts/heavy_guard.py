@@ -76,19 +76,20 @@ def wait_available(log, what="", min_gb=None):
 # from these and BATCH_MAX_GB, so a RAM upgrade retunes by setting PLURIBUS_BATCH_MAX_GB (and
 # PLURIBUS_MIN_AVAILABLE_GB) only.  Unmeasured jobs are absent on purpose: workers_for() refuses them.
 JOB_GB = {
-    "ecp5_85f_lift_process": 7.5,    # graph + one target, 85F, per process
-    "ecp5_85f_lift_threads_base": 1.0,   # 85F, threads mode, graph (no arcs) + first lift: 0.85 measured (#148)
-    "ecp5_85f_lift_thread_extra": 0.25,  # marginal per further concurrent 85F lift: (2.15-0.85)/7 = 0.19 measured
-    "ecp5_graph_45f": 3.3,           # routing graph (+ signature), shared across threads of one process
-    "ecp5_graph_25f": 1.9,
+    "ecp5_85f_lift_process": 1.0,    # graph + one target, 85F, per process (2 procs measured 1.9 GB; was 7.5 before #149)
+    "ecp5_85f_lift_threads_base": 0.8,   # 85F, threads mode, graph (no arcs, lazy bels) + first lift: 0.68 measured (#149)
+    "ecp5_85f_lift_thread_extra": 0.25,  # each further concurrent 85F lift: (2.05-0.68)/7 = 0.20 measured
+    "ecp5_graph_45f": 0.4,           # graph without arcs: 0.35 measured, shared across threads of one process
+    "ecp5_graph_25f": 0.25,          # 0.21 measured
     "ecp5_target_extra_25f": 0.35,   # marginal RSS of one more concurrent 25F target on a shared graph
     "quartus_fit_small": 1.06,       # quartus_fit RSS, corpus-size Cyclone V design (map: 0.53)
     "cyclonev_sim_job": 0.07,        # load.py / verilog.py child of lifted_sim_check (iverilog path)
     "quartus_chain_cyc4": 1.5,       # map/fit/asm chain, Cyclone IV GX specimen (peak ~1.3, docs/rust-candidates.md)
-    "cyc4_dec_active": 2.5,          # Dec.active on EP4CGX150 (asm tables + plane)
-    "cyc4_tracer": 3.7,              # ddb_trace score, 3 designs
-    "cyc4_bit_inventory": 3.0,       # scripts/cycloneiv_bit_inventory.py
-    "reach2_stage": 2.1,             # reach2.py, 2.65 M reachability rows (V02; fnirsi 1.5), docs/rust-candidates.md
+    "cyc4_dec_active": 1.2,          # Dec.active, RSS 1.11 (anon 0.40, rest shared page cache); was 2.1 before #149
+    "cyc4_tracer": 2.6,              # ddb_trace score x3: RSS 2.51 (anon 1.7); was 3.26 before #149
+    "cyc4_bit_inventory": 2.6,       # bit inventory: RSS 2.3-2.6 (anon 1.0, rest mmap)
+    "reach2_fnirsi": 0.7,            # reach2.py fnirsi, streamed rows: 613 MB measured (#149)
+    "reach2_stage": 2.1,             # reach2.py V02, 2.65 M rows (not re-measured; fnirsi now 0.61, was 1.5)
     "bench_reach_sql": 3.0,          # scripts/bench_reach_sql.py: reach + reach2 children on one DB copy
 }
 BATCH_FILL = 0.8   # fraction of BATCH_MAX_GB planned for workers; the rest is headroom for peaks

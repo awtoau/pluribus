@@ -28,6 +28,7 @@ REPO = Path(__file__).resolve().parent.parent
 SCRATCH = REPO / "tmp" / "profile_stages"
 LOG = REPO / "tmp" / "logs" / "profile_stages.log"
 PY = sys.executable
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 log = logging.getLogger("profile_stages")
 
 POSEIDON = REPO / "sources/cycloneiv-corpus/poseidon_computerspace/ComputerSpace_psdcgx150_20260202.rbf"
@@ -354,6 +355,13 @@ def summarise_prof(pf):
     return [dict(fn=f"{k[0].split('/')[-1]}:{k[1]}:{k[2]}", tottime=round(v[2], 3), share=round(v[2] / tot, 3)) for k, v in rows], round(tot, 3)
 
 
+# Declared lease per stage (GB): measured peaks rounded up; unlisted stages lease 4.
+LEASE_GB = {"decode": 0.5, "asm_active": 1.2, "ddb_fanout": 1.0, "ddb_fanout_loops": 0.5, "forced_diff": 0.5,
+            "lift_machxo2": 0.5, "lift_ecp5": 0.5, "reach": 0.5, "reach2": 0.7, "reach3": 0.5, "reach4": 0.5,
+            "report": 0.5, "bit_inventory": 2.6, "ddb_trace": 2.6, "tests_lifters": 0.5,
+            "corpus_register": 0.5, "ledger_page": 0.5}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stages", default=",".join(ALL))
@@ -389,7 +397,10 @@ def main():
             if a.cprofile:
                 cmd, pf = external_cprofile(stage, cmd)
         try:
-            res = measure(stage, cmd, env, a.cprofile)
+            import heavy_guard
+            gb = LEASE_GB.get(stage.split("@")[0], 4.0)
+            with heavy_guard.lease(gb, f"profile_stages:{stage}", log):
+                res = measure(stage, cmd, env, a.cprofile)
         finally:
             if teardown:
                 teardown()
