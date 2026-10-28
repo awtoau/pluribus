@@ -104,6 +104,13 @@ serialize them — see `ft_immortal.py`), one interpreter for the whole pipeline
 stays pure Python (no pytrellis `.so`) precisely so nothing re-enables the GIL; the
 native decoder + routing graph are validated byte-identical to the compiled path.
 
+**How we parallelise and compute (the general rule, measured, 2026-10-29):**
+- **Threads everywhere.** Free-threaded Python is proven in this codebase: `sys._is_gil_enabled()` stays `False` across the whole stack, and 8 concurrent ECP5 85F lifts in one process peak at ~2 GB (one shared routing graph) with bit-identical output (#148). No `multiprocessing`/`ProcessPoolExecutor` in pluribus code; external EDA tools (Quartus, Diamond, yosys) are the only subprocesses.
+- **Efficiency over stability.** One shared interpreter means a bug in one thread can crash the whole run. Accepted by design: per-job stall timeouts and memory leases bound the damage, and every run rebuilds from scratch anyway.
+- **numpy is the numeric core, and it is already highly optimised.** Vectorised numpy (C loops, SIMD) is the fast path for bit planes, group decode, graph walks and set operations; it was measured against Rust and against SQL (#144, `docs/rust-candidates.md`): the asm group decode is 6.9x faster in numpy than the old Python and only 1.9x slower than a single-thread Rust version, and sort-based `unique` is 34-49x faster than the old call. Nothing in the pipeline clearly earns a Rust rewrite; vendor tools dominate every gate's wall time by two orders of magnitude.
+- **Order of preference when something is slow:** a better algorithm, then numpy vectorisation (dense bitmaps, sort + diff, dtype downcasts), then threads over independent items, then an SQL index, and Rust only for a measured >= 5-10x on a stage that dominates a pipeline.
+- **Memory is the limit, not CPU** (OOM and swap thrash are what stall or take down the box): read-only per-device tables are `mmap`'d numpy arrays or one shared in-process object, per-design state is small, and every heavy job holds a memory lease (`docs/memory-budget.md`).
+
 ### 3. Always-rebuild — because RE is iterative
 You refine the lifter or the decode and re-run *constantly*. So every run **drops
 and recreates all rows** for the label — no incremental state, no stale rows, no
