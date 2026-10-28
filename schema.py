@@ -896,6 +896,42 @@ Index("idx_rcf_routes_loc", rcf_routes.c.build, rcf_routes.c.element, rcf_routes
 
 # rcf_fuzz_bits retired 2026-10-29: scripts/cyclonev_rcf_fuzz.py writes evidence(specimen-pair) rows instead.
 
+# ── Device pins (package ball -> die site + vendor function names; per-family DB) ───────────
+# Filled by scripts/pins_register.py from vendor data already on disk: Quartus fit.rpt "All Package
+# Pins" / "Dual Purpose and Dedicated Pins", build.pin, postfit.vo IO buffer locations (corpus
+# builds), and the Quartus IBIS package XMLs (every package, built or not). `source` records which
+# source gave each field; `conflicts` lists fields where sources disagree (never silently resolved).
+device_pins = Table("device_pins", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text, nullable=False),     # part + package, e.g. EP4CGX150DF31 (speed grade irrelevant to pinout)
+    Column("part",          Text, nullable=False),     # EP4CGX150
+    Column("package",       Text, nullable=False),     # DF31 (vendor package code)
+    Column("opns",          JSON),                     # full ordering codes seen, e.g. ["EP4CGX150DF31C7"]
+    Column("pin",           Text, nullable=False),     # package ball / pin id, e.g. AB12
+    Column("pad_number",    Integer),                  # die pad index (fit.rpt)
+    Column("bank",          Text),                     # I/O bank
+    Column("side",          Text),                     # top | bottom | left | right | none
+    Column("tile_x",        Integer),
+    Column("tile_y",        Integer),
+    Column("z",             Integer),                  # site index within the tile (IOxBUF_X_Y_N)
+    Column("io_site",       Text),                     # vendor site name where known, e.g. IOIBUF_X34_Y91_N23
+    Column("io_type",       Text),                     # Column I/O | Row I/O | Dedicated | ...
+    Column("func_names",    JSON),                     # vendor pin-function names, e.g. ["DIFFIO_B1n", "NCEO"]
+    Column("ibis_net",      Text),                     # IBIS package net, e.g. X_B8_X_LVDST_10N (encodes bank + side + pair)
+    Column("special",       Text),                     # config | jtag | clock | transceiver | power | ground | reference | none
+    Column("bonded",        Boolean),                  # ball exists and is not NC / DNU
+    Column("usage_default", Text),                     # vendor default for an unused pin (RESERVED_INPUT..., NC, DNU)
+    Column("source",        JSON, nullable=False),     # {field: [source ids]}
+    Column("conflicts",     JSON),                     # [{field, values: {source: value}}]
+    Column("evidence_id",   Integer, ForeignKey("evidence.id")),
+    Column("updated_at",    DateTime(timezone=True)),
+    UniqueConstraint("device", "package", "pin"),
+)
+Index("idx_device_pins_site", device_pins.c.device, device_pins.c.tile_x, device_pins.c.tile_y, device_pins.c.z)
+Index("idx_device_pins_bank", device_pins.c.device, device_pins.c.bank)
+
+
 # ── Provenance framework (docs/provenance-schema.md, #141) ───────────────────
 # Generic for every family: subjects keyed (family, device, space, subject_key); sets of
 # subjects compressed as scope rows (expanded in numpy, never stored per bit); tier fixed
