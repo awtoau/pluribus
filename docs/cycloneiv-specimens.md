@@ -30,6 +30,24 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
 | 8 | Edge truncation | what happens to spans at the boundary | R4 sources within 4 cols of either edge; C4 within 4 rows; R24/C16 equivalents; all four edges |
 | 9 | Corners | compound edge behaviour | all four corners, kinds 1–8 repeated there |
 | 10 | FF pins | clock / ena / clr / sload / data routing into LAB control lines | per control, per LAB class (later phase — clock tree) |
+| 11 | M9K | RAM block pin ↔ fabric muxes | every port pin (addr/data/ctrl, both ports), in and out, per M9K column |
+| 12 | Multiplier | DSP pin ↔ fabric muxes | every pin of the 18×18 block, per DSP column |
+| 13 | PLL | inputs, outputs, lock, clock entry | every PLL, every output counter → where it can go |
+| 14 | Clock network | GCLK/RCLK mux sources | pin→GCLK, PLL→GCLK, fabric→GCLK, per network input |
+| 15 | HSSI (GX) | transceiver ↔ fabric pins | per channel, lower priority unless the target image uses them |
+
+## Hard IP rule (Dan, 2026-10-28)
+
+- Hard IP gets the SAME treatment as fabric: don't be smart — extensive small tests.
+- The core pattern is **one pin, several different things connected to it — as separate tests**:
+  fix one IP pin and sweep what's on the other end (LUT, FF, another IP pin, an IO pin, a
+  constant), ONE connection per build. (pin × far-end kind) = one specimen pair; five variants =
+  five builds, never one build with five nets. Each build fires a different mux into/out of that
+  pin; the union over builds maps the pin's full connectivity. Then the next pin.
+- One pin per specimen, never a configured "realistic" IP instance as the unit of test — a
+  realistic instance answers many questions at once, which is to say none of them exactly.
+- IP configuration bits (modes, widths, counters) are a separate decode from pin routing; keep
+  the specimens single-variable there too: one parameter changed per pair, diff the planes.
 
 ## Edge rule (Dan, 2026-10-28)
 
