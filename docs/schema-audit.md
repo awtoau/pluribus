@@ -134,9 +134,10 @@ keep / generalise / merge / retire. Cost = what regeneration costs if the table 
   `schema.init()` dies on missing columns. Measured regeneration cost (pipeline load → reach4):
   V02 ≈ 2–3 h (reachability 2.6 M rows), FNIRSI ≈ 2 h, fuzz_rebuild (2,705 labels) ≈ 4–6 h of
   Diamond-free lifting, Cyclone V image_g/cyclonev_* ≈ 1 h each. ~10–14 h of machine time in all,
-  no vendor builds. The four aw2 snapshots and the private-project check DB are archives of a
-  private project: regenerate only aw2.db (the other three are duplicates; the check DB is the
-  parked #135 lift, imported rather than regenerated — docs/legacy-import.md).
+  no vendor builds. The four aw2 snapshots and the private-project check DB were all V02 lifts
+  (the check DB's only label was V02): deleted 2026-10-29 on Dan's decision (V02 is not a
+  reference), nothing regenerated; a V07 lift will be imported via docs/legacy-import.md when
+  one exists.
 - **Renaming postfit_builds → corpus_builds**: `./pluribus.db` only (8,032 rows, rebuilt by
   `corpus_register.py` in seconds). The 8 readers change one identifier.
 - **postfit_compare → gate_results**: 0 rows anywhere; code change only.

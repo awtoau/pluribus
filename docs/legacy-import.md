@@ -13,11 +13,11 @@ Tool: `scripts/import_legacy_lift.py` (generic: any old pluribus SQLite file, an
 - Target: `PLURIBUS_SQLITE_PATH=databases/<family>/<name>.db` (new schema; `schema.init()` runs
   there). The private project's file stays under `databases/machxo2/` (gitignored); its name never
   appears in a committed file or issue.
-- Finding (2026-10-29): the private archive DB's only `bitstreams` row is label **V02**
+- Finding (2026-10-29): the private archive DB's only `bitstreams` row was label **V02**
   (`DS1302_V02.bin.config`), not V07; no kept database holds a V07 lift. V02 is no longer a
-  reference (Dan), so the importer is exercised on this archive as the mechanism test, and the
-  V07 import waits for a V07 lift (or a V07 archive) to exist. The earlier V02 pipeline
-  databases were deleted the same day.
+  reference (Dan): the archive, its imported copy and the earlier V02 pipeline databases were
+  all deleted that day. The importer stays as the generic tool (fixture-tested); the V07 import
+  waits for a V07 lift (or archive) to exist.
 - `--family` (machxo2 / ecp5 / gowin / cyclonev / anlogic) — sets `bitstreams.family` and the
   tier mapping.
 
@@ -74,7 +74,8 @@ Tool: `scripts/import_legacy_lift.py` (generic: any old pluribus SQLite file, an
   22 stuck registers #127): claims stay `open` with `confidence_basis` naming the reason; they are
   listed by `framework_status.py` as open, never parked (the private corpus is not declared done).
 
-## First run (2026-10-29, the private archive, label V02 → `databases/machxo2/archive-v02.db`)
+## First run (2026-10-29, the private archive, label V02 — record only; both the archive and the
+## imported copy were DELETED the same day on Dan's decision: V02 is not a reference)
 
 - Import: every table count equal (nets 4,262, luts 2,611, ffs 1,112, net_fanout 9,647, pad_map 45,
   arcs 12,326, ebr_init 6,144, net_names 1,962, cell_names 1,720, hard_cells 8, hard_cell_ports 172
