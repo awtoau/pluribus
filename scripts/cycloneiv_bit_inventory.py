@@ -182,6 +182,12 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler(REPO / "tmp/logs/cycloneiv_bit_inventory.log", "w")])
     need_ram(20)
+    import heavy_guard
+    with heavy_guard.lease(heavy_guard.JOB_GB["cyc4_bit_inventory"], "cyc4_bit_inventory", log):
+        run(a)
+
+
+def run(a):
     import cycloneiv_corpus as cc
     import cycloneiv_decompress as cd
     import cycloneiv_geom as cg

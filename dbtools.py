@@ -23,6 +23,22 @@ DB_DIR = os.path.join(REPO, "databases")
 _ALIAS_RE = re.compile(r"[^A-Za-z0-9_]")
 
 
+# Default file per family under databases/<family>/ (databases/README.md). PLURIBUS_SQLITE_PATH, when set,
+# always wins: a tool that reads another family's rows must be pointed at that file explicitly.
+FAMILY_DB = {"cycloneiv": "cycloneiv/gx150.db", "cyclonev": "cyclonev/provenance.db", "machxo2": "machxo2/provenance.db",
+             "ecp5": "ecp5/provenance.db", "gowin": "gowin/provenance.db", "anlogic": "anlogic/provenance.db"}
+
+
+def family_db(family):
+    """Path of the family's database: $PLURIBUS_SQLITE_PATH if set, else databases/<family>/<default>."""
+    env = os.environ.get("PLURIBUS_SQLITE_PATH")
+    if env:
+        return env
+    if family not in FAMILY_DB:
+        db.die(f"no default database for family {family!r} (dbtools.FAMILY_DB)")
+    return os.path.join(DB_DIR, FAMILY_DB[family])
+
+
 def alias_of(path):
     """databases/cycloneiv/gx150.db -> cycloneiv_gx150; a bare file -> its stem."""
     rel = os.path.relpath(os.path.abspath(path), DB_DIR)

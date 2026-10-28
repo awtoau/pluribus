@@ -3,36 +3,53 @@
   specimen_table(family, device, source_ref) -> {pair: {<meta...>, "on": [flat], "off": [flat]}} | None
   ledger_tiers(family, device, commit, classes) -> {class: {"<tier>/<status>": n_objects}} (claims + unknowns)
 
-None / {} when the DB has no provenance rows (caller falls back or records nothing).
+The family database is dbtools.family_db(family): $PLURIBUS_SQLITE_PATH when set, else
+databases/<family>/<default>. Reads are direct read-only sqlite3 connections (no schema.init, no engine
+singleton), so a pipeline pointed at another file can still consult the family's evidence.
+None / {} when the file or the rows are absent (caller falls back or records nothing).
 """
+import json
+import os
+import sqlite3
 import sys
 from pathlib import Path
 
-from sqlalchemy import and_, insert, select
-
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
-import db                                   # noqa: E402
-import schema as S                          # noqa: E402
+import dbtools                              # noqa: E402
 from provenance import evidence_io as E     # noqa: E402
-from provenance import queries as Q         # noqa: E402
+
+TIER_SQL = ("SELECT inventory_class, tier, status, SUM(n_objects) FROM claims WHERE family=? AND device=? "
+            "GROUP BY inventory_class, tier, status")
+UNK_SQL = "SELECT inventory_class, status, SUM(n_objects) FROM unknowns WHERE family=? AND device=? GROUP BY inventory_class, status"
 
 
-def _has_tables(conn):
-    return conn.dialect.has_table(conn, "evidence")
+def _open(family):
+    path = dbtools.family_db(family)
+    if not os.path.exists(path):
+        return None, path
+    conn = sqlite3.connect(f"file:{os.path.abspath(path)}?mode=ro", uri=True)
+    has = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='evidence'").fetchone()
+    if not has:
+        conn.close()
+        return None, path
+    return conn, path
 
 
 def specimen_table(family, device, source_ref):
-    with db.engine().connect() as conn:
-        if not _has_tables(conn):
-            return None
-        rows = conn.execute(select(S.evidence.c.name, S.evidence.c.result, S.evidence.c.bits_spec, S.evidence.c.bits_base).where(and_(
-            S.evidence.c.family == family, S.evidence.c.device == device, S.evidence.c.kind == "specimen-pair",
-            S.evidence.c.source_ref == source_ref))).fetchall()
+    conn, _path = _open(family)
+    if conn is None:
+        return None
+    try:
+        rows = conn.execute("SELECT name, result, bits_spec, bits_base FROM evidence WHERE family=? AND device=? "
+                            "AND kind='specimen-pair' AND source_ref=?", (family, device, source_ref)).fetchall()
+    finally:
+        conn.close()
     if not rows:
         return None
     out = {}
     for name, result, spec, base in rows:
+        result = json.loads(result) if isinstance(result, str) else result
         rec = dict(result.get("meta") or {})
         rec["on"] = E.unpack(spec).tolist()
         rec["off"] = E.unpack(base).tolist()
@@ -43,20 +60,17 @@ def specimen_table(family, device, source_ref):
 
 
 def ledger_tiers(family, device, commit, classes):
-    """Per inventory class: {tier/status: n_objects} from claims + unknowns. Also appends coverage_ledger
-    rows (source inventory-live) carrying the live partition totals per class."""
-    import datetime
-    with db.engine().begin() as conn:
-        if not _has_tables(conn):
-            return {}
-        cov = Q.coverage(conn, family, device)
-        if not cov:
-            return {}
+    """Per inventory class: {tier/status: n_objects} from claims + unknowns (read-only; the ledger line
+    carries it). coverage_ledger rows for the live partition are written by claims_register, not here."""
+    conn, _path = _open(family)
+    if conn is None:
+        return {}
+    try:
         out = {}
-        for (cls, tier, status), n in cov.items():
-            out.setdefault(cls, {})[f"{tier}/{status}"] = n
-        ts = datetime.datetime.now().astimezone()
-        conn.execute(insert(S.coverage_ledger), [dict(family=family, device=device, commit=commit, ts=ts, inventory_class=cid,
-                                                     tier="partition", status="live", n_objects=int(total), denominator="die_bits",
-                                                     source="inventory-live") for cid, total in classes])
+        for cls, tier, status, n in conn.execute(TIER_SQL, (family, device)):
+            out.setdefault(cls or "-", {})[f"{tier}/{status}"] = int(n or 0)
+        for cls, status, n in conn.execute(UNK_SQL, (family, device)):
+            out.setdefault(cls or "-", {})[f"unknown/{status}"] = out.get(cls or "-", {}).get(f"unknown/{status}", 0) + int(n or 0)
+    finally:
+        conn.close()
     return out

@@ -60,20 +60,20 @@ JOBS = {
         family="gowin", target="gowin/fnirsi.db", old=["fnirsi.db"],
         cmd=[PY, "scripts/run_pipeline.py", "--board", "boards/fnirsi-gw1n2", "--label", "FNIRSI", "--workers", "8"],
         env_target=True, inputs=[board_bin("fnirsi-gw1n2", "FNIRSI")], est_min=20, est_gb=3,
+        # the oss-cad-suite apycula lacks GW1N-2.msgpack.xz; the apicula mirror checkout carries it
+        env={"PYTHONPATH": "/mnt/2tb/git_mirror/YosysHQ/apicula"},
         note="Gowin unpack + load + reach..reach4 + report/verilog"),
     "fuzz_rebuild": dict(
         family="machxo2", target="machxo2/fuzz_rebuild.db", old=["fuzz_rebuild.db"],
         python="fuzz_loads", inputs=[REPO / "corpus/machxo2/diamond-fuzz"], est_min=120, est_gb=2,
         note="load.py per corpus/machxo2/diamond-fuzz/<t>/decoded.config (2,779 targets, label FUZZ_<t>); no Diamond"),
-    "aw2-v02": dict(
-        family="machxo2", target="machxo2/aw2-v02.db", old=["aw2.db"],
-        cmd=[PY, "scripts/run_pipeline.py", "--board", "boards/aw2-2d82auto", "--label", "V02", "--workers", "8"],
-        env_target=True, inputs=[board_bin("aw2-2d82auto", "V02")], est_min=180, est_gb=3,
-        note="private-project V02 lift; bitstream read-only from the board.toml path"),
+    # V02 (the four aw2*.db files) deleted 2026-10-29: an older firmware, no longer a reference (Dan); re-lift later.
     "repl": dict(
         family="machxo2", target="machxo2/repl.db", old=["repl.db"],
-        cmd=[PY, "scripts/machxo2_roundtrip.py"], produces=REPO / "tmp" / "repl.db", inputs=[], est_min=40, est_gb=3,
-        note="known-source replacement scope: nextpnr-machxo2 + native unpack + load (needs the open flow + the private RTL)"),
+        cmd=[PY, "scripts/machxo2_roundtrip.py"], produces=REPO / "tmp" / "repl.db",
+        inputs=[os.environ.get("PLURIBUS_REPL_RTL", "")], est_min=40, est_gb=3,
+        note="known-source replacement scope: nextpnr-machxo2 + native unpack + load; needs the private RTL dir on "
+             "PYTHONPATH (module scope_top) — pass it as PLURIBUS_REPL_RTL=<dir>"),
     "dji_g": dict(family="cyclonev", target=None, old=["dji_g.db"], manual="producer unknown (bitstreams.device = 5CEBA4U19C8; not the EP4CGX150 image the old README claimed)",
                   inputs=[], est_min=0, est_gb=0),
 }
@@ -87,7 +87,7 @@ def mem_available_gb():
 
 
 def inputs_ok(job):
-    missing = [str(p) for p in job["inputs"] if p is None or not Path(p).exists()]
+    missing = [str(p) for p in job["inputs"] if not p or not Path(p).exists()]
     return missing
 
 
@@ -102,6 +102,7 @@ def write_state(name, **kw):
 def fuzz_loads(target_db, jlog):
     """Load every diamond-fuzz target's decoded.config into target_db (label FUZZ_<t>)."""
     sys.path.insert(0, str(REPO / "diamond-fuzz" / "scripts"))
+    os.environ.setdefault("TRELLIS_DBROOT", str(REPO / "device-db"))   # the vendored tile DB (run_all_fuzz's default points at a retired debris copy)
     import run_all_fuzz as RAF
     os.environ["PLURIBUS_SQLITE_PATH"] = str(target_db)
     root = REPO / "corpus/machxo2/diamond-fuzz"
@@ -158,9 +159,11 @@ def run_job(name, dry):
         if job.get("python") == "fuzz_loads":
             rc = fuzz_loads(work, jlog)
         else:
-            env = dict(os.environ)
+            env = dict(os.environ, **job.get("env", {}))
             if job.get("env_target"):
                 env["PLURIBUS_SQLITE_PATH"] = str(work)
+            if name == "repl":
+                env["PYTHONPATH"] = os.environ.get("PLURIBUS_REPL_RTL", "") + os.pathsep + env.get("PYTHONPATH", "")
             r = heavy_guard.run_stall_guarded(cmd, f"regen_{name}", log, stall_s=STALL_S, overall_s=3 * job["est_min"] * 60,
                                               env=env, cwd=str(REPO))
             jlog.write((r.stdout or "") + "\n--- stderr ---\n" + (r.stderr or "") + "\n")
