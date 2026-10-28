@@ -49,6 +49,40 @@ def load(tag):
             for n in DIRS if os.path.exists(os.path.join(d, n + ".json"))}
 
 
+def gate_results(S):
+    """{set: {category: {matched, missing, extra, wrong}}} for provenance.corpus.record_gate_run."""
+    results = {}
+    for name, s in S.items():
+        h = headline(s)
+        r = results[name] = {k: {"matched": a, "missing": b - a, "extra": 0, "wrong": 0} for k, (a, b) in h.items()}
+        # pips/nets verdict split (MISMATCH -> wrong)
+        for sec, cat in (("pips", "pips"), ("net_verdicts", "nets")):
+            v = s.get(sec, {})
+            r[cat] = {"matched": v.get("MATCH", 0), "wrong": v.get("MISMATCH", 0),
+                      "missing": sum(n for k, n in v.items() if k not in ("MATCH", "MISMATCH") and "ONLY" not in k and "EXTRA" not in k),
+                      "extra": sum(n for k, n in v.items() if "LIFT_ONLY" in k or "EXTRA" in k)}
+    return results
+
+
+def record(tag):
+    """Write this tag's results to the machxo2 provenance DB (databases/machxo2/provenance.db unless
+    PLURIBUS_SQLITE_PATH is set). Needs the sets declared as corpus members: claims_register.py --family machxo2."""
+    os.environ.setdefault("PLURIBUS_SQLITE_PATH", os.path.join(REPO, "databases", "machxo2", "provenance.db"))
+    sys.path.insert(0, REPO)
+    import db
+    import schema
+    from provenance import corpus as C
+    from provenance import evidence_io as E
+    S = load(tag)
+    if not S:
+        return None
+    schema.init()
+    with db.engine().begin() as conn:
+        E.ensure_family(conn, "machxo2")
+        return C.record_gate_run(conn, "machxo2", "scripts/machxo2_gate.py", E.git_head(REPO), gate_results(S),
+                                 params={"tag": tag}, summary={"note": "per-set aggregate; per-design results in corpus/machxo2/*/_compare_summary.json"})
+
+
 def show(tag):
     S = load(tag)
     tot = {}
@@ -107,6 +141,10 @@ def main():
             return 1
         shutil.copy(os.path.join(REPO, out, "_compare_summary.json"), os.path.join(od, n + ".json"))
     show(a.tag)
+    try:
+        print(f"provenance gate_run {record(a.tag)}")
+    except SystemExit as e:   # stale/missing provenance DB must not lose a finished gate; results stay in tmp/ocmp/<tag>
+        print(f"provenance NOT recorded ({e}); fix the DB, then: claims_register.py --family machxo2")
     return 0
 
 

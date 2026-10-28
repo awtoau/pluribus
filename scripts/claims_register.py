@@ -629,20 +629,8 @@ def register_machxo2(conn, commit):
         tags = sorted((p for p in ocmp.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime)
         if tags:
             tag = tags[-1]
-            results = {}
-            for name in sets:
-                p = tag / f"{name}.json"
-                if not p.exists():
-                    continue
-                s = json.loads(p.read_text())
-                h = G.headline(s)
-                results[name] = {k: {"matched": a, "missing": b - a, "extra": 0, "wrong": 0} for k, (a, b) in h.items()}
-                # pips/nets verdict split (MISMATCH -> wrong) when the summary has it
-                for sec, cat in (("pips", "pips"), ("net_verdicts", "nets")):
-                    v = s.get(sec, {})
-                    results[name][cat] = {"matched": v.get("MATCH", 0), "wrong": v.get("MISMATCH", 0),
-                                          "missing": sum(n for k, n in v.items() if k not in ("MATCH", "MISMATCH") and "ONLY" not in k and "EXTRA" not in k),
-                                          "extra": sum(n for k, n in v.items() if "LIFT_ONLY" in k or "EXTRA" in k)}
+            results = G.gate_results(G.load(tag.name))
+            results = {k: v for k, v in results.items() if k in sets}
             if results:
                 C.record_gate_run(conn, "machxo2", "scripts/machxo2_gate.py", commit, results, params={"tag": tag.name},
                                   summary={"note": "per-set aggregate from tmp/ocmp; per-design results live in corpus/machxo2/*/_compare_summary.json"})
