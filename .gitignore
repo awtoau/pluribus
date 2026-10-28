@@ -102,3 +102,9 @@ databases/
 
 # vendor-derived (Quartus asm.ddb x routing.ddb) block->wire map: regenerable with scripts/cycloneiv_ddb_trace.py export, never committed
 lifters/data/cycloneiv_ep4cgx150_ddb_map.npz
+
+# Third-party Cyclone IV images: binaries stay local; manifest + README tracked
+!sources/cycloneiv-corpus/
+sources/cycloneiv-corpus/*
+!sources/cycloneiv-corpus/manifest.json
+!sources/cycloneiv-corpus/README.md
