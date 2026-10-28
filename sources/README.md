@@ -55,3 +55,9 @@ maintainer, not published anywhere by Altera.
 - URL: https://media.digikey.com/pdf/Data%20Sheets/Intel%20PDFs/Cyclone_V_Device_Handbook.pdf (via playwrong `pdf`).
 - Good copy: 325 pages; contains "Variable Precision DSP Blocks in Cyclone V Devices" (chapter 3, CV-52003).
 - Use: architecture reference for `scripts/cyclonev_mac_model.v` (own `cyclonev_mac` model; atom is encrypted).
+
+## Prior art (read-only)
+
+- `sources/prior-art/14sea-cyclone-cram-mapper/`: clone of https://github.com/14sea/Cyclone_CRAM_Mapper at `221f790286eda0bb47e03080c6f7ab0e72377bb6` (2026-09-30).
+- Good copy: `git log -1` shows that hash; `fuzz/config.py` has `COLUMN_BASE` with 28 entries; ~160 MB.
+- GPL-3.0-or-later code, CC BY-SA 4.0 docs. Read and import-for-comparison only; nothing copied into this tree. Use: `scripts/cycloneiv_prior_art_xcheck.py`, `docs/cycloneiv-prior-art.md`.

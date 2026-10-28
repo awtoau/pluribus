@@ -27,6 +27,7 @@ SFL / SFL-enhanced / PFL `.sof` files shipped in `quartus/common/devinfo/program
 ## Prior art
 
 Searched on 2026-10-24: gh code/repos, grep.app, DuckDuckGo, GitLab / Codeberg / sr.ht, papers, forums.
+Full sweep and the 14sea cross-check (2026-10-29): [cycloneiv-prior-art.md](cycloneiv-prior-art.md). It found two paywalled papers on Intel bitstream decompression (Ren et al.) and LUT mapping (PSE23), so the claim below is "no public description found", not "none exists".
 
 - **No public description of the Cyclone III/IV compressed format was found.**
 - `14sea/Cyclone_CRAM_Mapper` (GitHub, GPL-3.0):

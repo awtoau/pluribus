@@ -28,6 +28,8 @@ out/
 # same pattern as corpus/manifest.json below.
 sources/*
 !sources/README.md
+# third-party prior-art clones (read-only cross-checks; never vendored)
+sources/prior-art/
 
 # Anlogic eagle_s20 fuse DB — DERIVED from proprietary Tang Dynasty; regenerable
 # via scripts/anlogic_dbdecode.py (see boards/fnirsi-eg4s20/README.md).  Never commit.
