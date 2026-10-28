@@ -1,6 +1,6 @@
 # Die map with one image's known cells + zero/one encoding (issue #141)
 
-Tool: `scripts/geo_image_overlay.py --image <image>` (one run ~25 s, peak ~4 GB). Log `tmp/logs/geo_image_overlay.log`. Outputs in `tmp/geo/` (not committed): `image_tiles.csv` (per tile, all 15 classes), `image_tiles.geojson`, `image_encoding.json` (every number below), `image_overlay.html` (2.2 MB, self-contained).
+Tool: `scripts/geo_image_overlay.py --image <image>` (one run ~25 s, peak ~4 GB). Log `tmp/logs/geo_image_overlay.log`. Outputs in `tmp/geo/` (not committed): `image_tiles.csv` (per tile, all 15 classes), `image_tiles.geojson`, `image_encoding.json` (every number below), the explorer cache `image_overlay_data.json`; the page is `tmp/geo/explorer.html` (`scripts/geo_explorer.py`, `docs/geo-explorer.md`).
 Image = the third-party EP4CGX150 image (2,238,126 set bits incl. header/CRC/pre-post). Measured 2026-10-29. Other images: 5 GX150 corpus images (class layout shared) and 11 other-die corpus images (frame level only).
 
 ## Method
@@ -13,7 +13,7 @@ Image = the third-party EP4CGX150 image (2,238,126 set bits incl. header/CRC/pre
   - 4*/5c/6/5b: frame band `FX-19..` per column, v row band `[70y-48, 70y+21]` (= VY-68..VY+1, VY = 20 + 70y).
 - Tile rectangle drawn in the page = exact extent of frames holding cells the column owns (LAB 37 frames normally; 41 where a column pair has a 4-frame gap; M9K ~293; MUL 25+).
 - Capacity per tile (die-wide, image independent) = cells of 1a (verified) and 1b, 1c, 2a+2b, 3 (evidence).
-- Page: the class map per tile is deduplicated (68 templates), set bits are packed per tile and deflated (1.27 MB); decoded in the browser with `DecompressionStream`.
+- Explorer payload: the class map per tile is deduplicated (68 templates), set bits are packed per tile and deflated (1.27 MB); decoded in the browser with `DecompressionStream`.
 
 ## Approximations that remain
 

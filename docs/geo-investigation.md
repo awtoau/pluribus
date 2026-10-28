@@ -2,7 +2,7 @@
 
 Question: do PostGIS, pgRouting, pgvector (and the rest of the local PostgreSQL) solve real problems for us. Research only, no conversion. Feeds #143 (PostgreSQL move) and #141. Measured 2026-10-29, EP4CGX150 data, PostgreSQL 18.6, 30-core box, scratch DB (dropped afterwards, 1.4 GB at peak). All numbers are server-side `\timing` medians unless stated.
 
-Scripts (derived/display data only, never a source of truth): `scripts/geo_tiles.py` (tile table), `scripts/geo_bench_tiles.py` (native box / SQLite / numpy baselines), `scripts/geo_bench_ext.py --stage postgis|routing|vector` (extension benches), `scripts/geo_bench_routing.py` (plain edge table), `scripts/geo_map.py` (HTML map + GeoJSON). Logs `tmp/logs/geo_*.log`, results `tmp/geo/*.json`. Earlier survey: `docs/fpga-map-tools-survey.md`.
+Scripts (derived/display data only, never a source of truth): `scripts/geo_tiles.py` (tile table), `scripts/geo_bench_tiles.py` (native box / SQLite / numpy baselines), `scripts/geo_bench_ext.py --stage postgis|routing|vector` (extension benches), `scripts/geo_bench_routing.py` (plain edge table), `scripts/geo_explorer.py` (HTML map; `scripts/geo_data.py --geojson` for GeoJSON). Logs `tmp/logs/geo_*.log`, results `tmp/geo/*.json`. Earlier survey: `docs/fpga-map-tools-survey.md`.
 
 ## 1. What the server has
 
@@ -102,7 +102,7 @@ Scripts (derived/display data only, never a source of truth): `scripts/geo_tiles
 
 ### 4.4 Coverage map
 
-- `scripts/geo_tiles.py` bins the set bits of one image to tiles and tags tier; `scripts/geo_map.py` writes `die.geojson` + a self-contained HTML map (`tmp/geo/die_map.html`). PostGIS reproduces the GeoJSON in SQL (43 ms) but is not needed to make it.
+- `scripts/geo_tiles.py` bins the set bits of one image to tiles and tags tier; `scripts/geo_data.py --geojson` writes `die.geojson`, `scripts/geo_explorer.py` a self-contained HTML map (`tmp/geo/explorer.html`). PostGIS reproduces the GeoJSON in SQL (43 ms) but is not needed to make it.
 - Limit: per-tile verified cells are only the LUT INIT 256 cells; routing/asm per-tile attribution needs a per-tile pass in `cycloneiv_bit_inventory.py`. Row binning is approximate.
 
 ## 5. Verdict

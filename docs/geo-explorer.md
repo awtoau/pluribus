@@ -1,0 +1,31 @@
+# Geo explorer (die map + known cells + package pins)
+
+One page, `tmp/geo/explorer.html` (not committed, ~2.5 MB, self-contained, no network): `python3.15t scripts/geo_explorer.py [--db P] [--device EP4CGX150] [--package DF31] [--no-image] [--out F]`.
+- Replaces `geo_map.py`, `geo_image_overlay.py` (page part) and `geo_package.py`; one implementation of layout, panels, size, search.
+- Data: single payload from `scripts/geo_data.py`, embedded once; schema and JSON export in `docs/geo-data.md`.
+- UI sources: `scripts/geo_explorer_ui/` (`page.html`, `style.css`, `app.js`; JS modules: core/Store/selection, Sizer, TileView, Img, PkgView, Panels).
+- Refresh after registering IO builds (`scripts/pins_register.py`): re-run `geo_explorer.py`. Image layer cache: `scripts/geo_image_overlay.py --image <image>` (heavy, `docs/geo-image-overlay.md`); `--repin` = run the explorer.
+
+## Tabs
+- Die map: colour by evidence tier / example-image set-bit density / tile kind; tile-kind filter; overlays die edge, specimen LABs, LE-output grids.
+- Known cells: image layer; colour by known share / set-bit density / capacity / kind; overlay "set bits but none known". Needs the image layer (toggle `Image layer`; cache missing = tab disabled, rest works).
+- Package pins: BGA grid, Bottom (A1 top-left) / Top (mirrored), colour by role or bank, same-bank ring, differential-pair link, die inset (top surface or flip-chip mirrored).
+
+## Shared
+- Selection: `{tile, pin}`. Select a ball -> its die tile is ringed in both tile tabs and the inset; click a die tile -> its pins are listed in the Pin inspector and ringed on the package. Survives tab switches. Links `show on die` / `show on package` in the pin card.
+- One search box (ball, vendor name, IBIS net, site substring): matches ringed in the active view and listed in `Pins`; Enter jumps (tile tabs: zoom + scroll to the first match with a die site; package: select).
+- Filters (role / bank / die site, with counts) apply to every view; roles double as the legend.
+- Size slider + `Fit` act on the active view (tiles 4-56 px, default ~58 % of fit; package 30-100 %).
+- Right column: sticky, collapsible panels, open state remembered, `Expand all` / `Collapse all`. Tile inspector (die tabs): tile table + class bitmap (image layer). No-site lists: `no die site yet` and `no die site expected` (see below).
+- State remembered in localStorage (`geo-x:` keys: tab, options, filters, sizes, panels), all in try/catch. Selection and search are not persisted.
+- Pin markers: on IO tiles by `z` (up to 4), colour = role, filled = bonded, hollow = not bonded, labels at size 32+. Conflicts in red.
+- Dark/light follows the system.
+
+## Site-expected vs not
+- Rule and counts: `docs/geo-data.md`. EP4CGX150DF31: 896 / 428 with die site / 103 no site yet / 365 no site expected.
+
+## Known gaps
+- 103 expected-site balls have no die site: need a 1-LUT-per-pin build sweep, Quartus, not run.
+- Registered sites are on the top row (y = 91), bottom row (y = 0) and right column (x = 117); left side is transceivers.
+- 6 conflicts: AG1, AH1 (`bonded`: fit.rpt/pin say unbonded, IBIS says bonded), E1, E2, F1, F2 (`usage_default` `#TMS` vs `TMS`, naming difference).
+- No unrolled die-ring view of the package page.
