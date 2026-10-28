@@ -20,14 +20,16 @@ UI = dict(
                  dict(id="MUL", label="Multiplier", slot=2), dict(id="IO", label="IO (ring)", slot=3)],
     kind_group=[0, 1, 2, 3, 3, 3], tier_class=["ver", "evi", "unk"],
     flag_labels=dict(edge="Die-edge tiles", spec="Specimen LABs (ring)", leout="LE-output grids (dot)"),
-    set_label="Example-image set bits", io_groups=[3], pkg_layout="bga-matrix", flip_chip=True)
+    set_label="Example-image set bits", io_groups=[3], pkg_layout="bga-matrix", flip_chip=True,
+    role_labels=["user I/O", "config", "JTAG", "clock", "transceiver", "reference", "power", "ground", "NC"],
+    site_labels=["with die site", "no site yet", "no site expected (supply / NC)"])
 
 
 def db_path(path=None):
     return path or os.environ.get("PLURIBUS_SQLITE_PATH") or str(REPO / "databases/cycloneiv/gx150.db")
 
 
-def tiles():
+def tiles(opts=None):
     """Columnar tile table.  Tile index i = x * ny + y (all nx*ny tiles present, checked)."""
     p = GEO / "tiles.json"
     if not p.exists():

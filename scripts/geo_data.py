@@ -47,10 +47,11 @@ def diff_pairs(rows):
     return pair
 
 
-def build(device=None, package=None, path=None, image=True, family=FAMILY):
+def build(device=None, package=None, path=None, image=True, family=FAMILY, opts=None):
     ad = geo_devices.adapter(family)
     device, package = device or ad.DEFAULT_DEVICE, package or ad.DEFAULT_PACKAGE
-    tiles = ad.tiles()
+    tiles = ad.tiles(opts)
+    design = tiles.pop("_design", None)
     pins = ad.pins(ad.db_path(path), device, package, SPECIALS, NO_SITE_ROLES, PIN_COLS)
     rows, ny = pins["rows"], tiles["ny"]
     pair = ad.pairs(rows) if hasattr(ad, "pairs") else diff_pairs(rows)
@@ -66,9 +67,14 @@ def build(device=None, package=None, path=None, image=True, family=FAMILY):
             tile_pins.setdefault(t, []).append(i)
     for a in tile_pins.values():
         a.sort(key=lambda i: (rows[i][6], rows[i][0]))
+    ui = dict(ad.UI)
+    if ui.get("tier_class") is None:
+        ui["tier_class"] = ad.tier_class(tiles)
     pl = dict(schema=SCHEMA, family=family, device=device, package=pk, geom=ad.GEOM,
               tiles=tiles, pins=pins, grid=grid, xref=dict(tile_pins={str(k): v for k, v in sorted(tile_pins.items())}),
-              image=ad.image(tiles) if image and hasattr(ad, "image") else None, ui=ad.UI)
+              image=ad.image(tiles) if image and hasattr(ad, "image") else None, ui=ui)
+    if design:
+        pl["design"] = design
     return pl
 
 
@@ -122,11 +128,13 @@ def main():
     ap.add_argument("--family", default=FAMILY, choices=geo_devices.FAMILIES)
     ap.add_argument("--device", default=None, help="default: the family's default device")
     ap.add_argument("--package", default=None)
+    ap.add_argument("--board", default=None, help="boards/<name>: design-layer config and board pin names")
+    ap.add_argument("--design", default=None, help="Trellis .config for the design layer (default: board, else corpus example)")
     ap.add_argument("--no-image", action="store_true", help="leave the image layer out")
     ap.add_argument("--export", metavar="DIR")
     ap.add_argument("--geojson", action="store_true")
     a = ap.parse_args()
-    pl = build(a.device, a.package, a.db, not a.no_image, a.family)
+    pl = build(a.device, a.package, a.db, not a.no_image, a.family, dict(board=a.board, design=a.design))
     c = check(pl, a.db)
     sizes = {k: len(json.dumps(v, separators=(",", ":"))) for k, v in pl.items() if isinstance(v, (dict, list))}
     print(f"{pl['device']} {pl['package']['name']}: {c}; image layer {'present' if pl['image'] else 'absent'}; "
