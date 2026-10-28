@@ -97,12 +97,13 @@ def parse_fit_rpt(text):
         pin = r.get("Location")
         if not pin:
             continue
-        usage = r.get("Pin Name/Usage", "")
+        usage = r.get("Pin Name/Usage", "").lstrip("^")      # '^' marks a pin whose role is set by a device option
+        nz = lambda v: None if v in ("", "--") else v        # noqa: E731  ('--' = not applicable in fitter tables)
         rec = {"pad_number": int(r["Pad Number"]) if r.get("Pad Number", "").isdigit() else None,
-               "bank": r.get("I/O Bank") or None, "io_type": (r.get("I/O Type") or "").replace("--", "") or None,
+               "bank": nz(r.get("I/O Bank")), "io_type": nz(r.get("I/O Type")),
                "usage_default": usage if not r.get("User Assignment") else None,
-               "bonded": usage not in ("NC", "DNU") and (r.get("I/O Type") or "--") != "--" or usage.startswith(("VCC", "GND", "RREF")),
-               "dir": r.get("Dir.") or None, "weak_pull_up": r.get("Weak Pull Up") or None}
+               "bonded": usage not in ("NC", "DNU"),
+               "dir": nz(r.get("Dir.")), "weak_pull_up": nz(r.get("Weak Pull Up"))}
         names = [n.strip() for n in usage.replace(" / ", "/").split("/") if n.strip() and not n.startswith("RESERVED")]
         rec["func_names"] = names
         out[pin] = rec
@@ -129,6 +130,7 @@ def parse_pin_file(text):
         if len(cells) < 6 or not re.match(r"^[A-Z]+\d+$", cells[1]):
             continue
         usage, pin, d, _iostd, _volt, bank = cells[:6]
+        usage = usage.lstrip("^")
         names = [n.strip() for n in usage.replace(" / ", "/").split("/") if n.strip() and not n.startswith("RESERVED")]
         out[pin] = {"bank": bank or None, "dir": d or None, "usage_default": usage if len(cells) < 7 or not cells[6] else None,
                     "func_names": names, "bonded": usage not in ("NC", "DNU")}

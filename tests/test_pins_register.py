@@ -67,6 +67,7 @@ def test_parsers():
     opn, rows = P.parse_fit_rpt(FIT)
     assert rows["A3"]["pad_number"] == 510 and rows["A3"]["bank"] == "9" and rows["A3"]["func_names"] == ["~ALTERA_DATA0~"]
     assert rows["A2"]["bonded"] is False and rows["A4"]["usage_default"] == "RESERVED_INPUT"
+    assert rows["A2"]["bank"] is None and rows["A2"]["io_type"] is None       # '--' and blank = absent, never a value
     assert "DIFFIO_B1n" in rows["AE7"]["func_names"] and rows["AE7"]["pin_type"] == "Dual Purpose Pin"
     vo = P.parse_vo(VO)
     assert vo == {"B9": {"tile_x": 34, "tile_y": 91, "z": 23, "io_site": "IOOBUF_X34_Y91_N23"}}
