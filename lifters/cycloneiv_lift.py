@@ -92,6 +92,8 @@ class CycloneIVLift:
     def tracer(self, plane):
         if self.phys is None:
             return rd.Tracer(self.dec, plane, self.geom, terminals=TERMINAL_WIRES)
+        if hasattr(self.phys, "make_tracer"):              # exact-graph tracer (cycloneiv_ddb_trace)
+            return self.phys.make_tracer(plane, self.geom, self.dec, TERMINAL_WIRES)
         import cycloneiv_phys_trace as pt
         return pt.PhysTracer(self.phys, plane, self.geom, learner=self.dec, terminals=TERMINAL_WIRES,
                              fallback=self.phys_fallback)

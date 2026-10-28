@@ -143,14 +143,39 @@ Field order from `DYGR_ROUTE_INFO_BODY::operator<<` (run `symdump` for the full 
 `DYGR_LOOKUP_TEMPLATE` flyweights; `DYGR_ROUTE_BLOCK_INTERFACE` 28, `_NODE` 983,
 `BLOCK_IO_MAPPING_ENTRY` 7,502.
 
+### asm group <-> graph edge (block -> output-wire map)
+
+`scripts/cycloneiv_ddb_blockmap.py` (`build`, `specimens`), `scripts/cycloneiv_ddb_trace.py` (`export`, `score`).
+
+- **Rule: group k of source record r == fan-out edge k of r; the last `ng - ne` groups are
+  select-bit pseudo-groups.** dest = `V(r) + offs[k]`. 14,862,095 real groups, 2,429,196 pseudo.
+  - Pseudo-groups are always the tail: H4 `(..., 4, 2)`, V4 `(..., 6, 2)`, H24 / V16 `(..., 16, 2)`;
+    LE_BUFFER / LOCAL_LINE have none (`ng == ne` for all 299,560 records).
+- Self-check without any oracle: a mux (block) must name ONE dest wire.
+  - 99.19 % of 1,379,388 blocks single-dest; keyed by (block, select-bit position) 99.74 % of
+    5,421,809 units. The 14,105 multi-dest units are blocks of group size 0 / 1 / 3 shared across
+    several muxes (known: one block can hold several muxes); not enumerated further.
+  - A 30-input mux spans several blocks: 186,723 dest records are driven by units of >1 block;
+    exactly one of them fires, so the tracer unit is the dest record.
+- Specimen agreement (`blockmap.py specimens`, 116 exact entries applied to every block of their class,
+  3,490 wire / 6,845 LI outputs): wire matched 3,479 / missing 1 / extra 5 / wrong 5 (99.685 %).
+  LI matched 4,770 / missing 1 / extra 1,073 / wrong 1,073 (68.96 %; every wrong output carries one extra).
+  - Wrong LI outputs by key (`tmp/cycloneiv_ddb_specimen_disagree.json`): class entries `12,-13|12,-12`
+    (LI 31, 219 blocks) and `6,-1|6,0` / `6,29|6,30` / `6,-13|6,-12` (LI 0 / 9 / 3, 12-23 blocks each)
+    where ddb names an H4 / V4 wire or another LI; all tile entries at tile row 0 (block tile clipped
+    to the IO row). Not adjudicated: both sides are exact-claimed, they cannot both be right.
+- LI element = `enum 282`, template index 0..37 per LAB tile; (vendor x, y, index) is unique. The vendor
+  x of a LAB column is NOT a pure `115 - X` mirror around M9K/DSP columns (LE_BUFFER records: +1 after
+  each pair, 24 of 104 LAB columns), and LE_BUFFER -> LI arcs land at `115 - X` or `115 - X + 2` for the
+  same RCF column: the RCF LI column / vendor LI tile relation is unresolved.
+
 ### Open
 
-- asm fired-group <-> graph-edge correspondence (template edges are in canonical order and count
-  real groups exactly, so the block -> output-wire map should follow): #141 track 2 remainder.
-- The 150 edge-column scoring misses: widen/repair the edge-column candidate model when the map lands.
-- RCF `R4 I28-31` dests resolve to unnamed records (enum 282, zero fan-out, co-located with the
-  named H4; ids 1.1-1.6 M); the `XQ4/Q4_` icname table re-names the SAME ids 449,321.., so these
-  stay unnamed in icname - name them via the lookup tree or the element enum when needed.
+- LI-band specimen conflict above (ddb vs specimen on 6 class keys).
+- Pin trace on the exact graph is below the old tracers (see issue #141 for the gate numbers): the
+  asm group SELECTION decode (which group of a block fires) is the limiting piece, not the map.
+- RCF `R4 I28-31` dests resolve to unnamed records (enum 282); name them via element enum / index.
+- 150 edge-column scoring misses of the `check` gate (position-window artifact).
 
 ## Naming quirks found while scoring
 
