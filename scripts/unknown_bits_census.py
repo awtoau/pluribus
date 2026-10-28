@@ -108,10 +108,14 @@ def main():
     per_tile = collections.Counter()
     designs_with = collections.Counter()
     n_ok = n_fail = tot_unknown = 0
-    # Processes, not threads: each worker holds its own decoder state and tile DB
-    # view, which is the pattern the other parity harnesses use for the same reason.
-    with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as pool:
-        for path, per, extra in pool.map(census_one, paths, chunksize=4):
+    # Threads: the decoder tables are read-only and shared (docs/shared-structures.md).
+    # One lease for the pool: decodes take well under a second, so a per-file lease
+    # would be gated by the 3 s lease ramp.
+    import heavy_guard
+    with heavy_guard.lease(args.workers * heavy_guard.JOB_GB["unknown_bits_census"],
+                           "unknown_bits_census", log), \
+            concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
+        for path, per, extra in pool.map(census_one, paths):
             if per is None:
                 n_fail += 1
                 if n_fail <= 5:
