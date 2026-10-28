@@ -29,6 +29,7 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import cycloneiv_ddb_asm as A  # noqa: E402
+import fastops  # noqa: E402
 import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_geom as cg  # noqa: E402
 import cycloneiv_route_learn as rl  # noqa: E402
@@ -221,15 +222,29 @@ class Dec:
         self.ukey_block = np.load(f"{DEC}_ukey_block.npy")
         self.nblocks = int(self.block.max()) + 1
 
-    def active(self, plane):
+    def _flat(self, plane):
+        """Cached plane-independent gather index of every asm entry (dense-bitmap slot); 51 M int32."""
+        c = self.__dict__.get("_flat_cache")
+        if c is None or c[0] != plane.shape:
+            self._flat_cache = c = (plane.shape, plane.flat_index(np.asarray(self.pf), np.asarray(self.pv)))
+        return c[1]
+
+    def active(self, plane, method=None):
         """Groups selected by a design: predicted bits all set, every other bit of the block clear.
         -> (group ids, record ids, block ids).  Integer bincounts over the set entries only (no float
-        weight copies of the 51 M-entry arrays)."""
-        s = np.flatnonzero(plane.has(np.asarray(self.pf), np.asarray(self.pv)))
+        weight copies of the 51 M-entry arrays).
+        method: "dense" (default; bitmap gather + mark array) | "legacy" (searchsorted + np.unique);
+        env PLURIBUS_ACTIVE.  Identical results (docs/perf-pass.md)."""
+        method = method or os.environ.get("PLURIBUS_ACTIVE", "dense")
+        if method == "dense":
+            s = np.flatnonzero(plane.dense()[self._flat(plane)])
+        else:
+            s = np.flatnonzero(plane._has_searchsorted(np.asarray(self.pf), np.asarray(self.pv)))
         gid = np.asarray(self.gid)
         sp = s[self.pred[s]]
         nset_pred = np.bincount(gid[sp], minlength=len(self.gsize))
-        bset = np.bincount(self.ukey_block[np.unique(self.e_ukey[s])], minlength=self.nblocks)
+        uk = fastops.mark_unique(self.e_ukey[s], len(self.ukey_block)) if method == "dense" else np.unique(self.e_ukey[s])
+        bset = np.bincount(self.ukey_block[uk], minlength=self.nblocks)
         act = (self.npred > 0) & (nset_pred == self.npred) & (bset[self.block] == self.npred)
         gids = np.flatnonzero(act)
         return gids, self.grec[gids], self.block[gids]

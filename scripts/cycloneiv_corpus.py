@@ -8,6 +8,7 @@
     ("DRV", net)                   the net's driving atom (resolved via the .vo)
     ("SINK", atom, port)           a sink pin; port = route_port when given (the physical pin)
 """
+import os
 import re
 import sys
 from functools import lru_cache
@@ -96,6 +97,10 @@ def parse_rcf(path):
     return nets
 
 
+HAS_MODE = os.environ.get("PLURIBUS_PLANE_HAS", "auto")
+HAS_DENSE_MIN = 1 << 16
+
+
 class SparsePlane:
     """Set CRAM bits as a sorted int32 array of frame * NV + v (a dense plane is 38 MiB per
     EP4CGX150 design, the set bits ~1 MB).  shape = (frames, NV)."""
@@ -104,16 +109,45 @@ class SparsePlane:
         self.keys = keys
         self.shape = (nfr, nv)
 
+    def dense(self):
+        """Cached bool bitmap of frame * NV + v, plus one trailing False slot (39 MB on EP4CGX150)."""
+        d = self.__dict__.get("_dense")
+        if d is None:
+            nf, nv = self.shape
+            d = np.zeros(nf * nv + 1, bool)
+            d[self.keys] = True
+            self._dense = d
+        return d
+
     def has(self, f, v):
-        """bool array: is (f, v) set; f, v integer arrays (out of range = False)."""
-        nf, nv = self.shape
+        """bool array: is (f, v) set; f, v integer arrays (out of range = False).
+        PLURIBUS_PLANE_HAS = searchsorted | dense | auto (default: dense for >= 65536 queries; both
+        paths return identical results, #145)."""
         f, v = np.asarray(f), np.asarray(v)
+        mode = HAS_MODE
+        if mode == "dense" or (mode == "auto" and f.size >= HAS_DENSE_MIN):
+            nf, nv = self.shape
+            ok = (f >= 0) & (f < nf) & (v >= 0) & (v < nv)
+            return self.dense()[np.where(ok, f * nv + v, nf * nv)]
+        return self._has_searchsorted(f, v)
+
+    def _has_searchsorted(self, f, v):
+        nf, nv = self.shape
         ok = (f >= 0) & (f < nf) & (v >= 0) & (v < nv)
         if not len(self.keys):
             return ok & False
         k = np.where(ok, f * nv + v, -1)
         i = np.minimum(np.searchsorted(self.keys, k), len(self.keys) - 1)
         return ok & (self.keys[i] == k)
+
+    def flat_index(self, f, v):
+        """int index into dense() per (f, v); out of range -> the trailing False slot.  Cache the result
+        when the same (f, v) arrays are queried against many planes (Dec.active)."""
+        nf, nv = self.shape
+        f, v = np.asarray(f), np.asarray(v)
+        ok = (f >= 0) & (f < nf) & (v >= 0) & (v < nv)
+        dt = np.int32 if nf * nv + 1 < 2**31 else np.int64
+        return np.where(ok, f.astype(dt) * dt(nv) + v.astype(dt), dt(nf * nv))
 
     def __getitem__(self, fv):
         f, v = fv
