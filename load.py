@@ -877,20 +877,6 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             assert_eq("ALU count in DB", alu_count, len(alu_rows))
             print(f"  {len(alu_rows)} ALU cells")
 
-        # ── MUX cells (GOWIN wide-mux) — empty for MachXO2 ────────────────────
-        mux_list = getattr(design, "muxes", [])
-        mux_rows = [{"bitstream": bs_id, "cell": m["name"],
-                     "i0": m["i0"], "i1": m["i1"], "sel": m["sel"], "o": m["o"]}
-                    for m in mux_list]
-        if mux_rows:
-            conn.execute(insert(schema.mux_cells), mux_rows)
-            mux_count = conn.execute(
-                select(func.count()).select_from(schema.mux_cells)
-                .where(schema.mux_cells.c.bitstream == bs_id)
-            ).scalar()
-            assert_eq("MUX count in DB", mux_count, len(mux_rows))
-            print(f"  {len(mux_rows)} MUX cells")
-
         # ── net_fanout ─────────────────────────────────────────────────────────
         fanout_rows = []
         for ff in design.ffs:
@@ -1838,7 +1824,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         import re as _re
         _HPBX_SINK = _re.compile(r'^BRANCH_HPBX(\d{4})$')
         arc_rows  = []
-        hpbx_rows = []  # dicts for hpbx_branches
+        hpbx_rows = []  # track membership, consumed by clock_domain_summary below (hpbx_branches table retired)
         hpbx_seen = set()
 
         for (r, c, sink, src) in pc.arcs:
@@ -1890,10 +1876,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
         for i in range(0, len(arc_rows), CHUNK):
             conn.execute(insert(schema.arcs), arc_rows[i:i+CHUNK])
 
-        if hpbx_rows:
-            conn.execute(_insert_or_ignore(schema.hpbx_branches), hpbx_rows)
-
-        print(f"  {len(arc_rows)} routing arcs  {len(hpbx_rows)} HPBX spine taps")
+        print(f"  {len(arc_rows)} routing arcs  {len(hpbx_rows)} HPBX spine taps (in-memory: feeds clock_domain_summary)")
 
         # ── clock_domain_summary ──────────────────────────────────────────────
         # Aggregate FF counts per clock net and join with HPBX track assignments.

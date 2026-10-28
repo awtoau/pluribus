@@ -11,7 +11,7 @@ opened read-only (python sqlite3, `mode=ro`); writers/readers from a grep of 317
 | DB | size | bitstreams (device) | notable rows |
 |---|---|---|---|
 | aw2.db, aw2_final_check.db, aw2_merge_verify.db, aw2_verify.db | ~620 MB each | 1 LCMXO2-1200 each | identical counts: reachability + reachability_rev 2.65 M each, ff_cones 1.14 M, dominators 303 k, critical_paths 220 k, arcs 12 k, luts 2,611, ffs 1,108 — three of the four are duplicates |
-| private_check.db | 683 MB | 1 LCMXO2-1200 | reachability 2.84 M, ff_cones 1.27 M, dominators 402 k, critical_paths 267 k |
+| the private-project check DB | 683 MB | 1 LCMXO2-1200 | reachability 2.84 M, ff_cones 1.27 M, dominators 402 k, critical_paths 267 k |
 | repl.db | 23 MB | 1 LCMXO2-1200 | reachability 106 k, arcs 6,281, luts 815 |
 | fnirsi.db | 464 MB | 1 GW1N-2 | reachability 1.93 M, ff_cones 916 k, arcs 37 k, alu_cells 192, ebr_ports 840 |
 | fuzz_rebuild.db | 22 MB | 2,705 LCMXO2-1200 | pad_map 135 k, arcs 69 k, nets 32 k |
@@ -134,8 +134,9 @@ keep / generalise / merge / retire. Cost = what regeneration costs if the table 
   `schema.init()` dies on missing columns. Measured regeneration cost (pipeline load → reach4):
   V02 ≈ 2–3 h (reachability 2.6 M rows), FNIRSI ≈ 2 h, fuzz_rebuild (2,705 labels) ≈ 4–6 h of
   Diamond-free lifting, Cyclone V image_g/cyclonev_* ≈ 1 h each. ~10–14 h of machine time in all,
-  no vendor builds. The four aw2 snapshots and private_check are archives of a private project:
-  regenerate only aw2.db (the other three are duplicates; private_check is V07's, parked #135).
+  no vendor builds. The four aw2 snapshots and the private-project check DB are archives of a
+  private project: regenerate only aw2.db (the other three are duplicates; the check DB is the
+  parked #135 lift, imported rather than regenerated — docs/legacy-import.md).
 - **Renaming postfit_builds → corpus_builds**: `./pluribus.db` only (8,032 rows, rebuilt by
   `corpus_register.py` in seconds). The 8 readers change one identifier.
 - **postfit_compare → gate_results**: 0 rows anywhere; code change only.

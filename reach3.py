@@ -5,7 +5,7 @@ Runs after reach2.py. Eight passes, each building one table:
 
   Pass 1  lut_symbolic      — expand each LUT's fn into a readable boolean
                               expression with real net names substituted in
-  Pass 2  ff_d_functions    — each FF's D input expressed as a symbolic formula
+  Pass 2  (ff_d_functions retired 2026-10-29: write-only, docs/schema-audit.md)
   Pass 3  shift_registers   — chains of FFs sharing a clock/enable (Q feeds next D)
                               written into the 'patterns' + 'shift_reg_bits' tables
   Pass 4  clock_crossings   — FFs whose input cone contains a FF on a different clock
@@ -286,110 +286,6 @@ def pass_lut_symbolic(bs_id, max_depth):
 
     return len(insert_rows)
 
-
-# ---------------------------------------------------------------------------
-# Pass 2: ff_d_functions — symbolic D-input expression per FF
-# ---------------------------------------------------------------------------
-
-def pass_ff_d_functions(bs_id):
-    """
-    For every FF, express its D input as a human-readable formula.
-
-    Priority:
-      1. d = '1''b0' or '1''b1' → literal '0' or '1'
-      2. d is a LUT's output net → use lut_symbolic.expr for that LUT
-      3. d is a pad's input net  → use the pad label (e.g. "ADC_D0A")
-      4. otherwise               → use the raw net name (another FF's Q or unknown)
-
-    pad_inputs is filled from pad_ff_influence: which physical pads can
-    transitively reach this FF (regardless of how the D path is expressed).
-    """
-    ffd   = schema.ff_d_functions
-    t_ffs = schema.ffs
-    t_ls  = schema.lut_symbolic
-    t_lut = schema.luts
-    t_pad = schema.pad_map
-    t_pfi = schema.pad_ff_influence
-
-    with engine().begin() as conn:
-        # Load FFs
-        all_ffs = conn.execute(
-            select(t_ffs.c.cell, t_ffs.c.d, t_ffs.c.ce)
-            .where(t_ffs.c.bitstream == bs_id)
-        ).fetchall()
-
-        # Load symbolic expressions from pass 1
-        sym_rows = conn.execute(
-            select(t_ls.c.lut_cell, t_ls.c.expr, t_ls.c.depth)
-            .where(t_ls.c.bitstream == bs_id)
-        ).fetchall()
-        symbolic_by_lut = {r.lut_cell: (r.expr, r.depth) for r in sym_rows}
-
-        # Which LUT cell produces each net
-        lut_z_rows = conn.execute(
-            select(t_lut.c.cell, t_lut.c.z)
-            .where(and_(t_lut.c.bitstream == bs_id, t_lut.c.z != None))
-        ).fetchall()
-        lut_driving = {r.z: r.cell for r in lut_z_rows}
-
-        # Pad label by the net that comes in from that pad
-        pad_rows = conn.execute(
-            select(t_pad.c.net_in, t_pad.c.label)
-            .where(and_(t_pad.c.bitstream == bs_id, t_pad.c.net_in != None))
-        ).fetchall()
-        pad_label_by_net = {r.net_in: r.label for r in pad_rows}
-
-        # Which pads transitively reach each FF (from pad_ff_influence)
-        pfi_rows = conn.execute(
-            select(t_pfi.c.ff_cell, t_pfi.c.pad_label)
-            .where(t_pfi.c.bitstream == bs_id)
-            .order_by(t_pfi.c.ff_cell, t_pfi.c.pad_label)
-        ).fetchall()
-        pad_inputs_by_ff = {}
-        for r in pfi_rows:
-            pad_inputs_by_ff.setdefault(r.ff_cell, []).append(r.pad_label)
-
-        conn.execute(delete(ffd).where(ffd.c.bitstream == bs_id))
-
-        output_rows = []
-        for ff_row in all_ffs:
-            ff_cell = ff_row.cell
-            d_net   = ff_row.d
-
-            if d_net is None or d_net == "1'b0":
-                fn_expr    = '0'
-                expr_depth = 0
-            elif d_net == "1'b1":
-                fn_expr    = '1'
-                expr_depth = 0
-            elif d_net in lut_driving:
-                driving_lut         = lut_driving[d_net]
-                fn_expr, expr_depth = symbolic_by_lut.get(driving_lut, (d_net, 0))
-            elif d_net in pad_label_by_net:
-                fn_expr    = pad_label_by_net[d_net]
-                expr_depth = 0
-            else:
-                fn_expr    = d_net   # raw net name (another FF's Q or unresolved)
-                expr_depth = 0
-
-            pad_inputs = pad_inputs_by_ff.get(ff_cell)
-            output_rows.append({
-                "bitstream":  bs_id,
-                "ff_cell":    ff_cell,
-                "fn_expr":    fn_expr,
-                "depth":      expr_depth,
-                "pad_inputs": pad_inputs,
-            })
-
-        if output_rows:
-            conn.execute(_insert_ignore(ffd), output_rows)
-
-    return len(output_rows)
-
-
-# ---------------------------------------------------------------------------
-# Pass 3: shift_registers — detect FF chains with matching CLK + CE
-# ---------------------------------------------------------------------------
 
 def _find_buf_lut_shortcuts(lut_rows):
     """
@@ -1233,13 +1129,6 @@ def main():
         lambda: pass_lut_symbolic(bs_id, args.depth)
     )
     print(f"  {n} LUT expressions  ({elapsed:.2f}s)")
-
-    # Pass 2 — FF D-input functions
-    n, elapsed = run_pass(
-        "Pass 2: FF D-input functions",
-        lambda: pass_ff_d_functions(bs_id)
-    )
-    print(f"  {n} FF functions  ({elapsed:.2f}s)")
 
     # Pass 3 — shift register detection
     result, elapsed = run_pass(

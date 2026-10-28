@@ -93,17 +93,6 @@ alu_cells = Table("alu_cells", metadata,
     UniqueConstraint("bitstream", "cell"),
 )
 
-mux_cells = Table("mux_cells", metadata,
-    Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    Column("cell",   Text, nullable=False),
-    Column("i0",     Text),      # first input net (O = S ? I1 : I0)
-    Column("i1",     Text),      # second input net
-    Column("sel",    Text),      # select signal
-    Column("o",      Text),      # output net
-    UniqueConstraint("bitstream", "cell"),
-)
-
 net_fanout = Table("net_fanout", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
@@ -242,6 +231,8 @@ anlogic_tiles = Table("anlogic_tiles", metadata,
 Index("idx_anlogic_tiles_type", anlogic_tiles.c.bitstream, anlogic_tiles.c.tile_type)
 
 # ── 2. Analysis layer ─────────────────────────────────────────────────────────
+# Retired 2026-10-29 (write-only, docs/schema-audit.md): mux_cells, hpbx_branches, ff_d_functions,
+# critical_paths, dominators, device_fingerprints.
 
 reachability = Table("reachability", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
@@ -279,19 +270,6 @@ shift_reg_bits = Table("shift_reg_bits", metadata,
     Column("q_net",       Text,    nullable=False),
     Column("clk_net",     Text),
     Column("load_en_net", Text),
-)
-
-ff_d_functions = Table("ff_d_functions", metadata,
-    Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    # ff_cell is unique PER bitstream, not globally — a bare unique=True here
-    # collided cell names across bitstreams in a shared DB, so INSERT-OR-IGNORE
-    # silently dropped every later bitstream's rows (data loss, caught by #60).
-    Column("ff_cell",   Text,    nullable=False),
-    Column("fn_expr",   Text),
-    Column("depth",     Integer),
-    Column("pad_inputs", JSON),  # TEXT[] → JSON list
-    UniqueConstraint("bitstream", "ff_cell"),
 )
 
 # ── 3. Knowledge layer ────────────────────────────────────────────────────────
@@ -367,28 +345,6 @@ ff_cones = Table("ff_cones", metadata,
 )
 Index("idx_ff_cones_ff",  ff_cones.c.bitstream, ff_cones.c.ff_cell, ff_cones.c.cone_type)
 Index("idx_ff_cones_net", ff_cones.c.bitstream, ff_cones.c.net, ff_cones.c.cone_type)
-
-critical_paths = Table("critical_paths", metadata,
-    Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    Column("src_ff",    Text, nullable=False),
-    Column("dst_ff",    Text, nullable=False),
-    Column("hops",      SmallInteger, nullable=False),
-    Column("path_nets", JSON),  # TEXT[] → JSON list
-    UniqueConstraint("bitstream", "src_ff", "dst_ff"),
-)
-Index("idx_crit_hops", critical_paths.c.bitstream, critical_paths.c.hops)
-
-dominators = Table("dominators", metadata,
-    Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    Column("ff_cell",  Text, nullable=False),
-    Column("net",      Text, nullable=False),
-    Column("n_paths",  Integer, nullable=False),
-    UniqueConstraint("bitstream", "ff_cell", "net"),
-)
-Index("idx_dom_ff",  dominators.c.bitstream, dominators.c.ff_cell)
-Index("idx_dom_net", dominators.c.bitstream, dominators.c.net)
 
 # ── 5. Symbolic / reach3 layer ────────────────────────────────────────────────
 
@@ -474,17 +430,6 @@ Index("idx_arcs_sink",   arcs.c.bitstream, arcs.c.sink_net)
 Index("idx_arcs_source", arcs.c.bitstream, arcs.c.source_net)
 Index("idx_arcs_tile",   arcs.c.bitstream, arcs.c.tile_row, arcs.c.tile_col)
 
-hpbx_branches = Table("hpbx_branches", metadata,
-    Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    Column("tile_row",  Integer, nullable=False),
-    Column("tile_col",  Integer, nullable=False),
-    Column("track",     Text, nullable=False),
-    Column("local_net", Text, nullable=False),
-    UniqueConstraint("bitstream", "tile_row", "tile_col", "track"),
-)
-Index("idx_hpbx_net", hpbx_branches.c.bitstream, hpbx_branches.c.local_net)
-
 clock_domain_summary = Table("clock_domain_summary", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
@@ -509,41 +454,6 @@ cdc_synchronisers = Table("cdc_synchronisers", metadata,
     Column("stage2_ff", Text, nullable=False),
     Column("dst_clk",   Text, nullable=False),
     UniqueConstraint("bitstream", "stage1_ff"),
-)
-
-# ── Device identification fingerprints (not tied to a lifted bitstream) ──────
-# Structural signatures for identifying an unknown bitstream's device family by
-# comparison, independent of the Lattice lifter pipeline above. First use:
-# Altera Cyclone V (no IDCODE in the raw bitstream and no IDCODE in Quartus's
-# Tcl API, so die family is narrowed by header framing and
-# near-empty-design .rbf size instead). Rows are ground truth generated by
-# compiling a trivial design per part in the vendor toolchain, not derived from
-# an unknown image -- vendor-sourced data, same status as device-db/.
-#
-# rbf_size is real signal: cross-checked against the Cyclone V datasheet's
-# (683801) published uncompressed .rbf size table, matches byte-for-byte --
-# but only resolves to die-size-class granularity (several part numbers share
-# one die's fabric size, same limit Mistral's 7-die set already has).
-#
-# leading_ff_len is NOT a die signature: it is a quartus_cpf generation-option
-# artifact (default options give the same value for every die). Kept as a raw
-# observation per rbf_mode, not for cross-die identification.
-
-device_fingerprints = Table("device_fingerprints", metadata,
-    Column("id",              Integer, primary_key=True, autoincrement=True),
-    Column("vendor",          Text,    nullable=False),  # e.g. "altera"
-    Column("family",          Text,    nullable=False),  # e.g. "Cyclone V"
-    Column("die",             Text,    nullable=False),  # e.g. "e50f"
-    Column("part",            Text,    nullable=False),  # e.g. "5CEBA4U19C8"
-    Column("toolchain",       Text,    nullable=False),  # e.g. "quartus-25.1std.0.1129"
-    Column("probe_design",    Text,    nullable=False),  # name/hash of the source design compiled
-    Column("rbf_mode",        Text,    nullable=False),  # "uncompressed" | "compressed"
-    Column("rbf_size",        Integer, nullable=False),
-    Column("leading_ff_len",  Integer, nullable=False),
-    Column("header_entropy",  Float),
-    Column("first_payload_byte", Text),
-    Column("generated_at",    DateTime(timezone=True)),
-    UniqueConstraint("vendor", "part", "toolchain", "probe_design", "rbf_mode"),
 )
 
 # ── Cyclone V device data (vendored, Mistral-derived) ────────────────────────

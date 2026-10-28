@@ -609,7 +609,7 @@ def section_active_ffs(conn, bs_id, net_names):
     A per-FF dump of ~1000 registers is noise at report level.  Group the
     active FFs by the functional prefix of their Q-net name (adc/awg/spi/ebr/
     dac/reg…) so the register makeup is one glance.  Per-FF detail lives in the
-    DB (ffs / ff_d_functions) for anyone who needs to drill in.
+    DB (ffs) for anyone who needs to drill in.
     """
     import collections, re
     ffs = schema.ffs
