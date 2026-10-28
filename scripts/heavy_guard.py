@@ -132,19 +132,70 @@ def lease_ledger():
     return {k: v for k, v in data.items() if _alive(v["pid"])}
 
 
+SAMPLE_S = 1.0          # RSS sample period: a Quartus map/fit peak lasts seconds, 1 s resolution sees it
+BLOCKED_AFTER_S = 60.0  # a job blocked this long (~2 job lengths) sheds cached memory while it waits
+LEASE_LOG = os.path.join(REPO, "tmp", "logs", "lease_telemetry.jsonl")
+_mon = {"lock": threading.Lock(), "active": {}, "thread": None}
+
+
+def tree_rss_gb():
+    """RSS of this process and all its children, GB."""
+    import psutil
+    p = psutil.Process()
+    tot = 0
+    for q in [p, *p.children(recursive=True)]:
+        try:
+            tot += q.memory_info().rss
+        except psutil.Error:
+            pass
+    return tot / 2**30
+
+
+def _sampler():
+    while True:
+        threading.Event().wait(SAMPLE_S)
+        with _mon["lock"]:
+            if not _mon["active"]:
+                _mon["thread"] = None
+                return
+            cur = tree_rss_gb()
+            n = len(_mon["active"])
+            for st in _mon["active"].values():
+                st["peak"] = max(st["peak"], cur)
+                st["conc"] = max(st["conc"], n)
+
+
+def trim_memory():
+    """Hand freed heap back to the OS (glibc keeps it otherwise): what a blocked job should do."""
+    import gc
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except OSError:
+        pass
+
+
 @contextlib.contextmanager
-def lease(gb, name, log, budget_gb=None):
-    """Hold `gb` GB of the shared memory budget while the body runs.
+def lease(gb, name, log, budget_gb=None, on_blocked=None):
+    """Hold `gb` GB of the shared memory budget while the body runs, and MEASURE what it really used.
 
     Admitted when sum(live leases) + gb <= budget, AVAILABLE RAM - gb >= MIN_AVAILABLE_GB, and no lease
     is younger than LEASE_RAMP_S.  A job larger than the whole budget runs alone (empty ledger).
-    Waits poll every POLL_S and log every LOG_S (a silent wait looks like a hang); no expiry.
+    Acquire BEFORE loading big data.  Waiting costs no CPU (Event.wait between checks, no spinning);
+    after BLOCKED_AFTER_S blocked, `on_blocked` (default trim_memory: gc + malloc_trim) runs once so a
+    waiting job does not sit on memory.  Waits log every LOG_S; no expiry (waiting is the safe outcome).
+    On release one JSON line goes to LEASE_LOG: declared GB, wait, hold time, observed peak tree RSS
+    above the admission baseline, max concurrent leases in this process; `heavy_guard.py report` turns
+    the log into corrections for JOB_GB (declared numbers are claims, the log is the measurement).
     """
     import json
     import uuid
     budget = LEASE_BUDGET_GB if budget_gb is None else budget_gb
     token = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
     os.makedirs(os.path.dirname(LEASE_PATH), exist_ok=True)
+    t_req = time.monotonic()
+    blocked = {"done": False}
 
     def try_admit():
         with open(LEASE_PATH, "a+") as fh:
@@ -164,14 +215,31 @@ def lease(gb, name, log, budget_gb=None):
             fh.seek(0)
             fh.truncate()
             fh.write(json.dumps(data))
-            return ok
+        if not ok and not blocked["done"] and time.monotonic() - t_req >= BLOCKED_AFTER_S:
+            blocked["done"] = True
+            log.info("%s: blocked %.0fs, shedding cached memory", name, time.monotonic() - t_req)
+            (on_blocked or trim_memory)()
+        return ok
 
     _wait(try_admit, f"{name}: waiting for {gb:g} GB of the {budget:g} GB memory budget "
                      f"(leased {sum(v['gb'] for v in lease_ledger().values()):.1f}, "
                      f"avail {available_gb():.1f})", log)
+    t_run = time.monotonic()
+    base = tree_rss_gb()
+    st = {"peak": base, "conc": 1}
+    with _mon["lock"]:
+        _mon["active"][token] = st
+        for o in _mon["active"].values():
+            o["conc"] = max(o["conc"], len(_mon["active"]))
+        if _mon["thread"] is None:
+            _mon["thread"] = threading.Thread(target=_sampler, daemon=True)
+            _mon["thread"].start()
     try:
         yield
     finally:
+        with _mon["lock"]:
+            _mon["active"].pop(token, None)
+            st["peak"] = max(st["peak"], tree_rss_gb())
         with open(LEASE_PATH, "a+") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX)
             fh.seek(0)
@@ -181,7 +249,44 @@ def lease(gb, name, log, budget_gb=None):
             fh.seek(0)
             fh.truncate()
             fh.write(json.dumps(data))
+        try:
+            os.makedirs(os.path.dirname(LEASE_LOG), exist_ok=True)
+            with open(LEASE_LOG, "a") as fh:
+                fh.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "name": name, "declared_gb": gb,
+                                     "wait_s": round(t_run - t_req, 1), "held_s": round(time.monotonic() - t_run, 1),
+                                     "peak_delta_gb": round(max(0.0, st["peak"] - base), 2),
+                                     "conc": st["conc"], "pid": os.getpid()}) + "\n")
+        except OSError:
+            pass
 
+
+def report():
+    """Declared vs observed per lease name from LEASE_LOG (observed = peak tree-RSS growth / concurrent leases)."""
+    import json
+    import statistics
+    rows = {}
+    try:
+        for ln in open(LEASE_LOG):
+            r = json.loads(ln)
+            rows.setdefault(r["name"], []).append(r)
+    except FileNotFoundError:
+        print("no lease telemetry yet:", LEASE_LOG)
+        return
+    print(f"{'name':28} {'n':>5} {'declared':>8} {'obs/job p50':>11} {'obs/job max':>11} {'wait p50 s':>10} {'held p50 s':>10}  verdict")
+    for name, rs in sorted(rows.items()):
+        obs = [r["peak_delta_gb"] / max(1, r["conc"]) for r in rs]
+        dec = max(r["declared_gb"] for r in rs)
+        v = "UNDER-declared" if max(obs) > dec * 1.2 else ("over-declared (>3x)" if max(obs) * 3 < dec else "ok")
+        print(f"{name:28} {len(rs):5d} {dec:8.2f} {statistics.median(obs):11.2f} {max(obs):11.2f} "
+              f"{statistics.median(r['wait_s'] for r in rs):10.1f} {statistics.median(r['held_s'] for r in rs):10.1f}  {v}")
+    print("live leases:", {k: (v['name'], v['gb']) for k, v in lease_ledger().items()})
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["report"]:
+        report()
+    else:
+        sys.exit("usage: heavy_guard.py report")
 
 def isolate_in_scope():
     """Re-exec the running batch script in its own memory-capped systemd user scope.

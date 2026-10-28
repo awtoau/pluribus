@@ -11,6 +11,7 @@ import heavy_guard  # noqa: E402
 
 def test_lease_budget(tmp_path, monkeypatch):
     monkeypatch.setattr(heavy_guard, "LEASE_PATH", str(tmp_path / "leases"))
+    monkeypatch.setattr(heavy_guard, "LEASE_LOG", str(tmp_path / "tele1.jsonl"))
     monkeypatch.setattr(heavy_guard, "available_gb", lambda: 1000.0)
     monkeypatch.setattr(heavy_guard, "POLL_S", 0.05)
     monkeypatch.setattr(heavy_guard, "LEASE_RAMP_S", 0.0)
@@ -39,9 +40,47 @@ def test_lease_budget(tmp_path, monkeypatch):
 
 def test_oversize_job_runs_alone(tmp_path, monkeypatch):
     monkeypatch.setattr(heavy_guard, "LEASE_PATH", str(tmp_path / "leases2"))
+    monkeypatch.setattr(heavy_guard, "LEASE_LOG", str(tmp_path / "tele2.jsonl"))
     monkeypatch.setattr(heavy_guard, "available_gb", lambda: 1000.0)
     monkeypatch.setattr(heavy_guard, "LEASE_RAMP_S", 0.0)
     ran = []
     with heavy_guard.lease(50, "big", logging.getLogger("t"), budget_gb=25):
         ran.append(1)
     assert ran == [1]
+
+
+def test_waiting_burns_no_cpu_and_logs_telemetry(tmp_path, monkeypatch):
+    monkeypatch.setattr(heavy_guard, "LEASE_PATH", str(tmp_path / "l3"))
+    monkeypatch.setattr(heavy_guard, "LEASE_LOG", str(tmp_path / "tele.jsonl"))
+    monkeypatch.setattr(heavy_guard, "available_gb", lambda: 1000.0)
+    monkeypatch.setattr(heavy_guard, "LEASE_RAMP_S", 0.0)
+    monkeypatch.setattr(heavy_guard, "POLL_S", 0.2)
+    monkeypatch.setattr(heavy_guard, "BLOCKED_AFTER_S", 0.5)
+    shed = []
+    log = logging.getLogger("t")
+    release = threading.Event()
+
+    def holder():
+        with heavy_guard.lease(20, "hold", log, budget_gb=25):
+            release.wait(2.5)
+
+    h = threading.Thread(target=holder)
+    h.start()
+    time.sleep(0.3)  # let the holder take the lease (test-only pacing)
+    cpu0 = time.process_time()
+
+    def waiter():
+        with heavy_guard.lease(20, "wait", log, budget_gb=25, on_blocked=lambda: shed.append(1)):
+            pass
+
+    w = threading.Thread(target=waiter)
+    w.start()
+    time.sleep(1.5)
+    cpu = time.process_time() - cpu0
+    release.set()
+    h.join()
+    w.join()
+    assert cpu < 0.5          # 1.5 s blocked: polling only, no spin
+    assert shed == [1]        # shed memory once while blocked
+    lines = open(tmp_path / "tele.jsonl").read().splitlines()
+    assert len(lines) == 2 and '"name": "wait"' in "".join(lines)

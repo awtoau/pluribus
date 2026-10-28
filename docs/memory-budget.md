@@ -10,4 +10,4 @@
 - Declare peaks from measurements: `heavy_guard.JOB_GB` (quartus chain 1.5, Dec.active 2.5, tracer 3.7, inventory 3.0, ECP5 85F lift 7.5).
   Unmeasured job: measure (profile_stages.py), add it, then lease.
 - Share read-only per-device data across THREADS (python3.15t), not processes: processes duplicate the multi-GB tables.
-- Status: `python3.15t -c "import heavy_guard,json;print(json.dumps(heavy_guard.lease_ledger(),indent=1))"` from scripts/.
+- Measure: every lease writes one line to tmp/logs/lease_telemetry.jsonl (declared GB, wait, hold, observed peak RSS growth, concurrency). `python3.15t scripts/heavy_guard.py report` compares declared vs observed per name; correct JOB_GB from it. Waiting costs no CPU (event waits); a job blocked >60 s sheds cached memory (gc + malloc_trim). Acquire the lease BEFORE loading big data.
