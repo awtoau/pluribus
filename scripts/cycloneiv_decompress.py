@@ -18,7 +18,10 @@ Usage: python3.15t scripts/cycloneiv_decompress.py in.rbf [-o out.rbf] [--info]
 import argparse
 import collections
 import math
+import os
 import sys
+
+import numpy as np
 
 SYNC = 0x6A
 PREAMBLE = 32          # 0xFF bytes before S in every quartus_cpf file
@@ -105,14 +108,15 @@ def frame_size(d, s):
     return q - s
 
 
-def nibble_decode(src, limit=None):
-    """Key/nibble stream -> bytes.  Stops at EOF or `limit` output bytes.  A key at EOF whose
-    byte-1 nibbles are missing yields byte 0 only (odd-length Quartus tail).  Returns (bytes, left)."""
+def _nibbles(src):
     nib = bytearray(2 * len(src))
     nib[0::2] = bytes(b & 15 for b in src)
     nib[1::2] = bytes(b >> 4 for b in src)
-    out = bytearray()
-    i, n = 0, len(nib)
+    return nib
+
+
+def _scalar_loop(nib, i, n, limit, out):
+    """The reference record loop: decode from nibble i; appends to `out`; returns the stop position."""
     while i < n and (limit is None or len(out) < limit):
         k = nib[i]
         if k == 0:
@@ -146,7 +150,89 @@ def nibble_decode(src, limit=None):
             v1 |= nib[i] << 4; i += 1
         out.append(v0)
         out.append(v1)
+    return i
+
+
+def nibble_decode_scalar(src, limit=None):
+    """Key/nibble stream -> bytes, record by record (reference loop).  Stops at EOF or `limit` output bytes.
+    A key at EOF whose byte-1 nibbles are missing yields byte 0 only (odd-length Quartus tail).
+    Returns (bytes, left)."""
+    nib = _nibbles(src)
+    out = bytearray()
+    n = len(nib)
+    i = _scalar_loop(nib, 0, n, limit, out)
     return bytes(out), n - i
+
+
+FAST_MIN_NIBBLES = 1 << 14
+_NV = np.array(NV, np.int64)
+
+
+def nibble_decode_fast(src):
+    """== nibble_decode_scalar(src) (limit=None), numpy.  The stream is sequential (a record's length
+    comes from its key, no resync marks), so it is decoded as pointer chasing on the nonzero nibbles
+    only: next(key) = first nonzero nibble at/after key + 1 + NV[key] (zero nibbles are 1-nibble
+    keys, i.e. 2 zero bytes each).  The chain from the first nonzero is listed by pointer doubling
+    (log2 m gathers); payload nibbles are then gathered and scattered by key index."""
+    a = np.frombuffer(src, np.uint8)
+    n = 2 * len(a)
+    nib = np.zeros(n + 8, np.uint8)
+    nib[0:n:2] = a & 15
+    nib[1:n:2] = a >> 4
+    nz = np.flatnonzero(nib[:n])
+    m = len(nz)
+    if m == 0:
+        return bytes(2 * n), 0
+    k = nib[nz].astype(np.int64)
+    nvk = _NV[k]
+    q = nz + 1 + nvk
+    trunc = q > n
+    nxt = np.empty(m + 1, np.int64)
+    nxt[:m] = np.searchsorted(nz, q)
+    nxt[:m][trunc] = m
+    nxt[m] = m
+    levels = [nxt]
+    while (1 << len(levels)) <= m + 1:
+        last = levels[-1]
+        levels.append(last[last])
+    path = np.zeros(1, np.int64)
+    for jump in reversed(levels):
+        nxt_pts = jump[path]
+        path = np.stack((path, nxt_pts), axis=1).reshape(-1)
+    cut = int(np.argmax(path == m)) if (path == m).any() else len(path)
+    path = path[:cut]
+    tail_pos = None
+    if len(path) and trunc[path[-1]]:
+        tail_pos = int(nz[path[-1]])
+        path = path[:-1]
+    p, kk, nvv = nz[path], k[path], nvk[path]
+    end = n if tail_pos is None else tail_pos
+    kidx = p - (np.cumsum(nvv) - nvv)
+    total_keys = end - int(nvv.sum())
+    out = np.zeros(2 * total_keys, np.uint8)
+    c = p + 1
+    b0 = kk & 1
+    nv0 = b0 + ((kk >> 1) & 1)
+    lo0 = np.where(b0 == 1, nib[c], 0)
+    hi0 = np.where((kk & 2) != 0, nib[c + b0], 0)
+    c1 = c + nv0
+    lo1 = np.where((kk & 4) != 0, nib[c1], 0)
+    hi1 = np.where((kk & 8) != 0, nib[c1 + ((kk >> 2) & 1)], 0)
+    out[2 * kidx] = lo0 | (hi0 << 4)
+    out[2 * kidx + 1] = lo1 | (hi1 << 4)
+    if tail_pos is None:
+        return out.tobytes(), 0
+    tail = bytearray(out.tobytes())
+    i = _scalar_loop(bytearray(nib[:n].tobytes()), tail_pos, n, None, tail)
+    return bytes(tail), n - i
+
+
+def nibble_decode(src, limit=None):
+    """Key/nibble stream -> bytes (see nibble_decode_scalar).  Large unlimited streams take the
+    numpy path (identical output, tests/test_cycloneiv_decompress.py)."""
+    if limit is None and 2 * len(src) >= FAST_MIN_NIBBLES and os.environ.get("PLURIBUS_DECODE") != "scalar":
+        return nibble_decode_fast(src)
+    return nibble_decode_scalar(src, limit)
 
 
 def entropy(b):
@@ -154,11 +240,36 @@ def entropy(b):
     return -sum(c / n * math.log2(c / n) for c in collections.Counter(b).values() if c)
 
 
-def cram_walk(u, start, f):
+_CRC_NP = np.array(CRC_T, np.uint32)
+
+
+def frames_ok_np(d, start, f):
+    """bool per whole frame at start + i*f: CRC-16 (init CRAM_INIT) of its first f-2 bytes == last 2
+    bytes (LE).  All frames at once: one table step per byte column."""
+    nfull = max(0, (len(d) - start) // f)
+    if nfull == 0:
+        return np.zeros(0, bool)
+    arr = np.frombuffer(d, np.uint8, count=nfull * f, offset=start).reshape(nfull, f)
+    cols = np.ascontiguousarray(arr[:, :f - 2].T)
+    a = np.full(nfull, CRAM_INIT, np.uint32)
+    for col in cols:
+        a = (a >> 8) ^ _CRC_NP[(a ^ col) & 0xFF]
+    return a == (arr[:, f - 2].astype(np.uint32) | arr[:, f - 1].astype(np.uint32) << 8)
+
+
+def cram_walk_scalar(u, start, f):
     n = 0
     while frame_ok(u, start + n * f, f):
         n += 1
     return n
+
+
+def cram_walk(u, start, f):
+    """Count of consecutive CRC-valid frames from start (== cram_walk_scalar)."""
+    if os.environ.get("PLURIBUS_DECODE") == "scalar":
+        return cram_walk_scalar(u, start, f)
+    ok = frames_ok_np(u, start, f)
+    return int(np.argmin(ok)) if len(ok) and not ok.all() else len(ok)
 
 
 def parse(d):

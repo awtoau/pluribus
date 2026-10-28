@@ -9,6 +9,7 @@ import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "scripts"))
+sys.path.insert(0, HERE)
 import cycloneiv_decompress as cd  # noqa: E402
 
 F, PERIPH, CRAM = 210, 25, 40
@@ -86,3 +87,43 @@ def test_bad_frame_crc_fails():
     u[cd.PREAMBLE + (PERIPH + 3) * F + 5] ^= 1
     with pytest.raises(cd.FormatError):
         cd.decompress(bytes(u))
+
+
+# --- perf pass (#145): numpy decode paths vs the frozen pre-pass decoder (tests/ref_cycloneiv_decompress.py)
+import ref_cycloneiv_decompress as ref  # noqa: E402
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_nibble_fast_equals_reference_random(seed):
+    rng = random.Random(seed)
+    n = rng.choice([1, 2, 3, 17, 4099, 8192, 20000])
+    zp = rng.choice([0.0, 0.5, 0.9, 0.99])
+    src = bytes(0 if rng.random() < zp else rng.randrange(256) for _ in range(n))
+    assert cd.nibble_decode_fast(src) == ref.nibble_decode(src)
+    assert cd.nibble_decode_scalar(src) == ref.nibble_decode(src)
+
+
+def test_nibble_fast_truncated_tails():
+    # stream ends inside a key's payload for every key value / alignment
+    for k in range(1, 16):
+        for pad in range(0, 4):
+            src = bytes(9000) + bytes([k | 0x10]) + bytes([0x21, 0x03, 0x04][:pad])
+            assert cd.nibble_decode_fast(src) == ref.nibble_decode(src), (k, pad)
+    assert cd.nibble_decode_fast(bytes(9000)) == ref.nibble_decode(bytes(9000))
+
+
+def test_decompress_equals_reference():
+    u = bytes(build(False))
+    for blob in (u, compress(u), compress(u) + b"\xff" * 4096):
+        i1, i2 = {}, {}
+        assert cd.decompress(blob, i1) == ref.decompress(blob, i2) and i1 == i2
+
+
+def test_frames_ok_np_equals_frame_ok():
+    d = build(False)
+    s = cd.PREAMBLE + PERIPH * F
+    ok = cd.frames_ok_np(bytes(d), s, F)
+    assert list(ok[:CRAM]) == [cd.frame_ok(d, s + i * F, F) for i in range(CRAM)]
+    bad = bytearray(d)
+    bad[s + 7 * F + 5] ^= 1
+    assert cd.cram_walk(bytes(bad), s, F) == cd.cram_walk_scalar(bytes(bad), s, F) == 7

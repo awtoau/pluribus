@@ -176,14 +176,36 @@ class SparsePlane:
         return len(self.keys)
 
 
-def cram_plane(rbf_bytes, geom=None):
-    """SparsePlane of every configuration bit (frames 1.. incl. periphery)."""
+def _plane_setup(rbf_bytes, geom):
     info = {}
     u = cd.decompress(rbf_bytes, info)
     f, r, n = info["frame"], info["periphery_frames"], info["cram_frames"]
-    nfr = r + n
     vmap = vmap_for(f, tuple(geom.lane_bytes) if geom else (lm.TOP,) + (lm.LANE,) * 7,
                     tuple(map(tuple, geom.lane_swaps)) if geom else ())
+    return u, f, r, r + n, vmap
+
+
+def cram_plane(rbf_bytes, geom=None):
+    """SparsePlane of every configuration bit (frames 1.. incl. periphery).  Keys from the nonzero
+    bytes only (a plane is ~2-9 % set); PLURIBUS_DECODE=scalar uses cram_plane_scalar."""
+    if os.environ.get("PLURIBUS_DECODE") == "scalar":
+        return cram_plane_scalar(rbf_bytes, geom)
+    u, f, r, nfr, vmap = _plane_setup(rbf_bytes, geom)
+    nv = len(vmap)
+    arr = np.frombuffer(u, np.uint8, count=(nfr - 1) * f, offset=cd.PREAMBLE + f).reshape(nfr - 1, f)
+    row, col = np.nonzero(arr)
+    fr = row + 1
+    keep = col < np.where(fr < r, f, f - 2)    # CRAM frames carry a 2-byte CRC, periphery frames none
+    row, col, fr = row[keep], col[keep], fr[keep]
+    bits = (arr[row, col][:, None] >> np.arange(8, dtype=np.uint8)) & 1
+    bi, bb = np.nonzero(bits)
+    keys = np.sort(fr[bi].astype(np.int64) * nv + vmap[col[bi] * 8 + bb]) if len(bi) else np.zeros(0, np.int64)
+    return SparsePlane(keys, nfr, nv)
+
+
+def cram_plane_scalar(rbf_bytes, geom=None):
+    """Reference per-frame unpackbits build (identical keys)."""
+    u, f, r, nfr, vmap = _plane_setup(rbf_bytes, geom)
     nv = len(vmap)
     parts = []
     for fr in range(1, nfr):
