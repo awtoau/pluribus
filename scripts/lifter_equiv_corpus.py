@@ -30,10 +30,9 @@ Buckets
                   the requested primitive family.
   * no_bit      — no built `.bit` (counted, never silently dropped).
 
-Parallelised at the bitstream level (independent per target) with a process
-pool: each worker builds ONE MachXO2Lift (routing graph) and reuses it across a
-shard of targets.  pytrellis + yosys are the heavy lifting; the driver itself is
-thin.
+Parallelised at the bitstream level (independent per target) with a thread
+pool: each worker thread builds ONE MachXO2Lift and reuses it across its targets;
+yosys runs as a subprocess per target.  Every target holds a heavy_guard lease.
 
 Runs under python3.15t (NoGIL).  Trellis paths (TRELLIS_BUILD / TRELLIS_DBROOT)
 default to the free-threaded pytrellis build + prjtrellis DB; override via env.
@@ -52,8 +51,9 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(REPO, "scripts")
@@ -226,17 +226,30 @@ def parse_pad_ports(pad_path):
 
 
 # ---------------------------------------------------------------------------
-# Per-worker global lift (built once, reused across the worker's shard).
-_LIFT = None
-_IODB_PINMAP = None
+# One MachXO2Lift per worker THREAD, built on first use and reused across that thread's
+# targets (the lifter holds per-design scratch, so it is not shared between threads).
+_TLS = threading.local()
 
 
-def _worker_init():
-    global _LIFT, _IODB_PINMAP
-    from lifters import machxo2_lift as ML
-    _LIFT = ML.MachXO2Lift(DEVICE)
-    iodb = ML.load_iodb(DEVICE)
-    _IODB_PINMAP = iodb["packages"][PACKAGE]
+_PINMAP = []
+_PINMAP_LOCK = threading.Lock()
+
+
+def _pinmap():
+    """Package pin -> pad site, read-only once loaded."""
+    with _PINMAP_LOCK:
+        if not _PINMAP:
+            from lifters import machxo2_lift as ML
+            _PINMAP.append(ML.load_iodb(DEVICE)["packages"][PACKAGE])
+        return _PINMAP[0]
+
+
+def _lift():
+    lf = getattr(_TLS, "lift", None)
+    if lf is None:
+        from lifters import machxo2_lift as ML
+        lf = _TLS.lift = ML.MachXO2Lift(DEVICE)
+    return lf
 
 
 def _decode_and_lift(bit_path, cfg_path):
@@ -246,8 +259,9 @@ def _decode_and_lift(bit_path, cfg_path):
         bit_path, device=DEVICE, db_root=os.environ["TRELLIS_DBROOT"])
     with open(cfg_path, "w") as fh:
         fh.write(text)
-    pc = _LIFT.parse_config(cfg_path)
-    design = _LIFT.recover_netlist(pc)
+    lift = _lift()
+    pc = lift.parse_config(cfg_path)
+    design = lift.recover_netlist(pc)
     return pc, design, pb, bram
 
 
@@ -261,15 +275,15 @@ def _build_recovered_verilog(design, ports, extra_inputs=()):
     (verilog, meta)."""
     from lifters import machxo2_lift as ML
     for name, info in ports.items():
-        site = _IODB_PINMAP.get(info["pin"])
+        site = _pinmap().get(info["pin"])
         info["site"] = site
         info["net"] = None
         if site:
             d = "in" if info["dir"] == "input" else "out"
-            info["net"] = ML.pad_net(design, _LIFT, site["row"], site["col"],
+            info["net"] = ML.pad_net(design, _lift(), site["row"], site["col"],
                                      site["pio"], d)
             if info["dir"] == "inout" and not info["net"]:
-                info["net"] = ML.pad_net(design, _LIFT, site["row"],
+                info["net"] = ML.pad_net(design, _lift(), site["row"],
                                          site["col"], site["pio"], "in")
 
     driven = set()
@@ -425,7 +439,12 @@ def _sanitize_portset(names):
 def process_target(name):
     """Full per-target flow.  Returns a result dict (never raises)."""
     import heavy_guard
-    heavy_guard.wait_available(heavy_guard.stdout_log(), name)
+    with heavy_guard.lease(heavy_guard.JOB_GB["lifter_equiv_target"], f"lifter_equiv {name}",
+                           heavy_guard.stdout_log()):
+        return _process_target(name)
+
+
+def _process_target(name):
     tdir = os.path.join(TARGETS_DIR, name)
     fuzz_v = os.path.join(tdir, "fuzz.v")
     bit = os.path.join(tdir, "impl1", "fuzz_impl1.bit")
@@ -598,10 +617,7 @@ def main():
     jsonl_path = os.path.join(REPO, "tmp", "lifter_equiv_corpus.jsonl")
     results = []
     with open(jsonl_path, "w") as jf:
-        import heavy_guard
-        with heavy_guard.heavy_lock("lifter_equiv_corpus", heavy_guard.stdout_log()), \
-                ProcessPoolExecutor(max_workers=args.workers,
-                                    initializer=_worker_init) as ex:
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
             futs = {ex.submit(process_target, t): t for t in targets}
             done = 0
             for fut in as_completed(futs):

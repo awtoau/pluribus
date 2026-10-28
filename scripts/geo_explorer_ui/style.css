@@ -5,18 +5,24 @@
 :root[data-theme=dark]{--bg:#17181a;--fg:#e8e8e4;--mut:#9a9a94;--card:#202225;--line:#38393c;--ver:#46c08a;--evi:#f0b93a;--unk:#6c6d71;--ovh:#6c9bf0;--bad:#ff6b6b;--lab:#6c9bf0;--m9k:#c08be0;--mul:#f08a5a;--io:#55c4c4;--accent:#7fa2ff;--bkl:62%;
 --pn0:#e5e7eb;--pn1:#fbbf24;--pn2:#c084fc;--pn3:#f87171;--pn4:#f472b6;--pn5:#4ade80;--pn6:#d6a36a;--pn7:#9ca3af;--pn8:#6b7280}
 *{box-sizing:border-box}[hidden]{display:none!important}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px}
-h1{font-size:20px;margin:0 0 2px}p.sub{margin:0 0 10px;color:var(--mut)}
-.top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:10px 14px}
+h1{font-size:17px;margin:0}p.sub{margin:0 0 10px;color:var(--mut)}
+.top{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 .tabs{display:flex;gap:4px}
 .tabs button{font:inherit;padding:5px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);cursor:pointer}
 .tabs button[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:#fff}
 .tabs button:disabled{opacity:.45;cursor:default}
-.top input[type=search]{flex:1;min-width:220px;max-width:480px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+input[type=search]{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
-.wrap{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;margin:0 auto}
-@media (max-width:899px){.wrap{grid-template-columns:1fr}}
-@media (min-width:900px){#side{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding-right:2px}}
+#lside,#rside{min-width:0}
+#main{order:-1;min-width:0}
+.maplegend{display:flex;gap:4px 14px;flex-wrap:wrap;align-items:center;font-size:12px;margin-top:6px}.maplegend label{margin:0}.maplegend .note{margin:0}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+@media (min-width:1100px){html,body{height:100%;overflow:hidden}body{display:flex;flex-direction:column}
+.wrap{grid-template-columns:330px minmax(0,1fr) 330px;flex:1;min-height:0;gap:12px}
+.side{overflow:auto;min-height:0;padding-right:2px}
+#main{order:0;min-height:0;display:flex;flex-direction:column}
+#main .card{flex:1;min-height:0;margin:0}}
 canvas{display:block;border-radius:6px;cursor:crosshair}
 #c{margin:0 auto;max-width:100%;height:auto}
 fieldset{border:0;padding:0;margin:0 0 10px}legend{font-weight:600;margin-bottom:4px}
@@ -49,3 +55,5 @@ a{color:var(--accent)}
 svg#pk{display:block;margin:0 auto;max-width:100%;height:auto;user-select:none}
 svg text{fill:var(--mut);font:9px system-ui,sans-serif}
 #tip{position:fixed;pointer-events:none;z-index:5;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:12px;box-shadow:0 2px 8px #0003;display:none}
+#oc{margin:0 auto;max-width:100%;height:auto}
+.lyr{display:grid;grid-template-columns:1fr 90px;gap:6px;align-items:center}

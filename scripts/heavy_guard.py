@@ -90,6 +90,7 @@ JOB_GB = {
     "cyc4_bit_inventory": 2.6,       # bit inventory: RSS 2.3-2.6 (anon 1.0, rest mmap)
     "reach2_fnirsi": 0.7,            # reach2.py fnirsi, streamed rows: 613 MB measured (#149)
     "reach2_stage": 2.1,             # reach2.py V02, 2.65 M rows (not re-measured; fnirsi now 0.61, was 1.5)
+    "lifter_equiv_target": 0.3,      # decode + MachXO2 lift + yosys equiv child, one fuzz target (provisional, re-set from ab_measure)
     "bench_reach_sql": 3.0,          # scripts/bench_reach_sql.py: reach + reach2 children on one DB copy
 }
 BATCH_FILL = 0.8   # fraction of BATCH_MAX_GB planned for workers; the rest is headroom for peaks

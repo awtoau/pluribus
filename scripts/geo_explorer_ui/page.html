@@ -2,24 +2,18 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Geo explorer</title>
 <style>/*__CSS__*/</style></head><body>
-<h1 id="h1">Geo explorer</h1>
-<p class="sub">One data payload, three views: die tiles, the known cells of one image, and the package ball grid. Selection, search and filters are shared.</p>
-<div class="top">
+<div class="top"><h1 id="h1">Geo explorer</h1>
 <div class="tabs" role="tablist" aria-label="Views">
 <button type="button" role="tab" data-tab="die">Die map</button>
 <button type="button" role="tab" data-tab="known" id="tabKnown">Known cells (image layer)</button>
-<button type="button" role="tab" data-tab="pkg">Package pins</button></div>
-<input type="search" id="q" placeholder="Search pins: ball (AB12), name (DIFFIO_B1n, CLK7p), net, site" aria-label="Search pins">
-</div>
+<button type="button" role="tab" data-tab="pkg">Package pins</button>
+<button type="button" role="tab" data-tab="chip">Chip (overlay)</button></div>
+<span class="note" style="margin:0">One payload, four views; selection, search and filters are shared.</span></div>
 <div class="wrap">
-<div id="main">
-<div class="card" id="tilecard" data-tabs="die known" style="overflow:auto"><canvas id="c" role="img" aria-label="Die tile map"></canvas></div>
-<div class="card" id="pkgcard" data-tabs="pkg" style="overflow:auto"><div id="vlabel" style="font-weight:600;text-align:center"></div><div class="note" id="vhint" style="text-align:center;margin:0 0 4px"></div>
-<svg id="pk" role="img" aria-label="Package ball grid"></svg></div>
-</div>
-<aside id="side">
-<div class="bar"><b>Panels</b><button type="button" id="pexp">Expand all</button><button type="button" id="pcol">Collapse all</button></div>
-
+<aside id="lside" class="side">
+<div class="card" style="padding:8px"><input type="search" id="q" placeholder="Search pins: ball (AB12), name (DIFFIO_B1n), net, site" aria-label="Search pins" style="width:100%">
+<div class="res" id="pres" hidden></div><div class="note" id="pnote"></div>
+<div class="bar" style="margin:8px 0 0"><b>Panels</b><button type="button" id="pexp">Expand all</button><button type="button" id="pcol">Collapse all</button></div></div>
 <details class="pnl" id="pn-ctl" open><summary>View, layers and size</summary><div class="pb">
 <fieldset data-tabs="die"><legend>Colour by</legend>
 <label><input type="radio" name="dmode" value="tier" checked> Evidence tier</label>
@@ -30,7 +24,7 @@
 <label><input type="radio" name="kmode" value="dens"> (b) Set-bit density of the image</label>
 <label><input type="radio" name="kmode" value="cap"> (c) Known-cell capacity (die-wide)</label>
 <label><input type="radio" name="kmode" value="kind"> (d) Tile kind</label></fieldset>
-<fieldset data-tabs="die known"><legend>Show tiles</legend>
+<fieldset data-tabs="die known chip"><legend>Show tiles</legend>
 <label><input type="checkbox" data-k="LAB" id="kLAB" checked><span class="sw" style="background:var(--lab)"></span>LAB</label>
 <label><input type="checkbox" data-k="M9K" id="kM9K" checked><span class="sw" style="background:var(--m9k)"></span>M9K memory</label>
 <label><input type="checkbox" data-k="MUL" id="kMUL" checked><span class="sw" style="background:var(--mul)"></span>Multiplier</label>
@@ -41,14 +35,29 @@
 <label><input type="checkbox" id="oLe" checked> LE-output grids (dot)</label></fieldset>
 <fieldset data-tabs="known" data-needs="img"><legend>Overlays</legend>
 <label><input type="checkbox" id="oZero" checked><span class="sw" style="border:2px solid var(--bad)"></span>Set bits but none known</label></fieldset>
+<fieldset data-tabs="chip"><legend>Chip layers (toggle, opacity)</legend>
+<div class="lyr"><label><input type="checkbox" id="lPkg" checked> Package balls</label><input class="pr" type="range" id="aPkg" min="0" max="100" value="100" aria-label="Package opacity"></div>
+<div class="lyr"><label><input type="checkbox" id="lDie" checked> Die tiles</label><input class="pr" type="range" id="aDie" min="0" max="100" value="100" aria-label="Die opacity"></div>
+<div class="lyr" data-needs="img"><label><input type="checkbox" id="lKnown" checked> Known cells (image)</label><input class="pr" type="range" id="aKnown" min="0" max="100" value="100" aria-label="Known cells opacity"></div>
+<div class="lyr"><label><input type="checkbox" id="lLink" checked> Ball-to-tile links</label><input class="pr" type="range" id="aLink" min="0" max="100" value="100" aria-label="Link opacity"></div>
+<label><input type="checkbox" id="lBundle"> Bundle link lines</label>
+<label style="display:grid;grid-template-columns:auto 1fr auto;gap:6px">Die scale <input class="pr" type="range" id="dscale" min="20" max="90" value="45"><span id="dsv"></span></label>
+<div class="note">Die size relative to the package is schematic (the Die scale slider), not measured from the vendor drawing.</div></fieldset>
+<fieldset data-tabs="chip"><legend>Die layer colour</legend>
+<label><input type="radio" name="cdmode" value="tier" checked> Evidence tier</label>
+<label><input type="radio" name="cdmode" value="dens"> Example-image set-bit density</label>
+<label><input type="radio" name="cdmode" value="kind"> Tile kind</label></fieldset>
+<fieldset data-tabs="chip" data-needs="img"><legend>Known-cells layer</legend>
+<label><input type="radio" name="ckmode" value="share" checked> Known share of set bits</label>
+<label><input type="radio" name="ckmode" value="cap"> Known-cell capacity</label></fieldset>
 <fieldset data-tabs="die known"><legend>Selection and pins</legend>
 <label><input type="checkbox" id="oSel" checked> Selected tile</label>
 <label><input type="checkbox" id="oPins" checked> Pin markers on IO tiles</label>
-<label><input type="checkbox" id="oPinLab" checked> Ball labels (zoom in, map size 32+)</label></fieldset>
-<fieldset data-tabs="pkg"><legend>View</legend>
+<label><input type="checkbox" id="oPinLab" checked> Ball labels (map size 32+)</label></fieldset>
+<fieldset data-tabs="pkg chip"><legend>View</legend>
 <label><input type="radio" name="view" value="b" checked> Bottom (ball side, as seen from the PCB side)</label>
 <label><input type="radio" name="view" value="t"> Top (package lid side, as seen from above)</label></fieldset>
-<fieldset data-tabs="pkg"><legend>Colour by</legend>
+<fieldset data-tabs="pkg chip"><legend>Colour by</legend>
 <label><input type="radio" name="col" value="role" checked> Role</label>
 <label><input type="radio" name="col" value="bank"> I/O bank</label>
 <label><input type="checkbox" id="oBank" checked> Highlight all balls of the hovered or selected ball's bank</label>
@@ -58,23 +67,36 @@
 <div class="note" id="imgnote" style="margin:0"></div></fieldset>
 <fieldset><legend>Size</legend>
 <label>Size <input type="range" id="zoom" min="4" max="56" value="10" aria-label="Size"> <span id="zv" style="min-width:3em;text-align:right"></span></label>
-<div style="display:flex;gap:6px;align-items:center"><button type="button" id="fitbtn">Fit</button><span class="note" style="margin:0">Fit = full window. Default is about 58 % of it.</span></div></fieldset>
-<div id="legend" data-tabs="die known"></div></div></details>
-
-<details class="pnl" id="pn-info" data-tabs="die known" open><summary>Hovered tile</summary><div class="pb"><div id="info" style="min-height:132px">Hover a tile.</div></div></details>
-
+<div style="display:flex;gap:6px;align-items:center"><button type="button" id="fitbtn">Fit</button><span class="note" style="margin:0">Fit = the largest square that fits the centre. Default = Fit.</span></div></fieldset>
+</div></details>
 <details class="pnl" id="pn-pins" open><summary id="pinhead">Pins</summary><div class="pb">
 <div id="pcnt" style="font-variant-numeric:tabular-nums"></div>
-<div class="res" id="pres" hidden></div><div class="note" id="pnote"></div></div></details>
-
+</div></details>
+<details class="pnl" id="pn-leg" open><summary>Legend and filters</summary><div class="pb">
+<fieldset><legend>Roles (right: with die site / balls)</legend><div id="froles"></div></fieldset>
+<fieldset><legend>I/O banks</legend><div id="fbanks"></div></fieldset>
+<fieldset><legend>Die site</legend><div id="fsite"></div></fieldset>
+<div class="note">Filters apply to every view. Filled = bonded, hollow = not bonded. Package: dashed = matrix position with no pin in the table, centre dot = die site known.</div></div></details>
+<details class="pnl" id="pn-nosite"><summary id="nshead"></summary><div class="pb"><div class="nosite" id="nosite"></div>
+<div class="note">"No die site yet" = a pad that should have a site (user I/O, clock, reference, configuration, JTAG, transceiver); the list shrinks as IO builds are registered (scripts/pins_register.py).</div></div></details>
+<details class="pnl" id="pn-noexp"><summary id="nxhead"></summary><div class="pb"><div class="nosite" id="noexp"></div>
+<div class="note">"No die site expected" = power, ground and NC balls: package-only, no I/O cell.</div></div></details>
+</aside>
+<div id="main">
+<div class="card" id="tilecard" data-tabs="die known" style="overflow:auto"><canvas id="c" role="img" aria-label="Die tile map"></canvas></div>
+<div class="card" id="chipcard" data-tabs="chip" style="overflow:auto"><div style="font-weight:600;text-align:center">Chip overlay: package balls over the die (schematic scale)</div><div class="note" id="chint" style="text-align:center;margin:0 0 4px"></div><canvas id="oc" role="img" aria-label="Chip overlay of package balls, die tiles, known cells and links"></canvas></div>
+<div class="card" id="pkgcard" data-tabs="pkg" style="overflow:auto"><div id="vlabel" style="font-weight:600;text-align:center"></div><div class="note" id="vhint" style="text-align:center;margin:0 0 4px"></div>
+<svg id="pk" role="img" aria-label="Package ball grid"></svg></div>
+<div id="legend" class="maplegend" data-tabs="die known"></div>
+</div>
+<aside id="rside" class="side">
+<details class="pnl" id="pn-info" data-tabs="die known chip" open><summary>Hovered tile</summary><div class="pb"><div id="info" style="min-height:132px">Hover a tile.</div></div></details>
 <details class="pnl" id="pn-pinsel" open><summary>Pin inspector</summary><div class="pb"><div id="pinsel"></div></div></details>
-
-<details class="pnl" id="pn-insp" data-tabs="die known" open><summary>Tile inspector</summary><div class="pb">
+<details class="pnl" id="pn-insp" data-tabs="die known chip" open><summary>Tile inspector</summary><div class="pb">
 <span id="ititle" style="color:var(--mut)">click a tile on the map</span><div id="idie"></div>
 <div data-needs="img"><div class="scroll" style="max-height:420px;margin-top:8px"><canvas id="bm" width="10" height="10"></canvas></div>
 <div id="bmi" class="note" style="min-height:2.6em">Frames run left to right, v runs upward. Hover a cell.</div></div></div></details>
-
-<details class="pnl" id="pn-bleg" data-tabs="known die" data-needs="img"><summary>Bitmap legend and options</summary><div class="pb"><div class="blegend">
+<details class="pnl" id="pn-bleg" data-tabs="known die chip" data-needs="img"><summary>Bitmap legend and options</summary><div class="pb"><div class="blegend">
 <label style="cursor:default"><span class="sw" style="background:var(--ver)"></span>verified class, set</label>
 <label style="cursor:default"><span class="sw" style="background:var(--evi)"></span>evidence class, set</label>
 <label style="cursor:default"><span class="sw" style="background:var(--unk)"></span>unknown class, set</label>
@@ -83,27 +105,15 @@
 <label><input type="checkbox" id="onlyset"> Only set cells</label>
 <label>Cell size <input type="range" id="csz" min="0" max="16" value="0"></label>
 <div class="note">Verified = LUT INIT bits (compared with vendor netlists, 100 % over 301 builds). Evidence = a mapping exists without a per-bit oracle (LE-used bit, clock polarity, routing tables, translated routing specimens). Unknown = no meaning attributed. Evidence also covers table-only routing cells: <i>known</i> here means "has a proposed meaning", and is weaker than verified.</div></div></div></details>
-
-<details class="pnl" id="pn-die" data-tabs="pkg" open><summary>Die position</summary><div class="pb"><svg id="die" viewBox="0 0 200 160" style="width:100%;max-width:300px;display:block;margin:0 auto" role="img" aria-label="Die inset"></svg>
+<details class="pnl" id="pn-die" data-tabs="pkg chip" open><summary>Die position</summary><div class="pb"><svg id="die" viewBox="0 0 200 160" style="width:100%;max-width:300px;display:block;margin:0 auto" role="img" aria-label="Die inset"></svg>
 <fieldset style="margin-top:6px"><label><input type="radio" name="dv" value="t" checked> Die seen from the top surface (as the die map)</label>
 <label><input type="radio" name="dv" value="f"> Seen from the bottom (flip-chip, bumps side): mirrored</label></fieldset>
 <div class="note" id="dnote"></div></div></details>
-
-<details class="pnl" id="pn-leg" open><summary>Legend and filters</summary><div class="pb">
-<fieldset><legend>Roles (right: with die site / balls)</legend><div id="froles"></div></fieldset>
-<fieldset><legend>I/O banks</legend><div id="fbanks"></div></fieldset>
-<fieldset><legend>Die site</legend><div id="fsite"></div></fieldset>
-<div class="note">Filters apply to every view. Filled = bonded, hollow = not bonded. Package: dashed = matrix position with no pin in the table, centre dot = die site known.</div></div></details>
-
-<details class="pnl" id="pn-nosite"><summary id="nshead"></summary><div class="pb"><div class="nosite" id="nosite"></div>
-<div class="note">"No die site yet" = a pad that should have a site (user I/O, clock, reference, configuration, JTAG, transceiver); the list shrinks as IO builds are registered (scripts/pins_register.py).</div></div></details>
-<details class="pnl" id="pn-noexp"><summary id="nxhead"></summary><div class="pb"><div class="nosite" id="noexp"></div>
-<div class="note">"No die site expected" = power, ground and NC balls: package-only, no I/O cell.</div></div></details>
-
 <details class="pnl" id="pn-notes"><summary>Notes</summary><div class="pb">
 <p class="note" style="margin:0" data-tabs="die">Tier: verified = LUT INIT bits checked against a vendor netlist (256 of a LAB tile's cells). Evidence = a LAB with measured routing specimens. Unknown = no bit attributed. Density = set bits of one example design binned to tiles; the row binning is approximate.</p>
 <p class="note" style="margin:0" data-tabs="known">Row binning is by band [VY-68, VY+1] (70 v). Cells of classes 1, 2 and 3 are owned by the tile that generated them; the rest are binned by frame band and v row. Frames FX+16..FX+17 of a LAB column are shared with the next column band.</p>
-<div class="note" style="margin:0" id="pknotes" data-tabs="pkg"></div></div></details>
+<div class="note" style="margin:0" id="pknotes" data-tabs="pkg"></div>
+<p class="note" style="margin:0" data-tabs="chip">Chip overlay: ball matrix follows View (Bottom / Top); die orientation follows the Die position switch (top surface or flip-chip mirrored). Die size is schematic. Faint lines = every ball with a die site; strong = hovered, selected, searched, or same bank as the hovered ball. No lines for power / ground / NC (no site expected).</p></div></details>
 </aside></div>
 <div id="tip"></div>
 <script>/*__JS__*/</script></body></html>

@@ -24,6 +24,7 @@ const rad=n=>{const e=document.querySelector(`input[name=${n}]:checked`);return 
 const imgOn=()=>!!IM&&chk('oImg');
 // persisted inputs: checkbox by id, radio by name
 function persist(el){
+ if(el.type==='range'){const k='v:'+el.id,v=Store.get(k);if(v!==null)el.value=v;el.addEventListener('input',()=>Store.set(k,el.value));return}
  if(el.type==='checkbox'){const k='c:'+el.id,v=Store.get(k);if(v!==null)el.checked=v==='1';el.addEventListener('change',()=>Store.set(k,el.checked?'1':'0'))}
  else if(el.type==='radio'){const k='r:'+el.name,v=Store.get(k);if(v!==null)el.checked=el.value===v;el.addEventListener('change',()=>{if(el.checked)Store.set(k,el.value)})}}
 const ST={tab:'die',sel:{tile:-1,pin:-1},hov:{tile:-1,pin:-1},match:null,roleOn:SP.map(()=>1),bankOn:Object.fromEntries(BK.map(b=>[b,1])),siteOn:[1,1,1]};
@@ -38,7 +39,7 @@ function selectTile(t){ST.sel={tile:t,pin:-1}}
 function focusPin(){return ST.hov.pin>=0?ST.hov.pin:ST.sel.pin}
 function matchSet(){return ST.match||new Set()}
 let raf=0;function render(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;renderNow()})}
-function renderNow(){readPal();applyVis();if(ST.tab==='pkg')PkgView.draw();else TileView.draw();Panels.update()}
+function renderNow(){readPal();applyVis();if(ST.tab==='pkg')PkgView.draw();else if(ST.tab==='chip')ChipView.draw();else TileView.draw();Panels.update()}
 function applyVis(){document.querySelectorAll('[data-tabs],[data-needs]').forEach(e=>{
  const t=e.dataset.tabs,n=e.dataset.needs;e.hidden=(t&&!t.split(' ').includes(ST.tab))||(n==='img'&&!imgOn())})}
 function setTab(t){if(t==='known'&&!imgOn())t='die';ST.tab=t;ST.hov={tile:-1,pin:-1};Store.set('tab',t);
@@ -46,16 +47,19 @@ function setTab(t){if(t==='known'&&!imgOn())t='die';ST.tab=t;ST.hov={tile:-1,pin
  Sizer.sync();renderNow()}
 function goPin(i,zoom){ // select a pin and bring it into view in the active view
  selectPin(i);const t=PR[i][F.tile];
- if(ST.tab!=='pkg'&&t>=0){VIS.IO=1;$('kIO').checked=true;if(zoom!==false)Sizer.atLeast(40);renderNow();TileView.reveal(t)}
- else{renderNow();if(ST.tab==='pkg'){const b=$('pkgcard').getBoundingClientRect();if(b.top<0||b.top>innerHeight)$('pkgcard').scrollIntoView({block:'center'})}}}
+ if((ST.tab==='die'||ST.tab==='known')&&t>=0){VIS.IO=1;$('kIO').checked=true;if(zoom!==false)Sizer.atLeast(40);renderNow();TileView.reveal(t)}
+ else{renderNow();if(ST.tab==='pkg'||ST.tab==='chip'){const cd=$(ST.tab==='pkg'?'pkgcard':'chipcard'),b=cd.getBoundingClientRect();if(b.top<0||b.top>innerHeight)cd.scrollIntoView({block:'center'})}}}
 
 // ======================= size: one slider + Fit for the active view =======================
-const Sizer={tiles:{fit:true,px:10},pkg:58,
+const WIDE=()=>matchMedia('(min-width:1100px)').matches;
+function availH(card,reserve){return WIDE()?card.clientHeight-26-(reserve||0):Math.max(360,innerHeight-Math.max(card.getBoundingClientRect().top,0)-(reserve||0)-28)}
+const isPk=()=>ST.tab==='pkg'||ST.tab==='chip';
+const Sizer={tiles:{fit:true,px:10},pkg:100,
  init(){const a=+Store.get('size-tiles');if(a>=4&&a<=56){this.tiles.fit=false;this.tiles.px=a}const b=+Store.get('size-pkg');if(b>=30&&b<=100)this.pkg=b;
-  $('zoom').oninput=e=>this.set(+e.target.value);$('fitbtn').onclick=()=>this.set(ST.tab==='pkg'?100:TileView.fitPx());addEventListener('resize',()=>render())},
- set(v){if(ST.tab==='pkg'){this.pkg=Math.max(30,Math.min(100,v));Store.set('size-pkg',this.pkg)}else{this.tiles.fit=false;this.tiles.px=Math.max(4,Math.min(56,v));Store.set('size-tiles',this.tiles.px)}this.sync();renderNow()},
+  $('zoom').oninput=e=>this.set(+e.target.value);$('fitbtn').onclick=()=>this.set(isPk()?100:TileView.fitPx());addEventListener('resize',()=>render())},
+ set(v){if(isPk()){this.pkg=Math.max(30,Math.min(100,v));Store.set('size-pkg',this.pkg)}else{this.tiles.fit=false;this.tiles.px=Math.max(4,Math.min(56,v));Store.set('size-tiles',this.tiles.px)}this.sync();renderNow()},
  atLeast(v){if(this.tiles.px<v||this.tiles.fit){this.tiles.fit=false;this.tiles.px=Math.max(this.tiles.px,v);Store.set('size-tiles',this.tiles.px)}},
- sync(){const z=$('zoom');if(ST.tab==='pkg'){z.min=30;z.max=100;z.value=this.pkg;$('zv').textContent=this.pkg+' %'}else{z.min=4;z.max=56;z.value=this.tiles.px;$('zv').textContent=this.tiles.px+' px'}}};
+ sync(){const z=$('zoom');if(isPk()){z.min=30;z.max=100;z.value=this.pkg;$('zv').textContent=this.pkg+' %'}else{z.min=4;z.max=56;z.value=this.tiles.px;$('zv').textContent=this.tiles.px+' px'}}};
 
 // ======================= tile views (Die map + Known cells share one canvas) =======================
 const TileView=(()=>{
@@ -64,8 +68,8 @@ const TileView=(()=>{
  const ramp=f=>{f=Math.max(0,Math.min(1,f));const a=[247,247,240],b=[34,70,160];return `rgb(${a.map((x,i)=>Math.round(x+(b[i]-x)*f)).join(',')})`};
  const KCOL={LAB:'--lab',M9K:'--m9k',MUL:'--mul',IO:'--io'};
  const TIERC=['--ver','--evi','--unk'];
- function fitPx(){const card=cv.parentElement,w=card.clientWidth-26,top=card.getBoundingClientRect().top;const h=Math.max(360,innerHeight-Math.max(top,0)-28);return Math.max(4,Math.min(56,Math.floor(Math.min((w-2*M)/NX,(h-2*M)/NY))))}
- function resize(){if(Sizer.tiles.fit)Sizer.tiles.px=Math.max(4,Math.round(fitPx()*.58));TS=Sizer.tiles.px;Sizer.sync();
+ function fitPx(){const card=cv.parentElement,w=card.clientWidth-26,h=availH(card,0);return Math.max(4,Math.min(56,Math.floor(Math.min((w-2*M)/NX,(h-2*M)/NY))))}
+ function resize(){if(Sizer.tiles.fit)Sizer.tiles.px=Math.max(4,fitPx());TS=Sizer.tiles.px;Sizer.sync();
   const w=NX*TS+2*M,h=NY*TS+2*M;if(cv.width!=w)cv.width=w;if(cv.height!=h)cv.height=h;cv.style.width=w+'px'}
  const pxy=i=>[M+tx(i)*TS,M+(NY-1-ty(i))*TS];
  function tileFill(i,px,py,known){
@@ -121,7 +125,7 @@ const TileView=(()=>{
  cv.addEventListener('mousemove',e=>{const t=tileAt(e);if(t!==ST.hov.tile){ST.hov.tile=t;render()}});
  cv.addEventListener('mouseleave',()=>{ST.hov.tile=-1;render()});
  cv.addEventListener('click',e=>{selectTile(tileAt(e));render()});
- return {draw,reveal,fitPx,tileAt}})();
+ return {draw,reveal,fitPx,tileAt,ramp,maxSet,maxDens,KCOL,TIERC}})();
 
 // ======================= image layer: decoded blobs, per-tile info, bitmap =======================
 const Img=(()=>{
@@ -157,7 +161,7 @@ const Img=(()=>{
   const c=Math.floor((e.clientX-rc.left)*sx/bsc),r=VP-1-Math.floor((e.clientY-rc.top)*sx/bsc);if(c<0||c>=IM.w[i]||r<0||r>=VP)return;
   const k=c*VP+r,cl=CT[IM.tp[IM.tmpl[i]][0]+k],v=VP*ty(i)-VLO+r,fr=IM.fa[i]+c;
   $('bmi').innerHTML=cl?`frame ${fr}, v ${v} (tile row ${r}): class <b>${CL[cl-1][0]}</b> ${esc(CL[cl-1][2])} [${{V:'verified',E:'evidence',U:'unknown',O:'overhead'}[CL[cl-1][1]]}], ${bit(SOFF[i],k)?'<b>set</b>':'clear'}`:`frame ${fr}, v ${v}: not owned by this tile`});
- function hoverHtml(i){return ST.tab==='known'&&imgOn()?imgHtml(i):dieHtml(i)}
+ function hoverHtml(i){return imgOn()&&(ST.tab==='known'||(ST.tab==='chip'&&chk('lKnown')))?imgHtml(i):dieHtml(i)}
  function inspect(){const i=ST.sel.tile,on=imgOn();
   $('ititle').textContent=i<0?'click a tile on the map':`X${tx(i)} Y${ty(i)} ${KIND[T.kind[i]]}`+(on?`: frames ${IM.fa[i]}..${IM.fa[i]+IM.w[i]-1}, ${IM.w[i]} x ${VP} cells`:'');
   $('idie').innerHTML=i<0?'':dieHtml(i).replace(/^<b>.*?<\/b>[^<]*/,'');
@@ -202,7 +206,7 @@ const PkgView=(()=>{
   const cx=bt?L-8:W-L+8;a1.setAttribute('d',`M${cx} ${L-8} L${cx+(bt?1:-1)*20} ${L-8} L${cx} ${L+12} Z`);
   $('vlabel').textContent=bt?'Bottom view - ball side':'Top view - mirrored';
   $('vhint').textContent=bt?'Standard BGA pinout view: A1 top-left, as seen from the PCB side.':'Lid side, A1 top-right. Top = Bottom mirrored left-right, not rotated.';
-  const card=$('pkgcard'),w=card.clientWidth-26,top=card.getBoundingClientRect().top,h=Math.max(360,innerHeight-Math.max(top,0)-70);
+  const card=$('pkgcard'),w=card.clientWidth-26,h=availH(card,50);
   svg.style.width=Math.round(Math.min(w,h*W/H)*Sizer.pkg/100)+'px';Sizer.sync()}
  const tip=$('tip'),tgt=e=>{const d=e.target.dataset;return d&&d.i!=null?+d.i:-1};
  svg.addEventListener('mousemove',e=>{const i=tgt(e),t=e.target;if(i!==ST.hov.pin){ST.hov.pin=i;render()}
@@ -211,6 +215,89 @@ const PkgView=(()=>{
   tip.style.left=Math.min(e.clientX+14,innerWidth-200)+'px';tip.style.top=(e.clientY+14)+'px'});
  svg.addEventListener('mouseleave',()=>{ST.hov.pin=-1;tip.style.display='none';render()});
  svg.addEventListener('click',e=>{selectPin(tgt(e));render()});
+ return {draw}})();
+
+
+// ======================= chip overlay: package + die + known cells + links on one canvas =======================
+const ChipView=(()=>{
+ const cv=$('oc'),ctx=cv.getContext('2d'),PK=22,L=34,W=NCOL*PK+2*L,H=NROW*PK+2*L,RS=2.5,BR=PK*.32;
+ cv.width=W*RS;cv.height=H*RS;
+ const bpos=[];let D={};
+ const al=id=>(+$(id).value)/100;
+ function layout(){const sc=+$('dscale').value,dw=W*sc/100,ds=dw/NX;$('dsv').textContent=sc+' %';
+  D={ds,dw,dh:ds*NY,x0:(W-dw)/2,y0:(H-ds*NY)/2,fl:rad('dv')==='f'};
+  const bt=rad('view')==='b';PR.forEach((p,i)=>{const cl=p[F.cell],c=cl%NCOL,j=Math.floor(cl/NCOL);bpos[i]=[L+((bt?c:NCOL-1-c)+.5)*PK,L+(j+.5)*PK]})}
+ const tcorner=t=>{const x=tx(t),y=ty(t);return [D.x0+(D.fl?NX-1-x:x)*D.ds,D.y0+(NY-1-y)*D.ds]};
+ const tcent=t=>{const [x,y]=tcorner(t);return [x+D.ds/2,y+D.ds/2]};
+ function hub(b){ // bundling: snap the ball's direction from the die centre onto a ring around the die
+  const cx=W/2,cy=H/2,hw=D.dw/2+14,hh=D.dh/2+14;let dx=b[0]-cx,dy=b[1]-cy;const k=Math.max(Math.abs(dx)/hw,Math.abs(dy)/hh,1e-6);
+  return [cx+Math.round(dx/k/10)*10,cy+Math.round(dy/k/10)*10]}
+ function link(i,bundle){const b=bpos[i],t=tcent(PR[i][F.tile]);ctx.beginPath();ctx.moveTo(b[0],b[1]);if(bundle){const h=hub(b);ctx.lineTo(h[0],h[1])}ctx.lineTo(t[0],t[1]);ctx.stroke()}
+ function dieLayer(){
+  const m=rad('cdmode'),a=al('aDie');
+  for(let i=0;i<NT;i++){const [px,py]=tcorner(i);ctx.globalAlpha=a*(VIS[TG[i]]?1:.3);
+   ctx.fillStyle=VIS[TG[i]]?(m==='tier'?css(TileView.TIERC[T.tier[i]]):m==='kind'?css(TileView.KCOL[TG[i]]):TileView.ramp(Math.sqrt(T.set[i]/TileView.maxSet))):css('--line');
+   ctx.fillRect(px,py,D.ds+.3,D.ds+.3)}
+  ctx.globalAlpha=1}
+ function knownLayer(){
+  const m=rad('ckmode'),a=al('aKnown'),s=D.ds+.3;ctx.globalAlpha=a;
+  for(let i=0;i<NT;i++){if(!VIS[TG[i]])continue;const [px,py]=tcorner(i);
+   if(m==='cap'){ctx.fillStyle=TileView.ramp((IM.capv[i]+IM.cape[i])/Math.max(IM.cells[i],1));ctx.fillRect(px,py,s,s);continue}
+   const A=IM.sv[i],B=IM.se[i],C=IM.su[i],tot=A+B+C;if(!tot)continue;let y=py+s;
+   for(const [n,c] of [[A,'--ver'],[B,'--evi'],[C,'--unk']]){const h=s*n/tot;ctx.fillStyle=css(c);ctx.fillRect(px,y-h,s,h);y-=h}}
+  ctx.globalAlpha=1}
+ function draw(){
+  layout();ctx.setTransform(RS,0,0,RS,0,0);ctx.clearRect(0,0,W,H);ctx.fillStyle=css('--card');ctx.fillRect(0,0,W,H);
+  const f=focusPin(),fp=f>=0?PR[f]:null,bt=rad('view')==='b',byRole=rad('col')==='role',mt=ST.match;
+  if(chk('lDie'))dieLayer();
+  if(imgOn()&&chk('lKnown'))knownLayer();
+  ctx.strokeStyle=css('--mut');ctx.lineWidth=1;ctx.strokeRect(D.x0,D.y0,D.dw,D.dh);
+  ctx.fillStyle=css('--mut');ctx.font='9px system-ui,sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  ctx.fillText(`die (schematic scale, ${D.fl?'flip-chip mirrored':'top surface'})`,D.x0,D.y0-4);
+  // links
+  if(chk('lLink')){const a=al('aLink'),bundle=chk('lBundle'),strong=new Set(),mid=new Set();
+   if(f>=0)strong.add(f);if(ST.sel.pin>=0)strong.add(ST.sel.pin);mt&&mt.forEach(i=>strong.add(i));
+   [ST.sel.tile,ST.hov.tile].forEach(t=>t>=0&&(TP[t]||[]).forEach(i=>strong.add(i)));
+   if(fp&&chk('oBank')&&fp[F.bank]!=='')PR.forEach((p,i)=>{if(p[F.bank]===fp[F.bank])mid.add(i)});
+   const ok=i=>PR[i][F.tile]>=0&&pinOn(i);
+   ctx.lineWidth=.5;ctx.strokeStyle=css('--fg');ctx.globalAlpha=a*.13;PR.forEach((p,i)=>{if(ok(i)&&!strong.has(i)&&!mid.has(i))link(i,bundle)});
+   ctx.lineWidth=1;ctx.globalAlpha=a*.55;mid.forEach(i=>{if(ok(i)&&!strong.has(i)){ctx.strokeStyle=pcol(i);link(i,bundle)}});
+   ctx.lineWidth=1.6;ctx.globalAlpha=a;strong.forEach(i=>{if(ok(i)){ctx.strokeStyle=pcol(i);link(i,bundle)}});ctx.globalAlpha=1}
+  // die tile marks (selection, hover, tiles of highlighted pins)
+  const mk=(t,c,w)=>{if(t<0)return;const [px,py]=tcorner(t);ctx.strokeStyle=css(c);ctx.lineWidth=w;ctx.strokeRect(px-1,py-1,D.ds+2,D.ds+2)};
+  const hp=new Set(mt||[]);if(ST.sel.pin>=0)hp.add(ST.sel.pin);hp.forEach(i=>mk(PR[i][F.tile],'--accent',1.2));
+  if(chk('oSel'))mk(ST.sel.tile,'--accent',2);mk(ST.hov.tile,'--fg',1.5);
+  // package
+  if(chk('lPkg')){const a=al('aPkg');ctx.globalAlpha=a;
+   ctx.strokeStyle=css('--line');ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(L-8,L-8,NCOL*PK+16,NROW*PK+16,8);ctx.stroke();
+   ctx.fillStyle=css('--accent');const cx=bt?L-8:W-L+8;ctx.beginPath();ctx.moveTo(cx,L-8);ctx.lineTo(cx+(bt?20:-20),L-8);ctx.lineTo(cx,L+12);ctx.fill();
+   ctx.fillStyle=css('--mut');ctx.textAlign='center';
+   for(let c=0;c<NCOL;c++){const x=L+((bt?c:NCOL-1-c)+.5)*PK;ctx.fillText(c+1,x,L-12);ctx.fillText(c+1,x,H-L+19)}
+   GR.letters.forEach((l,j)=>{const y=L+(j+.5)*PK+3;ctx.fillText(l,L-14,y);ctx.fillText(l,W-L+14,y)});
+   PR.forEach((p,i)=>{const [x,y]=bpos[i],col=byRole?css('--pn'+p[F.role]):BKC(p[F.bank]),on=pinOn(i);
+    ctx.globalAlpha=a*(!on?.08:(mt===null||mt.has(i))?1:.22);ctx.beginPath();ctx.arc(x,y,BR,0,7);
+    if(p[F.bonded]){ctx.fillStyle=col;ctx.fill()}else{ctx.strokeStyle=col;ctx.lineWidth=1.6;ctx.stroke()}
+    if(p[F.tile]>=0){ctx.beginPath();ctx.arc(x,y,1.6,0,7);ctx.fillStyle=css('--bg');ctx.fill()}});
+   ctx.globalAlpha=1;
+   const ring=(i,r,c,w,al_)=>{const [x,y]=bpos[i];ctx.globalAlpha=al_||1;ctx.strokeStyle=css(c);ctx.lineWidth=w;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.stroke();ctx.globalAlpha=1};
+   if(fp&&chk('oBank')&&fp[F.bank]!=='')PR.forEach((p,i)=>{if(p[F.bank]===fp[F.bank]&&i!==f)ring(i,PK*.42,'--accent',1,.8)});
+   if(fp&&fp[F.pair]>=0&&chk('oPair')){const [x1,y1]=bpos[f],[x2,y2]=bpos[fp[F.pair]];ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ring(fp[F.pair],PK*.45,'--accent',2.5)}
+   if(ST.sel.pin<0&&ST.sel.tile>=0)(TP[ST.sel.tile]||[]).forEach(i=>ring(i,PK*.45,'--accent',2.5));
+   mt&&mt.forEach(i=>ring(i,PK*.45,'--fg',1.5));
+   if(f>=0)ring(f,PK*.5,'--accent',3)}
+  $('chint').textContent=(bt?'Bottom view (A1 top-left)':'Top view (mirrored, A1 top-right)')+'; die '+(D.fl?'flip-chip mirrored':'top surface')+'; die scale is schematic.';
+  const card=$('chipcard'),w=card.clientWidth-26,h=availH(card,50);
+  cv.style.width=Math.round(Math.min(w,h*W/H)*Sizer.pkg/100)+'px';Sizer.sync()}
+ function pick(e){const r=cv.getBoundingClientRect(),lx=(e.clientX-r.left)*W/r.width,ly=(e.clientY-r.top)*W/r.width;
+  if(chk('lPkg')){let best=-1,bd=(PK*.5)**2;PR.forEach((p,i)=>{if(!pinOn(i))return;const [x,y]=bpos[i],d=(x-lx)**2+(y-ly)**2;if(d<bd){bd=d;best=i}});if(best>=0)return {pin:best,tile:-1}}
+  if(chk('lDie')||(imgOn()&&chk('lKnown'))){let x=Math.floor((lx-D.x0)/D.ds),y=NY-1-Math.floor((ly-D.y0)/D.ds);if(D.fl)x=NX-1-x;
+   if(lx>=D.x0&&ly>=D.y0&&lx<D.x0+D.dw&&ly<D.y0+D.dh&&x>=0&&x<NX&&y>=0&&y<NY)return {pin:-1,tile:x*NY+y}}
+  return {pin:-1,tile:-1}}
+ const tip=$('tip');
+ cv.addEventListener('mousemove',e=>{const h=pick(e);if(h.pin!==ST.hov.pin||h.tile!==ST.hov.tile){ST.hov=h;render()}
+  if(h.pin>=0){const p=PR[h.pin];tip.textContent=`${p[F.ball]}  ${p[F.names][0]||ROLE[p[F.role]]}  bank ${p[F.bank]||'-'}`;tip.style.display='block';tip.style.left=Math.min(e.clientX+14,innerWidth-200)+'px';tip.style.top=(e.clientY+14)+'px'}else tip.style.display='none'});
+ cv.addEventListener('mouseleave',()=>{ST.hov={tile:-1,pin:-1};tip.style.display='none';render()});
+ cv.addEventListener('click',e=>{const h=pick(e);if(h.pin>=0)selectPin(h.pin);else selectTile(h.tile);render()});
  return {draw}})();
 
 // ======================= panels: pins, search, lists, filters, inset =======================
@@ -231,8 +318,9 @@ const Panels=(()=>{
   const el=$('pinsel'),hint='<span class="note">Hover or click an IO tile (die views) or a ball (package) to inspect pins.</span>';
   let hp=-1,tl=-1;
   if(ST.tab==='pkg'){hp=ST.hov.pin>=0?ST.hov.pin:ST.sel.pin;if(hp<0)tl=ST.sel.tile}
+  else if(ST.tab==='chip'){if(ST.hov.pin>=0)hp=ST.hov.pin;else if(ST.hov.tile>=0&&TP[ST.hov.tile])tl=ST.hov.tile;else if(ST.sel.pin>=0)hp=ST.sel.pin;else tl=ST.sel.tile}
   else{if(ST.hov.tile>=0&&TP[ST.hov.tile])tl=ST.hov.tile;else if(ST.sel.pin>=0)hp=ST.sel.pin;else tl=ST.sel.tile}
-  if(hp>=0){const p=PR[hp];el.innerHTML=pinHtml(hp,true)+(p[F.tile]<0&&ST.tab!=='pkg'?`<div class="note">${p[F.expected]?'No die site registered for this ball yet: not drawn on the map.':'No die site expected (supply / NC ball): not drawn on the map.'}</div>`:'');return}
+  if(hp>=0){const p=PR[hp];el.innerHTML=pinHtml(hp,true)+(p[F.tile]<0&&ST.tab==='die'||p[F.tile]<0&&ST.tab==='known'?`<div class="note">${p[F.expected]?'No die site registered for this ball yet: not drawn on the map.':'No die site expected (supply / NC ball): not drawn on the map.'}</div>`:'');return}
   if(tl<0||!TP[tl]){el.innerHTML=hint+(tl>=0?`<div class="note">Tile X${tx(tl)} Y${ty(tl)} has no pins.</div>`:'');return}
   const a=TP[tl];el.innerHTML=`<b>Tile X${tx(tl)} Y${ty(tl)}</b>: ${a.length} pin${a.length>1?'s':''}`+(ST.sel.tile===tl&&ST.hov.tile<0?' (selected)':'')+a.map(i=>pinHtml(i,true)).join('')}
  function lists(q){const m=q?new Set(matches(q)):null;
@@ -264,7 +352,7 @@ const Panels=(()=>{
   group('fsite',SITE.map((s,k)=>[s,sc[k],'border-color:var(--mut)',k,'fs'+k]),(k,v)=>ST.siteOn[+k]=v)}
  function bankDots(){$('fbanks').querySelectorAll('.dot').forEach((d,k)=>{d.style.background=d.style.borderColor=BKC(BK[k])})}
  // die inset (package tab)
- function inset(){if(ST.tab!=='pkg')return;
+ function inset(){if(!isPk())return;
   const g=$('die'),w=180,h=Math.round(w*NY/NX),ox=10,oy=10,fl=rad('dv')==='f',f=focusPin(),p=f>=0?PR[f]:null;g.setAttribute('viewBox',`0 0 200 ${h+30}`);
   const X=x=>ox+(fl?NX-1-x:x)*w/NX+w/NX/2,Y=y=>oy+(NY-1-y)*h/NY+h/NY/2;
   let s=`<rect x="${ox}" y="${oy}" width="${w}" height="${h}" fill="none" stroke="var(--mut)" stroke-width="1.5"/><rect x="${ox+w*.08}" y="${oy+h*.1}" width="${w*.84}" height="${h*.8}" fill="none" stroke="var(--line)"/>`;
@@ -305,8 +393,9 @@ function init(){
  $('pcol').onclick=()=>document.querySelectorAll('details.pnl').forEach(d=>d.open=false);
  Sizer.init();Panels.init();
  matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{renderNow();Img.drawBm()});
+ document.querySelectorAll('input.pr').forEach(e=>{persist(e);e.addEventListener('input',render)});
  const t=Store.get('tab');setTab(TABS_OK(t)?t:'die');
  Img.init()}
-function TABS_OK(t){return t==='die'||t==='pkg'||(t==='known'&&imgOn())}
+function TABS_OK(t){return t==='die'||t==='pkg'||t==='chip'||(t==='known'&&imgOn())}
 window.geo={G,ST,setTab,selectPin,selectTile,goPin,render:renderNow};   // handle for tests and console use
 init();
