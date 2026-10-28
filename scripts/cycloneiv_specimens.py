@@ -368,6 +368,14 @@ class Solver:
         stats = collections.Counter(edges_total=len(edges), fired_pairs=len(pool))
 
         loose = len(pool) <= LOOSE_POOL_MAX
+        conf, rec_conf = {}, {}
+
+        def exact_home(a, s):
+            """src record home tile == the RCF-named coordinate (plus the C16 off-by-one):
+            the one relation every chain-confirmed match shows, and no observed decoy does."""
+            dx = XMIRROR - int(P.vx[s]) - a[2]
+            dy = int(P.vy[s]) - a[3]
+            return dx == 0 and abs(dy) <= (1 if a[1] in ("C16", "R24") else 0)
 
         def cands(a, b):
             wx, wy = DST_WIN[b[1]]
@@ -391,7 +399,15 @@ class Solver:
                     B, s, G = cs[0]
                     if a in rec and rec[a] != s:
                         return {"error": f"chain conflict at {a}: records {rec[a]} vs {s}"}
-                    rec[a] = s
+                    # confirmed evidence: chain-pinned src, the driver's own LE_BUFFER, or a src
+                    # whose home tile is exactly the named coordinate.  Unconfirmed matches still
+                    # take part in the all-different constraint but never emit entries (the
+                    # single-hop LI-edge decoys of 2026-10-28 were all non-exact homes).
+                    c = (a in rec and rec_conf.get(a, False)) or a[1] == "LE_BUFFER" or exact_home(a, s)
+                    conf[(a, b)] = c
+                    if a not in rec:
+                        rec[a] = s
+                        rec_conf[a] = c
                     match[(a, b)] = (B, s, G)
                     t = (int(P.btx[B]), int(P.bty[B]))
                     bytile[t] = [p for p in bytile[t] if p[0] != B]
@@ -415,6 +431,9 @@ class Solver:
                 continue
             tx, ty, key = int(P.btx[B]), int(P.bty[B]), str(P.keys[int(P.bkey[B])])
             gs = self.gsel(G, tx, ty)
+            if not conf[(a, b)]:
+                stats["edge_unconfirmed"] += 1
+                continue
             if a[1] == "LE_BUFFER":
                 bufs.append([a[5] // 2, (int(P.fam[s]) - 16) // 2])   # RCF I//2 = LE = (family-16)//2
             if b[1] == "LOCAL_INTERCONNECT":
@@ -424,6 +443,9 @@ class Solver:
             rb = rec.get(b)
             if rb is None:
                 stats["out_unresolved"] += 1                   # no downstream mux pinned the output record
+                continue
+            if not rec_conf.get(b, False):
+                stats["out_unconfirmed"] += 1                  # output known only via an unconfirmed match
                 continue
             if rb == s:
                 return {"error": f"self-loop at {b}"}
