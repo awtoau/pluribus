@@ -201,38 +201,65 @@ def prepare():
 
 
 class Dec:
+    """Per-die asm tables.  Every array is np.load(mmap_mode='r'): file-backed pages are shared by all
+    threads and processes through the page cache and are reclaimable (anonymous copies were ~0.5 GB
+    per Dec).  `names` (1.5 M-entry dict, 120 MB) loads on first use."""
+
     def __init__(self):
-        self.pf = np.load(f"{DEC}_pf.npy", mmap_mode="r")
-        self.pv = np.load(f"{DEC}_pv.npy", mmap_mode="r")
-        self.pred = np.load(f"{DEC}_pred.npy")
-        self.gid = np.load(f"{DEC}_gid.npy", mmap_mode="r")
-        self.grec = np.load(f"{DEC}_grec.npy")
-        self.gstart = np.load(f"{DEC}_gstart.npy")
-        self.gsize = np.load(f"{DEC}_gsize.npy")
-        self.block = np.load(f"{DEC}_block.npy")
-        self.b0 = np.load(f"{DEC}_b0.npy", mmap_mode="r")
-        self.names = pickle.load(open(f"{DEC}_names.pkl", "rb"))
+        mm = {"mmap_mode": "r"}
+        self.pf = np.load(f"{DEC}_pf.npy", **mm)
+        self.pv = np.load(f"{DEC}_pv.npy", **mm)
+        self.pred = np.load(f"{DEC}_pred.npy", **mm)
+        self.gid = np.load(f"{DEC}_gid.npy", **mm)
+        self.grec = np.load(f"{DEC}_grec.npy", **mm)
+        self.gstart = np.load(f"{DEC}_gstart.npy", **mm)
+        self.gsize = np.load(f"{DEC}_gsize.npy", **mm)
+        self.block = np.load(f"{DEC}_block.npy", **mm)
+        self.b0 = np.load(f"{DEC}_b0.npy", **mm)
         self.g = cg.load("ep4cgx150")
         self.fxs = np.array(sorted(self.g.FX[x] for x in self.g.FX), np.int64)
         self.xs_sorted = sorted(self.g.FX, key=lambda x: self.g.FX[x])
         ng = len(self.gsize)
         gid = np.asarray(self.gid)
         self.npred = np.bincount(gid[self.pred], minlength=ng).astype(np.int32)
-        self.e_ukey = np.load(f"{DEC}_e_ukey.npy", mmap_mode="r")
-        self.ukey_block = np.load(f"{DEC}_ukey_block.npy")
+        self.e_ukey = np.load(f"{DEC}_e_ukey.npy", **mm)
+        self.ukey_block = np.load(f"{DEC}_ukey_block.npy", **mm)
         self.nblocks = int(self.block.max()) + 1
 
+    @property
+    def names(self):
+        n = self.__dict__.get("_names")
+        if n is None:
+            with open(f"{DEC}_names.pkl", "rb") as fh:
+                self._names = n = pickle.load(fh)
+        return n
+
     def _flat(self, plane):
-        """Cached plane-independent gather index of every asm entry (dense-bitmap slot); 51 M int32."""
+        """Plane-independent gather index of every asm entry (dense-bitmap slot); 51 M int32.  Derived
+        artifact cached beside the tables and mmapped (shared by all processes); built once per plane shape."""
         c = self.__dict__.get("_flat_cache")
         if c is None or c[0] != plane.shape:
-            self._flat_cache = c = (plane.shape, plane.flat_index(np.asarray(self.pf), np.asarray(self.pv)))
+            path = f"{DEC}_flat_{plane.shape[0]}x{plane.shape[1]}.npy"
+            try:
+                fl = np.load(path, mmap_mode="r")
+                if fl.shape != self.pf.shape:
+                    raise FileNotFoundError(path)
+            except (FileNotFoundError, ValueError, OSError):
+                fl = plane.flat_index(np.asarray(self.pf), np.asarray(self.pv))
+                tmp = f"{path}.{os.getpid()}.tmp"
+                with open(tmp, "wb") as fh:
+                    np.save(fh, fl)
+                os.replace(tmp, path)
+                del fl
+                fl = np.load(path, mmap_mode="r")
+            self._flat_cache = c = (plane.shape, fl)
         return c[1]
 
     def active(self, plane, method=None):
         """Groups selected by a design: predicted bits all set, every other bit of the block clear.
         -> (group ids, record ids, block ids).  Integer bincounts over the set entries only (no float
-        weight copies of the 51 M-entry arrays).
+        weight copies of the 51 M-entry arrays); counts are cast to int32 (<= 16 per group) so the
+        per-group temporaries are 4 B, not 8 B.
         method: "dense" (default; bitmap gather + mark array) | "legacy" (searchsorted + np.unique);
         env PLURIBUS_ACTIVE.  Identical results (docs/perf-pass.md)."""
         method = method or os.environ.get("PLURIBUS_ACTIVE", "dense")
@@ -242,9 +269,9 @@ class Dec:
             s = np.flatnonzero(plane._has_searchsorted(np.asarray(self.pf), np.asarray(self.pv)))
         gid = np.asarray(self.gid)
         sp = s[self.pred[s]]
-        nset_pred = np.bincount(gid[sp], minlength=len(self.gsize))
+        nset_pred = np.bincount(gid[sp], minlength=len(self.gsize)).astype(np.int32)
         uk = fastops.mark_unique(self.e_ukey[s], len(self.ukey_block)) if method == "dense" else fastops.unique(self.e_ukey[s])
-        bset = np.bincount(self.ukey_block[uk], minlength=self.nblocks)
+        bset = np.bincount(self.ukey_block[uk], minlength=self.nblocks).astype(np.int32)
         act = (self.npred > 0) & (nset_pred == self.npred) & (bset[self.block] == self.npred)
         gids = np.flatnonzero(act)
         return gids, self.grec[gids], self.block[gids]
