@@ -2,6 +2,7 @@
 """Die map with one EP4CGX150 image's KNOWN cells overlaid + the zero-vs-one encoding measurements (issue #141).
 
   python3.15t scripts/geo_image_overlay.py --image <image.bin|.rbf> [--stage all|attrib|encoding]
+  python3.15t scripts/geo_image_overlay.py --repin     # page only, from the cached tmp/geo/image_overlay_data.json
 Needs >= 20 GB MemAvailable (peak ~4 GB).  Reuses the inventory's class assignment (cycloneiv_bit_inventory
 imported read-only; its claim logic is repeated here only to carry a tile OWNER per cell).
 Outputs (tmp/geo/, not committed): image_tiles.csv, image_tiles.geojson, image_encoding.json, image_overlay.html.
@@ -28,6 +29,7 @@ log = logging.getLogger("geo_image_overlay")
 
 import os  # noqa: E402
 os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(REPO / "databases/cycloneiv/gx150.db"))   # specimen evidence rows
+import geo_pins  # noqa: E402
 import cycloneiv_bit_inventory as bi  # noqa: E402  (read-only reuse: Inv, CLASSES, CID, forced_table, ...)
 
 NV, LANE_V = bi.NV, bi.LANE_V
@@ -571,6 +573,7 @@ th{font-weight:600;color:var(--mut);border-bottom:1px solid var(--line)}
 .note{color:var(--mut);font-size:12px;margin-top:8px}
 #bm{image-rendering:pixelated;cursor:crosshair}
 input[type=range]{width:100%}
+/*__PINS_CSS__*/
 </style></head><body>
 <h1>EP4CGX150 die: which cells of one image are known</h1>
 <p class="sub">One tile per cell (x across, y up). Data: a single third-party EP4CGX150 image classified by the bit inventory. Click a tile to inspect its cells.</p>
@@ -596,9 +599,10 @@ input[type=range]{width:100%}
 <fieldset><legend>Overlays</legend>
 <label><input type="checkbox" id="oZero" checked><span class="sw" style="border:2px solid var(--bad)"></span>Set bits but none known</label>
 <label><input type="checkbox" id="oSel" checked> Selected tile</label>
-<label>Map zoom <input type="range" id="zoom" min="6" max="18" value="10"></label></fieldset>
+<label>Map zoom <input type="range" id="zoom" min="6" max="56" value="10"></label></fieldset>
 <div id="legend"></div></div>
 <div class="card"><div id="info">Hover a tile.</div></div>
+<!--__PINS_HTML__-->
 <div class="card"><b>Bitmap legend</b>
 <label style="cursor:default"><span class="sw" style="background:var(--ver)"></span>verified class, set</label>
 <label style="cursor:default"><span class="sw" style="background:var(--evi)"></span>evidence class, set</label>
@@ -622,7 +626,8 @@ const TV={V:'--ver',E:'--evi',U:'--unk',O:'--ovh'};
 let mode="share",hover=null,sel=null;const vis={LAB:1,M9K:1,MUL:1,IO:1};
 const maxDens=Math.max(...T.map(t=>t[3]?t[4]/t[3]:0));
 function ramp(f){f=Math.max(0,Math.min(1,f));const a=[247,247,240],b=[34,70,160];return `rgb(${a.map((x,i)=>Math.round(x+(b[i]-x)*f)).join(',')})`}
-function size(){cv.width=NX*S+2*M;cv.height=NY*S+2*M}
+function size(){const w=NX*S+2*M,h=NY*S+2*M;if(cv.width!=w)cv.width=w;if(cv.height!=h)cv.height=h}
+function setZoom(v){S=v;document.getElementById('zoom').value=v;draw()}
 function tile(t,px,py){const k=kv(KN[t[2]]);
  if(mode=="share"){const tot=t[5]+t[6]+t[7];ctx.fillStyle=css('--line');ctx.globalAlpha=.4;ctx.fillRect(px,py,S-1,S-1);ctx.globalAlpha=1;
   if(tot>0){let y=py+S-1;for(const [n,c] of [[t[5],'--ver'],[t[6],'--evi'],[t[7],'--unk']]){const h=(S-1)*n/tot;ctx.fillStyle=css(c);ctx.fillRect(px,y-h,S-1,h);y-=h}}}
@@ -637,7 +642,7 @@ function draw(){size();const w=cv.width,h=cv.height;ctx.clearRect(0,0,w,h);ctx.f
   if(z&&(t[5]+t[6]+t[7])>0&&(t[5]+t[6])==0){ctx.strokeStyle=css('--bad');ctx.lineWidth=1.5;ctx.strokeRect(px+.5,py+.5,S-2,S-2)}}
  const o=document.getElementById('oSel').checked;
  for(const [t,c] of [[sel,'--accent'],[hover,'--fg']]){if(!t||(t===sel&&!o))continue;const px=M+t[0]*S,py=M+(NY-1-t[1])*S;ctx.strokeStyle=css(c);ctx.lineWidth=2;ctx.strokeRect(px-1,py-1,S+1,S+1)}
- legend()}
+ pinsDraw();legend()}
 function legend(){const L=document.getElementById('legend');let h="";
  if(mode=="share")h=[['--ver','verified-class set bits'],['--evi','evidence-class'],['--unk','unknown-class']].map(([c,n])=>`<label style="cursor:default"><span class="sw" style="background:${css(c)}"></span>${n}</label>`).join("")+`<div class="note" style="margin:2px 0 0">Bar height = share of the tile's set bits (CRC bytes excluded).</div>`;
  else if(mode=="kind")h=["LAB","M9K","MUL","IO"].map(x=>`<label style="cursor:default"><span class="sw" style="background:${css('--'+{LAB:'lab',M9K:'m9k',MUL:'mul',IO:'io'}[x])}"></span>${x}</label>`).join("");
@@ -690,6 +695,7 @@ document.querySelectorAll('[data-k]').forEach(i=>i.onchange=()=>{vis[i.dataset.k
 ['oZero','oSel'].forEach(id=>document.getElementById(id).onchange=draw);
 document.getElementById('zoom').oninput=e=>{S=+e.target.value;draw()};
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{draw();drawBm()});
+/*__PINS_JS__*/
 init();
 </script></body></html>
 """
@@ -700,21 +706,34 @@ def emit_html(rows, blobs, g, cls_info):
     t = [[r["x"], r["y"], kidx[r["kind"]], r["cells"], r["set"], r["set_ver"], r["set_evi"], r["set_unk"], r["set_ovh"],
           r["cap_ver"], r["cap_evi"], r["cls_set"].get("2a", 0), r["fa"], r["w"], r["tmpl"]] for r in rows]
     data = dict(nx=g.xmax + 1, ny=YROWS, kinds=KINDS, t=t, cls=cls_info, **blobs)
-    html = PAGE.replace("__DATA__", json.dumps(data, separators=(",", ":")))
+    (GEO / "image_overlay_data.json").write_text(json.dumps(data, separators=(",", ":")))
+    write_page(data)
+
+
+def write_page(data):
+    """Page = embedded tile data + pin layer from device_pins (scripts/geo_pins.py, docs/geo-pins.md)."""
+    pins = geo_pins.load_pins()
+    html = geo_pins.inject(PAGE.replace("__DATA__", json.dumps(data, separators=(",", ":"))), pins)
     (GEO / "image_overlay.html").write_text(html)
-    log.info("wrote image_overlay.html %.2f MB", len(html) / 1e6)
+    log.info("wrote image_overlay.html %.2f MB, %d pins (%d with die site)", len(html) / 1e6, len(pins["p"]), sum(r[4] is not None for r in pins["p"]))
 
 
 # ---------------------------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--image", required=True)
+    ap.add_argument("--image")
+    ap.add_argument("--repin", action="store_true", help="rebuild image_overlay.html from tmp/geo/image_overlay_data.json (no image, light)")
     ap.add_argument("--stage", default="all", choices=("all", "attrib", "encoding"))
     a = ap.parse_args()
+    if not a.image and not a.repin:
+        ap.error("--image or --repin required")
     (REPO / "tmp/logs").mkdir(parents=True, exist_ok=True)
     GEO.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler(REPO / "tmp/logs/geo_image_overlay.log", "w")])
+    if a.repin:
+        write_page(json.loads((GEO / "image_overlay_data.json").read_text()))
+        return
     import heavy_guard
     bi.need_ram(20)
     blobs = None

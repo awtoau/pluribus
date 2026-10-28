@@ -3,12 +3,16 @@
 
   python3.15t scripts/geo_map.py
 Derived display data only (docs/geo-investigation.md).  The page carries no file paths.
+Pin layer on the IO ring: scripts/geo_pins.py, docs/geo-pins.md.
 """
 import json
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 GEO = REPO / "tmp/geo"
+sys.path.insert(0, str(REPO / "scripts"))
+import geo_pins  # noqa: E402  (pin layer: device_pins -> page)
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -19,7 +23,7 @@ PAGE = r"""<!doctype html>
 :root[data-theme=dark]{--bg:#17181a;--fg:#e8e8e4;--mut:#9a9a94;--card:#202225;--line:#38393c;--ver:#46c08a;--evi:#f0b93a;--unk:#55565a;--lab:#6c9bf0;--m9k:#c08be0;--mul:#f08a5a;--io:#55c4c4;--accent:#7fa2ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px}
 h1{font-size:20px;margin:0 0 2px}p.sub{margin:0 0 12px;color:var(--mut)}
-.wrap{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;max-width:1200px;margin:0 auto}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;max-width:1200px;margin:0 auto}
 @media (max-width:820px){.wrap{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
 canvas{width:100%;height:auto;display:block;border-radius:6px;cursor:crosshair}
@@ -29,11 +33,13 @@ label{display:flex;gap:6px;align-items:center;margin:2px 0;cursor:pointer}
 #info{min-height:132px;font-variant-numeric:tabular-nums}#info b{font-weight:600}
 table{border-collapse:collapse;width:100%;font-size:13px}td{padding:1px 0}td:last-child{text-align:right}
 .note{color:var(--mut);font-size:12px;margin-top:8px}
+.scroll{overflow:auto;max-height:78vh}
+/*__PINS_CSS__*/
 </style></head><body>
 <h1>EP4CGX150 die map</h1>
 <p class="sub">Each cell is one tile (x across, y up). Colour = configuration-bit evidence for the tile. Hover for details.</p>
 <div class="wrap">
-<div class="card"><canvas id="c" role="img" aria-label="Die tile map coloured by evidence tier"></canvas></div>
+<div class="card scroll"><canvas id="c" role="img" aria-label="Die tile map coloured by evidence tier"></canvas></div>
 <div>
 <div class="card" style="margin-bottom:12px">
 <fieldset><legend>Colour by</legend>
@@ -48,17 +54,20 @@ table{border-collapse:collapse;width:100%;font-size:13px}td{padding:1px 0}td:las
 <fieldset><legend>Overlays</legend>
 <label><input type="checkbox" id="oEdge"> Die-edge tiles</label>
 <label><input type="checkbox" id="oSpec" checked> Specimen LABs (ring)</label>
-<label><input type="checkbox" id="oLe" checked> LE-output grids (dot)</label></fieldset>
+<label><input type="checkbox" id="oLe" checked> LE-output grids (dot)</label>
+<label>Map zoom <input type="range" id="zoom" min="6" max="56" value="10"></label></fieldset>
 <div id="legend"></div></div>
 <div class="card"><div id="info">Hover a tile.</div></div>
+<!--__PINS_HTML__-->
 <p class="note">Tier: verified = LUT INIT bits checked against a vendor netlist (256 of a LAB tile's cells). Evidence = a LAB with measured routing specimens. Unknown = no bit attributed. Density = set bits of one example design binned to tiles; the row binning is approximate.</p>
 </div></div>
 <script>
 const D=__DATA__;
 const NX=D.nx,NY=D.ny,T=D.t; // t rows: [x,y,kind,tier,cells,ver,set,edge,spec,leout]
 const KIND=["LAB","M9K","MUL","IO"],TIER=["verified","evidence","unknown"];
-const cv=document.getElementById('c'),ctx=cv.getContext('2d'),S=10,M=2;
-cv.width=NX*S+2*M;cv.height=NY*S+2*M;
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),M=2;let S=10,zoomed=false;
+function size(){const w=NX*S+2*M,h=NY*S+2*M;if(cv.width!=w)cv.width=w;if(cv.height!=h)cv.height=h;cv.style.width=zoomed?cv.width+'px':'100%'}
+function setZoom(v){S=v;zoomed=true;document.getElementById('zoom').value=v;draw()}
 const grid=new Map();T.forEach(t=>grid.set(t[0]*1000+t[1],t));
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const kv=k=>k=="IOL"||k=="IOR"||k=="IOROW"?"IO":k;
@@ -67,7 +76,7 @@ const maxSet=Math.max(...T.map(t=>t[6]));
 function dens(v){const f=Math.sqrt(v/maxSet);const a=[247,247,240],b=[34,70,160];return `rgb(${a.map((x,i)=>Math.round(x+(b[i]-x)*f)).join(',')})`}
 function colour(t){const k=kv(t[2]);if(mode=="tier")return css('--'+{verified:'ver',evidence:'evi',unknown:'unk'}[t[3]]);
  if(mode=="kind")return css('--'+{LAB:'lab',M9K:'m9k',MUL:'mul',IO:'io'}[k]);return dens(t[6])}
-function draw(){const w=cv.width,h=cv.height;ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+function draw(){size();const w=cv.width,h=cv.height;ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
  for(const t of T){const k=kv(t[2]);const px=M+t[0]*S,py=M+(NY-1-t[1])*S;
   if(!vis[k]){ctx.fillStyle=css('--line');ctx.globalAlpha=.35;ctx.fillRect(px,py,S-1,S-1);ctx.globalAlpha=1;continue}
   ctx.fillStyle=colour(t);ctx.fillRect(px,py,S-1,S-1);
@@ -75,7 +84,7 @@ function draw(){const w=cv.width,h=cv.height;ctx.clearRect(0,0,w,h);ctx.fillStyl
   if(document.getElementById('oSpec').checked&&t[8]){ctx.strokeStyle=css('--accent');ctx.lineWidth=2;ctx.strokeRect(px-1,py-1,S+1,S+1)}
   if(document.getElementById('oLe').checked&&t[9]){ctx.fillStyle=css('--fg');ctx.beginPath();ctx.arc(px+S/2-.5,py+S/2-.5,2,0,7);ctx.fill()}}
  if(hover){const px=M+hover[0]*S,py=M+(NY-1-hover[1])*S;ctx.strokeStyle=css('--fg');ctx.lineWidth=2;ctx.strokeRect(px-1,py-1,S+1,S+1)}
- legend()}
+  pinsDraw();legend()}
 function legend(){const L=document.getElementById('legend');let h="";
  if(mode=="tier")h=TIER.map(x=>`<label style="cursor:default"><span class="sw" style="background:${css('--'+{verified:'ver',evidence:'evi',unknown:'unk'}[x])}"></span>${x}</label>`).join("");
  else if(mode=="kind")h=KIND.map(x=>`<label style="cursor:default"><span class="sw" style="background:${css('--'+{LAB:'lab',M9K:'m9k',MUL:'mul',IO:'io'}[x])}"></span>${x}</label>`).join("");
@@ -89,6 +98,8 @@ cv.addEventListener('mouseleave',()=>{hover=null;draw()});
 document.querySelectorAll('input[name=mode]').forEach(i=>i.onchange=()=>{mode=i.value;draw()});
 document.querySelectorAll('[data-k]').forEach(i=>i.onchange=()=>{vis[i.dataset.k]=i.checked?1:0;draw()});
 ['oEdge','oSpec','oLe'].forEach(id=>document.getElementById(id).onchange=draw);
+document.getElementById('zoom').oninput=e=>{S=+e.target.value;zoomed=S!=10;draw()};
+/*__PINS_JS__*/
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',draw);draw();
 </script></body></html>
 """
@@ -100,11 +111,13 @@ def main():
     rows = [[t["x"], t["y"], kmap[t["kind"]], t["tier"], t["cells"], t["ver"], t["set"], t["edge"], t["spec"], t["leout"]]
             for t in d["tiles"]]
     data = {"nx": d["xmax"] + 1, "ny": d["ymax"] + 1, "t": rows}
-    (GEO / "die_map.html").write_text(PAGE.replace("__DATA__", json.dumps(data, separators=(",", ":"))))
+    pins = geo_pins.load_pins()
+    page = geo_pins.inject(PAGE.replace("__DATA__", json.dumps(data, separators=(",", ":"))), pins)
+    (GEO / "die_map.html").write_text(page)
     feats = [{"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[[t["x"], t["y"]], [t["x"] + 1, t["y"]], [t["x"] + 1, t["y"] + 1], [t["x"], t["y"] + 1], [t["x"], t["y"]]]]},
               "properties": {k: t[k] for k in ("x", "y", "kind", "tier", "cells", "ver", "set", "edge")}} for t in d["tiles"]]
     (GEO / "die.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": feats}, separators=(",", ":")))
-    print("wrote", GEO / "die_map.html", len(rows), "tiles")
+    print("wrote", GEO / "die_map.html", len(rows), "tiles,", len(pins["p"]), "pins,", f"{len(page) / 1e6:.2f} MB")
 
 
 if __name__ == "__main__":
