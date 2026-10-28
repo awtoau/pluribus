@@ -1,6 +1,8 @@
 # Geo explorer (die map + known cells + package pins + chip overlay)
 
-One page, `tmp/geo/explorer.html` (not committed, ~2.5 MB, self-contained, no network): `python3.15t scripts/geo_explorer.py [--db P] [--device EP4CGX150] [--package DF31] [--no-image] [--out F]`.
+One page per device (not committed, self-contained, no network): `python3.15t scripts/geo_explorer.py [--family cycloneiv|machxo2] [--device D] [--package PKG] [--board boards/<name>] [--design CONFIG] [--no-image] [--out F]`.
+- Cyclone IV default: `tmp/geo/explorer.html` (~2.7 MB). MachXO2: `--family machxo2 --board boards/aw2-2d82auto --out reports/geo-explorer-machxo2.html` (gitignored; run `scripts/pins_register_machxo2.py` first). Adapters: `docs/geo-adapters.md`.
+- Everything on the page (title, labels, kinds, roles, package drawing) comes from the payload; no chip is hard-coded.
 - Replaces `geo_map.py`, `geo_image_overlay.py` (page part) and `geo_package.py`; one implementation of layout, panels, size, search.
 - Data: single payload from `scripts/geo_data.py`, embedded once; schema and JSON export in `docs/geo-data.md`.
 - UI sources: `scripts/geo_explorer_ui/` (`page.html`, `style.css`, `app.js`; JS modules: core/Store/selection, Sizer, TileView, Img, PkgView, Panels).
@@ -9,9 +11,9 @@ One page, `tmp/geo/explorer.html` (not committed, ~2.5 MB, self-contained, no ne
 ## Tabs
 - Die map: colour by evidence tier / example-image set-bit density / tile kind; tile-kind filter; overlays die edge, specimen LABs, LE-output grids.
 - Known cells: image layer; colour by known share / set-bit density / capacity / kind; overlay "set bits but none known". Needs the image layer (toggle `Image layer`; cache missing = tab disabled, rest works).
-- Package pins: BGA grid, Bottom (A1 top-left) / Top (mirrored), colour by role or bank, same-bank ring, differential-pair link, die inset (top surface or flip-chip mirrored).
+- Package pins: `bga-matrix` (BGA grid) or `perimeter` (TQFP/QFP/QFN: square body, pins on four sides, pin 1 dot top-left, numbered counter-clockwise, labels outside; top view only, no flip-chip). BGA: Bottom (A1 top-left) / Top (mirrored), colour by role or bank, same-bank ring, differential-pair link, die inset (top surface or flip-chip mirrored).
 
-- Chip (overlay): one canvas, four layers with toggle + opacity each: package balls (30x30, Bottom/Top, role/bank colour, all filters), die tiles (evidence tier / set-bit density / kind), known cells (known share bars or capacity, needs the image layer), ball-to-tile links.
+- Chip (overlay): one canvas, five layers with toggle + opacity each: package balls (30x30, Bottom/Top, role/bank colour, all filters), die tiles (evidence tier / set-bit density / kind), known cells (known share bars or capacity, needs the image layer), ball-to-tile links.
   - Die size is schematic: `Die scale` slider (default 45 % of the package width), not measured from the vendor drawing. Die orientation = the `Die position` switch (top surface / flip-chip mirrored); ball matrix = View (Bottom / Top).
   - Links: faint for every ball with a die site, strong for hovered / selected / searched / selected-tile pins, medium for the hovered ball's bank; none for power / ground / NC. `Bundle link lines` routes via a snapped ring around the die.
   - Hover / click picks the nearest ball, else the die tile; same cards and inspector, same shared selection.
@@ -38,3 +40,13 @@ One page, `tmp/geo/explorer.html` (not committed, ~2.5 MB, self-contained, no ne
 - Registered sites are on the top row (y = 91), bottom row (y = 0) and right column (x = 117); left side is transceivers.
 - 6 conflicts: AG1, AH1 (`bonded`: fit.rpt/pin say unbonded, IBIS says bonded), E1, E2, F1, F2 (`usage_default` `#TMS` vs `TMS`, naming difference).
 - No unrolled die-ring view of the package page.
+
+## Position block, labels, board names
+- Every pin card starts with `Position`: perimeter `Left side, pin 8 of 25 on this side. 7 pins to the top-left corner (pin 1 side), 17 pins to the bottom-left corner. ...`; matrix `Row AB (22 of 30), column 12 (12 of 30). Along the row: 11 balls to the left edge, 18 to the right edge. ... Ring depth 8 ... Nearest corner AK1`; then the die tile line. Convention once: counts = pins (tiles) between this one and the edge, including the edge one, not this one. BGA left/right and the die line follow the View / Die position switches.
+- `Label pins by`: pin number / vendor name / board name (board only with `--board`); drawn beside perimeter pins, used in tooltips and result rows. Search also matches board name, signal and net. Pin card shows Board name / signal / net / direction / note. Payload: `docs/geo-data.md`.
+
+## Chip overlay alignment and patterns
+- `Align die to package` (default on): die ring just inside the outer balls / pins, die edges face the matching package sides; `Keep die aspect` off = stretch to the pin field; `Aligned size` scales about the centre; `Die scale` applies only when unaligned.
+- Die colour `I/O bank`: IO tiles take the majority bank of their pins (same palette as the pins, hatch = several banks), other tiles their kind. `Bank blocks`: dashed box round each bank's pins + thick segment on the die edge over its tile range, same colour.
+- Links: bundled strands (ball -> outer lane -> inner lane at the die tile's position -> tile), ordered along the die edge so same order = parallel, reversal = crossing; links that cross others are tinted.
+- Pattern panel (pkg + chip tabs): per die edge a sentence (correlation, crossings), scatter of pin position vs die tile position (hover = highlight the pin everywhere, click = select) and the per-bank table (balls, with site, die-edge tile range, package extent). Numbers are in the payload (`pattern`).
