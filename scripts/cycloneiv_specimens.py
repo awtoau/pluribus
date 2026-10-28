@@ -330,8 +330,18 @@ class Solver:
             return {"error": f"{base}: not built"}
         pool = sorted(self.fired(name) - self.fired(base))
         rcf = cc.parse_rcf(CORPUS / name / "routing.rcf")
-        edges = [(a, b) for net in rcf.values() for a, b in net
-                 if a[0] == "W" and b[0] == "W" and b[1] in DST_WIN]
+        # entries are emitted ONLY from the net under test (both ends pinned by the design);
+        # other nets' edges still participate in matching for the all-different constraint.
+        # Pad-path edges re-routed between twins are real but unanchored - the first per-tile
+        # conflicts (2026-10-28) were exactly those, matched to lookalike IO-row LI muxes.
+        targets = {"gxspec_pi": ("a~input",), "gxspec_po": ("y",)}.get(name[:9], ("n",))
+        edge_net = {}
+        edges = []
+        for net, lst in rcf.items():
+            for a, b in lst:
+                if a[0] == "W" and b[0] == "W" and b[1] in DST_WIN:
+                    edges.append((a, b))
+                    edge_net[(a, b)] = net
         rec, match = {}, {}
         bytile = collections.defaultdict(list)       # block tile -> live (block, src) pairs
         for B, s in pool:
@@ -381,6 +391,9 @@ class Solver:
         wires, lis, bufs = [], [], []
         for (a, b), (B, s) in match.items():
             stats["edge_matched"] += 1
+            if edge_net[(a, b)] not in targets:
+                stats["off_target_matched"] += 1
+                continue
             tx, ty, key = int(P.btx[B]), int(P.bty[B]), str(P.keys[int(P.bkey[B])])
             if a[1] == "LE_BUFFER":
                 bufs.append([a[5] // 2, (int(P.fam[s]) - 16) // 2])   # RCF I//2 = LE = (family-16)//2
