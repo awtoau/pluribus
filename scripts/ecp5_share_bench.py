@@ -1,11 +1,10 @@
 #!/usr/bin/env python3.15t
 """Memory/wall benchmark + output-identity check for concurrent ECP5 lifts (#148).
 
-Runs N concurrent decode+lift jobs (one design each) in a child process (threads) or a
-process pool, samples the process tree's PSS, and records a digest of every lifted netlist so
+Runs N concurrent decode+lift jobs (one design each) as threads of one child process, samples the process tree's PSS, and records a digest of every lifted netlist so
 two code paths can be compared bit for bit.
 
-  run   --n 4 --device 85F --mode threads [--tag before]   one measured configuration
+  run   --n 4 --device 85F --tag before   one measured configuration
   digest --paths a.bit b.bit ... --out tmp/x.json            serial digests only (no sampling)
   compare a.json b.json                                      exit 1 if any digest differs
 
@@ -17,7 +16,6 @@ import argparse
 import concurrent.futures as cf
 import hashlib
 import json
-import multiprocessing as mp
 import os
 import subprocess
 import sys
@@ -124,10 +122,7 @@ def pick(devsub, n, skip_smallest=0):
 # ---------------------------------------------------------------- child
 def child(args):
     paths = json.loads(args.paths)
-    if args.mode == "threads":
-        ex = cf.ThreadPoolExecutor(len(paths))
-    else:
-        ex = cf.ProcessPoolExecutor(len(paths), mp_context=mp.get_context("spawn"))
+    ex = cf.ThreadPoolExecutor(len(paths))
     t0 = time.perf_counter()
     with ex:
         futs = [ex.submit(lift_job, p) for p in paths]
@@ -184,10 +179,8 @@ def avail_gb():
 
 
 def default_lease_gb(args):
-    """Declared peak: processes hold one graph each (JOB_GB), threads share one graph + extras."""
+    """Declared peak: threads share one graph (JOB_GB) + extras per further lift."""
     import heavy_guard
-    if args.mode == "procs":
-        return 1.5 * args.n          # graph without arcs, one per process (before_p2: 1.85 GB for 2)
     return (heavy_guard.JOB_GB["ecp5_85f_lift_threads_base"]
             + heavy_guard.JOB_GB["ecp5_85f_lift_thread_extra"] * (args.n - 1))
 
@@ -195,10 +188,10 @@ def default_lease_gb(args):
 def run(args):
     import heavy_guard
     paths = pick(args.device, args.n, args.skip)
-    log(f"run tag={args.tag} mode={args.mode} n={args.n} device~{args.device} paths={len(paths)}")
+    log(f"run tag={args.tag} n={args.n} device~{args.device} paths={len(paths)}")
     for p in paths:
         log(f"  {p}")
-    cmd = [sys.executable, os.path.abspath(__file__), "_child", "--mode", args.mode,
+    cmd = [sys.executable, os.path.abspath(__file__), "_child",
            "--paths", json.dumps(paths)]
     env = dict(os.environ)
     env.update(kv.split("=", 1) for kv in args.env)
@@ -238,7 +231,7 @@ def run(args):
             time.sleep(SAMPLE_S)
         pr.wait()
         wall = time.perf_counter() - t0
-    rec = dict(tag=args.tag, mode=args.mode, n=args.n, device=args.device, env=args.env,
+    rec = dict(tag=args.tag, mode="threads", n=args.n, device=args.device, env=args.env,
                wall_total_s=round(wall, 2), peak_pss_gb=round(peak_kb / 1048576, 2), killed=killed)
     res = [x for x in lines if x.startswith("RESULT ")]
     if res and not killed:
@@ -291,14 +284,12 @@ def main():
     r.add_argument("--n", type=int, required=True)
     r.add_argument("--device", default="85F", help="substring of the device name")
     r.add_argument("--skip", type=int, default=0, help="skip the K smallest designs")
-    r.add_argument("--mode", choices=["threads", "procs"], default="threads")
     r.add_argument("--tag", required=True)
     r.add_argument("--env", action="append", default=[], help="KEY=VAL for the child")
     r.add_argument("--cap-gb", type=float, default=22.0)
     r.add_argument("--lease-gb", type=float, default=0.0, help="override the declared peak")
     r.add_argument("--min-avail-gb", type=float, default=20.0)
     c = sub.add_parser("_child")
-    c.add_argument("--mode", default="threads")
     c.add_argument("--paths", required=True)
     d = sub.add_parser("digest")
     d.add_argument("--paths", nargs="+", required=True)
