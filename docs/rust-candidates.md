@@ -56,6 +56,8 @@ rustc 1.97, other agents active (take walls as +-20%).
 
 ## Ranked candidates
 
+Items 1 and 2 are tracked in #145.
+
 1. **`SparsePlane.has` -> dense bitmap** (numpy, not Rust). 6.9x on `Dec.active`, measured; removes the
    67% searchsorted share of the tracer and the 50% of `active`. Dense plane = 39 MB bool per design.
    Estimated tracer stage 20 s -> ~10 s, specimen `Solver` ~4 s -> ~1.6 s per specimen.
@@ -94,7 +96,7 @@ Rust shortlist after pricing alternatives: item 3 only, and it fails the "domina
   `cargo build --release`; tests `cargo test` (9/9, 0.5 s warm).
 - Finding: both real-data tests (`corpus_bitstream_roundtrip`, `e50f_route_counts_are_plausible`) pass
   vacuously today — the corpus fixture dir is empty and `cv_dies` has 0 rows in the rebuilt
-  pluribus.db; they skip with an `eprintln`, not a failure. Filed as an issue (see #144 thread).
+  pluribus.db; they skip with an `eprintln`, not a failure. Issue #146.
 - `native_trellis/` is pure Python despite the name (MachXO2/ECP5 geometry + routing graph).
 
 ## FFI under python3.15t (verified)
