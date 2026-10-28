@@ -11,6 +11,7 @@ db.py keeps exactly three public functions; cross-DB work lives here.
 Cross-family questions are an explicit union over attached files, never a foreign key across
 files. Layout convention: databases/<family>/<name>.db (databases/README.md).
 """
+import contextlib
 import os
 import re
 import sqlite3
@@ -93,6 +94,54 @@ def union(conn, sql, aliases, tables):
     if not parts:
         return []
     return conn.execute(" UNION ALL ".join(parts)).fetchall()
+
+
+# ── SQLite bulk-write helpers for the derived-table pipeline stages (#144) ───────────────────
+# Used after the stage's DELETE (always-rebuild): plain INSERT, no per-row upsert; one transaction;
+# synchronous=OFF scoped to the connection and restored; declared indexes dropped and recreated
+# around the load when PLURIBUS_BULK_DROP_INDEXES != "0". Measured: scripts/bench_reach_sql.py.
+
+@contextlib.contextmanager
+def fast_writes(conn):
+    """sqlite3 connection: synchronous=OFF for the block (derived tables only), restored after."""
+    old = conn.execute("PRAGMA synchronous").fetchone()[0]
+    conn.execute("PRAGMA synchronous=OFF")
+    try:
+        yield
+        conn.commit()
+    finally:
+        conn.execute(f"PRAGMA synchronous={int(old)}")
+
+
+def bulk_insert(conn, table, cols, rows, chunk=5000):
+    """Plain INSERT in multi-row VALUES statements (chunk x len(cols) <= 32766 bound variables)."""
+    cols = tuple(cols)
+    head = f"INSERT INTO {table} ({','.join(cols)}) VALUES "
+    one = "(" + ",".join("?" * len(cols)) + ")"
+    n = 0
+    for i in range(0, len(rows), chunk):
+        batch = rows[i:i + chunk]
+        conn.execute(head + ",".join([one] * len(batch)), [v for r in batch for v in r])
+        n += len(batch)
+    return n
+
+
+@contextlib.contextmanager
+def without_indexes(conn, table):
+    """Drop the table's declared (non-unique, non-auto) indexes for a bulk load; recreate on exit."""
+    if os.environ.get("PLURIBUS_BULK_DROP_INDEXES", "1") == "0":
+        yield
+        return
+    names = [r[1] for r in conn.execute(f"PRAGMA index_list({table})")
+             if not r[1].startswith("sqlite_autoindex") and not r[2]]
+    defs = {n: conn.execute("SELECT sql FROM sqlite_master WHERE name=?", (n,)).fetchone()[0] for n in names}
+    for n in defs:
+        conn.execute(f"DROP INDEX {n}")
+    try:
+        yield
+    finally:
+        for sql in defs.values():
+            conn.execute(sql)
 
 
 # Example: claims by tier across every kept database.

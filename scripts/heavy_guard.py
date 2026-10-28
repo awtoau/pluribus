@@ -86,6 +86,8 @@ JOB_GB = {
     "cyc4_dec_active": 2.5,          # Dec.active on EP4CGX150 (asm tables + plane)
     "cyc4_tracer": 3.7,              # ddb_trace score, 3 designs
     "cyc4_bit_inventory": 3.0,       # scripts/cycloneiv_bit_inventory.py
+    "reach2_stage": 2.1,             # reach2.py, 2.65 M reachability rows (V02; fnirsi 1.5), docs/rust-candidates.md
+    "bench_reach_sql": 3.0,          # scripts/bench_reach_sql.py: reach + reach2 children on one DB copy
 }
 BATCH_FILL = 0.8   # fraction of BATCH_MAX_GB planned for workers; the rest is headroom for peaks
 

@@ -43,8 +43,25 @@ def _insert_or_ignore(table):
 
 # ── 1. Reverse reachability ───────────────────────────────────────────────────
 
-def pass_reverse(bs_id, conn):
-    """Invert reachability into reachability_rev via SQL."""
+def pass_reverse(bs_id, conn=None):
+    """Invert reachability into reachability_rev via SQL (rows for the label deleted first; the source
+    is unique on (bitstream, src, dst), so a plain INSERT..SELECT is exact — no OR IGNORE, #144)."""
+    if BACKEND == "sqlite":
+        import dbtools
+        from db import connect_threadsafe
+        raw = connect_threadsafe()
+        try:
+            with dbtools.fast_writes(raw):   # PRAGMA first: it cannot change inside a transaction
+                raw.execute("DELETE FROM reachability_rev WHERE bitstream=?", (bs_id,))
+                with dbtools.without_indexes(raw, "reachability_rev"):
+                    # ORDER BY = key order of the unique index (bitstream, dst, src): appends, not random B-tree inserts
+                    cur = raw.execute("INSERT INTO reachability_rev (bitstream, dst, src, min_hops) "
+                                      "SELECT bitstream, dst, src, min_hops FROM reachability WHERE bitstream=? "
+                                      "ORDER BY dst, src", (bs_id,))
+                    n = cur.rowcount
+        finally:
+            raw.close()
+        return n
     conn.execute(
         delete(schema.reachability_rev).where(
             schema.reachability_rev.c.bitstream == bs_id
@@ -57,9 +74,7 @@ def pass_reverse(bs_id, conn):
         .where(r.c.bitstream == bs_id)
     )
     result = conn.execute(
-        _insert_or_ignore(rr).from_select(
-            ["bitstream", "dst", "src", "min_hops"], sel
-        )
+        insert(rr).from_select(["bitstream", "dst", "src", "min_hops"], sel)
     )
     n = result.rowcount
     return n
@@ -139,10 +154,9 @@ def pass_ff_cones(bs_id, n_workers):
     total      = len(ffs)
     done       = [0]
     lock       = threading.Lock()
-    # Post-SD-fix cone sizes make each worker's final insert large; 24
-    # concurrent inserts exhaust the SQLAlchemy pool (5+10, 30s timeout)
-    # and SQLite serialises writers anyway — one insert at a time.
-    insert_lock = threading.Lock()
+    # Workers only compute; the rows are written once, after join, by the main thread
+    # (plain bulk INSERT: every (ff, cone_type, net) is produced once, #144).
+    all_rows = []
     error_msgs = []
 
     def worker_chunk(chunk):
@@ -158,31 +172,15 @@ def pass_ff_cones(bs_id, n_workers):
                         if src not in seen or h < seen[src]:
                             seen[src] = h
                 for net, h in seen.items():
-                    rows.append({
-                        "bitstream": bs_id,
-                        "ff_cell":   cell,
-                        "cone_type": "input",
-                        "net":       net,
-                        "min_hops":  h,
-                    })
+                    rows.append((bs_id, cell, "input", net, h))
 
                 # Output cone: fwd[q]
                 if q and not q.startswith("1'b"):
                     for dst, h in fwd_index.get(q, []):
-                        rows.append({
-                            "bitstream": bs_id,
-                            "ff_cell":   cell,
-                            "cone_type": "output",
-                            "net":       dst,
-                            "min_hops":  h,
-                        })
-
-            if rows:
-                with insert_lock:
-                    with engine().begin() as wconn:
-                        wconn.execute(_insert_or_ignore(schema.ff_cones), rows)
+                        rows.append((bs_id, cell, "output", dst, h))
 
             with lock:
+                all_rows.extend(rows)
                 done[0] += len(chunk)
                 n = done[0]
                 if n % 100 == 0 or n == total:
@@ -200,6 +198,22 @@ def pass_ff_cones(bs_id, n_workers):
 
     if error_msgs:
         die(f"ff_cones worker(s) failed: {error_msgs[0]}")
+
+    cols = ("bitstream", "ff_cell", "cone_type", "net", "min_hops")
+    all_rows.sort()   # unique-index key order (bitstream, ff_cell, cone_type, net): sequential appends
+    if BACKEND == "sqlite":
+        import dbtools
+        from db import connect_threadsafe
+        raw = connect_threadsafe()
+        try:
+            with dbtools.fast_writes(raw), dbtools.without_indexes(raw, "ff_cones"):
+                dbtools.bulk_insert(raw, "ff_cones", cols, all_rows)
+        finally:
+            raw.close()
+    else:
+        with engine().begin() as wconn:
+            for i in range(0, len(all_rows), 50_000):
+                wconn.execute(insert(schema.ff_cones), [dict(zip(cols, r)) for r in all_rows[i:i + 50_000]])
 
     # Count result
     with engine().connect() as conn:
@@ -234,8 +248,11 @@ def main():
     # ── 1. Reverse reachability ──
     print("Pass 1: reverse reachability…", flush=True)
     t = time.time()
-    with engine().begin() as conn:
-        n = pass_reverse(bs_id, conn)
+    if BACKEND == "sqlite":
+        n = pass_reverse(bs_id)
+    else:
+        with engine().begin() as conn:
+            n = pass_reverse(bs_id, conn)
     elapsed = time.time() - t
     timings.append(("reverse",   elapsed))
     print(f"  {n} rows  ({elapsed:.2f}s)")

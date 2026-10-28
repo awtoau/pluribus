@@ -76,6 +76,7 @@ luts = Table("luts", metadata,
     Column("fn",    Text),
     UniqueConstraint("bitstream", "cell"),
 )
+Index("idx_luts_z", luts.c.bitstream, luts.c.z)
 
 # GOWIN ALU (carry/arithmetic) cells.  Empty for MachXO2 (CCU2 carry is folded
 # into the LUT/FF recovery there).  Each row is one ALU bit with the apycula
@@ -104,6 +105,10 @@ net_fanout = Table("net_fanout", metadata,
 )
 Index("idx_fanout_net", net_fanout.c.bitstream, net_fanout.c.net)
 Index("idx_fanout_out", net_fanout.c.bitstream, net_fanout.c.out_net)
+# Point-lookup indexes added 2026-10-29 after measuring each on a kept-DB copy (scripts/bench_reach_sql.py
+# session, 2,000 random lookups): net_fanout by cell 153x, arcs by sink_wire 720x, ebr_ports by net 14x,
+# luts by z 21x. Readers: undriven_classify / chains (cell), verilog / gowin traces (sink_wire, net, z).
+Index("idx_fanout_cell", net_fanout.c.bitstream, net_fanout.c.cell)
 
 pad_map = Table("pad_map", metadata,
     Column("id",          Integer, primary_key=True, autoincrement=True),
@@ -150,6 +155,7 @@ ebr_ports = Table("ebr_ports", metadata,
     Column("net",   Text),
     UniqueConstraint("bitstream", "block", "port"),
 )
+Index("idx_ebr_ports_net", ebr_ports.c.bitstream, ebr_ports.c.net)
 
 # EBR block-RAM initial contents recovered from the bitstream 0x72 sections
 # (native decoder).  `block` is the physical EBR9K block name (R{row}C{col},
@@ -429,6 +435,7 @@ Index("idx_arcs_bs",     arcs.c.bitstream)
 Index("idx_arcs_sink",   arcs.c.bitstream, arcs.c.sink_net)
 Index("idx_arcs_source", arcs.c.bitstream, arcs.c.source_net)
 Index("idx_arcs_tile",   arcs.c.bitstream, arcs.c.tile_row, arcs.c.tile_col)
+Index("idx_arcs_sink_wire", arcs.c.bitstream, arcs.c.sink_wire)
 
 clock_domain_summary = Table("clock_domain_summary", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),

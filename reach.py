@@ -283,6 +283,12 @@ def main():
                 f"VALUES {vals} "
                 "ON CONFLICT (bitstream,src,dst) DO UPDATE SET min_hops=EXCLUDED.min_hops"
             )
+    elif args.replace:
+        # Rows for this label were deleted above and each (src, dst) is produced once by the BFS:
+        # plain multi-row INSERT, no per-row upsert (was >= 55 % of the stage wall, #144).
+        import dbtools
+        with dbtools.fast_writes(conn), dbtools.without_indexes(conn, "reachability"):
+            dbtools.bulk_insert(conn, "reachability", ("bitstream", "src", "dst", "min_hops"), result_buf)
     else:
         sql = ("INSERT INTO reachability (bitstream,src,dst,min_hops) VALUES (?,?,?,?) "
                "ON CONFLICT (bitstream,src,dst) DO UPDATE SET min_hops=EXCLUDED.min_hops")
@@ -320,6 +326,7 @@ def main():
         ON CONFLICT (bitstream, pad_label, ff_cell) DO UPDATE
             SET min_hops = {least_expr}
     """
+    t_pf = time.time()
     if BACKEND == "postgres":
         conn.run(sql_pad_ff, bs=bs_id)
     else:
@@ -327,7 +334,7 @@ def main():
         conn.commit()
 
     r1 = _run(conn, "SELECT COUNT(*) FROM pad_ff_influence WHERE bitstream=:bs", bs=bs_id)
-    print(f"  pad_ff_influence: {r1[0][0]} rows")
+    print(f"  pad_ff_influence: {r1[0][0]} rows  pad_ff {time.time()-t_pf:.1f}s")
     conn.close()
 
     print(f"\nTotal: {time.time()-t0:.1f}s")
