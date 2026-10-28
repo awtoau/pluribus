@@ -560,8 +560,9 @@ def register_cycloneiv(conn, device, commit):
                 E.record_decode(conn, "cycloneiv", device if (e.get("device") or "").startswith("EP4CGX1") else (e.get("device") or "?"),
                                 e["name"], {"analysis": a}, commit, f"sources/cycloneiv-corpus/{e['name']}", kind="image-hit",
                                 generator="scripts/cycloneiv_corpus_fetch.py", n_objects=int(a.get("set_bits", 0) or 0))
+    import cycloneiv_declare_gate
+    log.info("cycloneiv: %d required gate members declared", cycloneiv_declare_gate.declare(conn, commit))
     C.ensure_criterion(conn, "cycloneiv")
-    log.info("cycloneiv: no REQUIRED corpus member declared yet (the gate set must be declared as corpus_members(required=1))")
 
 
 # ── Lattice (ECP5 / MachXO2) ────────────────────────────────────────────────
