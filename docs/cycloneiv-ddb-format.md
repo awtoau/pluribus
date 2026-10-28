@@ -43,14 +43,39 @@ Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](cyclonev-ddb-fo
 - Then the same names again prefixed `XQ4/Q4_` (second table, same layout), then GCLK / RCLK / BIOCLK / TIOCLK / IOC / LEIM / HSSI names (16 M of the 50 M inflated).
 - Families: H4 370,260, V4 263,952, H24 12,690, V16 12,402, HSSI 1,653, LEIM 1,385, RCLKR*, GCLK, BIOCLKCS, TIOCLKCS, IOC.
 
-## routing.ddb (88 MB inflated; node table decoded, fan-out lists not)
+## routing.ddb (88 MB inflated; node table, twin map and template contents decoded; node->template assignment open)
 
-- Body `u32 4, 118, 92, N = 1802443` (version, columns, rows, nodes), then the **node table**: N x 12 bytes `(i16 dx, i16 dy, i32 c, i32 dn)` at offset 16..21,629,332 (`scripts/cycloneiv_ddb_routing.py nodes` -> `tmp/ddb/stingray4_rt_nodes.npy`).
-  - `cumsum(dx), cumsum(dy)` = the node's tile in the vendor grid, x 0..117, y 0..91; node ids are the asm record ids (same N, same order: LE nodes 0..149,759 run (1,1)..(116,90) column-major, LE_BUFFER from 149,760 restarts at (1,1), H4 from 449,321 at (0,1)). **Vendor x = 115 - plane x** (node (1,1) has its asm groups in plane column 114; (22,20) in 87..93); y = plane y (a C4's groups spread over y-1..).
-  - `dn` is a delta: `cumsum(dn)` = offset (in ints) of the node's fan-out list; LE nodes advance by 2 (one fan-out, 2 ints), LE_BUFFER by 12 (6 fan-outs = the 6 asm groups) but then -10 (lists are shared: the same offset serves several nodes = the `DYGR_ROUTE_ELEMENT_TEMPLATE`s, 197,688 of them); for 290,512 records `dn/2` equals the asm group count exactly, for the rest the node has fan-outs without CRAM bits.
-  - `c` is a delta with bit-31 restarts (0 for every LE, then +-10620+-1 = +-(118 x 90)+-1 alternating): a template / list reference in units of the die grid, not resolved.
-- After the node table: `u32 197688` then 210,044 ints (197,690 x `6`, 12,070 x 0, a few 8/16/24/1<<26) = the template section (serialisation of `ROUTE_ELEMENT_TEMPLATE`, sizeof 32, not understood); `u32 1802443` at 22,469,513, `-1, 0, -1, 0`, then 1,347,963 ints of zeros; from 27,861,369 an int stream with bit-31 restarts and repeating 12-int motifs (`1168843, -4, 7, 1, 0, 0, -1168841, 7, 3, 1, 0, 10..`), 1,168,843 = the id distance H4 -> LI region, so these are fan-out entries (dest-id deltas + attributes); the list offsets from `cumsum(dn)` do not index this stream directly (tried bases 22,469,517 and 27,861,369: the 6-fan-out LE_BUFFER list reads `12, 37441, 3, 9, -93689, 0, -33, 93691, 0, 12, -37439, -3`; 37,441 = 4 x 9,360 + 1 looks like a LAB-indexed id delta, but no pairing reproduces the asm group tiles). 40..42 MB zeros, 43..61 MB packed bit fields, 61..83.7 MB i32 of small magnitude (the `int` / `unsigned short` arrays, 3,612,712 each), 83.7..85.9 MB zeros, 85.9 MB..end signed deltas of ~1e5.
-- The fan-out / fan-in lists are what would name every mux output; until they are decoded the block -> destination map is learnt from the oracle. Node tile + type range + order within the tile already give a physical name for every node (not yet wired in).
+Reader: `scripts/cycloneiv_ddb_routing.py` (`nodes` / `twin` / `templates`). Shared conventions found in every delta stream here:
+
+- **Restart rule:** a delta `v < -2^30` restarts the accumulator at `v + 2^31` (plain negative deltas also have bit 31 set, so the old "bit-31 = restart" reading was wrong).
+- **Ids stored +1**, `0` = NULL.
+
+### Sections (byte offsets, stingray4)
+
+- `0..16` header `u32 4, 118, 92, N = 1802443`.
+- `16..21,629,332` **node table**: N x `(i16 dx, i16 dy, i32 c, i32 dn)` (`nodes` -> `tmp/ddb/stingray4_rt_nodes.npy`).
+  - `cumsum(dx), cumsum(dy)` = tile (vendor grid x 0..117, y 0..91); node ids = asm record ids. **Vendor x = 115 - plane x**; y = plane y.
+  - `cumsum(dn)` = offset of the node's fan-out list in the **in-memory expanded entry arrays** (`int` + `unsigned short`, 3,612,712 each in the type table), 2 offset units per entry; max offset/2 = 3,186,259. `dn == 2 x group count` for 290,512 records (empty records count 1 implicit group). The lists are **not byte-addressable in the file** - the loader expands them from the templates below (this is why every fixed base x unit indexing attempt failed).
+  - `c`: delta stream (restart rule above, +1 convention, NULL for every LE) -> a per-node **node-id-valued** reference V: restart values are all valid ids (449,412..1,802,438); locally V tracks the node (V = r + const within a run; typical deltas +-10620+-1 = +-(118x90)+-1 = one H4-subtype block +- one tile). Suspected template/driver anchor; plain cumsum drifts out of range for ~29 % of nodes, so the full convention is still open. V is 1:1 where checked (not a shared template pointer), V(V) != V.
+- `21,629,332` `u32 197688`, i32 `-790746`, then 197,687 x `6` + 12,356 tail ints (2717, zeros, few 1/3/8/16/24/1<<26/0x50000000) - per-template small ints, not resolved.
+- `22,469,513` `u32 N`, then N x 12 bytes `(i32 f0, i32 f1, i32 f2)`: **twin / other-end map** (`twin` -> `stingray4_rt_twin.npy`). `cum_ids(f0)` = the record of the SAME WIRE's other end: `H4R90C119RT[0] -> H4R90C112LT[0]`; edge wires map to HSSI/HIO boundary records. NULL for ids 0..449,320 (LE/LEB/LL - not two-ended wires). Verified 1,440/1,440 icname pairs (same type, same row/col, span 1..30; direction letter and index may change with the end, as in the RCF alias sets). f1/f2 = small per-node ints, unresolved.
+- `44,098,833..~63.06 MB` lookup tables (`DYGR_LOOKUP` nests; affine-looking triplets `183510, 90, 180, <base>...` = per-(type, tile) tables, probably (elem, x, y, i) -> id for `get_global_id`), zeros, packed tables. Not needed for fan-outs so far.
+- `~63,060,526..84 MB` **fan-out template stream** (`templates` -> `stingray4_rt_tpl.npz`): back-to-back records
+  `[u32 na][na x u16 attrs][i16 e][u32 0][i16 e][i8 flag][u16][u32 nd][u16 first][(nd-1) x i32 deltas]`, `e == nd - na`, `first` always 0.
+  - **Dests of a node r instantiating a template = r + cumsum(0, deltas)** (owner-relative, cumulative). Verified: LEB templates give 6 same-tile dests (+9360 steps = +1 LE I-region) matching the 6 asm groups exactly for records in the anchored window; H4 templates (nd 18..23) give compact 5-column footprints; one H4 blob matched a cross-check record's group tiles as sub-multiset with the known per-dest-type bit-tile skew.
+  - Parse with resync: 197,583 of the 197,688 `DYGR_ROUTE_ELEMENT_TEMPLATE`; attr sum 3,611,175 / entry sum 3,613,697 vs 3,612,712 each in the type table; 37 unparsed stretches, 610 bytes total, mostly 63.06..63.12 MB where the short LE/LEB/LL templates use a variant (i32 delta, i32 attr) pair coding seen at 63,072,300: `(-140400,100) (9360,6) (9360,2)x4`.
+  - attrs (u16, one per entry) are 0 in all templates sampled; the per-entry mux-input attribute may live in the pair-coded variant or elsewhere.
+
+### Open: node -> template assignment
+
+The expansion (which template each node instantiates) is the remaining piece; candidates are `c`/V, the 21.6 MB "6" section and the 44.1 MB lookups. Negative results, so you don't repeat them:
+
+- No fixed base x unit addresses the lists: scanned ALL byte bases x units {1,2,3,4,6,8} (phase A, 96-sample near-own-tile predicate) and all bases 22..66 MB with exact tile-multiset scoring at unit 4 (phase B, 48 samples) - only node-table aliasing artifacts pass. Base 61,807,052 + 4 x off matches the LEB window (162/74,932 records exact) then drifts negative and dies by off ~1.4 M: the file order is template-first-use, not node order.
+- Content-locating 60 H4/V4 k>=15 lists as stride-8 windows (exact and translation-tolerant tile shapes) over 44..88 MB: zero hits - their deltas are contiguous i32 runs inside template records, not (d, attr) pairs.
+- `V // 10620` is not a global template id (LEB and H4 nodes collide at T=44); V is not a representative-node fixpoint map (V(V) != V, V unique per node where checked).
+- asm group tiles (select-bit tile) vs dest node tiles carry per-dest-type skews (modes (0,+1) and (-4,+1)); an exact-tile cross-check needs those skews modelled per family.
+
+Until assignment is decoded the block -> destination map stays learnt from the oracle; the twin map above already gives the RT/LT (driver-dependent) alias pairing without the learnt alias sets.
 
 ## Naming quirks found while scoring
 
