@@ -715,36 +715,41 @@ def main():
     GEO.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler(REPO / "tmp/logs/geo_image_overlay.log", "w")])
+    import heavy_guard
     bi.need_ram(20)
-    import cycloneiv_asm_decode as ad
-    import cycloneiv_geom as cg
-    g = cg.load(cg.die_of("EP4CGX150"))
-    plane, sm, meta = load_image(Path(a.image).read_bytes(), g)
-    nfr, nper = meta["nfr"], meta["nper"]
-    log.info("image: %d frames, %d plane set bits, header %d, crc %d", nfr, meta["plane_set"], meta["hdr_set"], meta["crc_set"])
-    dec = ad.Dec()
-    C, tiles, fired, asm_any = classify(g, plane, nfr, nper, dec)
-    H, Hs = tile_hist(C, sm, g)
-    rows = build_table(H, Hs, g)
-    write_tables(rows, g.xmax + 1)
-    # die-wide totals by tier for the log
-    for nm, A in (("cells", H), ("image set", Hs)):
-        log.info("%s in tiles: verified %d evidence %d unknown %d overhead %d", nm, *(int(tier_sum(A, t).sum()) for t in "VEUO"))
-    extra = {IDS[c - 1]: (int(((C.ocol < 0) & (C.cls == c)).sum()), int((((C.ocol < 0) & (C.cls == c)) & sm).sum())) for c in range(1, NCLS)
-             if ((C.ocol < 0) & (C.cls == c)).any()}
-    log.info("cells with no tile (class: cells, set): %s; header set %d", extra, meta["hdr_set"])
-    if a.stage in ("all", "attrib"):
-        blobs = pack_bitmaps(C, sm, g, rows, nper, nfr)
-        cls_info = [[cid, TIER[i + 1], name] for i, (cid, name, _t) in enumerate(CLS)]
-        emit_html(rows, blobs, g, cls_info)
-    if a.stage in ("all", "encoding"):
-        enc = encoding(C, sm, plane, dec, g, tiles, meta, H, Hs, fired)
-        enc["outside_tiles"] = extra
-        enc["other_gx150_images"] = other_images(C, g, nper, meta, sm)
-        enc["other_die_images"] = ce_images()
-        (GEO / "image_encoding.json").write_text(json.dumps(enc, indent=1))
-        log.info("wrote image_encoding.json")
+    blobs = None
+    with heavy_guard.lease(4.0, "image_overlay", log):
+        import cycloneiv_asm_decode as ad
+        import cycloneiv_geom as cg
+        g = cg.load(cg.die_of("EP4CGX150"))
+        plane, sm, meta = load_image(Path(a.image).read_bytes(), g)
+        nfr, nper = meta["nfr"], meta["nper"]
+        log.info("image: %d frames, %d plane set bits, header %d, crc %d", nfr, meta["plane_set"], meta["hdr_set"], meta["crc_set"])
+        dec = ad.Dec()
+        C, tiles, fired, asm_any = classify(g, plane, nfr, nper, dec)
+        H, Hs = tile_hist(C, sm, g)
+        rows = build_table(H, Hs, g)
+        write_tables(rows, g.xmax + 1)
+        # die-wide totals by tier for the log
+        for nm, A in (("cells", H), ("image set", Hs)):
+            log.info("%s in tiles: verified %d evidence %d unknown %d overhead %d", nm, *(int(tier_sum(A, t).sum()) for t in "VEUO"))
+        extra = {IDS[c - 1]: (int(((C.ocol < 0) & (C.cls == c)).sum()), int((((C.ocol < 0) & (C.cls == c)) & sm).sum())) for c in range(1, NCLS)
+                 if ((C.ocol < 0) & (C.cls == c)).any()}
+        log.info("cells with no tile (class: cells, set): %s; header set %d", extra, meta["hdr_set"])
+        if a.stage in ("all", "attrib"):
+            blobs = pack_bitmaps(C, sm, g, rows, nper, nfr)
+            cls_info = [[cid, TIER[i + 1], name] for i, (cid, name, _t) in enumerate(CLS)]
+            # emit_html runs after the lease is released
+        if a.stage in ("all", "encoding"):
+            enc = encoding(C, sm, plane, dec, g, tiles, meta, H, Hs, fired)
+            enc["outside_tiles"] = extra
+            enc["other_gx150_images"] = other_images(C, g, nper, meta, sm)
+            enc["other_die_images"] = ce_images()
+            (GEO / "image_encoding.json").write_text(json.dumps(enc, indent=1))
+            log.info("wrote image_encoding.json")
 
+    if blobs is not None:
+        emit_html(rows, blobs, g, cls_info)
 
 if __name__ == "__main__":
     main()
