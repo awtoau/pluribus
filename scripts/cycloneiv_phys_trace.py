@@ -48,6 +48,7 @@ import cycloneiv_route_learn as rl  # noqa: E402
 log = logging.getLogger("cycloneiv_phys_trace")
 DIE = "stingray4"
 OUT = os.path.join(REPO, "lifters", "data", "cycloneiv_ep4cgx150_phys_map.json")
+LI_MAP = os.path.join(REPO, "lifters", "data", "cycloneiv_ep4cgx150_li_map.json")
 WORK = os.path.join(REPO, "tmp", "cycloneiv", "phys")
 NODES = os.path.join(D.A.TMP, f"{DIE}_rt_nodes.npy")
 XMIRROR = 115            # vendor x = XMIRROR - plane x (docs/cycloneiv-ddb-format.md); offsets absorb any error
@@ -223,6 +224,16 @@ class Phys:
             return (int(cls), kid) if kid is not None else None
         self.wires = {key_of(k): tuple(v) for k, v in m["wires"].items() if key_of(k)}
         self.lis = {key_of(k): tuple(v) for k, v in m["lis"].items() if key_of(k)}
+        # supplement lis from li_map.json when available (issue #139)
+        if os.path.exists(LI_MAP):
+            lm = json.load(open(LI_MAP))
+            n_new = 0
+            for k, v in lm["lis"].items():
+                kk = key_of(k)
+                if kk is not None and kk not in self.lis:
+                    self.lis[kk] = tuple(v)
+                    n_new += 1
+            log.info("li_map: %d new entries from %s (%d total lis)", n_new, LI_MAP, len(self.lis))
         self.li_inv = {(c, v[1]): (kid, v[0]) for (c, kid), v in self.lis.items()}
         self.defaults = {key_of(k): {code_off(*d, SWIN) for d in v} for k, v in m["defaults"].items() if key_of(k)}
         self.cells = {int(f): tuple(v) for f, v in m["cells"].items()}
