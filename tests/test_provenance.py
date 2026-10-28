@@ -195,6 +195,21 @@ def test_expectation_confirmed_becomes_measured_claim_and_promotes_unknown():
         s = seed(conn)
         assert {u["id"] for u in Q.seriously_unknown(conn, "fam")} == {s["unk_serious"]}
         assert {u["unknown_id"] for u in Q.expected_unknowns(conn, "fam")} == {s["unk_expected"]}
+        # an expectation on a CHILD scope (scopes.parent) covers the parent's unknown; unrelated unknowns stay serious
+        from provenance import scopes as SC
+        d = {"keys": ["child"]}
+        child = conn.execute(insert(S.scopes).values(family="fam", device="dev", space="bit", kind="keys",
+                                                     scope_key=SC.canonical("bit", "keys", d), definition=d, n_objects=1,
+                                                     parent=s["scopes"][2])).inserted_primary_key[0]
+        conn.execute(insert(S.expectations).values(family="fam", device="dev", space="bit", subject_key="c", scope_id=child,
+                                                   matcher_id="m-v1", expected={}, status="open", n_objects=1, created_commit=COMMIT))
+        d2 = {"keys": ["lonely"]}
+        lonely = conn.execute(insert(S.scopes).values(family="fam", device="dev", space="bit", kind="keys",
+                                                      scope_key=SC.canonical("bit", "keys", d2), definition=d2, n_objects=1)).inserted_primary_key[0]
+        u3 = conn.execute(insert(S.unknowns).values(family="fam", device="dev", space="bit", subject_key="v", scope_id=lonely,
+                                                    reason="unasked", status="open", n_objects=1, created_commit=COMMIT)).inserted_primary_key[0]
+        assert {u["id"] for u in Q.seriously_unknown(conn, "fam")} == {u3}
+        assert {u["unknown_id"] for u in Q.expected_unknowns(conn, "fam")} == {s["unk_expected"], s["unk_serious"]}
         cid = F.confirm_expectation(conn, s["exp"], s["ev2"], COMMIT)
         c = conn.execute(select(S.claims).where(S.claims.c.id == cid)).fetchone()
         assert c.tier == "measured" and c.status == "confirmed" and c.pattern_id is None

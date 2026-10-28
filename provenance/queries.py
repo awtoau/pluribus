@@ -94,9 +94,11 @@ def open_expectations(conn, family, limit=50, device=None):
 def _expectation_covers_unknown():
     """Join condition: an open expectation whose scope IS the unknown's scope or NARROWS it (scopes.parent)."""
     e, sc = S.expectations, S.scopes
+    # correlate explicitly to unknowns: auto-correlation would bind to the enclosing EXISTS over expectations
+    # and turn the child-scope lookup into a cross join (every unknown would look "expected")
+    children = select(sc.c.id).where(sc.c.parent == S.unknowns.c.scope_id).correlate(S.unknowns)
     return and_(e.c.status == "open",
-                or_(e.c.scope_id == S.unknowns.c.scope_id,
-                    e.c.scope_id.in_(select(sc.c.id).where(sc.c.parent == S.unknowns.c.scope_id))))
+                or_(e.c.scope_id == S.unknowns.c.scope_id, e.c.scope_id.in_(children)))
 
 
 def seriously_unknown(conn, family, device=None):

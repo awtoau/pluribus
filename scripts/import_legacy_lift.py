@@ -138,6 +138,10 @@ def import_label(old, old_path, family, label, commit, dry):
     dropped = collections.defaultdict(set)
     with db.engine().begin() as conn:
         E.ensure_family(conn, family)
+        dev = b.get("device") or ""
+        if dev and conn.execute(select(S.devices.c.id).where(and_(S.devices.c.family == family, S.devices.c.name == dev))).fetchone() is None:
+            conn.execute(insert(S.devices).values(family=family, name=dev, packages=[b.get("package")] if b.get("package") else None,
+                                                  source_ref=f"legacy import {label}"))
         ex = conn.execute(select(S.bitstreams.c.id).where(S.bitstreams.c.label == label)).fetchone()
         if ex:   # always-rebuild: the label's rows (cascade), its imported claims and the previous import evidence
             conn.execute(delete(S.bitstreams).where(S.bitstreams.c.id == ex[0]))
