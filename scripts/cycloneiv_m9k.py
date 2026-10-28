@@ -88,6 +88,76 @@ def sets():
     return s
 
 
+DEPTH = {1: 8192, 2: 4096, 4: 2048, 8: 1024, 9: 1024, 16: 512, 18: 512, 32: 256, 36: 256}
+
+
+def data_pairs(width, items, site=SITE, tag="d"):
+    """Shared all-zero base + one specimen per (word, bit); init bit at linear index word*width+bit."""
+    depth = DEPTH[width]
+    base = f"gxm9k_{tag}{width}_base"
+    out = [(base, f"gxm9k_{tag}{width}_w{w}b{b}", {"width": width, "depth": depth, "site": site},
+            {"width": width, "depth": depth, "site": site, "ones": {w * width + b}}, f"init word {w} bit {b}")
+           for w, b in items]
+    return out
+
+
+def bin_pairs(width, site=SITE):
+    """Binary-coded init: specimen k sets cell c iff bit k of (c+1) is set; shared all-zero base."""
+    n = DEPTH[width] * width
+    nb = n.bit_length()          # codes 1..n
+    base = f"gxm9k_b{width}_base"
+    kw = {"width": width, "depth": DEPTH[width], "site": site}
+    return [(base, f"gxm9k_b{width}_k{k}", dict(kw),
+             dict(kw, ones={c for c in range(n) if ((c + 1) >> k) & 1}), f"bincode bit {k}") for k in range(nb)]
+
+
+def rand_ones(width, seed):
+    import random
+    n = DEPTH[width] * width
+    return set(random.Random(seed).sample(range(n), n // 2))
+
+
+def rand_pairs(width, seed, site=SITE):
+    kw = {"width": width, "depth": DEPTH[width], "site": site}
+    return [(f"gxm9k_b{width}_base", f"gxm9k_r{width}_s{seed}", dict(kw), dict(kw, ones=rand_ones(width, seed)),
+             f"random half-filled init seed {seed}")]
+
+
+def predict(width, sp):
+    """Predicted only_spec set from the located-cell map; None if the pair is not predictable."""
+    mp = REPO / "tmp" / f"cycloneiv_m9k_map{width}.json"
+    if not mp.exists():
+        return None
+    cells = {int(k): tuple(v) for k, v in json.loads(mp.read_text())["cells"].items()}
+    m = re.match(rf"gxm9k_d{width}_w(\d+)b(\d+)$", sp)
+    if m:
+        return {cells[int(m[1]) * width + int(m[2])]}
+    m = re.match(rf"gxm9k_r{width}_s(\d+)$", sp)
+    if m:
+        return {cells[c] for c in rand_ones(width, int(m[1]))}
+    return None
+
+
+def bin_decode(width, rep):
+    """rep: {spec: {only_spec: [(f, v)]}} -> {code: (f, v)} + leftovers.  v >= 6344: lane tail / CRC bytes, masked."""
+    n = DEPTH[width] * width
+    code = {}
+    for sp, r in rep.items():
+        k = int(sp.rsplit("_k", 1)[1])
+        for f, v in r["only_spec"]:
+            code[(f, v)] = code.get((f, v), 0) | (1 << k)
+        assert not r["only_base"], f"{sp}: bits only in base {r['only_base'][:4]}"
+    cells, masked, bad = {}, [], []
+    for (f, v), c in code.items():
+        if v >= 6344:
+            masked.append((f, v, c))
+        elif 1 <= c <= n and c - 1 not in cells:
+            cells[c - 1] = (f, v)
+        else:
+            bad.append((f, v, c))
+    return cells, masked, bad
+
+
 def bits(name):
     return set(cc.load_plane_only(name).keys.tolist())
 
@@ -100,6 +170,15 @@ def trim(n):
     for sub in ("quartus/db", "quartus/incremental_db"):
         shutil.rmtree(CORPUS / n / sub, ignore_errors=True)
     (CORPUS / n / "quartus" / "build.rbf").unlink(missing_ok=True)
+
+
+def prune(n):
+    """Diff recorded: drop bitstream + postfit + logs, keep rcf/toml/src."""
+    d = CORPUS / n
+    for f in ("bitstream.rbf", "postfit.vo", "fit.rpt", "build.pin"):
+        (d / f).unlink(missing_ok=True)
+    shutil.rmtree(d / "quartus", ignore_errors=True)
+    shutil.rmtree(d / "logs", ignore_errors=True)
 
 
 def build(names, jobs):
@@ -115,15 +194,27 @@ def build(names, jobs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["gen", "build", "diff"])
-    ap.add_argument("set")
+    ap.add_argument("set", help="named set, or 'data'")
     ap.add_argument("--jobs", type=int, default=2)
+    ap.add_argument("--width", type=int, default=1)
+    ap.add_argument("--items", default="", help="data set: word:bit,word:bit,...")
+    ap.add_argument("--site", default=SITE)
+    ap.add_argument("--tag", default="d")
+    ap.add_argument("--keep", type=int, default=0, help="diff: keep bitstreams of the first N specimens")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_m9k.log"),
                                   logging.StreamHandler()])
-    pairs = sets()[a.set]
-    names = [n for p in pairs for n in p[:2]]
+    if a.set == "rand":
+        pairs = rand_pairs(a.width, int(a.items), a.site)
+    elif a.set == "bincode":
+        pairs = bin_pairs(a.width, a.site)
+    elif a.set == "data":
+        pairs = data_pairs(a.width, [tuple(map(int, i.split(":"))) for i in a.items.split(",")], a.site, a.tag)
+    else:
+        pairs = sets()[a.set]
+    names = list(dict.fromkeys(n for p in pairs for n in p[:2]))
     if a.cmd in ("gen", "build"):
         for b, sp, kb, ks, purpose in pairs:
             write_design(b, *ram_design(**kb), purpose + " (base)")
@@ -134,12 +225,37 @@ def main():
         log.info("built %d, failed %s", len(todo), [n for n, f in res.items() if f])
     if a.cmd == "diff":
         rep = {}
-        for b, sp, *_ in pairs:
-            A, B = bits(b), bits(sp)
+        out = REPO / "tmp" / f"cycloneiv_m9k_{a.set}{a.width}{a.tag}.json"
+        if out.exists():
+            rep = json.loads(out.read_text())
+        cache = {}
+        for i, (b, sp, *_) in enumerate(pairs):
+            if sp in rep:
+                continue
+            if b not in cache:
+                cache[b] = bits(b)
+            A, B = cache[b], bits(sp)
             rep[sp] = {"base": b, "only_base": [fv(k) for k in sorted(A - B)],
                        "only_spec": [fv(k) for k in sorted(B - A)]}
+            pr = predict(a.width, sp)
+            if pr is not None:
+                got = {tuple(x) for x in rep[sp]["only_spec"]}
+                rep[sp]["predicted_hit"] = bool(got == pr and not rep[sp]["only_base"])
+                rep[sp]["pred_missing"], rep[sp]["pred_extra"] = len(pr - got), len(got - pr)
+                log.info("PREDICT %s: hit=%s missing %d extra %d (of %d)", sp, rep[sp]["predicted_hit"],
+                         len(pr - got), len(got - pr), len(pr))
             log.info("%s vs %s: only-base %s only-spec %s", b, sp, rep[sp]["only_base"][:8], rep[sp]["only_spec"][:8])
-        (REPO / "tmp" / f"cycloneiv_m9k_{a.set}.json").write_text(json.dumps(rep))
+            if i >= a.keep:
+                prune(sp)
+        out.write_text(json.dumps(rep))
+        if a.set == "bincode":
+            cells, masked, bad = bin_decode(a.width, rep)
+            n = DEPTH[a.width] * a.width
+            log.info("bincode x%d: %d / %d cells located, masked CRC/tail %d, unattributed %d %s", a.width,
+                     len(cells), n, len(masked), len(bad), bad[:6])
+            (REPO / "tmp" / f"cycloneiv_m9k_map{a.width}.json").write_text(json.dumps(
+                {"width": a.width, "cells": {str(c): fvv for c, fvv in sorted(cells.items())},
+                 "masked": masked, "unattributed": bad}))
 
 
 if __name__ == "__main__":
