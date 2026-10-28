@@ -66,7 +66,7 @@ SPEC = {
 }
 ORDER = list(SPEC)
 BLOB_COLS = {"bits_spec", "bits_base"}
-SKIP_COLS = {"build_id", "build_base", "build_spec"}   # postfit_builds refs are per-DB; Integer `id` PKs skipped below
+SKIP_COLS = {"build_id", "build_base", "build_spec"}   # corpus_builds refs are per-DB; Integer `id` PKs skipped below
 
 
 def _skip(col):

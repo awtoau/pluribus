@@ -1,4 +1,4 @@
-"""Register vendor corpus builds in postfit_builds (the DB index of corpus/<family>/*).
+"""Register vendor corpus builds in corpus_builds (the DB index of corpus/<family>/*).
 
 Derived index: every run DELETEs the family's rows and reinserts from a full rescan of
 corpus/<family>/*/design.toml + build outputs (always-rebuild rule).  design.toml is the
@@ -68,9 +68,9 @@ def register(family: str):
         ))
     schema.init()
     with db.engine().begin() as conn:
-        conn.execute(delete(schema.postfit_builds).where(schema.postfit_builds.c.family == family))
+        conn.execute(delete(schema.corpus_builds).where(schema.corpus_builds.c.family == family))
         if rows:
-            conn.execute(insert(schema.postfit_builds), rows)
+            conn.execute(insert(schema.corpus_builds), rows)
     ok = sum(1 for r in rows if r["status"] == "ok")
     tc = sum(1 for r in rows if r["toolchain"])
     log.info("%s: %d builds registered (%d ok, %d with toolchain)", family, len(rows), ok, tc)

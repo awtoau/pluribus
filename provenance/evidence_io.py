@@ -111,6 +111,22 @@ def read_json_pairs(path, bits_per_frame):
     return pairs
 
 
+def ensure_family(conn, family):
+    """families row for `family` (FK target of every evidence row); one family per database."""
+    tiers.check(family, tuple(tiers.FAMILIES), "family")
+    if conn.execute(select(S.families.c.id).where(S.families.c.id == family)).fetchone() is None:
+        conn.execute(insert(S.families).values(id=family, **tiers.FAMILIES[family]))
+
+
+def git_head(repo=None):
+    import subprocess
+    try:
+        return subprocess.run(["git", "-C", str(repo or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                               "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    except Exception:
+        return "unknown"
+
+
 def _sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as fh:

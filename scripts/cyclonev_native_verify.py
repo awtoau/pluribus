@@ -168,7 +168,7 @@ def stage_routes(a):
     names = designs(root, a.only)
     tables = nt.load(DEVICE)
     conn = orc.connect()
-    bids = dict(conn.execute("select design, id from postfit_builds"))
+    bids = dict(conn.execute("select design, id from corpus_builds"))
     conn.close()
     prep = {}
     with concurrent.futures.ThreadPoolExecutor(a.workers) as ex:
@@ -214,7 +214,7 @@ def stage_logic(a):
     names = designs(root, a.only)
     tables = nt.load(DEVICE)
     conn = orc.connect()
-    bids = dict(conn.execute("select design, id from postfit_builds"))
+    bids = dict(conn.execute("select design, id from corpus_builds"))
     conn.close()
     agg = {k: collections.defaultdict(collections.Counter) for k in ("A", "B", "all")}
     details = collections.defaultdict(list)
@@ -266,7 +266,7 @@ def stage_lutmap(a):
     names = designs(root, a.only)
     tables = nt.load(DEVICE)
     conn = orc.connect()
-    bids = dict(conn.execute("select design, id from postfit_builds"))
+    bids = dict(conn.execute("select design, id from corpus_builds"))
     conn.close()
     sa, sb = collections.defaultdict(list), collections.defaultdict(list)
     with concurrent.futures.ThreadPoolExecutor(a.workers) as ex:

@@ -2,7 +2,7 @@
 """Cyclone V lifter scorecard: lifted netlist vs the Quartus post-fit oracle, whole corpus.
 
 Runs scripts/cyclonev_postfit_compare.py one design at a time (never parallel: 8
-concurrent 85F-class lifts hit ~30 GB, #111), then aggregates postfit_compare.
+concurrent 85F-class lifts hit ~30 GB, #111), then aggregates gate_verdicts.
 Per field: matched / (matched + missing + extra + wrong), plus the raw fault counts.
   matched = MATCH   missing = LIFT_MISSING   extra = LIFT_ONLY
   wrong   = MISMATCH + UNMODELLED
@@ -84,7 +84,7 @@ def aggregate(designs):
     cnt = collections.defaultdict(collections.Counter)
     ph = ",".join("?" * len(designs))
     for field, verdict, n in c.execute(
-            "select p.field, p.verdict, count(*) from postfit_compare p join postfit_builds b on p.build=b.id "
+            "select p.field, p.verdict, count(*) from gate_verdicts p join corpus_builds b on p.build=b.id "
             f"where b.design in ({ph}) group by 1,2", designs):
         cnt[field][verdict] += n
     out = {}
@@ -104,7 +104,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--label", required=True)
     ap.add_argument("--lifter-file", help="score this lifter file instead of lifters/cyclonev_lift.py")
-    ap.add_argument("--score-only", action="store_true", help="aggregate the existing postfit_compare")
+    ap.add_argument("--score-only", action="store_true", help="aggregate the existing gate_verdicts")
     ap.add_argument("--split", choices=("even", "odd"),
                     help="only the even- / odd-indexed designs of the sorted list (develop on even, hold out odd)")
     a = ap.parse_args()
@@ -121,7 +121,7 @@ def main():
             os.environ["CYCLONEV_LIFTER_FILE"] = str(Path(a.lifter_file).resolve())
         times = run_designs(designs)
     failed = sorted(d for d, t in times.items() if t is None)
-    if failed:      # their postfit_compare rows are from an earlier run: never score them
+    if failed:      # their gate_verdicts rows are from an earlier run: never score them
         log(f"FAILED {len(failed)} designs, not scored, run fails: {failed[:10]}")
         designs = [d for d in designs if d not in failed]
     out, n_builds = aggregate(designs)

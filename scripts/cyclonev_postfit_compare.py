@@ -463,7 +463,7 @@ def compare_build(bid, ddir):
         if a["type"] in ("cyclonev_mac", "cyclonev_ram_block", "cyclonev_clkena", "cyclonev_mlab_cell"):
             row(a["name"], a["location"], f"block.{a['type']}", a["type"], None, "QUARTUS_ONLY")
 
-    t = schema.postfit_compare
+    t = schema.gate_verdicts
     with db.engine().begin() as conn:
         conn.execute(delete(t).where(t.c.build == bid))
         if rows:
@@ -471,14 +471,44 @@ def compare_build(bid, ddir):
     summary = collections.defaultdict(collections.Counter)
     for r in rows:
         summary[r["field"]][r["verdict"]] += 1
+    record_gate_run(bid, rows)
     return {f: dict(c) for f, c in sorted(summary.items())}
+
+
+# per-field verdict -> scoring-faults kind (CLAUDE.md "Scoring faults"; EXCLUDED is reported beside, not counted)
+VERDICT_KIND = {"MATCH": "matched", "LIFT_MISSING": "missing", "QUARTUS_ONLY": "missing", "LIFT_ONLY": "extra",
+                "MISMATCH": "wrong", "UNMODELLED": "wrong"}
+
+
+def record_gate_run(bid, rows):
+    """Aggregate this build's verdicts into gate_runs / gate_results (category = field prefix) and
+    evaluate the Cyclone V done criterion (provenance/corpus.py)."""
+    from sqlalchemy import select
+    from provenance import corpus as C
+    from provenance import evidence_io as E
+    with db.engine().begin() as conn:
+        b = conn.execute(select(schema.corpus_builds).where(schema.corpus_builds.c.id == bid)).fetchone()
+        if b is None:
+            return
+        E.ensure_family(conn, "cyclonev")
+        commit = E.git_head(REPO)
+        C.ensure_member(conn, "cyclonev", b.design, "oracle-build", commit, device=b.device, build_id=bid,
+                        source_ref=b.out_dir, gate_script="scripts/cyclonev_postfit_compare.py",
+                        required=(b.status == "ok"))
+        cats = collections.defaultdict(lambda: {"matched": 0, "missing": 0, "extra": 0, "wrong": 0})
+        for r in rows:
+            k = VERDICT_KIND.get(r["verdict"])
+            if k:
+                cats[r["field"].split(".")[0]][k] += 1
+        C.record_gate_run(conn, "cyclonev", "scripts/cyclonev_postfit_compare.py", commit, {b.design: dict(cats)},
+                          params={"build": bid})
 
 
 def main():
     import schema
     from sqlalchemy import select
     schema.init()
-    t = schema.postfit_builds
+    t = schema.corpus_builds
     with db.engine().connect() as conn:
         builds = {r.design: r for r in conn.execute(select(t))}
     for name in sys.argv[1:] or sorted(builds):

@@ -109,7 +109,7 @@ def main():
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
     conn = db.connect_threadsafe()
-    rows = conn.execute("select id,design from postfit_builds where status='ok' order by design").fetchall()
+    rows = conn.execute("select id,design from corpus_builds where status='ok' order by design").fetchall()
     want = set(sys.argv[1:])
     agg = Counter()
     allmiss = Counter()

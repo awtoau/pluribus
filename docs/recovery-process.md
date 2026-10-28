@@ -45,7 +45,7 @@ already documented. This doc makes the method binding, not advisory.
   generator inputs AND the provenance — vendor tool + version, build date. Sources + toml are
   git-tracked; bulky outputs stay on disk and are reused (solvers cache against them). A build is
   redone only when the tool version changes deliberately, and then as a new provenance entry.
-  The queryable index is the `postfit_builds` table (`schema.py`), rebuilt by
+  The queryable index is the `corpus_builds` table (`schema.py`), rebuilt by
   `scripts/corpus_register.py --family <f>` (full rescan — derived index, rebuild is the
   migration); run it after every build batch. Check the DB before regenerating anything.
 - Declare ONE fixed gate set in the issue; every number ever reported cites it. A changed set is
@@ -91,7 +91,7 @@ already documented. This doc makes the method binding, not advisory.
   would re-open. Status: `scripts/framework_status.py` (per family, per database).
 - Today: ECP5 corpus = the 240 Diamond-oracle targets of `tests/baselines/ecp5_oracle.json`;
   MachXO2 = the four `machxo2_gate.py` sets; Gowin = `gowin_lec.py` designs; Cyclone V =
-  `postfit_builds` ok rows; Cyclone IV = NO required member yet — the gate set must be declared
+  `corpus_builds` ok rows; Cyclone IV = NO required member yet — the gate set must be declared
   before its done state means anything (`claims_register.py` logs this).
 
 ## Tripwires — stop and review the premise when any fires

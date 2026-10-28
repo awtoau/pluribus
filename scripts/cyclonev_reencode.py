@@ -404,7 +404,7 @@ def original_names(design):
     db = os.path.join(CORPUS, "corpus.db")
     c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = c.execute("select a.name, a.type, a.location, a.loc_kind, a.x, a.y, a.n from postfit_atoms a "
-                     "join postfit_builds b on a.build=b.id where b.design=?", (design,)).fetchall()
+                     "join corpus_builds b on a.build=b.id where b.design=?", (design,)).fetchall()
     return rows
 
 

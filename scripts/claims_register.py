@@ -40,20 +40,7 @@ from provenance import tiers as T           # noqa: E402
 
 log = logging.getLogger("claims_register")
 
-FAMILIES = {
-    "cycloneiv": dict(vendor="altera", name="Cyclone IV", lut_inputs=4, bit_model="frame,v",
-                      device_db="Quartus asm.ddb / routing.ddb (decoded, docs/cycloneiv-ddb-format.md)"),
-    "cyclonev":  dict(vendor="altera", name="Cyclone V", lut_inputs=6, bit_model="cram x,y",
-                      device_db="cv_* tables (Mistral generator inputs)"),
-    "machxo2":   dict(vendor="lattice", name="MachXO2", lut_inputs=4, bit_model="tile,frame,bit",
-                      device_db="device-db/MachXO2 (prjtrellis)"),
-    "ecp5":      dict(vendor="lattice", name="ECP5", lut_inputs=4, bit_model="tile,frame,bit",
-                      device_db="device-db/ECP5 (prjtrellis)"),
-    "gowin":     dict(vendor="gowin", name="GW1N", lut_inputs=4, bit_model="tile,row,col",
-                      device_db="apycula chipdb"),
-    "anlogic":   dict(vendor="anlogic", name="EG4", lut_inputs=4, bit_model="frame,bit",
-                      device_db="Tang Dynasty fuse DB"),
-}
+FAMILIES = T.FAMILIES
 SPACES = {
     "bit": "flat index frame*bits_per_frame+v; subject_key names the meaning, e.g. LOCAL_LINE:src0:snk2:DATAD",
     "tile-bit": "<tile_type>:<frame>:<bit> (Lattice/Gowin tile databases)",
@@ -690,16 +677,16 @@ def register_gowin(conn, commit):
 
 
 def register_cyclonev(conn, commit):
-    builds = [dict(r._mapping) for r in conn.execute(select(S.postfit_builds).where(S.postfit_builds.c.family == "cyclonev"))]
+    builds = [dict(r._mapping) for r in conn.execute(select(S.corpus_builds).where(S.corpus_builds.c.family == "cyclonev"))]
     devs = sorted({b["device"] for b in builds}) or ["5CEBA4U19C8"]
     for d in devs:
-        conn.execute(insert(S.devices).values(family="cyclonev", name=d, die=None, source_ref="postfit_builds"))
+        conn.execute(insert(S.devices).values(family="cyclonev", name=d, die=None, source_ref="corpus_builds"))
     R = Reg(conn, "cyclonev", devs[0], commit)
     R.matcher("mistral-cvdb-v1", "deterministic", "Mistral generator inputs (cv_* tables)", 1, "lifters/cyclonev_lift.py")
     for b in builds:
         C.ensure_member(conn, "cyclonev", b["design"], "oracle-build", commit, device=b["device"], build_id=b["id"],
                         source_ref=b["out_dir"], gate_script="scripts/cyclonev_postfit_compare.py", required=(b["status"] == "ok"))
-    cmp_rows = conn.execute(select(S.postfit_compare.c.build, S.postfit_compare.c.field, S.postfit_compare.c.verdict)).fetchall()
+    cmp_rows = conn.execute(select(S.gate_verdicts.c.build, S.gate_verdicts.c.field, S.gate_verdicts.c.verdict)).fetchall()
     if cmp_rows:
         by = {}
         bid2name = {b["id"]: b["design"] for b in builds}
@@ -710,7 +697,7 @@ def register_cyclonev(conn, commit):
             c[vm.get(verdict, "wrong")] += 1
         C.record_gate_run(conn, "cyclonev", "scripts/cyclonev_postfit_compare.py", commit, by)
     C.ensure_criterion(conn, "cyclonev")
-    log.info("cyclonev: %d corpus members from postfit_builds, %d compare rows", len(builds), len(cmp_rows))
+    log.info("cyclonev: %d corpus members from corpus_builds, %d compare rows", len(builds), len(cmp_rows))
     return R
 
 

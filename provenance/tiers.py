@@ -30,6 +30,22 @@ CORPUS_KINDS = ("oracle-build", "third-party-image", "roundtrip", "lec")
 # sampling rule: confirmations at N distinct scopes graduate a pattern to verified-by-sampling
 SAMPLING_N = {1: 3, 2: 5}
 
+# families registry rows (one database per family; scripts/claims_register.py and evidence_io.ensure_family)
+FAMILIES = {
+    "cycloneiv": dict(vendor="altera", name="Cyclone IV", lut_inputs=4, bit_model="frame,v",
+                      device_db="Quartus asm.ddb / routing.ddb (decoded, docs/cycloneiv-ddb-format.md)"),
+    "cyclonev":  dict(vendor="altera", name="Cyclone V", lut_inputs=6, bit_model="cram x,y",
+                      device_db="cv_* tables (Mistral generator inputs)"),
+    "machxo2":   dict(vendor="lattice", name="MachXO2", lut_inputs=4, bit_model="tile,frame,bit",
+                      device_db="device-db/MachXO2 (prjtrellis)"),
+    "ecp5":      dict(vendor="lattice", name="ECP5", lut_inputs=4, bit_model="tile,frame,bit",
+                      device_db="device-db/ECP5 (prjtrellis)"),
+    "gowin":     dict(vendor="gowin", name="GW1N", lut_inputs=4, bit_model="tile,row,col",
+                      device_db="apycula chipdb"),
+    "anlogic":   dict(vendor="anlogic", name="EG4", lut_inputs=4, bit_model="frame,bit",
+                      device_db="Tang Dynasty fuse DB"),
+}
+
 
 def check(value, allowed, what):
     if value not in allowed:

@@ -22,7 +22,7 @@ corpus/cyclonev/
     build.rcf               quartus_cdb --back_annotate=routing: every net's full routing tree (docs/cyclonev-rcf-oracle.md)
     decomp.bt               mistral-cv decomp of bitstream.rbf
     lifted.v                our lift: load.py (cyclonev lifter) + verilog.py
-    compare.json            per-field verdict counts (same data as postfit_compare)
+    compare.json            per-field verdict counts (same data as gate_verdicts)
     logs/<step>.log         each tool's own output
 ```
 
@@ -61,15 +61,15 @@ Builder options: `--match 'c_*'` (glob), `--missing` (no DB row yet), `--jobs N`
 
 | table | one row per | columns |
 |---|---|---|
-| `postfit_builds` | design build | `design` (dir name), `family`, `device`, `top`, `toolchain`, `src_sha256` {file: sha}, `qsf`, `purpose`, `exercises`, `built_at`, `out_dir`, `lift_label` (our lift in `bitstreams`), `status` (`ok` / `fail:<step>`) |
+| `corpus_builds` | design build | `design` (dir name), `family`, `device`, `top`, `toolchain`, `src_sha256` {file: sha}, `qsf`, `purpose`, `exercises`, `built_at`, `out_dir`, `lift_label` (our lift in `bitstreams`), `status` (`ok` / `fail:<step>`) |
 | `postfit_atoms` | placed atom, plus one `type='pin'` row per top-level port | `build`, `name`, `type`, `location`, `loc_kind`, `x`, `y`, `n`, `params` (defparams as JSON; strings unquoted) |
 | `postfit_conns` | atom port bit | `build`, `atom`, `port`, `bit` (LSB 0), `direction` (`in`/`out`), `net`, `inverted` (`!` in the .vo), `const` (`0`/`1`/`x`) |
-| `postfit_compare` | atom x field | `build`, `atom`, `location`, `field`, `quartus_value`, `lifted_value`, `verdict` |
+| `gate_verdicts` | atom x field | `build`, `atom`, `location`, `field`, `quartus_value`, `lifted_value`, `verdict` |
 | `route_hops` | hop of a reported timing path | `build`, `analysis` (`setup`/`recovery`), `path`, `from_node`, `to_node`, `part` (`arrival`/`required`), `hop`, `depth`, `section` (`clock path`/`data path`/...), `driver` (last cell output `atom|port` = the net being routed), `total`, `incr`, `rf`, `type` (`RE`/`IC`/`CELL`/`uTco`), `fanout`, `location`, `loc_kind`, `x`, `y`, `n`, `idx`, `element` |
 | `rcf_routes` | element of a net's RCF routing tree | `build`, `net`, `branch`, `parent_branch`, `parent_label`, `hop`, `kind` (`elem`/`label`/`dest`), `element` (TYPE), `x`, `y`, `n`, `idx` (NULL for block-port form), `port_path`, `raw`, `dest_atom`, `dest_port`, `route_port`. Joins `route_hops` on (`loc_kind`=`element`, `x`,`y`,`n`,`idx`) |
 | `rcf_fuzz_bits` | directed-fuzz variant (`scripts/cyclonev_rcf_fuzz.py`) | `build`, `net`, `branch`, `hop`, `element`, `x`, `y`, `orig_idx`, `alt_idx`, `mode` (`edit`/`exclude`), `status`, `excluded`, `new_route`, `replay`, `n_changed` (raw rbf bits vs control), `changed_bits`, `bt_diff` (decomp lines) |
 
-- Our lift of each build is also in the usual tables (`bitstreams.label = postfit_builds.lift_label`: `luts`, `ffs`, `nets`, `arcs`, `pad_map`).
+- Our lift of each build is also in the usual tables (`bitstreams.label = corpus_builds.lift_label`: `luts`, `ffs`, `nets`, `arcs`, `pad_map`).
 - Nets: escapes removed, bus bits `name[i]`, `assign` aliases resolved to the driver's net.
 - `route_hops` keeps every path's hops (no dedupe): the same routing element appears once per path through it.
 
@@ -78,29 +78,29 @@ Builder options: `--match 'c_*'` (glob), `--missing` (no DB row yet), `--jobs N`
 ```sql
 -- all LUT masks of one design, with placement
 SELECT a.name, a.location, json_extract(a.params, '$.lut_mask') AS lut_mask
-FROM postfit_atoms a JOIN postfit_builds b ON b.id = a.build
+FROM postfit_atoms a JOIN corpus_builds b ON b.id = a.build
 WHERE b.design = 'adder12' AND a.type = 'cyclonev_lcell_comb';
 
 -- every register and its clock net
 SELECT b.design, a.name, a.location, c.net AS clk
-FROM postfit_atoms a JOIN postfit_builds b ON b.id = a.build
+FROM postfit_atoms a JOIN corpus_builds b ON b.id = a.build
 JOIN postfit_conns c ON c.atom = a.id
 WHERE a.type = 'dffeas' AND c.port = 'clk';
 
 -- atoms by type per design
 SELECT b.design, a.type, count(*) FROM postfit_atoms a
-JOIN postfit_builds b ON b.id = a.build GROUP BY 1, 2 ORDER BY 1, 2;
+JOIN corpus_builds b ON b.id = a.build GROUP BY 1, 2 ORDER BY 1, 2;
 
 -- comparison verdicts by field, whole corpus
-SELECT field, verdict, count(*) FROM postfit_compare GROUP BY 1, 2 ORDER BY 1, 2;
+SELECT field, verdict, count(*) FROM gate_verdicts GROUP BY 1, 2 ORDER BY 1, 2;
 
 -- who drives and who reads one net
 SELECT a.name, a.type, c.port, c.bit, c.direction FROM postfit_conns c
-JOIN postfit_atoms a ON a.id = c.atom JOIN postfit_builds b ON b.id = c.build
+JOIN postfit_atoms a ON a.id = c.atom JOIN corpus_builds b ON b.id = c.build
 WHERE b.design = 'counter_en_aclr' AND c.net = 'q[0]~reg0_q';
 
 -- every routing element one net uses (driver = source cell output)
-SELECT DISTINCT r.location, r.element FROM route_hops r JOIN postfit_builds b ON b.id = r.build
+SELECT DISTINCT r.location, r.element FROM route_hops r JOIN corpus_builds b ON b.id = r.build
 WHERE b.design = 'counter_en_aclr' AND r.driver = 'q[0]~reg0|q' AND r.type = 'RE';
 
 -- histogram of routing element types, whole corpus (distinct elements)

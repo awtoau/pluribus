@@ -774,7 +774,7 @@ cv_hard_cells = Table("cv_hard_cells", metadata,
 # Always-rebuild: scripts/cyclonev_corpus_build.py deletes the build row and
 # reinserts.  Layout + example SQL: corpus/README.md.
 
-postfit_builds = Table("postfit_builds", metadata,
+corpus_builds = Table("corpus_builds", metadata,
     Column("id",          Integer, primary_key=True, autoincrement=True),
     Column("design",      Text,    nullable=False, unique=True),  # corpus dir name
     Column("family",      Text,    nullable=False),               # e.g. "cyclonev"
@@ -795,7 +795,7 @@ postfit_builds = Table("postfit_builds", metadata,
 # (location = PIN_xx, params = io standard etc.).
 postfit_atoms = Table("postfit_atoms", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("build",     Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("build",     Integer, ForeignKey("corpus_builds.id", ondelete="CASCADE"), nullable=False),
     Column("name",      Text,    nullable=False),   # instance name, escapes removed
     Column("type",      Text,    nullable=False),   # e.g. cyclonev_lcell_comb, dffeas, pin
     Column("location",  Text),                      # raw, e.g. LABCELL_X1_Y19_N3
@@ -812,7 +812,7 @@ Index("idx_postfit_atoms_type", postfit_atoms.c.build, postfit_atoms.c.type)
 # aliases resolved); const is "0"/"1" for gnd/vcc/literals, else NULL.
 postfit_conns = Table("postfit_conns", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("build",     Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("build",     Integer, ForeignKey("corpus_builds.id", ondelete="CASCADE"), nullable=False),
     Column("atom",      Integer, ForeignKey("postfit_atoms.id", ondelete="CASCADE"), nullable=False),
     Column("port",      Text,    nullable=False),
     Column("bit",       Integer, nullable=False),   # 0 for scalar ports, LSB = 0
@@ -824,10 +824,11 @@ postfit_conns = Table("postfit_conns", metadata,
 Index("idx_postfit_conns_atom", postfit_conns.c.atom)
 Index("idx_postfit_conns_net", postfit_conns.c.build, postfit_conns.c.net)
 
-# Per-atom, per-field comparison: vendor value vs our lifted value.
-postfit_compare = Table("postfit_compare", metadata,
+# Per-atom, per-field verdicts (the fine-grained companion of gate_results; renamed from postfit_compare 2026-10-29).
+gate_verdicts = Table("gate_verdicts", metadata,
     Column("id",            Integer, primary_key=True, autoincrement=True),
-    Column("build",         Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("build",         Integer, ForeignKey("corpus_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("run_id",        Integer),                  # gate_runs.id of the aggregated run (set by record_gate_run callers)
     Column("atom",          Text),                  # postfit_atoms.name, NULL for lift-only rows
     Column("location",      Text),
     Column("field",         Text,    nullable=False),  # e.g. lut_mask, ff.clk, conn.dataa, pin
@@ -835,13 +836,13 @@ postfit_compare = Table("postfit_compare", metadata,
     Column("lifted_value",  Text),
     Column("verdict",       Text,    nullable=False),  # MATCH|MISMATCH|LIFT_MISSING|QUARTUS_ONLY
 )
-Index("idx_postfit_compare_build", postfit_compare.c.build, postfit_compare.c.field)
+Index("idx_gate_verdicts_build", gate_verdicts.c.build, gate_verdicts.c.field)
 
 # Vendor timing-report routes, one row per hop, every reported path kept (no dedupe).
 # Source: quartus_sta report_timing -show_routing (route_report.txt per build).
 route_hops = Table("route_hops", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("build",     Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("build",     Integer, ForeignKey("corpus_builds.id", ondelete="CASCADE"), nullable=False),
     Column("analysis",  Text,    nullable=False),   # "setup" | "recovery"
     Column("path",      Integer, nullable=False),   # Path #N within that analysis
     Column("from_node", Text),
@@ -872,7 +873,7 @@ Index("idx_route_hops_loc", route_hops.c.build, route_hops.c.location)
 # kind: elem | label (implicit element named by `label =`, a fan-out point).
 rcf_routes = Table("rcf_routes", metadata,
     Column("id",       Integer, primary_key=True, autoincrement=True),
-    Column("build",    Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
+    Column("build",    Integer, ForeignKey("corpus_builds.id", ondelete="CASCADE"), nullable=False),
     Column("net",      Text,    nullable=False),    # signal_name
     Column("branch",   Integer, nullable=False),    # 0-based within net, file order
     Column("parent_branch", Integer),               # NULL for branch 0
@@ -893,29 +894,7 @@ rcf_routes = Table("rcf_routes", metadata,
 Index("idx_rcf_routes_net", rcf_routes.c.build, rcf_routes.c.net, rcf_routes.c.branch)
 Index("idx_rcf_routes_loc", rcf_routes.c.build, rcf_routes.c.element, rcf_routes.c.x, rcf_routes.c.y)
 
-# Directed routing fuzz: one RCF element swapped, bits changed vs the unedited build.
-rcf_fuzz_bits = Table("rcf_fuzz_bits", metadata,
-    Column("id",       Integer, primary_key=True, autoincrement=True),
-    Column("build",    Integer, ForeignKey("postfit_builds.id", ondelete="CASCADE"), nullable=False),
-    Column("net",      Text,    nullable=False),
-    Column("branch",   Integer, nullable=False),
-    Column("hop",      Integer, nullable=False),
-    Column("element",  Text,    nullable=False),    # element type at the mux
-    Column("x",        Integer),
-    Column("y",        Integer),
-    Column("orig_idx", Integer),
-    Column("alt_idx",  Integer),                    # edit mode: idx tried; exclude mode: depth (1..); NULL = control
-    Column("mode",     Text),                       # edit | exclude
-    Column("status",   Text,    nullable=False),    # control | accepted | rerouted | fail:<step> | no_alternative
-    Column("excluded", JSON),                       # exclude mode: ["TYPE:XxYyS0Ik", ...] listed in the exclusion section
-    Column("new_route", JSON),                      # exported route of the target branch after the fit
-    Column("replay",   Text),                       # exported RCF re-imported alone: accepted | rejected | fail:<step>
-    Column("n_changed", Integer),
-    Column("changed_bits", JSON),                   # [[rbf byte offset, bit 0-7], ...] vs the control variant
-    Column("bt_diff", JSON),                        # mistral-cv decomp lines added/removed vs the control
-    Column("note",     Text),
-)
-Index("idx_rcf_fuzz_build", rcf_fuzz_bits.c.build, rcf_fuzz_bits.c.net)
+# rcf_fuzz_bits retired 2026-10-29: scripts/cyclonev_rcf_fuzz.py writes evidence(specimen-pair) rows instead.
 
 # ── Provenance framework (docs/provenance-schema.md, #141) ───────────────────
 # Generic for every family: subjects keyed (family, device, space, subject_key); sets of
@@ -977,8 +956,8 @@ evidence = Table("evidence", metadata,
     Column("source_ref",    Text, nullable=False),     # repo-relative file the row was read from
     Column("sha256",        Text),                     # of source_ref (provenance rot check)
     Column("generator",     Text),                     # script that produced the artefact
-    Column("build_base",    Integer, ForeignKey("postfit_builds.id")),
-    Column("build_spec",    Integer, ForeignKey("postfit_builds.id")),
+    Column("build_base",    Integer, ForeignKey("corpus_builds.id")),
+    Column("build_spec",    Integer, ForeignKey("corpus_builds.id")),
     Column("tool_version",  Text),
     Column("stable",        Boolean),                  # rebuild gave identical bits (NULL = not rebuilt)
     Column("result",        JSON, nullable=False),     # per-pair metadata (src/snk/hop/rcf...), digest, absence record, compare summary
@@ -1182,7 +1161,7 @@ corpus_members = Table("corpus_members", metadata,
     Column("name",          Text, nullable=False),
     Column("kind",          Text, nullable=False),     # oracle-build | third-party-image | roundtrip | lec
     Column("device",        Text),
-    Column("build_id",      Integer, ForeignKey("postfit_builds.id")),
+    Column("build_id",      Integer, ForeignKey("corpus_builds.id")),
     Column("source_ref",    Text),                     # dir / manifest entry
     Column("sha256",        Text),
     Column("gate_script",   Text),                     # scripts/<family>_gate.py or equivalent

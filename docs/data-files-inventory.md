@@ -19,7 +19,7 @@ input must be a stable, reviewable file); (c) derived → regenerate from the DB
 | `lifters/data/cyclonev_*_clocks.json`, `*.v` models | 110 KB | (a) hand-curated | keep | — |
 | `docs/coverage-history.jsonl` | 6 KB | (d) ledger | `coverage_ledger` table now holds tier × status rows (source `claims` / `inventory-live`); the jsonl line stays the human-readable record and gains a `claims` field | keep both; the table is the queryable copy |
 | `tests/baselines/ecp5_oracle.json` | 240 targets | (b) gate baseline | keep (reviewable gate input); ALSO loaded into `corpus_members` + `gate_runs/gate_results` by `claims_register.py --family ecp5` | keep |
-| `corpus/**/design.toml` | per build | (a) generator inputs + provenance | keep (source of `postfit_builds`) | keep |
+| `corpus/**/design.toml` | per build | (a) generator inputs + provenance | keep (source of `corpus_builds`) | keep |
 | `sources/cycloneiv-corpus/manifest.json`, `corpus/manifest.json`, `corpus/commercial-manifest.json` | 160 KB | (b) SHA-256 manifests of third-party binaries | keep; loaded into `corpus_members(kind=third-party-image)` | keep |
 | `tmp/ocmp/<tag>/*.json` (MachXO2 gate summaries) | — | (c) gate output in tmp | → `gate_runs` (register reads the newest tag when present); the per-design `_compare_summary.json` under `corpus/machxo2/*` is the durable copy | the gate should call `provenance.corpus.record_gate_run` directly (phase F follow-up) |
 | `tmp/cycloneiv_bit_inventory.json` | 1 MB | (c) | regenerable | nothing |

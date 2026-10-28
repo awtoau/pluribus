@@ -56,8 +56,8 @@ def main():
             "no_hi_cd_swap", "no_mlab_perm", "mode_ignored", "unused_not_zero"]
     res = {a: collections.Counter() for a in abls}
     with db.engine().connect() as conn:
-        builds = list(conn.execute(select(schema.postfit_builds)
-                                   .where(schema.postfit_builds.c.status == "ok")))
+        builds = list(conn.execute(select(schema.corpus_builds)
+                                   .where(schema.corpus_builds.c.status == "ok")))
     n_dense = 0
     for b in builds:
         atoms, by_atom, _ = cmp.load_quartus(b.id)

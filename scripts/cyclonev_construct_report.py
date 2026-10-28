@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write docs/cyclonev-construct-dictionary.md from the corpus DB (issue #104).
 
-Reads postfit_builds / postfit_atoms / postfit_conns / postfit_compare / route_hops for every
+Reads corpus_builds / postfit_atoms / postfit_conns / gate_verdicts / route_hops for every
 design whose design.toml has a `construct` field (made by scripts/cyclonev_construct_gen.py).
 Nothing in the output is hand-written except the fixed headings and column legends.
 Usage: python3.15t scripts/cyclonev_construct_report.py
@@ -40,7 +40,7 @@ def vkey(v):
 
 
 def load_builds(c):
-    rows = c.execute("select id, design, status, out_dir, toolchain from postfit_builds").fetchall()
+    rows = c.execute("select id, design, status, out_dir, toolchain from corpus_builds").fetchall()
     builds = []
     for bid, design, status, out_dir, tc in rows:
         spec = tomllib.loads((REPO / out_dir / "design.toml").read_text())
@@ -97,7 +97,7 @@ def facts(c, b):
     f["route"] = el
     verd = collections.Counter()
     pairs = set()
-    for field, verdict in c.execute("select field, verdict from postfit_compare where build=?", (bid,)):
+    for field, verdict in c.execute("select field, verdict from gate_verdicts where build=?", (bid,)):
         key = re.sub(r"\.(dataa|datab|datac|datad|datae|dataf|datag|cin|sharein)$", ".<in>", field)
         verd[verdict] += 1
         pairs.add((key, verdict))

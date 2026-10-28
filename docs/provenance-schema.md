@@ -63,7 +63,7 @@ Evidence
 
 | table | one line |
 |---|---|
-| `evidence` | one measurement / decode / compare / absence event: kind, family, device, `source_ref` (evidence file path or build names), optional `build_base`/`build_spec` → `postfit_builds`, generator script + version, tool version, `stable`, `result` JSON (raw diff, digest, absence record), `sha256` of the source file, commit |
+| `evidence` | one measurement / decode / compare / absence event: kind, family, device, `source_ref` (evidence file path or build names), optional `build_base`/`build_spec` → `corpus_builds`, generator script + version, tool version, `stable`, `result` JSON (raw diff, digest, absence record), `sha256` of the source file, commit |
 | `evidence_scopes` | which scopes an evidence row touches (for "evidence intersects claim" without JSON scans) |
 
 Patterns and matchers
@@ -187,7 +187,7 @@ Weakest link: `provenance.tiers.weakest(chain)`; a claim's effective tier =
 | `docs/cycloneiv-corpus.md` manifest (`scripts/cycloneiv_corpus_fetch.py`) | `corpus_members(kind=third-party-image, required=false)` + `evidence(image-hit)` per decoded image |
 | MachXO2 / ECP5 device-db tile types | one `vendor-decoded` claim per tile type (space `tile-bit`, scope `tile-class`), status `oracle-verified` where the gate covers the type; corpus members from `scripts/machxo2_gate.py` sets and `tests/baselines/ecp5_oracle.json` targets; gate_results from the baseline JSON |
 | Gowin | corpus members from `scripts/gowin_lec.py` designs (kind `lec`); chipdb → `vendor-decoded` claims per tile type |
-| Cyclone V | `postfit_builds` ok rows → corpus members; `postfit_compare` verdicts → gate_results when present |
+| Cyclone V | `corpus_builds` ok rows → corpus members; `gate_verdicts` verdicts → gate_results when present |
 
 ## Lookup cost
 

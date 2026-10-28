@@ -75,7 +75,7 @@ def main():
     names = vf.designs(root)
     tables = nt.load(vf.DEVICE)
     conn = orc.connect()
-    bids = dict(conn.execute("select design, id from postfit_builds"))
+    bids = dict(conn.execute("select design, id from corpus_builds"))
     conn.close()
     tot = collections.Counter()
     ex = {}

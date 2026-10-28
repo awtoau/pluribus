@@ -4,7 +4,7 @@ Quartus's own post-fit netlist is the oracle for the Bluebird acceptance loop (V
 
 ## What it checks
 
-- Device `5CEBA4U19C8` (e50f), Quartus 25.1std.0 Lite (version string is recorded per build in `postfit_builds.toolchain`).
+- Device `5CEBA4U19C8` (e50f), Quartus 25.1std.0 Lite (version string is recorded per build in `corpus_builds.toolchain`).
 - Oracle inputs per build: `postfit.vo` (`quartus_eda --simulation --tool=modelsim --format=verilog`), `route_report.txt` (`quartus_sta`).
   - quartus_eda warns this is the "functional simulation netlist" (the only type for this device). It still carries every placed atom, all ports, defparams and `// Location:` comments.
 - Lift under test: `mistral-cv decomp` -> `lifters/cyclonev_lift.py` -> `load.py` + `verilog.py` (`lifted.v`). The compare reads the lifter's own `Design.luts` / `Design.ffs`; it holds no LUT mapping.

@@ -26,7 +26,7 @@ Usage:
   target = net|dest atom|element TYPE|nth occurrence on that branch
   --alts auto: candidates mined from the corpus edge graph (rcf_routes, all builds): m is an
   alternative to the element if pred->m and m->succ edges (same type/idx/relative x,y) were seen.
-Log: tmp/logs/cyclonev_rcf_fuzz.log ; rows -> table rcf_fuzz_bits (corpus.db).
+Log: tmp/logs/cyclonev_rcf_fuzz.log ; rows -> evidence(specimen-pair) in the corpus DB (provenance.evidence_io).
 """
 import argparse
 import logging
@@ -352,26 +352,16 @@ def _main():
     log.info("control vs corpus bitstream.rbf: %s bits differ", None if orig_bits is None else len(orig_bits))
     fwd = mine_edges() if a.mode == "edit" and a.alts == "auto" else None
     bid = db.connect_threadsafe().execute(
-        "select id from postfit_builds where design=?", (a.design,)).fetchone()[0]
-    tt = schema.rcf_fuzz_bits
+        "select id from corpus_builds where design=?", (a.design,)).fetchone()[0]
     if a.mode == "exclude":
         with ThreadPoolExecutor(a.workers) as ex:
             outs = list(ex.map(lambda sp: exclude_chain(a, qb, base, ctl / "build.rbf", sp, a.depth),
                                a.target))
         for spec, (t, rows) in zip(a.target, outs):
             net = spec.split("|")[0]
-            common = dict(build=bid, net=net, branch=t["branch"], hop=t["hop"], element=t["element"],
+            common = dict(net=net, branch=t["branch"], hop=t["hop"], element=t["element"],
                           x=t["x"], y=t["y"], orig_idx=t["idx"])
-            with db.engine().begin() as conn:
-                conn.execute(delete(tt).where((tt.c.build == bid) & (tt.c.net == net)
-                                              & (tt.c.element == t["element"]) & (tt.c.x == t["x"])
-                                              & (tt.c.y == t["y"]) & (tt.c.mode == "exclude")))
-                conn.execute(insert(tt), [dict(common, mode="exclude", alt_idx=None, status="control",
-                                               excluded=None, new_route=None, replay=None,
-                                               n_changed=len(orig_bits) if orig_bits is not None else None,
-                                               changed_bits=None, bt_diff=None,
-                                               note="control vs corpus bitstream.rbf")]
-                             + [dict(common, **r) for r in rows])
+            record_evidence(bid, a.design, common, "exclude", rows, orig_bits)
             for r in rows:
                 log.info("%s depth %s %s bits=%s replay=%s new=%s", spec, r["alt_idx"], r["status"],
                          r["n_changed"], r["replay"], (r["new_route"] or [])[:8])
@@ -395,20 +385,37 @@ def _main():
             if str(r["status"]).startswith("fail:"):
                 log.info("retry alt %s after %s", r["alt_idx"], r["status"])
                 results[k] = run_variant(a, qb, base, target, ctl / "build.rbf", r["alt_idx"])
-        common = dict(build=bid, net=net, branch=t["branch"], hop=t["hop"], element=el,
+        common = dict(net=net, branch=t["branch"], hop=t["hop"], element=el,
                       x=t["x"], y=t["y"], orig_idx=t["idx"])
-        with db.engine().begin() as conn:
-            conn.execute(delete(tt).where((tt.c.build == bid) & (tt.c.net == net)
-                                          & (tt.c.element == el) & (tt.c.x == t["x"])
-                                          & (tt.c.y == t["y"]) & (tt.c.mode == "edit")))
-            conn.execute(insert(tt), [dict(common, mode="edit", alt_idx=None, status="control",
-                                           excluded=None, new_route=None, replay=None, n_changed=len(orig_bits) if orig_bits is not None else None,
-                                           changed_bits=None, bt_diff=None,
-                                           note="control vs corpus bitstream.rbf")] +
-                         [dict(common, **r) for r in results])
+        record_evidence(bid, a.design, common, "edit", results, orig_bits)
         for r in results:
             log.info("%s alt %2s %-10s changed_bits=%s %s", spec, r["alt_idx"], r["status"],
                      r["n_changed"], (r["note"] or "")[:100])
+
+
+def record_evidence(bid, design, common, mode, rows, orig_bits):
+    """One evidence(specimen-pair) row per variant (docs/provenance-schema.md): the changed-bit set
+    vs the control build, flat index = rbf byte offset * 8 + bit; everything else in result.meta.
+    Replaces the retired rcf_fuzz_bits table (write-only, docs/schema-audit.md)."""
+    from sqlalchemy import select
+    from provenance import evidence_io as E
+    commit = E.git_head(REPO)
+    with db.engine().begin() as conn:
+        E.ensure_family(conn, "cyclonev")
+        b = conn.execute(select(schema.corpus_builds.c.device, schema.corpus_builds.c.out_dir)
+                         .where(schema.corpus_builds.c.id == bid)).fetchone()
+        device = (b[0] if b else None) or "unknown"
+        src = f"rcf_fuzz:{design}"
+        key = f"{common['net']}:{common['element']}@{common['x']},{common['y']}:{mode}"
+        E.record_specimen(conn, "cyclonev", device, f"{key}:control", f"{design}:corpus-bitstream",
+                          [b_ * 8 + bit for b_, bit in (orig_bits or [])], [],
+                          dict(common, mode=mode, status="control", note="control vs corpus bitstream.rbf"),
+                          src, "scripts/cyclonev_rcf_fuzz.py", commit, 8, build_base=bid)
+        for r in rows:
+            meta = dict(common, mode=mode, **{k: v for k, v in r.items() if k != "changed_bits"})
+            E.record_specimen(conn, "cyclonev", device, f"{key}:alt{r.get('alt_idx')}", f"{key}:control",
+                              [b_ * 8 + bit for b_, bit in (r.get("changed_bits") or [])], [], meta,
+                              src, "scripts/cyclonev_rcf_fuzz.py", commit, 8, build_base=bid)
 
 
 if __name__ == "__main__":

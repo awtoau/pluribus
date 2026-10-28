@@ -229,11 +229,11 @@ def toolchain_version(ddir):
 
 
 def record_build(name, ddir, spec, srcs, status):
-    """Replace this design's postfit_builds row (cascade clears atoms/conns/compare)."""
+    """Replace this design's corpus_builds row (cascade clears atoms/conns/compare)."""
     import db
     import schema
     from sqlalchemy import delete, insert
-    t = schema.postfit_builds
+    t = schema.corpus_builds
     with db.engine().begin() as conn:
         conn.execute(delete(t).where(t.c.design == name))
         return conn.execute(insert(t).values(
@@ -325,7 +325,7 @@ def main():
     ap.add_argument("--skip-quartus", action="store_true",
                     help="reuse existing outputs; only re-parse + re-compare")
     ap.add_argument("--match", help="glob on design names, e.g. 'c_*'")
-    ap.add_argument("--missing", action="store_true", help="only designs with no postfit_builds row")
+    ap.add_argument("--missing", action="store_true", help="only designs with no corpus_builds row")
     ap.add_argument("--rebuild", action="store_true",
                     help="rerun Quartus even when the input hash matches the last build")
     ap.add_argument("--adopt-keys", action="store_true",
@@ -347,7 +347,7 @@ def main():
     if args.missing:
         import db
         with db.engine().connect() as conn:
-            have = {r[0] for r in conn.exec_driver_sql("select design from postfit_builds")}
+            have = {r[0] for r in conn.exec_driver_sql("select design from corpus_builds")}
         names = [n for n in names if n not in have]
     if args.adopt_keys:
         for n in names:
