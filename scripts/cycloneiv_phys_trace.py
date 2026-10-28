@@ -235,6 +235,18 @@ class Phys:
                     n_new += 1
             log.info("li_map: %d new entries from %s (%d total lis)", n_new, LI_MAP, len(self.lis))
         self.li_inv = {(c, v[1]): (kid, v[0]) for (c, kid), v in self.lis.items()}
+        # per-tile exact entries (specimen fuzzer, issue #141): edge tiles and un-generalised
+        # interior tiles; they override the class tables where present
+        def tile_key_of(k):
+            tile, key = k.split("|", 1)
+            kid = self.key_id.get(key)
+            if kid is None:
+                return None
+            tx, ty = map(int, tile.split(","))
+            return (tx, ty, kid)
+        self.wires_tile = {tile_key_of(k): tuple(v) for k, v in m.get("wires_tile", {}).items() if tile_key_of(k)}
+        self.lis_tile = {tile_key_of(k): tuple(v) for k, v in m.get("lis_tile", {}).items() if tile_key_of(k)}
+        self.li_tile_inv = {(tx, ty + dy, i): (kid, dy) for (tx, ty, kid), (dy, i) in self.lis_tile.items()}
         self.defaults = {key_of(k): {code_off(*d, SWIN) for d in v} for k, v in m["defaults"].items() if key_of(k)}
         self.cells = {int(f): tuple(v) for f, v in m["cells"].items()}
         self.rec2block = self.build_rec2block()
@@ -264,6 +276,11 @@ class Phys:
         r2b[recs[good]] = bl[good]
         r2b[dup] = -2                       # two blocks claim one record: inconsistent, reported by verify
         self.rec_conflicts = int(dup.sum())
+        for (tx, ty, kid), (fam, dvx, dvy) in self.wires_tile.items():   # exact per-tile overrides
+            b = self.block_at(tx, ty, kid)
+            r = self.rec_of(fam, XMIRROR - tx + dvx, ty + dvy)
+            if b >= 0 and r >= 0:
+                r2b[r] = b
         return r2b
 
     def rec_of(self, fam, vx, vy):
@@ -528,7 +545,7 @@ class PhysTracer:
 
     def li_block(self, x, y, i):
         P = self.P
-        hit = P.li_inv.get((tile_class(x, y, P.xm, P.ym), i))
+        hit = P.li_tile_inv.get((x, y, i)) or P.li_inv.get((tile_class(x, y, P.xm, P.ym), i))
         if hit is None:
             return -1
         kid, dy = hit

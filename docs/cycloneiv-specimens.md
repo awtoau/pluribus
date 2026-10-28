@@ -8,9 +8,16 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
 
 - 1–2 cells (LUT→LUT or LUT→FF), ONE net under test, LOCATION-pinned sites.
 - Built as a **pair**: base design (no net) + specimen; the base subtracts the always-on config
-  groups, so the fired-block diff is the path alone.
-- Oracle per specimen: the post-fit RCF path; Chip Planner `routing_path` (::quartus::chip_planner,
-  after `read_netlist`) preferred once verified — machine-readable, no RCF name aliasing (#138).
+  groups, so the fired-block diff is the path alone.  Implemented: interior rows = l2 reads the
+  input pin in the base; pin row 6 = constant-LUT base; pin row 7 = base drives the pin from a
+  second LAB (the exit mux then differs and survives the diff).
+- Precondition found by the first specimen: the asm→plane frame map needed per-column asm bases
+  (`afx_map`, cycloneiv_asm_decode) — 7 LAB columns sat inside the plane's M9K spans and decoded
+  to nothing; see cycloneiv-ddb-format.md "Coordinates".
+- Oracle per specimen: the post-fit RCF path.  Chip Planner probed 2026-10-28 and REJECTED:
+  `routing_path` internal-errors in 25.1std Lite (`dump_routing_path` → `get_delay` →
+  `CDB_ATOM_NODE::get_instance_name`, on specimen and corpus builds alike); `get_nodes` returns
+  used atoms only (no device-wide dump); node ids are atom indices, not routing.ddb record ids.
 - Answer format: exact (tile_class, block key) → output record / pin, provenance `specimen`, into
   `lifters/data/cycloneiv_ep4cgx150_phys_map.json`.
 - One question per build. A specimen whose answer is ambiguous is split into narrower specimens,
@@ -64,7 +71,9 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
 ## Generalisation + verification
 
 - ≥2 positions per (kind × tile class) must agree before an answer generalises class-wide; any
-  disagreement ⇒ enumerate every position of that class (brute-force-first rule).
+  disagreement ⇒ enumerate every position of that class (brute-force-first rule).  A single
+  interior observation stays a per-tile entry (`wires_tile` / `lis_tile` in the phys map) until
+  a second position confirms it.
 - Held-out specimens verify the generalised map; the fixed 76-design gate set verifies
   composition end-to-end.
 - Every specimen answer must agree with the routing.ddb fan-out decode wherever that overlaps

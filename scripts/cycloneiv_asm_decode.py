@@ -68,6 +68,80 @@ def asm_to_plane(fa, va, fxs):
     return (FX + FRAME_MIRROR - (fa - FX)).astype(np.int32), (ROW_MIRROR - va).astype(np.int32)
 
 
+V_COL = re.compile(r"^(?:V4R\d+C(\d+)(?:UP|DN)|V16_C(\d+)(?:UP|DN)_R)\[")
+AFX_MIN_VOTES = 1000     # V4/V16 entries at the peak before a derived AFX is trusted
+MAX_OFF = 17             # asm band width: offsets 0..17 inside a column (plane offsets 0..+17)
+
+
+def afx_map(g, grec, gid, fa, names):
+    """Data-driven asm-side column bases.  The asm frame axis lays columns out differently around
+    M9K / MUL / IO columns: 7 LAB columns of EP4CGX150 sit inside the plane's M9K frame spans, so
+    AFX != FX there and the old FX-based mirror mapped them nowhere (issue #141 specimen finding).
+    A V4 / V16 record's destination muxes live in its own column (vendor C = fitter x + 2); the
+    per-column fa histogram of those entries peaks at a fixed band offset, so AFX = peak - that
+    offset.  The offset itself is the die-wide MODE of (peak - FX) over LAB columns: most columns
+    are already correctly placed by FX (validated against the corpus), so the mode is the true
+    peak offset and only the outlier columns move.
+    -> {x: AFX}, defaulting to FX where there is no V4/V16 evidence."""
+    nrec = int(grec.max()) + 1
+    x_of_rec = np.full(nrec, -1, np.int16)
+    for r, nm in names.items():
+        m = V_COL.match(nm)
+        if m and r < nrec:
+            x_of_rec[r] = int(m.group(1) or m.group(2)) - 2
+    ex = x_of_rec[grec[gid]]
+    m = (ex >= 0) & (ex <= g.xmax)
+    packed = ex[m].astype(np.int64) * 6154 + fa[m]
+    u, c = np.unique(packed, return_counts=True)
+    ux, ufa = (u // 6154).astype(np.int32), (u % 6154).astype(np.int32)
+    afx = {x: g.FX[x] for x in g.FX}
+    peaks = {}
+    for x in np.unique(ux).tolist():
+        sel = np.flatnonzero(ux == x)
+        best = int(np.argmax(c[sel]))
+        if c[sel][best] >= AFX_MIN_VOTES:
+            peaks[int(x)] = (int(ufa[sel][best]), int(c[sel][best]))
+    mode = collections.Counter(p - g.FX[x] for x, (p, _n) in peaks.items() if g.kind.get(x) == "LAB").most_common(1)
+    if not mode:
+        db_die("no LAB column peaks for the AFX mode")
+    off = mode[0][0]
+    log.info("AFX peak offset (die-wide mode over LAB columns): %d (%d columns)", off, mode[0][1])
+    moved = []
+    for x, (p, votes) in peaks.items():
+        base = p - off
+        if base != afx[x]:
+            moved.append((x, afx[x], base, votes))
+        afx[x] = base
+    for x, old, new, votes in sorted(moved):
+        log.info("AFX column %d: %s -> %d (%d votes at peak)", x, old, new, votes)
+    vals = collections.Counter(afx.values())
+    dup = {v: n for v, n in vals.items() if n > 1}
+    if dup:
+        db_die(f"derived AFX collide: {dup}")
+    return afx
+
+
+def db_die(msg):
+    log.error(msg)
+    raise SystemExit(msg)
+
+
+DROP_F = 30000           # plane frame for out-of-band entries: beyond any plane, never set, keys positive
+
+
+def asm_to_plane_afx(fa, va, g, afx):
+    """asm (frame, v) -> plane (frame, v) using per-column asm bases.  Entries outside any band's
+    valid offset range (0..MAX_OFF: M9K bulk, interface extras) get plane frame DROP_F: never fire."""
+    fa, va = np.asarray(fa, np.int64), np.asarray(va, np.int64)
+    cols = sorted(afx, key=lambda x: afx[x])
+    bases = np.array([afx[x] for x in cols], np.int64)
+    pfx = np.array([g.FX[x] for x in cols], np.int64)
+    i = np.clip(np.searchsorted(bases, fa, "right") - 1, 0, len(bases) - 1)
+    off = fa - bases[i]
+    pf = np.where((off >= 0) & (off <= MAX_OFF), pfx[i] + FRAME_MIRROR - off, DROP_F)
+    return pf.astype(np.int32), (ROW_MIRROR - va).astype(np.int32)
+
+
 def programmed(b0, b1, first=None):
     """Which entries of a group are programmed 1: the select bit (the group's first entry; b0 = +1, or 0 on
     ~3 % of the 3-groups), and a second-level bit iff b1 == -1."""
@@ -85,8 +159,11 @@ def prepare():
     b0 = (flag & 0xFF).astype(np.int8)
     b1 = ((flag >> 8) & 0xFF).astype(np.int8)
     g = cg.load("ep4cgx150")
-    fxs = np.array(sorted(g.FX[x] for x in g.FX), np.int64)
-    pf, pv = asm_to_plane(pos % 6154, pos // 6154, fxs)
+    names = icnames()
+    fa = (pos % 6154).astype(np.int64)
+    afx = afx_map(g, np.asarray(grec), gid, fa, names)
+    pf, pv = asm_to_plane_afx(fa, pos // 6154, g, afx)
+    log.info("entries outside any band (dropped, never fire): %d / %d", int((pf == DROP_F).sum()), len(pf))
     first = np.zeros(len(pos), bool)
     first[gstart[gsize == 3]] = True          # the select entry of every 3-group (b0 = 0 on some)
     pred = programmed(b0, b1, first)
@@ -117,7 +194,7 @@ def prepare():
     for name, arr in (("pf", pf), ("pv", pv), ("pred", pred), ("gid", gid), ("grec", grec), ("gstart", gstart),
                       ("gsize", gsize), ("block", block), ("b0", b0), ("e_ukey", e_ukey), ("ukey_block", ukey_block)):
         np.save(f"{DEC}_{name}.npy", arr)
-    names = icnames()
+    json.dump(afx, open(f"{DEC}_afx.json", "w"))
     pickle.dump(names, open(f"{DEC}_names.pkl", "wb"))
     log.info("prepared: %d entries, %d groups, %d blocks, %d named records", len(pos), len(gsize), block.max() + 1, len(names))
 
