@@ -181,7 +181,7 @@ def load_data(conn, bs_id: int) -> dict:
     # EBR buses: (block, bus_role, bit_index, port, net)
     ebr_buses = q("SELECT block, bus_role, bit_index, port, net FROM ebr_buses WHERE bitstream=:bs_id ORDER BY block, bus_role, bit_index")
     # EBR/BSRAM ports: (block, port, role, net) — every hard_cell_ports row except the EFB's
-    ebr_ctrl  = q("SELECT cell, port, role, net FROM hard_cell_ports "
+    ebr_ctrl  = q("SELECT cell AS block, port, role, net FROM hard_cell_ports "
                   "WHERE bitstream=:bs_id AND cell<>'EFB' ORDER BY cell, port")
     # EBR recovered init (native #54): physical 1024×9 words per block.
     # ebr_init_map[block] = {addr: word9};  a block absent (or all-zero) is a
