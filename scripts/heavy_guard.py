@@ -380,6 +380,21 @@ def _tree_cpu_s(proc):
 
 
 def run_stall_guarded(cmd, what, log, stall_s=60, overall_s=600, **popen_kw):
+    """_run_stall_guarded with a private TMPDIR that is removed afterwards, even when the tool is killed.
+
+    EDA tools (Quartus alt*.dir, 5.7 MB each) leak scratch when killed; per-run removal bounds the leak to zero.
+    """
+    import shutil
+    import tempfile
+    job_tmp = tempfile.mkdtemp(prefix="job-", dir=os.environ.get("TMPDIR") or None)
+    env = dict(popen_kw.pop("env", None) or os.environ, TMPDIR=job_tmp)
+    try:
+        return _run_stall_guarded(cmd, what, log, stall_s, overall_s, env=env, **popen_kw)
+    finally:
+        shutil.rmtree(job_tmp, ignore_errors=True)
+
+
+def _run_stall_guarded(cmd, what, log, stall_s=60, overall_s=600, **popen_kw):
     """subprocess.run replacement that cannot hang a batch.
 
     - Kills the whole process tree when its CPU time does not advance for stall_s (hung/blocked),

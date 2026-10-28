@@ -49,6 +49,38 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
+def _redirect_job_tmp(max_age_s=1800):
+    """Point TMPDIR (inherited by every EDA child) at a disk directory, and reap stale scratch.
+
+    Quartus leaves alt<NNNN>_<id>.dir (a 5.7 MB device.db copy each) in TMPDIR when it is killed;
+    in /tmp (tmpfs = RAM, user quota) 2,400 of them held 14 GB (2026-10-29).  Disk scratch is
+    dedicated, so age-based reaping is safe: a live job touches its directory continuously, and
+    30 min is ~100x the longest Quartus step (fit ~30 s).  Opt out: PLURIBUS_NO_TMP_REDIRECT=1.
+    """
+    import time
+    if os.environ.get("PLURIBUS_NO_TMP_REDIRECT"):
+        return
+    root = os.environ.get("PLURIBUS_JOB_TMP") or os.path.join(REPO, "tmp", "job_tmp")
+    try:
+        os.makedirs(root, exist_ok=True)
+    except OSError:
+        return
+    os.environ["TMPDIR"] = root
+    cutoff = time.time() - max_age_s
+    uid = os.getuid()
+    legacy = [os.path.join("/tmp", n) for n in os.listdir("/tmp") if re.fullmatch(r"alt\d+_\d+\.dir", n)]
+    for p in [os.path.join(root, n) for n in os.listdir(root)] + legacy:
+        try:
+            st = os.lstat(p)
+            if st.st_uid == uid and st.st_mtime < cutoff:
+                shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) and not os.path.islink(p) else os.unlink(p)
+        except OSError:
+            pass
+
+
+_redirect_job_tmp()
+
 # Conventional oss-cad-suite roots, in the order a developer is likeliest to have
 # one.  `~` first because a per-user unpack is how the suite is normally
 # installed (it ships as a tarball, not a package).
