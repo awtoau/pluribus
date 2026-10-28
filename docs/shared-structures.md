@@ -1,4 +1,4 @@
-# Shared per-device structures (free-threaded Python) - #146
+# Shared per-device structures (free-threaded Python) - #148
 
 Rule: data that depends only on the device is built once per process and read by all threads; per-design state is private.
 Measured 2026-10-29, python3.15t, 85F designs, PSS peak, box shared with other agents (walls +-20%). Raw: `scripts/ecp5_share_bench.py`, `tmp/share-bench/*.json`.

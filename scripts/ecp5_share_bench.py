@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Memory/wall benchmark + output-identity check for concurrent ECP5 lifts (#146).
+"""Memory/wall benchmark + output-identity check for concurrent ECP5 lifts (#148).
 
 Runs N concurrent decode+lift jobs (one design each) in a child process (threads) or a
 process pool, samples the process tree's PSS, and records a digest of every lifted netlist so

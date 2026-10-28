@@ -659,11 +659,11 @@ def main():
     # and can use many more workers, so --no-lift pairs well with a high count.
     ap.add_argument("--workers", type=int, default=4,
                     help="parallel workers (threads mode shares one graph per device: "
-                         "8 concurrent 85F lifts peak ~2.2 GB, #146)")
+                         "8 concurrent 85F lifts peak ~2.2 GB, #148)")
     ap.add_argument("--mode", choices=["threads", "procs"], default="threads",
                     help="threads (default): workers share one routing graph per device in one "
                          "process; procs: old per-process mode, each worker builds its own "
-                         "(A/B and memory comparison, #146)")
+                         "(A/B and memory comparison, #148)")
     ap.add_argument("--only", help="substring filter on label")
     ap.add_argument("--no-lift", action="store_true")
     ap.add_argument("--extra", action="append", default=[],
