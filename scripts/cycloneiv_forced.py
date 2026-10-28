@@ -135,7 +135,13 @@ LAB = (10, 10)
 PFX = "gxll"          # design-name prefix; X10 Y10 keeps the original names
 
 
+SNK_DX = 0            # sink LAB = (LAB x + SNK_DX, LAB y); 0 = same-LAB LOCAL_LINE grid
+SMALL = False         # Tier-0/1 style: sources/sinks N in {0, 2, 4} only
+
+
 def lab_file(suffix=""):
+    if PFX.startswith("gxnb"):
+        return REPO / "tmp" / f"cycloneiv_forced_{PFX}{'_small' if SMALL else ''}{suffix}.json"
     return REPO / "tmp" / (f"cycloneiv_forced_lab{'' if PFX == 'gxll' else '_' + PFX[4:]}{suffix}.json")
 
 
@@ -153,7 +159,7 @@ def pair_designs(pairs):
                  f"    u1 ({conn}.combout(y));\nendmodule\n")
             out[f"{PFX}_{src:02d}_{snk:02d}_{kind}"] = (
                 v, [f"set_location_assignment {lc(*LAB, src)} -to u0",
-                    f"set_location_assignment {lc(*LAB, snk)} -to u1", pin], f"LOCAL_LINE u0@N{src} -> u1@N{snk}")
+                    f"set_location_assignment {lc(LAB[0] + SNK_DX, LAB[1], snk)} -to u1", pin], f"LOCAL_LINE u0@N{src} -> u1@N{snk}")
     return out
 
 
@@ -164,8 +170,19 @@ def rcf_hop(name):
     return None if not m else [m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4)), m.group(5)]
 
 
+def rcf_path(name):
+    """Every RCF element of net u0_o up to its dest (u1, port): ([type, x, y, I], ...) + port."""
+    t = (CORPUS / name / "routing.rcf").read_text()
+    m = re.search(r"signal_name = u0_o \{\n(.*?)\tdest = \( u1, \w+ \), route_port = (\w+);", t, re.S)
+    if not m:
+        return None
+    els = re.findall(r"\t(\w+):X(\d+)Y(\d+)S0I(\d+);", m.group(1))
+    return {"path": [[e[0], int(e[1]), int(e[2]), int(e[3])] for e in els], "port": m.group(2)}
+
+
 def lab(jobs):
-    pairs = [(a, b) for a in range(0, 32, 2) for b in range(0, 32, 2) if a != b]
+    ns = (0, 2, 4) if SMALL else range(0, 32, 2)
+    pairs = [(a, b) for a in ns for b in ns if SNK_DX or a != b]
     ds = pair_designs(pairs)
     for n, (v, q, p) in ds.items():
         write_design(n, v, q, p)
@@ -177,7 +194,7 @@ def lab(jobs):
             log.info("MISSING build %s", n)
             continue
         on, off = diff(n + "_s", n + "_b")
-        res[n] = {"src": a, "snk": b, "hop": rcf_hop(n + "_s"), "on": on, "off": off}
+        res[n] = {"src": a, "snk": b, "hop": rcf_hop(n + "_s"), "rcf": rcf_path(n + "_s"), "on": on, "off": off}
     lab_file().write_text(json.dumps(res))
     log.info("lab grid: %d / %d pairs diffed", len(res), len(pairs))
 
@@ -192,7 +209,7 @@ def rebuild(frac, seed, jobs):
     bad = 0
     for n in pick:
         on, off = diff(n + "_s", n + "_b")
-        if on != res[n]["on"] or off != res[n]["off"] or rcf_hop(n + "_s") != res[n]["hop"]:
+        if on != res[n]["on"] or off != res[n]["off"] or rcf_path(n + "_s") != res[n]["rcf"]:
             bad += 1
             log.error("UNSTABLE %s", n)
     log.info("rebuild: %d pairs, %d unstable", len(pick), bad)
@@ -290,15 +307,54 @@ def compare(labs):
             log.info("  NOMATCH %s: LAB %s vs X10Y10 %s", k, fv(res[k]["on"]), fv(ref[k.replace(f"gxll{x}x{y}", "gxll")]["on"]))
 
 
+def compare_nb(refname, others):
+    """Neighbour-LAB grids vs a reference grid (tmp/cycloneiv_forced_<name>.json): best single
+    (dframe, dv) offset, matched pairs, every non-match listed, plus RCF path (type, I) equality."""
+    import collections
+    nv = cc.load_plane_only("gxll_00_02_s").shape[1]
+    ld = lambda n: json.loads((REPO / "tmp" / f"cycloneiv_forced_{n}.json").read_text())   # noqa: E731
+    fv = lambda bs: sorted((b // nv, b % nv) for b in bs)                                  # noqa: E731
+    ref = ld(refname)
+    rk = lambda k, pf, rpf: k.replace(pf, rpf, 1)                                          # noqa: E731
+    for o in others:
+        res = ld(o)
+        pf, rpf = o.split("_small")[0], refname.split("_small")[0]
+        offs = collections.Counter()
+        for k, v in res.items():
+            r = ref.get(rk(k, pf, rpf))
+            if r and len(r["on"]) == len(v["on"]):
+                for (f1, v1), (f0, v0) in zip(fv(v["on"]), fv(r["on"])):
+                    offs[(f1 - f0, v1 - v0)] += 1
+        (df, dv), cnt = offs.most_common(1)[0]
+        same, bad, pathsame = 0, [], 0
+        for k, v in sorted(res.items()):
+            r = ref[rk(k, pf, rpf)]
+            want = [(a + df, b + dv) for a, b in fv(r["on"])]
+            if want == fv(v["on"]) and not v["off"]:
+                same += 1
+            else:
+                bad.append(k)
+            sig = lambda x: ([(e[0], e[3]) for e in x["path"]], x["port"]) if x else None   # noqa: E731
+            pathsame += sig(v["rcf"]) == sig(r["rcf"])
+        log.info("%s vs %s: offset (dframe %d, dv %d) %d votes; %d / %d pairs match; RCF (type, I, port) path identical %d / %d",
+                 o, refname, df, dv, cnt, same, len(res), pathsame, len(res))
+        for k in bad:
+            log.info("  NOMATCH %s: %s vs ref %s | paths %s / %s", k, fv(res[k]["on"]), fv(ref[rk(k, pf, rpf)]["on"]),
+                     res[k]["rcf"], ref[rk(k, pf, rpf)]["rcf"])
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("tier", "lab", "rebuild", "holdout", "compare"))
+    ap.add_argument("cmd", choices=("tier", "lab", "rebuild", "holdout", "compare", "compare_nb"))
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--lab", default="10,10", help="LAB X,Y for lab/rebuild/holdout")
+    ap.add_argument("--dx", type=int, default=0, help="sink LAB column offset (neighbour-LAB grid)")
+    ap.add_argument("--small", action="store_true", help="N in {0,2,4} only")
     a = ap.parse_args()
-    global LAB, PFX
+    global LAB, PFX, SNK_DX, SMALL
     LAB = tuple(int(v) for v in a.lab.split(","))
-    PFX = "gxll" if LAB == (10, 10) else f"gxll{LAB[0]}x{LAB[1]}"
+    SNK_DX, SMALL = a.dx, a.small
+    PFX = ("gxll" if LAB == (10, 10) else f"gxll{LAB[0]}x{LAB[1]}") if not a.dx else f"gxnb{LAB[0]}x{LAB[1]}d{a.dx}"
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     log.setLevel(logging.INFO)
     fz.log.setLevel(logging.INFO)
@@ -310,6 +366,8 @@ def main():
         tier(a.jobs)
     elif a.cmd == "lab":
         lab(a.jobs)
+    elif a.cmd == "compare_nb":
+        compare_nb("gxnb10x10d1", ["gxnb58x30d1", "gxnb37x60d1", "gxnb100x75d1", "gxnb6x10d2"])
     elif a.cmd == "compare":
         compare([(58, 30), (37, 60), (100, 75)])
     elif a.cmd == "rebuild":
