@@ -85,6 +85,23 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
 - Every specimen answer must agree with the routing.ddb fan-out decode wherever that overlaps
   (two exact sources; a disagreement is a decode bug in one of them, find which).
 
+## Status (2026-10-28 sweep)
+
+- Built: 5,022 designs = 2,511 pairs (interior 32 classes × 3 positions × 9 displacements; all
+  384 edge LAB tiles, both roles; 4 corners × 9; every bonded pin in + out, 451 × 2), ~12–20 s
+  each at 20 parallel chains; 3 load-induced failures retried clean.
+- Solved: 2,535 specimens, 0 errors, 0 same-tile / class conflicts (final ruleset).  Edges
+  matched 6,274 / 44,469 over all nets; no-candidate 35,602, ambiguous 2,593.
+- Exact entries (provenance `specimen`): C4-driver 13 class + 35 per-tile, R4-driver 1 per-tile,
+  LI-driver 20 class + 47 per-tile.  Where exact overlaps the voted maps: 4 / 4 agree.
+- Edge coverage: 8 / 384 edge LAB tiles touched; pins with ≥1 matched edge: in 236 / 451,
+  out 429 / 451.
+- **Ceiling found**: most path muxes never FIRE in the asm decode (`Dec.active`) at all — C16/R24
+  driver muxes, most LI drivers, nearly all edge/IO-ring muxes.  Specimen matching is exact where
+  a block fires; the firing coverage itself is the blocker (unattributed 2/6/12/16-groups,
+  block-exclusivity, remaining transform gaps).  That is track 2 of #141 (routing.ddb fan-out /
+  group attribution), not more specimens.
+
 ## Cost
 
 - One specimen pair ≈ 15 s of Quartus (measured 2026-10-28); the matrix is a few thousand
