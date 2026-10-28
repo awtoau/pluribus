@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does a lifted design look like real logic, or like noise?  Detection statistics only.
 
-Reads lifted designs from a pluribus DB (luts / ffs / nets / net_fanout / pad_map / cv_hard_cells)
+Reads lifted designs from a pluribus DB (luts / ffs / nets / net_fanout / pad_map / hard_cells)
 and compares one or more IMAGE labels against
   - a CORPUS of known-real designs (label prefix; min..max and median per metric), and
   - CONTROL labels: bitstreams with random bytes in place of the configuration RAM.
@@ -99,10 +99,8 @@ def metrics(conn, label):
     fan = _q(conn, "select net,cell_type,cell,pin from net_fanout where bitstream=?", b)
     pads = _q(conn, "select direction,net_in,net_out from pad_map where bitstream=?", b)
     n_nets = _q(conn, "select count(*) from nets where bitstream=?", b)[0][0]
-    try:
-        hard = _q(conn, "select data from cv_hard_cells where bitstream=?", b)
-    except Exception:
-        hard = []
+    # Cyclone V vendor atoms only: EFB/EBR/BSRAM rows carry no params record
+    hard = _q(conn, "select params from hard_cells where bitstream=? and params is not null", b)
     m = {"luts": len(luts), "ffs": len(ffs), "nets": n_nets, "pads": len(pads), "hard_cells": len(hard)}
     m["ff_per_lut"] = len(ffs) / len(luts) if luts else None
 

@@ -127,14 +127,12 @@ def load_data(conn, bs_id: int) -> dict:
                     q("SELECT cell, dtype FROM ffs WHERE bitstream=:bs_id")
                     if dtype}
 
-    # Cyclone V hard-block instances (M10K / MLAB RAM ...): JSON records, lifters/cyclonev_hard.py.
-    # Older DBs without the table (other families) yield none.
+    # Cyclone V hard-block instances (M10K / MLAB RAM ...): hard_cells rows whose params carry
+    # the lifters/cyclonev_hard.py record. EFB/EBR/BSRAM rows have no params and are skipped.
     import json as _json
-    try:
-        hard = [dict(_json.loads(d) if isinstance(d, str) else d, name=c, kind=k)
-                for c, k, d in q("SELECT cell, kind, data FROM cv_hard_cells WHERE bitstream=:bs_id ORDER BY cell")]
-    except Exception:
-        hard = []
+    hard = [dict(_json.loads(p) if isinstance(p, str) else p, name=c, kind=k)
+            for c, k, p in q("SELECT cell, kind, params FROM hard_cells WHERE bitstream=:bs_id ORDER BY cell")
+            if p is not None]
 
     # ── MachXO2 clock-spine unification (issue #65) ─────────────────────────
     # A single physical clock routed on one BRANCH_HPBX global track is tapped
@@ -173,16 +171,18 @@ def load_data(conn, bs_id: int) -> dict:
     # Pad map: (pin, label, direction, net_in, net_out)
     pads = q("SELECT pin, label, direction, net_in, net_out FROM pad_map WHERE bitstream=:bs_id ORDER BY pin")
 
-    # EFB ports: (port_name, net)
-    efb_ports = q("SELECT port_name, net, direction FROM efb_ports WHERE bitstream=:bs_id ORDER BY port_name")
+    # EFB ports: (port, net, direction) — hard_cell_ports rows of the 'EFB' cell
+    efb_ports = q("SELECT port, net, direction FROM hard_cell_ports "
+                  "WHERE bitstream=:bs_id AND cell='EFB' ORDER BY port")
     # EFB config: (sel, kind, length, payload) — the 0x72 .efb_block preloads
     # the native decoder recovers (empty on a pre-native/truncated .config).
     efb_config = q("SELECT sel, kind, length, payload FROM efb_config WHERE bitstream=:bs_id ORDER BY sel")
 
     # EBR buses: (block, bus_role, bit_index, port, net)
     ebr_buses = q("SELECT block, bus_role, bit_index, port, net FROM ebr_buses WHERE bitstream=:bs_id ORDER BY block, bus_role, bit_index")
-    # EBR ports: (block, port, role, net)
-    ebr_ctrl  = q("SELECT block, port, role, net FROM ebr_ports WHERE bitstream=:bs_id ORDER BY block, port")
+    # EBR/BSRAM ports: (block, port, role, net) — every hard_cell_ports row except the EFB's
+    ebr_ctrl  = q("SELECT cell, port, role, net FROM hard_cell_ports "
+                  "WHERE bitstream=:bs_id AND cell<>'EFB' ORDER BY cell, port")
     # EBR recovered init (native #54): physical 1024×9 words per block.
     # ebr_init_map[block] = {addr: word9};  a block absent (or all-zero) is a
     # blank/runtime-loaded RAM (e.g. the AWG table, written via SPI cmd 0x50).
@@ -2188,7 +2188,7 @@ def emit_fplls(data: dict) -> list[str]:
 
 
 def emit_hard_cells(data: dict) -> list[str]:
-    """Vendor-atom instances (cyclonev_ram_block, cyclonev_mlab_cell ...) from `cv_hard_cells`.
+    """Vendor-atom instances (cyclonev_ram_block, cyclonev_mlab_cell ...) from `hard_cells.params`.
 
     Params and pin nets are decoded from the bitstream (lifters/cyclonev_hard.py); the instance runs on
     the vendor model.  A record with `unmodelled` is emitted as a comment (a missing block is a fault).

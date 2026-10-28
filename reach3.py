@@ -605,7 +605,7 @@ _EBR_LETTER_TO_ROLE = {
 # The BSRAM site exposes THREE views of the same physical wires: an unsuffixed
 # set (single-port / SDP modes) and A-/B-suffixed sets (true dual-port).  Which
 # view is live depends on the configured mode, and all three are recorded in
-# ebr_ports — so bit_index carries a per-view offset to satisfy
+# hard_cell_ports — so bit_index carries a per-view offset to satisfy
 # UNIQUE(bitstream, block, bus_role, bit_index):
 #
 #     A-side  +0     B-side  +64     unsuffixed (single-port)  +128
@@ -662,15 +662,16 @@ def _classify_ebr_port(port_name):
 
 
 def pass_ebr_buses(bs_id):
-    t_ep = schema.ebr_ports
+    t_ep = schema.hard_cell_ports
     t_eb = schema.ebr_buses
 
     with engine().begin() as conn:
         conn.execute(delete(t_eb).where(t_eb.c.bitstream == bs_id))
 
+        # every memory-block port (EBR / BSRAM); the EFB's ports are not a bus
         ebr_port_rows = conn.execute(
-            select(t_ep.c.block, t_ep.c.port, t_ep.c.net)
-            .where(t_ep.c.bitstream == bs_id)
+            select(t_ep.c.cell.label("block"), t_ep.c.port, t_ep.c.net)
+            .where(and_(t_ep.c.bitstream == bs_id, t_ep.c.cell != "EFB"))
         ).fetchall()
 
         output_rows = []
@@ -717,7 +718,7 @@ def pass_net_stats(bs_id):
     t_lut = schema.luts
     t_ffs = schema.ffs
     t_pad = schema.pad_map
-    t_efb = schema.efb_ports
+    t_efb = schema.hard_cell_ports
     t_net = schema.nets
 
     with engine().begin() as conn:
@@ -781,7 +782,8 @@ def pass_net_stats(bs_id):
         ).fetchall()
         efb_rows = conn.execute(
             select(t_efb.c.net)
-            .where(and_(t_efb.c.bitstream == bs_id, t_efb.c.net != None))
+            .where(and_(t_efb.c.bitstream == bs_id, t_efb.c.cell == "EFB",
+                        t_efb.c.net != None))
         ).fetchall()
         boundary_nets = (
             {r.net_in  for r in pad_in_rows}

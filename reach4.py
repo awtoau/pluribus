@@ -716,7 +716,7 @@ def pass_ebr_bus(bs_id, conn):
 
     confidence='estimate', source='auto_ebr'.
     """
-    ep  = schema.ebr_ports
+    ep  = schema.hard_cell_ports
     eb  = schema.ebr_buses
 
     # Find nets shared by >= 3 EBR blocks on J[ABCD] ports.
@@ -726,35 +726,35 @@ def pass_ebr_bus(bs_id, conn):
         main_group_sql = text("""
             SELECT net
             FROM (
-                SELECT substring(port, 2, 1) AS port_letter, net, block
-                FROM ebr_ports
-                WHERE bitstream = :bs_id AND net IS NOT NULL
+                SELECT substring(port, 2, 1) AS port_letter, net, cell
+                FROM hard_cell_ports
+                WHERE bitstream = :bs_id AND net IS NOT NULL AND cell <> 'EFB'
                   AND port ~ '^J[ABCD]\\d+$'
             ) t
             GROUP BY port_letter, net
-            HAVING count(distinct block) >= 3
+            HAVING count(distinct cell) >= 3
         """)
     else:
         # SQLite: use glob pattern and substr
         main_group_sql = text("""
             SELECT net
             FROM (
-                SELECT substr(port, 2, 1) AS port_letter, net, block
-                FROM ebr_ports
-                WHERE bitstream = :bs_id AND net IS NOT NULL
+                SELECT substr(port, 2, 1) AS port_letter, net, cell
+                FROM hard_cell_ports
+                WHERE bitstream = :bs_id AND net IS NOT NULL AND cell <> 'EFB'
                   AND port GLOB 'J[ABCD]*'
             ) t
             GROUP BY port_letter, net
-            HAVING count(distinct block) >= 3
+            HAVING count(distinct cell) >= 3
         """)
     main_group_nets = {row[0] for row in conn.execute(main_group_sql, {"bs_id": bs_id}).fetchall()}
 
-    # All EBR ports with their bus metadata
+    # All EBR ports with their bus metadata (the join on ebr_buses excludes the EFB)
     all_ebr_ports = conn.execute(
-        select(ep.c.block, ep.c.port, ep.c.net, eb.c.bus_role, eb.c.bit_index)
+        select(ep.c.cell, ep.c.port, ep.c.net, eb.c.bus_role, eb.c.bit_index)
         .join(eb, and_(
             eb.c.bitstream == ep.c.bitstream,
-            eb.c.block == ep.c.block,
+            eb.c.block == ep.c.cell,
             eb.c.port == ep.c.port,
         ))
         .where(and_(ep.c.bitstream == bs_id, ep.c.net.isnot(None)))

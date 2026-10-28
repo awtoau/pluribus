@@ -70,7 +70,7 @@ def test_schema_creates_all_required_tables():
             text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         )}
     for t in ("bitstreams", "nets", "ffs", "luts", "net_fanout", "pad_map",
-              "efb_ports", "ebr_ports", "reachability", "net_names", "cell_names",
+              "hard_cells", "hard_cell_ports", "reachability", "net_names", "cell_names",
               "reachability_rev", "ff_cones",
               "cdc_synchronisers"):
         assert t in tables, f"Table {t!r} missing from SQLite schema"

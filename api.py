@@ -20,7 +20,7 @@ works unchanged on the SQLite default and on PostgreSQL.
 Source tables (which stage fills them):
     net_names        load.py / auto_name.py     -> name()
     pad_map          load.py                     -> net_for_pad()
-    efb_ports        load.py                     -> efb_port()
+    hard_cell_ports  load.py (cell='EFB')        -> efb_port()
     reachability     reach.py                    -> reachable(), taint_fwd()
     ffs              load.py                     -> reachable(stop_at="FF")
     patterns +       reach3.py                   -> shift_registers()
@@ -164,31 +164,31 @@ class Netlist:
     def efb_port(self, port_name: str) -> Optional[str]:
         """Fabric net wired to EFB (embedded function block) port `port_name`
         (e.g. "JUPDATE"), or None.  Case-insensitive fallback."""
-        ep = schema.efb_ports
+        ep = schema.hard_cell_ports
         with self._eng.connect() as conn:
             row = conn.execute(
                 select(ep.c.net)
-                .where(and_(ep.c.bitstream == self.bs_id,
-                            ep.c.port_name == port_name))
+                .where(and_(ep.c.bitstream == self.bs_id, ep.c.cell == "EFB",
+                            ep.c.port == port_name))
             ).fetchone()
             if row:
                 return row[0]
             # Case-insensitive fallback (port names are conventionally upper).
             row = conn.execute(
                 select(ep.c.net)
-                .where(and_(ep.c.bitstream == self.bs_id,
-                            schema.efb_ports.c.port_name.ilike(port_name)))
+                .where(and_(ep.c.bitstream == self.bs_id, ep.c.cell == "EFB",
+                            ep.c.port.ilike(port_name)))
             ).fetchone()
         return row[0] if row else None
 
     def efb_ports(self) -> List[Dict[str, str]]:
-        """All EFB ports and their nets for this bitstream."""
-        ep = schema.efb_ports
+        """All EFB ports and their nets for this bitstream (hard_cell_ports, cell='EFB')."""
+        ep = schema.hard_cell_ports
         with self._eng.connect() as conn:
             rows = conn.execute(
-                select(ep.c.port_name, ep.c.net)
-                .where(ep.c.bitstream == self.bs_id)
-                .order_by(ep.c.port_name)
+                select(ep.c.port, ep.c.net)
+                .where(and_(ep.c.bitstream == self.bs_id, ep.c.cell == "EFB"))
+                .order_by(ep.c.port)
             ).fetchall()
         return [{"port_name": pn, "net": n} for pn, n in rows]
 

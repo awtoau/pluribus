@@ -124,7 +124,7 @@ class Net:
             "SELECT cell,sum_net,cout_net,cin,i0,i1,i3 FROM alu_cells WHERE bitstream=:b"),
             {"b": bs_id}))
         self.ebr = list(conn.execute(text(
-            "SELECT block,port,role,net FROM ebr_ports WHERE bitstream=:b"),
+            "SELECT cell,port,role,net FROM hard_cell_ports WHERE bitstream=:b AND cell<>'EFB'"),
             {"b": bs_id}))
         self.pads = {}
         for pin, lab, ni, no in conn.execute(text(

@@ -156,15 +156,15 @@ def main():
         # ── 2. Hard IP reachability summary ──────────────────────────────────
         L("-- 2. Hard IP ports (EBR + EFB) --")
 
-        ep = schema.ebr_ports
+        ep = schema.hard_cell_ports      # memory-block rows: cell != 'EFB'
         ebr_summary = conn.execute(
             select(
-                ep.c.block, ep.c.role,
+                ep.c.cell, ep.c.role,
                 func.count().label("n"),
                 func.count(ep.c.net).label("with_net"),
-            ).where(ep.c.bitstream == bs_id)
-            .group_by(ep.c.block, ep.c.role)
-            .order_by(ep.c.block, ep.c.role)
+            ).where(and_(ep.c.bitstream == bs_id, ep.c.cell != "EFB"))
+            .group_by(ep.c.cell, ep.c.role)
+            .order_by(ep.c.cell, ep.c.role)
         ).fetchall()
 
         eb = schema.ebr_buses
@@ -190,11 +190,11 @@ def main():
             L(f"    {role:<6} ports={n}  with_net={with_net}")
         L("")
 
-        efbp = schema.efb_ports
+        efbp = schema.hard_cell_ports
         efb = conn.execute(
-            select(efbp.c.port_name, efbp.c.net)
-            .where(efbp.c.bitstream == bs_id)
-            .order_by(efbp.c.port_name)
+            select(efbp.c.port, efbp.c.net)
+            .where(and_(efbp.c.bitstream == bs_id, efbp.c.cell == "EFB"))
+            .order_by(efbp.c.port)
         ).fetchall()
         L(f"  EFB: {len(efb)} ports")
         for port, net in efb[:8]:
@@ -251,7 +251,7 @@ def main():
         # Group by EBR block
         ebr_net_to_block: dict = {}
         for net, block in conn.execute(
-            select(ep.c.net, ep.c.block).where(
+            select(ep.c.net, ep.c.cell).where(
                 and_(
                     ep.c.bitstream == bs_id,
                     ep.c.role == "write",
@@ -288,7 +288,7 @@ def main():
 
         # Source nets = JQ output nets (actual EBR DOB read-data).  These are the
         # out_net values from net_fanout JQ_src rows (write net → JQ net).
-        # Also include ebr_ports role='read' nets for EBRs that lack JQ stitching.
+        # Also include hard_cell_ports role='read' nets for EBRs that lack JQ stitching.
         jq_rows = conn.execute(
             select(nf.c.out_net.label("net"), nf.c.cell.label("block"))
             .where(
@@ -303,7 +303,7 @@ def main():
         jq_net_to_block = {row[0]: row[1] for row in jq_rows}
 
         ebr_read_rows = conn.execute(
-            select(ep.c.net, ep.c.block).where(
+            select(ep.c.net, ep.c.cell).where(
                 and_(
                     ep.c.bitstream == bs_id,
                     ep.c.role == "read",
@@ -312,7 +312,7 @@ def main():
             )
         ).fetchall()
         ebr_read_block: dict = {row[0]: row[1] for row in ebr_read_rows}
-        # Prefer JQ nets; fall back to ebr_ports 'read' nets for EBRs without JQ
+        # Prefer JQ nets; fall back to hard_cell_ports 'read' nets for EBRs without JQ
         jq_blocks = {row[1] for row in jq_rows}
         extra_read_nets = [row[0] for row in ebr_read_rows if row[1] not in jq_blocks]
         for row in ebr_read_rows:
@@ -480,14 +480,14 @@ def main():
         L("-- 7. Clock domains driving EBR write ports --")
 
         clk_rows = conn.execute(
-            select(ep.c.block, ff.c.clk, func.count().label("n"))
+            select(ep.c.cell, ff.c.clk, func.count().label("n"))
             .join(nf, and_(nf.c.bitstream == ep.c.bitstream, nf.c.out_net == ep.c.net))
             .join(ff, and_(ff.c.bitstream == ep.c.bitstream, ff.c.cell == nf.c.cell))
             .where(
                 and_(ep.c.bitstream == bs_id, ep.c.role == "write")
             )
-            .group_by(ep.c.block, ff.c.clk)
-            .order_by(ep.c.block, func.count().desc())
+            .group_by(ep.c.cell, ff.c.clk)
+            .order_by(ep.c.cell, func.count().desc())
         ).fetchall()
 
         cur_block = None

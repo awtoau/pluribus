@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.15t
 """Report the recovered MachXO2 EFB interface, paired by direction.
 
-A count of `efb_ports` rows is a weak check: a wrong wire pattern would also
+A count of EFB `hard_cell_ports` rows is a weak check: a wrong wire pattern would also
 produce rows.  What actually shows the recovery is sound is whether the port
 NAMES pair up into the hard block's documented interfaces -- a WISHBONE slave
 needs its address and data inputs alongside the data output and the ack, and
@@ -81,17 +81,18 @@ def group_of(port: str) -> str:
 def fetch(label: str | None):
     conn = db.connect_threadsafe()
     cur = conn.cursor()
-    sql = """select b.label, p.port_name, p.direction, p.net,
+    sql = """select b.label, p.port, p.direction, p.net,
                     coalesce(nn.name, '')
-             from efb_ports p
+             from hard_cell_ports p
              join bitstreams b on b.id = p.bitstream
              left join net_names nn
-                    on nn.bitstream = p.bitstream and nn.net = p.net"""
+                    on nn.bitstream = p.bitstream and nn.net = p.net
+             where p.cell = 'EFB'"""
     args: tuple = ()
     if label:
-        sql += " where b.label = ?" if db.BACKEND == "sqlite" else " where b.label = %s"
+        sql += " and b.label = ?" if db.BACKEND == "sqlite" else " and b.label = %s"
         args = (label,)
-    sql += " order by b.label, p.direction, p.port_name"
+    sql += " order by b.label, p.direction, p.port"
     cur.execute(sql, args)
     return cur.fetchall()
 
@@ -104,7 +105,7 @@ def main() -> int:
     log = setup_logging()
     rows = fetch(args.bitstream)
     if not rows:
-        log.error("no efb_ports rows found%s",
+        log.error("no EFB hard_cell_ports rows found%s",
                   f" for {args.bitstream}" if args.bitstream else "")
         return 1
 

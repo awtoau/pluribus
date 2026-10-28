@@ -296,7 +296,8 @@ def lifted_inputs(log):
     with db.engine().connect() as c:
         b = c.execute(text("select id from bitstreams where label='EFBIN'")).scalar()
         for port, net, d in c.execute(text(
-                "select port_name, net, direction from efb_ports where bitstream=:b"), {"b": b}):
+                "select port, net, direction from hard_cell_ports "
+                "where bitstream=:b and cell='EFB'"), {"b": b}):
             if d != "in":
                 continue
             ff = c.execute(text("select cell from ffs where bitstream=:b and q=:n"),

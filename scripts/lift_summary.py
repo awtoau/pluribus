@@ -26,10 +26,15 @@ import db  # noqa: E402
 
 LOG = REPO / "tmp/logs/lift_summary.log"
 COUNT_TABLES = [
-    "luts", "ffs", "nets", "net_fanout", "pad_map", "efb_ports", "efb_config",
-    "ebr_ports", "ebr_init_blocks", "const_nets", "clock_domain_summary",
+    "luts", "ffs", "nets", "net_fanout", "pad_map", "efb_config",
+    "ebr_init_blocks", "const_nets", "clock_domain_summary",
     "arcs", "cdc_synchronisers", "patterns",
 ]
+# Same JSON keys as before the hard_cell_ports merge (phase F step 4) so old summaries diff.
+COUNT_FILTERED = {
+    "efb_ports": "hard_cell_ports where bitstream=:b and cell='EFB'",
+    "ebr_ports": "hard_cell_ports where bitstream=:b and cell<>'EFB'",
+}
 
 
 def summarise(label):
@@ -44,11 +49,13 @@ def summarise(label):
             s[f"n_{t}"] = c.execute(
                 text(f"select count(*) from {t} where bitstream=:b"),
                 {"b": b}).scalar()
+        for k, where in COUNT_FILTERED.items():
+            s[f"n_{k}"] = c.execute(text(f"select count(*) from {where}"), {"b": b}).scalar()
         s["efb_in"] = c.execute(text(
-            "select count(*) from efb_ports where bitstream=:b and direction='in'"),
+            "select count(*) from hard_cell_ports where bitstream=:b and cell='EFB' and direction='in'"),
             {"b": b}).scalar()
         s["efb_out"] = c.execute(text(
-            "select count(*) from efb_ports where bitstream=:b and direction='out'"),
+            "select count(*) from hard_cell_ports where bitstream=:b and cell='EFB' and direction='out'"),
             {"b": b}).scalar()
         # FF D faults (#113): unresolved D (d_fault) and every constant-literal D
         s["n_ffs_d_unresolved"] = c.execute(text(
@@ -66,8 +73,8 @@ def summarise(label):
                                and out_net is not null)
             and n.name not in (select net_in from pad_map where bitstream=:b
                                and net_in is not null)
-            and n.name not in (select net from efb_ports where bitstream=:b
-                               and direction='out')"""), {"b": b}).scalar()
+            and n.name not in (select net from hard_cell_ports where bitstream=:b
+                               and cell='EFB' and direction='out')"""), {"b": b}).scalar()
     v = REPO / f"tmp/pipeline_{label}_verify.log"
     if v.is_file():
         t = v.read_text()

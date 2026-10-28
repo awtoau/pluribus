@@ -192,8 +192,9 @@ def section_config_summary(conn, bs_id, net_names):
         m = re.match(r"R(\d+)C(\d+)", b)
         return (int(m.group(1)), int(m.group(2))) if m else (99, 99)
     ebr_blocks = sorted({r[0] for r in conn.execute(
-        select(schema.ebr_ports.c.block).where(
-            schema.ebr_ports.c.bitstream == bs_id)).fetchall()}, key=_blk_key)
+        select(schema.hard_cells.c.cell).where(and_(
+            schema.hard_cells.c.bitstream == bs_id,
+            schema.hard_cells.c.kind.in_(("EBR", "BSRAM"))))).fetchall()}, key=_blk_key)
     initb = {r.block: r for r in conn.execute(
         select(schema.ebr_init_blocks.c.block, schema.ebr_init_blocks.c.wid,
                schema.ebr_init_blocks.c.mode, schema.ebr_init_blocks.c.data_width,
@@ -448,7 +449,7 @@ def section_boundary(conn, bs_id, net_names):
     ffs = schema.ffs
     luts = schema.luts
     cn = schema.cell_names
-    ep = schema.efb_ports
+    ep = schema.hard_cell_ports
     r = schema.reachability
     nf = schema.net_fanout
 
@@ -479,9 +480,9 @@ def section_boundary(conn, bs_id, net_names):
     ).fetchall()
 
     efb_ports = conn.execute(
-        select(ep.c.port_name, ep.c.net)
-        .where(ep.c.bitstream == bs_id)
-        .order_by(ep.c.port_name)
+        select(ep.c.port, ep.c.net)
+        .where(and_(ep.c.bitstream == bs_id, ep.c.cell == "EFB"))
+        .order_by(ep.c.port)
     ).fetchall()
 
     lines = [
@@ -887,7 +888,7 @@ def section_ebr(conn, bs_id, net_names=None):
         net_names = {}
 
     eb = schema.ebr_buses
-    ep = schema.ebr_ports
+    hc = schema.hard_cells
 
     blocks = [
         row[0] for row in conn.execute(
@@ -900,9 +901,9 @@ def section_ebr(conn, bs_id, net_names=None):
     if not blocks:
         raw_blocks = [
             row[0] for row in conn.execute(
-                select(distinct(ep.c.block))
-                .where(ep.c.bitstream == bs_id)
-                .order_by(ep.c.block)
+                select(hc.c.cell)
+                .where(and_(hc.c.bitstream == bs_id, hc.c.kind.in_(("EBR", "BSRAM"))))
+                .order_by(hc.c.cell)
             ).fetchall()
         ]
         n_raw = len(raw_blocks)
@@ -968,14 +969,14 @@ def section_ebr(conn, bs_id, net_names=None):
 
 def section_spi_efb(conn, bs_id):
     """Show reachability from each EFB port into the fabric."""
-    ep = schema.efb_ports
+    ep = schema.hard_cell_ports
     r  = schema.reachability
     ffs = schema.ffs
 
     efb_ports = conn.execute(
-        select(ep.c.port_name, ep.c.net)
-        .where(ep.c.bitstream == bs_id)
-        .order_by(ep.c.port_name)
+        select(ep.c.port, ep.c.net)
+        .where(and_(ep.c.bitstream == bs_id, ep.c.cell == "EFB"))
+        .order_by(ep.c.port)
     ).fetchall()
 
     lines = [

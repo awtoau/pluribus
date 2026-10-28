@@ -171,7 +171,7 @@ def _stub_loc2pin(monkeypatch, table):
 
 
 # ================================================================ lifter =====
-# BSRAM hardip records -> Design.ebrs -> ebr_ports rows.
+# BSRAM hardip records -> Design.ebrs -> hard_cell_ports rows (kind BSRAM).
 
 BSRAM_GWCONFIG = """\
 .device GW1N-2

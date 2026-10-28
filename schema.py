@@ -106,7 +106,7 @@ net_fanout = Table("net_fanout", metadata,
 Index("idx_fanout_net", net_fanout.c.bitstream, net_fanout.c.net)
 Index("idx_fanout_out", net_fanout.c.bitstream, net_fanout.c.out_net)
 # Point-lookup indexes added 2026-10-29 after measuring each on a kept-DB copy (scripts/bench_reach_sql.py
-# session, 2,000 random lookups): net_fanout by cell 153x, arcs by sink_wire 720x, ebr_ports by net 14x,
+# session, 2,000 random lookups): net_fanout by cell 153x, arcs by sink_wire 720x, hard-cell ports by net 14x,
 # luts by z 21x. Readers: undriven_classify / chains (cell), verilog / gowin traces (sink_wire, net, z).
 Index("idx_fanout_cell", net_fanout.c.bitstream, net_fanout.c.cell)
 
@@ -130,36 +130,39 @@ pad_map = Table("pad_map", metadata,
     UniqueConstraint("bitstream", "pin"),
 )
 
-efb_ports = Table("efb_ports", metadata,
+# Hard-block instances, every family (phase F step 4, docs/schema-audit.md): one row per
+# block.  `kind`: EFB / EBR (MachXO2), BSRAM (Gowin), or the Cyclone V vendor atom
+# (cyclonev_ram_block, cyclonev_mlab_cell, cyclonev_mac, pluribus_cv_fpll).  `params` is
+# the lifter's record (Cyclone V: {params, pins, outs, init, unmodelled}, lifters/cyclonev_hard.py).
+hard_cells = Table("hard_cells", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    Column("port_name", Text, nullable=False),
-    Column("net",       Text, nullable=False),
-    # Direction AS OBSERVED IN THE ROUTING, not as the datasheet defines the
-    # primitive: "out" means the EFB wire is the SOURCE of the arc, i.e. the block
-    # drives this net into the fabric.  Recording what the bitstream shows keeps
-    # this a measurement; inferring a port's datasheet direction would be a guess.
-    #
-    # Needed by #49: an EFB instantiation cannot be emitted without knowing which
-    # ports are driven and which are driving, and the emitter must not invent it.
-    Column("direction", Text),
-    UniqueConstraint("bitstream", "port_name"),
+    Column("cell",      Text, nullable=False),
+    Column("kind",      Text, nullable=False),
+    Column("params",    JSON),
+    UniqueConstraint("bitstream", "cell"),
 )
 
-ebr_ports = Table("ebr_ports", metadata,
+# Hard-block port -> fabric net.  `cell` names the hard_cells row ('EFB' for the MachXO2
+# EFB, R{row}C{col} for an EBR/BSRAM block).  `direction` is AS OBSERVED IN THE ROUTING,
+# not the datasheet's: "out" = the block wire is the arc SOURCE (block drives the fabric).
+# `role` = write / read / ctrl for memory blocks (NULL for the EFB).
+hard_cell_ports = Table("hard_cell_ports", metadata,
     Column("id",        Integer, primary_key=True, autoincrement=True),
     Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    Column("block", Text, nullable=False),
-    Column("port",  Text, nullable=False),
-    Column("role",  Text, nullable=False),
-    Column("net",   Text),
-    UniqueConstraint("bitstream", "block", "port"),
+    Column("cell",      Text, nullable=False),
+    Column("port",      Text, nullable=False),
+    Column("direction", Text),
+    Column("role",      Text),
+    Column("net",       Text),
+    UniqueConstraint("bitstream", "cell", "port"),
 )
-Index("idx_ebr_ports_net", ebr_ports.c.bitstream, ebr_ports.c.net)
+Index("idx_hard_cell_ports_net",  hard_cell_ports.c.bitstream, hard_cell_ports.c.net)
+Index("idx_hard_cell_ports_cell", hard_cell_ports.c.bitstream, hard_cell_ports.c.cell)
 
 # EBR block-RAM initial contents recovered from the bitstream 0x72 sections
 # (native decoder).  `block` is the physical EBR9K block name (R{row}C{col},
-# same convention as ebr_ports); `wid` is the bitstream EBR write index that
+# same convention as hard_cell_ports.cell); `wid` is the bitstream EBR write index that
 # the block's EBR.WID config word decodes to (the RE key linking .bram_init
 # <index> to a tile).  `word9` is the raw 9-bit physical word at `addr`
 # (0..1023).  Logical word width / mode live in ebr_init_blocks.
@@ -756,18 +759,6 @@ cv_block_muxes = Table("cv_block_muxes", metadata,
 Index("idx_cv_block_muxes_file", cv_block_muxes.c.source_file)
 Index("idx_cv_block_muxes_target", cv_block_muxes.c.dump_target)
 Index("idx_cv_block_muxes_mux", cv_block_muxes.c.dump_target, cv_block_muxes.c.mux)
-
-# Cyclone V hard-block instances (M10K / MLAB RAM, DSP, PLL): one row per vendor atom.
-# `data` = JSON {kind, params, pins, outs, init, unmodelled}; verilog.py instantiates the
-# vendor primitive from it.  Records: lifters/cyclonev_hard.py.
-cv_hard_cells = Table("cv_hard_cells", metadata,
-    Column("id",        Integer, primary_key=True, autoincrement=True),
-    Column("bitstream", Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
-    Column("cell",      Text, nullable=False),
-    Column("kind",      Text, nullable=False),
-    Column("data",      JSON, nullable=False),
-    UniqueConstraint("bitstream", "cell"),
-)
 
 # ── Post-fit oracle corpus (vendor post-fit netlist vs our lift) ─────────────
 # One row per corpus design build; atoms/conns/compare cascade from it.

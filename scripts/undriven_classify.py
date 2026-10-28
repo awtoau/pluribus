@@ -62,8 +62,8 @@ def main():
             and f.net not in (select q from ffs where bitstream=:b and q is not null)
             and f.net not in (select out_net from net_fanout where bitstream=:b and out_net is not null)
             and f.net not in (select net_in from pad_map where bitstream=:b and net_in is not null)
-            and f.net not in (select net from efb_ports where bitstream=:b and direction='out')
-            and f.net not in (select net from ebr_ports where bitstream=:b and role='read' and net is not null)""")
+            and f.net not in (select net from hard_cell_ports where bitstream=:b and cell='EFB' and direction='out')
+            and f.net not in (select net from hard_cell_ports where bitstream=:b and role='read' and net is not null)""")
         und = [r[0] for r in c.execute(q, {"b": b})]
     lift = MachXO2Lift(a.device)
     pc = lift.parse_config(a.config)

@@ -20,7 +20,7 @@ ZERO ports:
     hardip 9 1 BSRAM bel=BSRAM0        <- no CLKA/CEA/WREA/… at all
 
 So every BSRAM control and data port (210 of them per block) is missing from the
-pluribus netlist: `ebr_ports` / `ebr_buses` stay empty for the gowin family and
+pluribus netlist: `hard_cell_ports` / `ebr_buses` stay empty for the gowin family and
 the report prints "0 EBR blocks".  The ports are NOT buses — they are scalar
 per-bit entries (CEA, WREA, ADA0..ADA13, DIA0..DIA17, DOB0..DOB17, …), so
 nothing about them is intrinsically hard to model; only the name lookup is wrong.

@@ -15,7 +15,7 @@ hit instead of re-expanding the full subtree.
 
 One BFS pass with no stop conditions — full transitive closure.  Queries that
 want combinational cones or pad-to-pad paths filter at read time by joining
-against ffs / pad_map / ebr_ports.
+against ffs / pad_map / hard_cell_ports.
 
 Usage
 -----

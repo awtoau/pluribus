@@ -273,11 +273,11 @@ def export_summary(label, out_dir):
 
         # ── EFB ports ──
         f_efb = out_dir / f"{label}-efb.tsv"
-        ep = schema.efb_ports
+        ep = schema.hard_cell_ports
         nn = schema.net_names
         efb_q = (
             select(
-                ep.c.port_name,
+                ep.c.port,
                 ep.c.net,
                 nn.c.name,
                 nn.c.description,
@@ -285,8 +285,8 @@ def export_summary(label, out_dir):
             .select_from(
                 ep.outerjoin(nn, (nn.c.bitstream == ep.c.bitstream) & (nn.c.net == ep.c.net))
             )
-            .where(ep.c.bitstream == bs_id)
-            .order_by(ep.c.port_name)
+            .where((ep.c.bitstream == bs_id) & (ep.c.cell == "EFB"))
+            .order_by(ep.c.port)
         )
         with open(f_efb, "w") as fh:
             fh.write("port\tnet\tname\tdescription\n")
@@ -319,12 +319,12 @@ def export_summary(label, out_dir):
 
         # ── reachability summary (EFB → everything) ──
         f_reach = out_dir / f"{label}-reach-efb.tsv"
-        ep2 = schema.efb_ports
+        ep2 = schema.hard_cell_ports
         rch = schema.reachability
         nn3 = schema.net_names
         reach_q = (
             select(
-                ep2.c.port_name,
+                ep2.c.port,
                 rch.c.dst,
                 rch.c.min_hops,
                 nn3.c.name,
@@ -334,8 +334,8 @@ def export_summary(label, out_dir):
                 .join(rch, (rch.c.bitstream == ep2.c.bitstream) & (rch.c.src == ep2.c.net))
                 .outerjoin(nn3, (nn3.c.bitstream == rch.c.bitstream) & (nn3.c.net == rch.c.dst))
             )
-            .where(ep2.c.bitstream == bs_id)
-            .order_by(ep2.c.port_name, rch.c.min_hops, rch.c.dst)
+            .where((ep2.c.bitstream == bs_id) & (ep2.c.cell == "EFB"))
+            .order_by(ep2.c.port, rch.c.min_hops, rch.c.dst)
         )
         with open(f_reach, "w") as fh:
             fh.write("efb_port\tdst_net\thops\tdst_name\n")

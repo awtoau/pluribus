@@ -55,7 +55,7 @@ class DSU:
 
 
 def _bsram_role(port):
-    """ebr_ports.role for a GW1N BSRAM port name.
+    """hard_cell_ports.role for a GW1N BSRAM port name.
 
     Ports come in an unsuffixed (single-port) and an A-/B-suffixed (dual-port)
     view of the same wires, so classification is by the leading token:
@@ -311,7 +311,7 @@ class GowinLift:
         d.n_alu = n_alu
         d.hardip_counts = dict(hardip_counts)
 
-        # 3b) BSRAM (block RAM) ports → ebr_ports records.
+        # 3b) BSRAM (block RAM) ports → hard_cell_ports records (kind BSRAM).
         #     scripts/gowin_unpack.py emits every port of the BSRAM site as
         #     PORT=<node> on the hardip record (issue #69: these used to be
         #     dropped wholesale because the placed name "BSRAM0" missed the

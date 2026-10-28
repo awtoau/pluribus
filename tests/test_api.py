@@ -84,10 +84,12 @@ def _load_fixture():
             "INSERT INTO pad_map (bitstream,pin,label,direction,net_in,net_out) "
             "VALUES (:b,20,'OUT_A','out',NULL,'n80')"), {"b": bs})
 
-        # efb_ports: JUPDATE -> n307
+        # hard_cells / hard_cell_ports: EFB.JUPDATE -> n307
         c.execute(text(
-            "INSERT INTO efb_ports (bitstream,port_name,net) "
-            "VALUES (:b,'JUPDATE','n307')"), {"b": bs})
+            "INSERT INTO hard_cells (bitstream,cell,kind) VALUES (:b,'EFB','EFB')"), {"b": bs})
+        c.execute(text(
+            "INSERT INTO hard_cell_ports (bitstream,cell,port,direction,net) "
+            "VALUES (:b,'EFB','JUPDATE','out','n307')"), {"b": bs})
 
         # ffs
         c.execute(text(

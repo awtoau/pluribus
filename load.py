@@ -43,7 +43,7 @@ sys.path.insert(0, str(_HERE))
 
 from db import engine, die, EFB_JF, JF_RE, BACKEND
 import schema
-from sqlalchemy import insert, delete, select, update, func, text
+from sqlalchemy import insert, delete, select, update, func, text, and_
 
 # Utility functions (LUT truth-table parsing, pad resolution) live in machxo2_lift
 # for now.  When ECP5 support lands these will move to lifters/common.py.
@@ -542,7 +542,8 @@ def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
 
         # always-rebuild: drop this label's rows before re-inserting
         for tbl in (schema.net_fanout, schema.arcs, schema.ffs, schema.luts,
-                    schema.pad_map, schema.cv_hard_cells, schema.nets):
+                    schema.pad_map, schema.hard_cell_ports, schema.hard_cells,
+                    schema.nets):
             conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
 
         # ── nets ──────────────────────────────────────────────────────────
@@ -573,11 +574,11 @@ def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
 
         # ── hard-block cells (M10K / MLAB RAM ...): the vendor-atom instance records ──
         hard_rows = [{"bitstream": bs_id, "cell": h["name"], "kind": h["kind"],
-                      "data": {k: (str(v) if k == "init" else v) for k, v in h.items()
-                               if k not in ("name", "kind")}}
+                      "params": {k: (str(v) if k == "init" else v) for k, v in h.items()
+                                 if k not in ("name", "kind")}}
                      for h in design.hard]
         if hard_rows:
-            conn.execute(insert(schema.cv_hard_cells), hard_rows)
+            conn.execute(insert(schema.hard_cells), hard_rows)
 
         # ── FFs (controls: d/clk/ce/lsr + dtype flags, see lifters/cyclonev_lift.py) ──
         bad_ffs = [ff for ff in design.ffs if not ff.get("name") or not ff.get("q")]
@@ -804,11 +805,11 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             schema.net_stats,
             schema.clock_domains,
             schema.nets,
-            schema.ebr_ports,
+            schema.hard_cell_ports,
+            schema.hard_cells,
             schema.ebr_init,
             schema.ebr_init_blocks,
             schema.efb_config,
-            schema.efb_ports,
         ):
             conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
 
@@ -1118,23 +1119,26 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                   f"net, {n_unbonded} IOBs unbonded in this package — "
                   f"{n_unbonded_named} of those still net-named)")
 
-            # ── ebr_ports (GOWIN BSRAM) ─────────────────────────────────────────
+            # ── hard_cells / hard_cell_ports (GOWIN BSRAM, kind=BSRAM) ─────────
             # gowin_lift recovers every BSRAM site port from the static tile db
             # (issue #69 — the placed-name lookup used to fail silently and this
-            # family reported 0 EBR blocks).  Rows mirror the MachXO2 schema:
-            # one (block, port, role, net) per port, net NULL when unrouted.
-            gebr_rows = []
+            # family reported 0 EBR blocks).  One (cell, port, role, net) per port,
+            # net NULL when unrouted.
+            gebr_rows, gebr_cells = [], []
             for blk in getattr(design, "ebrs", []):
+                gebr_cells.append({"bitstream": bs_id, "cell": blk["block"], "kind": "BSRAM"})
                 for p in blk["ports"]:
                     gebr_rows.append({
-                        "bitstream": bs_id, "block": p["block"],
+                        "bitstream": bs_id, "cell": p["block"],
                         "port": p["port"], "role": p["role"], "net": p["net"],
                     })
+            if gebr_cells:
+                conn.execute(_insert_or_ignore(schema.hard_cells), gebr_cells)
             if gebr_rows:
-                conn.execute(_insert_or_ignore(schema.ebr_ports), gebr_rows)
+                conn.execute(_insert_or_ignore(schema.hard_cell_ports), gebr_rows)
             n_routed = sum(1 for r in gebr_rows if r["net"])
-            print(f"  {len(getattr(design, 'ebrs', []))} BSRAM block(s), "
-                  f"{len(gebr_rows)} ebr_ports rows ({n_routed} with a routed net)")
+            print(f"  {len(gebr_cells)} BSRAM block(s), "
+                  f"{len(gebr_rows)} hard_cell_ports rows ({n_routed} with a routed net)")
 
         # ── aw2-nets.tsv — user net annotations (names + confidence) ─────────
         if nets_tsv:
@@ -1156,7 +1160,7 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             print(f"  {inserted} net names inserted  ({skipped} skipped — already named by pins TSV)")
 
         if lifter == "machxo2":
-            # ── efb_ports ─────────────────────────────────────────────────────────
+            # ── hard_cell_ports, cell='EFB' (hard_cells kind=EFB) ─────────────────
             found_efb = {}
             efb_dir = {}          # port -> observed direction, never name-inferred
             for (er,ec),t in pc.tile_type.items():
@@ -1171,10 +1175,10 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                             found_efb[port] = net
                             efb_dir[port] = "out"
                             conn.execute(
-                                _insert_or_ignore(schema.efb_ports).values(
+                                _insert_or_ignore(schema.hard_cell_ports).values(
                                     # The JF wire is the arc SOURCE here, so the EFB
                                     # drives this net: an output, as routed.
-                                    bitstream=bs_id, port_name=port, net=net,
+                                    bitstream=bs_id, cell="EFB", port=port, net=net,
                                     direction="out",
                                 )
                             )
@@ -1184,8 +1188,8 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             # JWBSTBI, JWBCYCI, JWBWEI ...  machxo2_lift.apply_efb_fixed_conns()
             # unioned synthetic string nodes (e.g. "JWBDATO0") into the DSU so
             # that FFs whose D-input wires trace back to EFB outputs now get real
-            # net names.  We look them up here and insert them as efb_ports so the
-            # knowledge layer can reference them.
+            # net names.  We look them up here and insert them as hard_cell_ports
+            # so the knowledge layer can reference them.
             #
             # The direction comes from the bits.db sink/source column the port
             # sat in (see load_efb_fixed_conns), not from its name: it is read
@@ -1199,11 +1203,14 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                     found_efb[efb_port] = net
                     efb_dir[efb_port] = efb_resolved[efb_port]
                     conn.execute(
-                        _insert_or_ignore(schema.efb_ports).values(
-                            bitstream=bs_id, port_name=efb_port, net=net,
+                        _insert_or_ignore(schema.hard_cell_ports).values(
+                            bitstream=bs_id, cell="EFB", port=efb_port, net=net,
                             direction=efb_resolved[efb_port],
                         )
                     )
+            if found_efb:
+                conn.execute(_insert_or_ignore(schema.hard_cells).values(
+                    bitstream=bs_id, cell="EFB", kind="EFB"))
 
             has_cfg2 = any(t == "CIB_CFG2" for t in pc.tile_type.values())
             missing_efb = REQUIRED_EFB_PORTS - set(found_efb)
@@ -1272,13 +1279,14 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                 conn.execute(_insert_or_ignore(schema.net_fanout), efb_in_rows)
             print(f"  {len(efb_in_rows)} fabric→EFB net_fanout entries")
 
-            # ── ebr_ports ─────────────────────────────────────────────────────────
+            # ── hard_cells (kind=EBR) + hard_cell_ports per EBR1 tile ─────────────
             JA = re.compile(r'^J[AB]\d+$'); JC = re.compile(r'^J[CD]\d+$')
             JX = re.compile(r'^(JCLK|JLSR|JCE|JWE)\d*$')
             ebr_count = 0
             for (er,ec),ttype in pc.tile_type.items():
                 if ttype != "EBR1": continue
                 block = f"R{er}C{ec}"
+                block_ports = 0
                 for (r,c,sink,src) in pc.arcs:
                     if r != er or c != ec: continue
                     net  = resolve_net(design, lift, er, ec, src)
@@ -1287,11 +1295,15 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
                             "ctrl"  if JX.match(sink) else None)
                     if role:
                         conn.execute(
-                            _insert_or_ignore(schema.ebr_ports).values(
-                                bitstream=bs_id, block=block, port=sink, role=role, net=net,
+                            _insert_or_ignore(schema.hard_cell_ports).values(
+                                bitstream=bs_id, cell=block, port=sink, role=role, net=net,
                             )
                         )
                         ebr_count += 1
+                        block_ports += 1
+                if block_ports:
+                    conn.execute(_insert_or_ignore(schema.hard_cells).values(
+                        bitstream=bs_id, cell=block, kind="EBR"))
             print(f"  {ebr_count} EBR port arcs")
 
             # ── ebr_init + ebr_init_blocks (EBR block-RAM contents) ───────────────
@@ -1487,14 +1499,11 @@ def load(label, config_path, pins_tsv, device, package, nets_tsv=None, fuzz=Fals
             _JA_write = re.compile(r'^J[AB]\d+$')
             _JC_read  = re.compile(r'^J[CD]\d+$')
 
-            # Build per-block write/read net lists from already-populated ebr_ports
+            # Build per-block write/read net lists from already-populated hard_cell_ports
+            _hcp = schema.hard_cell_ports
             ebr_ports_rows = conn.execute(
-                select(
-                    schema.ebr_ports.c.block,
-                    schema.ebr_ports.c.port,
-                    schema.ebr_ports.c.role,
-                    schema.ebr_ports.c.net,
-                ).where(schema.ebr_ports.c.bitstream == bs_id)
+                select(_hcp.c.cell, _hcp.c.port, _hcp.c.role, _hcp.c.net)
+                .where(and_(_hcp.c.bitstream == bs_id, _hcp.c.cell != "EFB"))
             ).fetchall()
 
             _ebr_by_block: dict = {}
