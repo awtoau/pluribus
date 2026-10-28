@@ -1,0 +1,359 @@
+#!/usr/bin/env python3.15t
+"""Cyclone IV GX150 configuration-bit inventory (read-only, issue #141).
+
+Every cell of the (frame, v) plane (+ header frame) is attributed to ONE class, first match wins:
+  1 cell config (LUT INIT / LE bits)   2 asm.ddb routing   3 raw-diff specimen bits
+  4 hard-IP / IO regions by geometry   5 stream overhead   6 unclassified
+Reports die-wide TOTAL bits per class (A) and the SET bits of an image per class (B).
+No new decoder: geometry, Dec.active and the specimen tables are used as they are.
+
+  python3.15t scripts/cycloneiv_bit_inventory.py --image <path.bin|.rbf>
+Log tmp/logs/cycloneiv_bit_inventory.log; JSON tmp/cycloneiv_bit_inventory.json.  Peak RSS ~4 GB.
+"""
+import argparse
+import collections
+import json
+import logging
+import sys
+from pathlib import Path
+
+import numpy as np
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO)); sys.path.insert(0, str(REPO / "scripts"))
+log = logging.getLogger("bit_inventory")
+
+NV = 6368            # bits per frame (796 bytes * 8)
+LANE_V = 6344        # v < LANE_V: lane-model data; 6344..6351 lane tail; 6352.. CRC bytes (CRAM frames)
+DROP_F = 30000
+PRE_POST_BITS = (32 * 8, 59 * 8)      # preamble 0xFF x32, postamble 0xFF x59 (docs/cycloneiv-bitstream.md)
+FORCED = ["tmp/cycloneiv_forced_lab.json", "tmp/cycloneiv_forced_lab_58x30.json",
+          "tmp/cycloneiv_forced_lab_37x60.json", "tmp/cycloneiv_forced_lab_100x75.json"]
+FORCED_LAB = [(10, 10), (58, 30), (37, 60), (100, 75)]
+COL_LO = 19          # column band starts at FX-19 (specimen bits reach FX-19); pitch 35 so FX+16/17 spill into the next band
+ROW_PHASE0 = 68      # tile row band of y = [VY-68, VY+1] (70 v): approximate binning, see doc
+
+CLASSES = [  # id, name, evidence tier
+    ("1a", "LUT INIT (16 bits x 16 LE x 9360 LAB)", "verified"),
+    ("1b", "LE-used bit", "partial"),
+    ("1c", "LAB clock-polarity bit", "partial"),
+    ("2a", "asm routing: cells of groups FIRED in this image", "decoded"),
+    ("2b", "asm routing: cells in groups/blocks not fired in this image", "table-only"),
+    ("3", "LOCAL_LINE specimen bits (LAB-translated)", "specimen"),
+    ("4a", "periphery frames 1..36 (IO ring, clocks, PLL, misc)", "unknown"),
+    ("4b", "M9K columns (8) incl. content", "unknown"),
+    ("4c", "multiplier columns (4)", "unknown"),
+    ("4d", "IOL / IOR columns (+ 4 frames before col 0)", "unknown"),
+    ("4e", "IO row tiles (y=0, y=91) of LAB columns", "unknown"),
+    ("5a", "header frame 0", "mixed"),
+    ("5b", "CRAM frame CRC-16 bytes", "verified"),
+    ("5c", "lane-tail byte (v 6344..6351, CRAM frames)", "unknown"),
+    ("6", "unclassified (LAB-column cells no decoder claims)", "unknown"),
+]
+CID = {c[0]: i + 1 for i, c in enumerate(CLASSES)}
+
+
+def need_ram(gb=20):
+    for ln in open("/proc/meminfo"):
+        if ln.startswith("MemAvailable:"):
+            avail = int(ln.split()[1]) / 1e6
+            if avail < gb:
+                raise SystemExit(f"MemAvailable {avail:.1f} GB < {gb} GB: not running")
+            log.info("MemAvailable %.1f GB", avail)
+            return
+
+
+class Inv:
+    def __init__(self, geom, nfr, nper):
+        self.g, self.nfr, self.nper = geom, nfr, nper
+        self.cls = np.zeros(nfr * NV, np.uint8)
+        self.claimed_by = collections.Counter()   # (class, previous class) overlaps
+        xs = sorted(geom.FX)
+        self.xs = xs
+        self.lo = np.array([geom.FX[x] - COL_LO for x in xs], np.int64)
+        fr = np.arange(nfr)
+        i = np.searchsorted(self.lo, fr, "right") - 1
+        self.colx = np.where((fr >= nper), np.where(i >= 0, np.array(xs)[np.clip(i, 0, None)], 0), -1)
+        self.colx[0] = -1
+        v = np.arange(NV)
+        y = np.floor_divide(v - (geom.vy0 - ROW_PHASE0), geom.vpitch)
+        self.rowy = np.where(v < LANE_V, y, -1)
+
+    def claim(self, flat, name, mask_ok=None):
+        flat = np.unique(np.asarray(flat, np.int64))
+        flat = flat[(flat >= 0) & (flat < len(self.cls))]
+        prev = self.cls[flat]
+        free = prev == 0
+        for p, n in zip(*np.unique(prev[~free], return_counts=True)):
+            self.claimed_by[(name, CLASSES[p - 1][0])] += int(n)
+        self.cls[flat[free]] = CID[name]
+        return int(free.sum()), len(flat)
+
+
+def lab_tiles(g):
+    xs = [x for x in sorted(g.kind) if g.kind[x] == "LAB"]
+    return np.array([(x, y) for x in xs for y in range(1, g.ymax)], np.int64)
+
+
+def le_grid(g, tiles):
+    """per (tile, LE): anchor frame, anchor v, sign -> flat arrays."""
+    fx = np.array([g.FX[int(x)] for x in tiles[:, 0]], np.int64)
+    vy = g.vy0 + g.vpitch * tiles[:, 1]
+    dn = np.array([g.DN[i] for i in range(16)], np.int64)
+    sg = np.array([-1 if i % 2 else 1 for i in range(16)], np.int64)
+    f = np.repeat(fx[:, None], 16, 1)
+    v = vy[:, None] + dn[None, :]
+    return f, v, np.broadcast_to(sg, f.shape)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--image", required=True)
+    a = ap.parse_args()
+    (REPO / "tmp/logs").mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
+                        handlers=[logging.StreamHandler(), logging.FileHandler(REPO / "tmp/logs/cycloneiv_bit_inventory.log", "w")])
+    need_ram(20)
+    import cycloneiv_corpus as cc
+    import cycloneiv_decompress as cd
+    import cycloneiv_geom as cg
+    import cycloneiv_asm_decode as ad
+    from cycloneiv_le_locate import DK
+
+    g = cg.load(cg.die_of("EP4CGX150"))
+    raw = Path(a.image).read_bytes()
+    plane = cc.cram_plane(raw, g)
+    nfr, nv = plane.shape
+    assert nv == NV, nv
+    info = {}
+    u = cd.decompress(raw, info)
+    F, nper, ncram = info["frame"], info["periphery_frames"], info["cram_frames"]
+    assert F * 8 == NV and nper + ncram == nfr
+    keys = plane.keys
+    log.info("plane %d x %d, %d set bits (frames 1.. excl. CRC bytes); periphery %d, CRAM %d", nfr, NV, len(keys), nper, ncram)
+    inv = Inv(g, nfr, nper)
+    tiles = lab_tiles(g)
+    log.info("LAB tiles %d (%d columns)", len(tiles), len(set(tiles[:, 0].tolist())))
+
+    # ---- 1: cell config -------------------------------------------------------------------
+    f0, v0, sg = le_grid(g, tiles)
+    lut = np.concatenate([((f0 + df) * NV + v0 + sg * dv).ravel() for df, dv in DK])
+    n1a = inv.claim(lut, "1a")
+    leu = ((f0 - 8) * NV + v0 - sg).ravel()
+    inv.claim(leu, "1b")
+    fx = np.array([g.FX[int(x)] for x in tiles[:, 0]], np.int64)
+    vy = g.vy0 + g.vpitch * tiles[:, 1]
+    inv.claim((fx - 6) * NV + vy - 30, "1c")
+    log.info("class 1 claimed: %s", {k: int((inv.cls == CID[k]).sum()) for k in ("1a", "1b", "1c")})
+
+    # ---- 2: asm routing -------------------------------------------------------------------
+    dec = ad.Dec()
+    gids, _grec, blk = dec.active(plane)
+    log.info("fired groups %d, distinct blocks %d of %d", len(gids), len(set(blk.tolist())), dec.nblocks)
+    fg = np.zeros(len(dec.gsize), bool)
+    fg[gids] = True
+    pf, pvv, gid = np.asarray(dec.pf), np.asarray(dec.pv), np.asarray(dec.gid)
+    pos = np.load(REPO / "tmp/ddb/stingray4_asm_pos.npy", mmap_mode="r")
+    assert len(pos) == len(pf), (len(pos), len(pf))
+    asm_any = np.zeros(nfr * NV, bool)
+    fired = np.zeros(nfr * NV, bool)
+    dropped_pos, n_drop, CH = [], 0, 5_000_000
+    for s in range(0, len(pf), CH):
+        p, q = pf[s:s + CH].astype(np.int64), pvv[s:s + CH].astype(np.int64)
+        ok = (p >= 0) & (p < nfr) & (q >= 0) & (q < NV)
+        flat = p[ok] * NV + q[ok]
+        asm_any[flat] = True
+        fired[flat[fg[gid[s:s + CH]][ok]]] = True
+        n_drop += int((~ok).sum())
+        if (~ok).any():
+            dropped_pos.append(np.unique(np.asarray(pos[s:s + CH])[~ok]))
+    dpos = np.unique(np.concatenate(dropped_pos)) if dropped_pos else np.zeros(0, np.int64)
+    log.info("asm entries %d; placed cells %d (fired %d); entries with no plane cell %d (%d distinct asm bits)",
+             len(pf), int(asm_any.sum()), int(fired.sum()), n_drop, len(dpos))
+    inv.claim(np.flatnonzero(fired), "2a")
+    inv.claim(np.flatnonzero(asm_any & ~fired), "2b")
+    afx = json.load(open(REPO / "tmp/ddb/stingray4_dec_afx.json"))
+    moved = sorted(int(x) for x, b in afx.items() if int(x) in g.FX and b != g.FX[int(x)])
+    del pf, pvv, gid
+
+    # ---- 3: specimens ---------------------------------------------------------------------
+    pats, rel = [], None
+    for fp, (lx, ly) in zip(FORCED, FORCED_LAB):
+        tab = json.loads((REPO / fp).read_text())
+        cur = {}
+        for r in tab.values():
+            cur[(r["src"], r["snk"], r["hop"][4])] = tuple(sorted((b // NV - g.FX[lx], b % NV - (g.vy0 + g.vpitch * ly)) for b in r["on"]))
+        if rel is None:
+            rel = cur
+        agree = sum(1 for k in cur if rel.get(k) == cur[k])
+        log.info("specimen LAB X%dY%d: %d pairs, %d identical to X10Y10 after FX/VY translation", lx, ly, len(cur), agree)
+        pats.append((lx, ly, len(cur), agree))
+    universe = sorted({b for p in rel.values() for b in p})
+    role = collections.Counter()
+    bit_pairs = collections.defaultdict(set)
+    for k, p in rel.items():
+        for b in p:
+            bit_pairs[b].add(k)
+    n_by_src = collections.Counter(k[0] for k in rel)
+    for b, ps in bit_pairs.items():
+        srcs, snks = {k[0] for k in ps}, {k[1] for k in ps}
+        if len(ps) == 1:
+            role["pair-unique (sink input-mux select for one src)"] += 1
+        elif len(srcs) == 1 and len(ps) == n_by_src[next(iter(srcs))]:
+            role["source-LE bit (set for every pair of one src)"] += 1
+        elif len(snks) == 1:
+            role["sink-shared (one sink, several src)"] += 1
+        else:
+            role["other"] += 1
+    fxa = np.array([g.FX[int(x)] for x in tiles[:, 0]], np.int64)
+    vya = g.vy0 + g.vpitch * tiles[:, 1]
+    spec_cells = np.concatenate([((fxa + df) * NV + vya + dv) for df, dv in universe])
+    prior = inv.cls[np.unique(spec_cells)]
+    spec_overlap = {CLASSES[c - 1][0]: int(n) for c, n in zip(*np.unique(prior[prior > 0], return_counts=True))}
+    spec_new = inv.claim(spec_cells, "3")
+    # full-pattern matches of the image: all 4 bits of a (src, snk) specimen set at a LAB
+    match_pairs, per_snk = 0, collections.Counter()
+    labs_hit = np.zeros(len(tiles), bool)
+    snk_hits = collections.defaultdict(lambda: np.zeros(len(tiles), np.int16))
+    for (src, snk, port), p in rel.items():
+        m = np.ones(len(tiles), bool)
+        for df, dv in p:
+            m &= plane.has(fxa + df, vya + dv)
+        match_pairs += int(m.sum())
+        labs_hit |= m
+        snk_hits[snk] += m
+    for snk, arr in snk_hits.items():
+        for n in arr.tolist():
+            per_snk[min(n, 3)] += 1
+    log.info("specimen: %d cells/LAB, new cells %d of %d, overlap with earlier classes %s",
+             len(universe), spec_new[0], spec_new[1], spec_overlap)
+
+    # ---- 4/5: region + overhead -----------------------------------------------------------
+    cls2 = inv.cls.reshape(nfr, NV)
+    kind = np.array(["x"] * nfr, object)
+    for f in range(nfr):
+        kind[f] = "per" if 1 <= f < nper else "hdr" if f == 0 else (g.kind[int(inv.colx[f])] if inv.colx[f] in g.kind else "IOL")
+    ff = lambda k: np.flatnonzero(kind == k)
+    cell = lambda fr, vlo, vhi: (fr[:, None] * NV + np.arange(vlo, vhi)[None, :]).ravel()
+    inv.claim(cell(ff("per"), 0, NV), "4a")
+    inv.claim(cell(ff("M9K"), 0, LANE_V), "4b")
+    inv.claim(cell(ff("MUL"), 0, LANE_V), "4c")
+    inv.claim(np.concatenate([cell(ff("IOL"), 0, LANE_V), cell(ff("IOR"), 0, LANE_V)]), "4d")
+    labf = ff("LAB")
+    vio = np.flatnonzero((inv.rowy == 0) | (inv.rowy == g.ymax))
+    inv.claim((labf[:, None] * NV + vio[None, :]).ravel(), "4e")
+    inv.claim(cell(np.array([0]), 0, NV), "5a")
+    crc = np.concatenate([cell(np.arange(nper, nfr), 6352, NV)])
+    inv.claim(crc, "5b")
+    inv.claim(cell(np.arange(nper, nfr), LANE_V, 6352), "5c")
+    free = inv.cls == 0
+    inv.cls[free] = CID["6"]
+    log.info("claim overlaps (later class lost to earlier): %s", dict(inv.claimed_by))
+
+    # ---- counts ---------------------------------------------------------------------------
+    setmask = np.zeros(nfr * NV, bool)
+    setmask[keys] = True
+    spec_set_all = int(setmask[np.unique(spec_cells)].sum())
+    hdr = u[cd.PREAMBLE:cd.PREAMBLE + F]
+    hdr_set = int(np.unpackbits(np.frombuffer(hdr, np.uint8)).sum())
+    crc_set = 0
+    for fr in range(nper, nfr):
+        b = cd.PREAMBLE + fr * F + F - 2
+        crc_set += int(np.unpackbits(np.frombuffer(u[b:b + 2], np.uint8)).sum())
+    tot = np.bincount(inv.cls, minlength=len(CLASSES) + 1)
+    sets = np.bincount(inv.cls[setmask], minlength=len(CLASSES) + 1)
+    sets[CID["5a"]] += hdr_set        # header and CRC bytes are not in the plane keys
+    sets[CID["5b"]] += crc_set
+    die_bits = int(tot.sum()) + sum(PRE_POST_BITS)
+    set_all = int(sets.sum()) + sum(PRE_POST_BITS)
+    rows = []
+    for (cid, name, tier), t, s in zip(CLASSES, tot[1:], sets[1:]):
+        rows.append(dict(id=cid, name=name, tier=tier, total=int(t), set=int(s), pct_die=100 * t / die_bits))
+    rows.append(dict(id="5d", name="preamble + postamble (0xFF fill, outside frames)", tier="constant",
+                     total=sum(PRE_POST_BITS), set=sum(PRE_POST_BITS), pct_die=100 * sum(PRE_POST_BITS) / die_bits))
+    T = {r["id"]: r["total"] for r in rows}
+    S = {r["id"]: r["set"] for r in rows}
+    # header frame split (docs/cycloneiv-bitstream.md "Format"): sync+CRC16 verified 24; flag/length/family/variant 41
+    # known; lanes 5-7 constant 1 (120) and 0xFF fill (6024) constant; option bits 159 unknown
+    HDR_VER, HDR_KNOWN, HDR_UNK = 24, 41 + 120 + 6024, 159
+    ver = T["1a"] + T["5b"] + HDR_VER
+    ev = T["1b"] + T["1c"] + T["2a"] + T["2b"] + T["3"] + HDR_KNOWN + T["5d"]
+    unk = die_bits - ver - ev
+    # ---- unknown regions: one partition of classes 4a-4e, 5c, 6 ------------------------------
+    unknown_ids = [CID[k] for k in ("4a", "4b", "4c", "4d", "4e", "5c", "6")]
+    u2 = np.isin(inv.cls, unknown_ids).reshape(nfr, NV)
+    s2 = setmask.reshape(nfr, NV)
+    lab_core = np.flatnonzero((inv.rowy >= 1) & (inv.rowy <= g.ymax - 1))
+    phase = (np.arange(NV) - (g.vy0 - ROW_PHASE0)) % g.vpitch
+    stripe = lab_core[(phase[lab_core] >= 31) & (phase[lab_core] <= 39)]
+    rest = lab_core[~((phase[lab_core] >= 31) & (phase[lab_core] <= 39))]
+    off = np.full(nfr, -1, np.int64)
+    for f in labf:
+        off[f] = f - inv.lo[inv.xs.index(int(inv.colx[f]))]
+    regions = []
+
+    def add(name, fr, vv, ntile):
+        sub = u2[np.ix_(fr, vv)]
+        regions.append(dict(name=name, unknown=int(sub.sum()), set=int((sub & s2[np.ix_(fr, vv)]).sum()), tiles=ntile))
+
+    allv = np.arange(NV)
+    add("M9K columns (8), all rows", ff("M9K"), np.arange(LANE_V), 8)
+    add("multiplier columns (4), all rows", ff("MUL"), np.arange(LANE_V), 4)
+    add("periphery frames 1..36", ff("per"), allv, 0)
+    add("IOL/IOR columns (+4 pre-col frames)", np.concatenate([ff("IOL"), ff("IOR")]), np.arange(LANE_V), 2)
+    add("LAB columns, IO rows y0/y91", labf, vio, 104 * 2)
+    add("lane-tail byte (CRAM frames)", np.arange(nper, nfr), np.arange(LANE_V, 6352), 0)
+    add("LAB core, control stripe (v phase 31..39, all frames)", labf, stripe, len(tiles))
+    for lo_o, hi_o in ((0, 11), (12, 19), (20, 22), (23, 32), (33, 34)):
+        fr = labf[(off[labf] >= lo_o) & (off[labf] <= hi_o)]
+        add(f"LAB core, frames FX{lo_o - COL_LO:+d}..FX{hi_o - COL_LO:+d} (excl. stripe)", fr, rest, len(tiles))
+    regions.sort(key=lambda r: -r["unknown"])
+    for r in regions:
+        r["per_tile"] = r["unknown"] / r["tiles"] if r["tiles"] else None
+    six = (inv.cls == CID["6"]).reshape(nfr, NV)
+    ph_tot = np.bincount(phase[lab_core], weights=six[labf][:, lab_core].sum(0), minlength=g.vpitch)
+    six_off = {o: int(six[labf[off[labf] == o]][:, lab_core].sum()) for o in range(35)}
+    n_ll = len(tiles)
+    moved_lab = [x for x in moved if g.kind[x] == "LAB"]
+    out = dict(image_set_bits_in_plane=int(len(keys)), header_set=hdr_set, crc_set=crc_set, die_bits=die_bits,
+               set_total=set_all, rows=rows, verified=ver, evidence=ev, unknown=unk,
+               fired_groups=int(len(gids)), blocks=int(dec.nblocks),
+               asm_entries=int(len(dec.gsize)), asm_entries_dropped=n_drop, asm_bits_unplaced=int(len(dpos)),
+               afx_moved_columns=moved, afx_moved_lab_columns=moved_lab, specimen_labs=pats, specimen_cells_per_lab=len(universe),
+               specimen_roles=dict(role), specimen_overlap_prior=spec_overlap, specimen_universe_set_in_image=spec_set_all,
+               specimen_full_matches=match_pairs, specimen_labs_with_match=int(labs_hit.sum()),
+               specimen_sink_match_hist=[per_snk[i] for i in range(4)],
+               claim_overlaps={f"{a}<-{b}": n for (a, b), n in inv.claimed_by.items()},
+               regions=regions, class6_by_offset=six_off, class6_by_vphase=[int(x) for x in ph_tot])
+    json.dump(out, open(REPO / "tmp/cycloneiv_bit_inventory.json", "w"), indent=1)
+
+    P = log.info
+    P("=== (A) die-wide TOTAL bits per class; die = %d bits (handbook 39,425,016) ===", die_bits)
+    P("%-4s %-58s %-9s %12s %12s %7s", "id", "class", "tier", "total", "image set", "% die")
+    for r in rows:
+        P("%-4s %-58s %-9s %12d %12d %6.2f%%", r["id"], r["name"], r["tier"], r["total"], r["set"], r["pct_die"])
+    P("2c   asm bits with no plane cell (outside partition): %d distinct, %d entries", len(dpos), n_drop)
+    P("verified (oracle compare) %d = %.2f%%; other evidence (partial/decoded/table-only/specimen/constant) %d = %.2f%%; unknown %d = %.2f%%",
+      ver, 100 * ver / die_bits, ev, 100 * ev / die_bits, unk, 100 * unk / die_bits)
+    P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
+    sv, se = S["1a"] + S["5b"], S["1b"] + S["1c"] + S["2a"] + S["2b"] + S["3"]
+    P("    verified-class set bits %d (%.1f%%), other-evidence %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
+      sv, 100 * sv / set_all, se, 100 * se / set_all, set_all - sv - se - S["5a"] - T["5d"],
+      100 * (set_all - sv - se - S["5a"] - T["5d"]) / set_all)
+    P("    in 1a %d, 1b %d, 1c %d, 2a %d, 2b %d, 3 %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["2a"], S["2b"], S["3"],
+      sum(S[k] for k in ("4a", "4b", "4c", "4d", "4e")), S["5b"], S["5c"], S["6"])
+    P("asm: groups fired %d, blocks %d; entries with no plane cell %d; columns whose asm base != FX: %d (LAB %d: %s)",
+      len(gids), dec.nblocks, n_drop, len(moved), len(moved_lab), moved_lab)
+    P("specimen: %d cells per LAB, roles %s; new cells %s; overlap with earlier classes %s; image set bits in the translated universe %d",
+      len(universe), dict(role), spec_new, spec_overlap, spec_set_all)
+    P("specimen full 4-bit matches in image: %d (LAB, pair) over %d LABs with >=1; (LAB, sink) match-count hist 0/1/2/3+ srcs %s",
+      match_pairs, int(labs_hit.sum()), [per_snk[i] for i in range(4)])
+    P("unknown regions (one partition):")
+    for r in regions:
+        P("  %-58s unknown %10d  set %9d  per-tile %s", r["name"], r["unknown"], r["set"], None if r["per_tile"] is None else round(r["per_tile"], 1))
+    P("class 6 per LAB-core frame offset (offset 0 = FX-19): %s", six_off)
+    P("class 6 per v phase (0..69): %s", [int(x) for x in ph_tot])
+
+
+if __name__ == "__main__":
+    main()
