@@ -208,8 +208,16 @@ def verilog_one(with_input):
 
 
 def gen():
+    import datetime
+    import toolchain
+    m = re.search(r"quartus-([\d.]+)", toolchain.quartus_bin())
+    tool_version = m.group(1) if m else "unknown"
+    today = datetime.date.today().isoformat()
+
     def write(name, v, qsf, purpose):
         d = CORPUS / name
+        if (d / "routing.rcf").exists():     # provenance rule: never rewrite a built design's record
+            return
         (d / "src").mkdir(parents=True, exist_ok=True)
         (d / "src" / "top.v").write_text(v)
         q = qsf + ["set_global_assignment -name SEED 1",
@@ -217,7 +225,7 @@ def gen():
         (d / "design.toml").write_text(
             f'top = "top"\npurpose = "{purpose}"\n'
             f'exercises = {fz.toml_list(["routing", "specimen"])}\nqsf = {fz.toml_list(q)}\n'
-            f'device = "{DEVICE}"\n')
+            f'device = "{DEVICE}"\ntool = "quartus"\ntool_version = "{tool_version}"\nbuilt = "{today}"\n')
 
     pairs = site_pairs()
     for tag, ((x1, y1), (x2, y2)) in pairs.items():

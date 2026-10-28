@@ -3,3 +3,6 @@ purpose = "pin row 7: fabric -> PIN_AC25 (LUT at X58 Y45, base at X48 Y45)"
 exercises = ["routing", "specimen"]
 qsf = ["set_location_assignment PIN_B6 -to a", "set_location_assignment PIN_AC25 -to y", "set_location_assignment LCCOMB_X58_Y45_N0 -to l1", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
 device = "EP4CGX150DF31C7"
+tool = "quartus"
+tool_version = "25.1"
+built = "2026-10-28"

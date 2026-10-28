@@ -3,3 +3,6 @@ purpose = "routing specimen LAB X1 Y46 -> X4 Y46 (base twin: no net)"
 exercises = ["routing", "specimen"]
 qsf = ["set_location_assignment LCCOMB_X1_Y46_N0 -to l1", "set_location_assignment LCCOMB_X4_Y46_N0 -to l2", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
 device = "EP4CGX150DF31C7"
+tool = "quartus"
+tool_version = "25.1"
+built = "2026-10-28"
