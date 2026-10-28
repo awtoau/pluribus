@@ -173,9 +173,11 @@ def _build_threads():
 class NativeRoutingGraph:
     """Pure-Python routing graph -- pytrellis-free."""
 
-    def __init__(self, device, db_root, family=None, tiledb=None):
+    def __init__(self, device, db_root, family=None, tiledb=None, keep_arcs=True):
         self.device = device
         self.db_root = db_root
+        # keep_arcs=False: lifters never read rg.arcs (28 M Arc tuples on 85F = most of the graph RSS)
+        self.keep_arcs = keep_arcs
         # family=None -> resolve from devices.json, so a caller only has to
         # know the part number.  MachXO2 stays the behaviour it always had.
         if family is None:
@@ -246,6 +248,7 @@ class NativeRoutingGraph:
                     [(_fresh(a), _fresh(b)) for a, b in fixed])
             return c
         arcs, wires, bels = {}, {}, {}
+        keep = self.keep_arcs
 
         def wire(x, y, name):
             ws = wires.get((x, y))
@@ -281,7 +284,8 @@ class NativeRoutingGraph:
                         continue
                     wire(*gsrc)
                     wire(*gsink)
-                    arclist.append(Arc(gsrc, gsink, True))
+                    if keep:
+                        arclist.append(Arc(gsrc, gsink, True))
 
             # add_routing: fixed connections
             for sink, src in fixed:
@@ -293,7 +297,8 @@ class NativeRoutingGraph:
                     continue
                 wire(*gsrc)
                 wire(*gsink)
-                arclist.append(Arc(gsrc, gsink, False))
+                if keep:
+                    arclist.append(Arc(gsrc, gsink, False))
 
             # SLICE bels for PLC tiles (split_slice_mode path).  The bel
             # builders are CommonBels in prjtrellis — shared verbatim between

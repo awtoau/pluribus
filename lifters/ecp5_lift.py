@@ -138,6 +138,7 @@ class ECP5Lift:
     """Routing-graph-backed lifter for one ECP5 device."""
 
     def __init__(self, device, build_dir=DEF_BUILD_DIR, dbroot=DEF_DBROOT):
+        self._native_ids = os.environ.get("PLURIBUS_TRELLIS_BACKEND", "native") != "so"
         if os.environ.get("PLURIBUS_TRELLIS_BACKEND", "native") == "so":
             if build_dir not in sys.path:
                 sys.path.insert(0, build_dir)
@@ -174,6 +175,9 @@ class ECP5Lift:
 
     # ---- node-key helpers --------------------------------------------------
     def wname_id(self, col, row, name):
+        if self._native_ids:
+            # native backend: wire id == name, so the per-lift name->id index is the identity
+            return name if self.rg.has_wire(col, row, name) else None
         key = (col, row)
         idx = self._wn_index.get(key)
         if idx is None:
