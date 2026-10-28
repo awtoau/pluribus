@@ -23,7 +23,7 @@ PAGE = r"""<!doctype html>
 :root[data-theme=dark]{--bg:#17181a;--fg:#e8e8e4;--mut:#9a9a94;--card:#202225;--line:#38393c;--ver:#46c08a;--evi:#f0b93a;--unk:#55565a;--lab:#6c9bf0;--m9k:#c08be0;--mul:#f08a5a;--io:#55c4c4;--accent:#7fa2ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px}
 h1{font-size:20px;margin:0 0 2px}p.sub{margin:0 0 12px;color:var(--mut)}
-.wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;max-width:1200px;margin:0 auto}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;margin:0 auto}
 @media (max-width:820px){.wrap{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
 canvas{width:100%;height:auto;display:block;border-radius:6px;cursor:crosshair}
@@ -39,7 +39,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td{padding:1px 0}td:las
 <h1>EP4CGX150 die map</h1>
 <p class="sub">Each cell is one tile (x across, y up). Colour = configuration-bit evidence for the tile. Hover for details.</p>
 <div class="wrap">
-<div class="card scroll"><canvas id="c" role="img" aria-label="Die tile map coloured by evidence tier"></canvas></div>
+<div class="card" style="overflow:auto"><canvas id="c" role="img" aria-label="Die tile map coloured by evidence tier"></canvas></div>
 <div>
 <div class="card" style="margin-bottom:12px">
 <fieldset><legend>Colour by</legend>
@@ -55,6 +55,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td{padding:1px 0}td:las
 <label><input type="checkbox" id="oEdge"> Die-edge tiles</label>
 <label><input type="checkbox" id="oSpec" checked> Specimen LABs (ring)</label>
 <label><input type="checkbox" id="oLe" checked> LE-output grids (dot)</label>
+<label><input type="checkbox" id="fit" checked> Fit map to window</label>
 <label>Map zoom <input type="range" id="zoom" min="6" max="56" value="10"></label></fieldset>
 <div id="legend"></div></div>
 <div class="card"><div id="info">Hover a tile.</div></div>
@@ -65,9 +66,11 @@ table{border-collapse:collapse;width:100%;font-size:13px}td{padding:1px 0}td:las
 const D=__DATA__;
 const NX=D.nx,NY=D.ny,T=D.t; // t rows: [x,y,kind,tier,cells,ver,set,edge,spec,leout]
 const KIND=["LAB","M9K","MUL","IO"],TIER=["verified","evidence","unknown"];
-const cv=document.getElementById('c'),ctx=cv.getContext('2d'),M=2;let S=10,zoomed=false;
-function size(){const w=NX*S+2*M,h=NY*S+2*M;if(cv.width!=w)cv.width=w;if(cv.height!=h)cv.height=h;cv.style.width=zoomed?cv.width+'px':'100%'}
-function setZoom(v){S=v;zoomed=true;document.getElementById('zoom').value=v;draw()}
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),M=2;let S=10;
+function fitS(){const card=cv.parentElement,w=card.clientWidth-26,top=card.getBoundingClientRect().top;const h=Math.max(360,innerHeight-Math.max(top,0)-28);return Math.max(4,Math.min(56,Math.floor(Math.min((w-2*M)/NX,(h-2*M)/NY))))}
+let fit=true;function setFit(on){fit=on;const e=document.getElementById('fit');if(e)e.checked=on}
+function size(){if(fit){S=fitS();document.getElementById('zoom').value=S}const w=NX*S+2*M,h=NY*S+2*M;if(cv.width!=w)cv.width=w;if(cv.height!=h)cv.height=h;cv.style.width=cv.width+'px'}
+function setZoom(v){setFit(false);S=v;document.getElementById('zoom').value=v;draw()}
 const grid=new Map();T.forEach(t=>grid.set(t[0]*1000+t[1],t));
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const kv=k=>k=="IOL"||k=="IOR"||k=="IOROW"?"IO":k;
@@ -98,7 +101,9 @@ cv.addEventListener('mouseleave',()=>{hover=null;draw()});
 document.querySelectorAll('input[name=mode]').forEach(i=>i.onchange=()=>{mode=i.value;draw()});
 document.querySelectorAll('[data-k]').forEach(i=>i.onchange=()=>{vis[i.dataset.k]=i.checked?1:0;draw()});
 ['oEdge','oSpec','oLe'].forEach(id=>document.getElementById(id).onchange=draw);
-document.getElementById('zoom').oninput=e=>{S=+e.target.value;zoomed=S!=10;draw()};
+document.getElementById('zoom').oninput=e=>{setFit(false);S=+e.target.value;draw()};
+document.getElementById('fit').onchange=e=>{fit=e.target.checked;draw()};addEventListener('resize',()=>{if(fit)draw()});
+
 /*__PINS_JS__*/
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',draw);draw();
 </script></body></html>
