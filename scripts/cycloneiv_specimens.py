@@ -60,6 +60,7 @@ SRC_WIN = {"R4": (5, 2), "C4": (2, 5), "R24": (25, 2), "C16": (2, 17), "LE_BUFFE
 # RCF type -> vendor name families that may carry it (cross-type naming quirk, ddb-format doc)
 SRC_FAMS = {"R4": ("H4", "V4"), "C4": ("V4", "H4"), "R24": ("H24", "V16"), "C16": ("V16", "H24")}
 LEBUF_FAMS = range(16, 48)   # node-table families of the LE_BUFFER records (one per LAB each)
+LOOSE_POOL_MAX = 40          # unknown-type srcs (IO ring) match only in a near-clean diff pool
 
 
 def tclass(x, y):
@@ -292,8 +293,10 @@ class Solver:
         keep = P.dec.npred[gids] < P.dec.gsize[gids]
         return set(zip(blocks[keep].tolist(), recs[keep].tolist()))
 
-    def src_ok(self, a, s):
-        """May record s be the wire the RCF names a?  (type family + node-tile window)."""
+    def src_ok(self, a, s, loose=False):
+        """May record s be the wire the RCF names a?  (type family + node-tile window).
+        Unknown src types (IO ring) have no model: they match only with loose=True (near-clean
+        diff pool), where uniqueness within the dst window still decides alone."""
         P = self.P
         fx, fy = XMIRROR - int(P.vx[s]), int(P.vy[s])
         t = self.fam_type.get(int(P.fam[s]), "?")
@@ -302,7 +305,7 @@ class Solver:
             return t == "LEBUF" and -w[0] <= fx - a[2] <= 0 and abs(fy - a[3]) <= w[1]
         fams = SRC_FAMS.get(a[1])
         if fams is None:
-            return False               # IO / clock sources: no model, never matched blind
+            return loose and t not in ("LEBUF", "H4", "V4", "H24", "V16")
         w = SRC_WIN[a[1]]
         return t in fams and abs(fx - a[2]) <= w[0] and abs(fy - a[3]) <= w[1]
 
@@ -322,6 +325,8 @@ class Solver:
             bytile[(int(P.btx[B]), int(P.bty[B]))].append((B, s))
         stats = collections.Counter(edges_total=len(edges), fired_pairs=len(pool))
 
+        loose = len(pool) <= LOOSE_POOL_MAX
+
         def cands(a, b):
             wx, wy = DST_WIN[b[1]]
             out = []
@@ -331,7 +336,7 @@ class Solver:
                         if a in rec:
                             if s == rec[a]:
                                 out.append((B, s))
-                        elif self.src_ok(a, s):
+                        elif self.src_ok(a, s, loose):
                             out.append((B, s))
             return out
 
