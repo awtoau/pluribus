@@ -107,7 +107,7 @@ def workers_for(job, cap, base_gb=0.0):
 
 
 SCOPE_ENV = "PLURIBUS_SCOPE"  # set once the batch runs in its own capped cgroup scope
-BATCH_MAX_GB = float(os.environ.get("PLURIBUS_BATCH_MAX_GB", "28"))
+BATCH_MAX_GB = float(os.environ.get("PLURIBUS_BATCH_MAX_GB", "46"))
 
 # Memory leases: a counting semaphore in GB across every process on the box, so concurrent jobs
 # (agents, sweeps, analyses) share the budget instead of each assuming it owns the machine.

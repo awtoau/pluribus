@@ -42,7 +42,7 @@ def mem_available_gb():
 
 def map_adaptive(fn, items, per_job_gb=2.0, reserve_gb=10.0, max_workers=None, disk_floor_gb=10.0):
     items = list(items)
-    max_workers = max_workers or max(1, (os.cpu_count() or 8) - 4)
+    max_workers = max_workers or max(1, (os.cpu_count() or 8) - 2)
     cv = threading.Condition()
     state = {"inflight": 0, "last_start": 0.0, "peak": 0}
     done = [0]
