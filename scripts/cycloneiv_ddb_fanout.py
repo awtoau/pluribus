@@ -503,9 +503,76 @@ def solve(args):
     log.info("solve: wrote %s", out)
 
 
+def check():
+    """Gate for the EXACT routing.ddb fan-out decode (<die>_rt_fanout.npz, from
+    cycloneiv_ddb_routing.py fanout): every corpus RCF arc whose source is an exact
+    LE_BUFFER record must have its destination wire inside the decoded fan-out.
+
+    Per arc: dest candidates = pos_cands (position window, I-agnostic; always contains
+    the true record) intersected with decoded dests(src) = V - 1 + template offsets.
+    Headline: matched / (matched + missing); plus die-wide template-edge-count vs
+    asm-group-count cross-check."""
+    db = Ddb()
+    db.fam_setup()
+    z = np.load(os.path.join(TMP, f"{DIE}_rt_fanout.npz"))
+    V, tpl, cnt, eoff, offs = z["V"], z["tpl"], z["cnt"], z["eoff"], z["offs"]
+    obs = np.load(os.path.join(TMP, f"{DIE}_obs.npz"), allow_pickle=True)
+    arcs = obs["arcs"]
+    sel = arcs[arcs[:, 1] == TYPI["LE_BUFFER"]]
+    by_src = collections.defaultdict(set)
+    for a in sel.tolist():
+        by_src[tuple(a[1:5])].add(tuple(a[5:9]))
+    matched = missing = 0
+    nosrc = 0
+    miss_by_type = collections.Counter()
+    match_by_type = collections.Counter()
+    acands = {}
+    miss_sample = []
+    for sk, dks in by_src.items():
+        r = db.leb_rec(sk[1], sk[2], sk[3])
+        if r < 0:
+            nosrc += len(dks)
+            continue
+        t = int(tpl[r])
+        D = int(V[r]) + offs[eoff[t]:eoff[t] + cnt[t]].astype(np.int64)
+        Ds = set(D.tolist())
+        for dk in dks:
+            cs = acands.get(dk)
+            if cs is None:
+                cs = acands[dk] = set(db.pos_cands(("", "R4", "C4", "C16", "R24")[dk[0]],
+                                                   dk[2], dk[3]).tolist())
+            if cs & Ds:
+                matched += 1
+                match_by_type[dk[0]] += 1
+            else:
+                missing += 1
+                miss_by_type[dk[0]] += 1
+                if len(miss_sample) < 12:
+                    miss_sample.append((sk, r, dk, sorted(Ds)[:8]))
+    tot = matched + missing
+    log.info("check: LE_BUFFER-rooted arcs: matched %d / missing %d / total %d (%.4f%%); "
+             "%d arcs skipped (no exact src record); by dest type matched %s missing %s",
+             matched, missing, tot, 100.0 * matched / max(tot, 1), nosrc,
+             dict(match_by_type), dict(miss_by_type))
+    for m in miss_sample:
+        log.info("check MISS: src %s rec %d dest %s decoded-dests %s", *m)
+    # die-wide: template edge count vs asm group count
+    ecnt = cnt[tpl].astype(np.int64)
+    ng = db.ng.astype(np.int64)
+    both = (ng > 0)
+    eq = int((ecnt[both] == ng[both]).sum())
+    log.info("check: asm cross-check over %d records with fired-capable groups: "
+             "template edges == asm groups for %d (%.2f%%); diff hist %s",
+             int(both.sum()), eq, 100.0 * eq / max(int(both.sum()), 1),
+             collections.Counter((ecnt[both] - ng[both]).tolist()).most_common(6))
+    if tot and missing == 0:
+        log.info("check: GATE PASS - every exact-source corpus arc is in the decoded fan-out")
+    return missing == 0 and tot > 0
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("observe", "gt", "solve"))
+    ap.add_argument("cmd", choices=("observe", "gt", "solve", "check"))
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--lo", type=int, default=0)
     ap.add_argument("--hi", type=int, default=0)
@@ -517,6 +584,8 @@ def main():
         observe()
     elif a.cmd == "gt":
         gt()
+    elif a.cmd == "check":
+        check()
     else:
         solve(a)
 

@@ -1,23 +1,15 @@
 #!/usr/bin/env python3.15t
-"""Cyclone IV GX `routing.ddb`: node table, wire-endpoint (twin) map, fan-out templates.
+"""Cyclone IV GX `routing.ddb` readers.  Format: docs/cycloneiv-ddb-format.md "routing.ddb".
 
-Format: docs/cycloneiv-ddb-format.md "routing.ddb".  Body sections (byte offsets for stingray4):
-- 16..16+12N          node table = DYGR_DETAIL::ROUTE_FANIN_MAP::NODE_DATA: N x (i16 dx, i16 dy,
-                      i32 c, i32 dn); cumsum(dx, dy) = tile; cumsum(dn) = entry offset into the
-                      in-memory int+ushort arrays (2 units/entry); cumsum(c) mod 2^31 = per-node
-                      node-id reference V (semantics open, see doc).
-- 22,469,513          u32 N, then N x 12 bytes (i32 delta-coded twin id+1, i32, i32): the wire's
-                      OTHER-END record (H4R90C119RT[0] -> H4R90C112LT[0]); 0 = none (every LE).
-- 63,120,855..        element-TEMPLATE stream: [u32 na][na x u16 attrs][i16 e][u32 0][i16 e]
-                      [i8 flag][u16][u32 nd][u16 first=0][(nd-1) x i32 deltas], e == nd - na;
-                      how deltas expand to records is OPEN (r + cumsum REJECTED by the corpus:
-                      docs/cycloneiv-ddb-format.md "Open: node -> connectivity expansion").
-Delta streams are plain cumsum mod 2^31; ids stored +1, running value 0 = NULL.
+  python3.15t scripts/cycloneiv_ddb_routing.py fanout [--die stingray4]  # EXACT decode -> <die>_rt_fanout.npz
 
-  python3.15t scripts/cycloneiv_ddb_routing.py nodes     [--die stingray4]  # -> tmp/ddb/<die>_rt_nodes.npy
-  python3.15t scripts/cycloneiv_ddb_routing.py twin      [--die stingray4]  # -> <die>_rt_twin.npy + name check
-  python3.15t scripts/cycloneiv_ddb_routing.py templates [--die stingray4]  # -> <die>_rt_tpl.npz
-Streams the body; peak RSS ~0.5 GB.  Log tmp/logs/cycloneiv_ddb_routing.log.
+`fanout` is the exact, self-validating decode (element table + template pool + fan-in inversion
+proof; schemas recovered from libddb_dygr.so by scripts/cycloneiv_ddb_symdump.py):
+dests(elem) = V(elem) + template offsets.  Gate: scripts/cycloneiv_ddb_fanout.py check.
+
+`nodes` / `twin` / `templates` are the older partial readers (tile table, first-fan-in map read as
+a twin map, resync template parse); superseded by `fanout`, kept while cycloneiv_ddb_fanout.py
+gt/solve still load their caches.  Log tmp/logs/cycloneiv_ddb_routing.log.
 """
 import argparse
 import collections
@@ -203,9 +195,154 @@ def templates(die):
              int(sum(g[1] for g in gaps)), out)
 
 
+N_TPL = {"stingray4": 197688}            # DYGR_ROUTE_ELEMENT_TEMPLATE count (zlib-trailer type table)
+N_EDGE = {"stingray4": 3612712}          # int / unsigned short payload count (type table)
+
+
+def fanout(die):
+    """EXACT decode of node -> fan-out from the PDB serializers in libddb_dygr.so
+    (schemas: scripts/cycloneiv_ddb_symdump.py; docs/cycloneiv-ddb-format.md).
+
+    - Element row (offset 16, 12 B) = DYGR_ROUTE_ELEMENT: i16 d(m_x), i16 d(m_y),
+      i32 d(first fan-out dest id V), i32 ptr tag for m_template
+      (tag 0 = NULL, 4 = new registry object, (d<<2)|2 = registry index += d).
+    - Template pool = last deferred-object pool, ends at EOF; per template:
+      5 x i16 + 3 x i8 field deltas vs the previous template, u16 count,
+      count x i32 offset deltas (elem0 chains to the previous template's offs[0]),
+      u16 count again, count x u16 position deltas (same chaining).
+    - dests(elem) = V + offs[]  (DYGR_ROUTE_ELEMENT::add_fanout stores dest - first_dest).
+    -> <die>_rt_fanout.npz."""
+    raw = body(die)
+    L = len(raw)
+    n_tpl, n_edge = N_TPL[die], N_EDGE[die]
+    n = struct.unpack_from("<I", raw, 12)[0]
+
+    # -- element table: template ptr-tag chain + V cumsum
+    rec = np.frombuffer(raw, NODE, count=n, offset=16)
+    Vraw = np.cumsum(rec["c"].astype(np.int64)).astype(np.int32)  # i32 wraparound = xfr_int_delta
+    vflag = Vraw < 0                      # bit 31 = has-fanout flag
+    V = (Vraw.astype(np.int64) & 0x7fffffff).astype(np.int32)  # FIRST fan-out dest id; 0 = none
+    tags = rec["dn"]
+    tpl = np.full(n, -1, np.int32)
+    # Registry slots start at 1; a NEW object (tag 12) takes the next slot WITHOUT moving the
+    # delta cursor; a reference tag (d<<2)|2 moves the cursor by d.  0-based id = slot - 1.
+    last, nxt = 0, 1
+    bad = 0
+    for i, t in enumerate(tags.tolist()):
+        if t == 0:
+            continue
+        if t == 12:
+            tpl[i] = nxt - 1
+            nxt += 1
+        elif t & 3 == 2:
+            last += t >> 2
+            tpl[i] = last - 1
+        else:
+            bad += 1
+    if bad or nxt - 1 != n_tpl:
+        raise dd.DdbError(f"template ptr-tag chain: {bad} bad tags, {nxt - 1} new objects (want {n_tpl})")
+
+    # -- template-vector cross-check (follows the element list): first tag jumps back to
+    #    registry object 0, then +1 per entry: (d<<2)|2 encoding.
+    p = 16 + 12 * n
+    cnt = struct.unpack_from("<I", raw, p)[0]
+    t0, t1 = struct.unpack_from("<ii", raw, p + 4)
+    if cnt != n_tpl or t0 != ((1 - last) << 2 | 2) or t1 != 6:
+        raise dd.DdbError(f"template vector check failed: cnt {cnt}, tags {t0} {t1} (last={last})")
+
+    # -- template pool: fixed total size 17 B/template + 6 B/edge, ends at EOF
+    start = L - (17 * n_tpl + 6 * n_edge)
+    p = start
+    enum = np.zeros(n_tpl, np.uint16); nedg = np.zeros(n_tpl, np.uint16)
+    zz = np.zeros(n_tpl, np.int16); idx = np.zeros(n_tpl, np.int16)
+    redund = np.zeros(n_tpl, np.uint16); leng = np.zeros(n_tpl, np.uint8)
+    metal = np.zeros(n_tpl, np.uint8); direc = np.zeros(n_tpl, np.uint8)
+    cnts = np.zeros(n_tpl, np.int32)
+    offs_all, poss_all = [], []
+    s_en = s_ne = s_z = s_ix = s_rd = s_ln = s_mt = s_dr = 0
+    prev_off0, prev_pos0 = 0, 0
+    sc = struct.Struct("<hhhhhbbbH")
+    for k in range(n_tpl):
+        d_en, d_ne, d_z, d_ix, d_rd, d_ln, d_mt, d_dr, c1 = sc.unpack_from(raw, p)
+        p += 15
+        s_en = (s_en + d_en) & 0xffff; s_ne = (s_ne + d_ne) & 0xffff
+        s_z = (s_z + d_z) & 0xffff; s_ix = (s_ix + d_ix) & 0xffff
+        s_rd = (s_rd + d_rd) & 0xffff; s_ln = (s_ln + d_ln) & 0xff
+        s_mt = (s_mt + d_mt) & 0xf; s_dr = (s_dr + d_dr) & 0xf
+        if c1 != s_ne:
+            raise dd.DdbError(f"template {k} at {p - 15}: count {c1} != m_num_edges {s_ne}")
+        if c1:
+            d = np.frombuffer(raw, "<i4", count=c1, offset=p)
+            p += 4 * c1
+            o = np.cumsum(d.astype(np.int64)).astype(np.int32)
+            o += prev_off0
+            prev_off0 = int(o[0])
+            offs_all.append(o)
+        else:
+            prev_off0 = 0
+        c2 = struct.unpack_from("<H", raw, p)[0]
+        p += 2
+        if c2 != c1:
+            raise dd.DdbError(f"template {k}: second count {c2} != {c1}")
+        if c1:
+            d = np.frombuffer(raw, "<u2", count=c1, offset=p)
+            p += 2 * c1
+            q = np.cumsum(d.astype(np.uint64)).astype(np.uint16)
+            q += prev_pos0
+            prev_pos0 = int(q[0])
+            poss_all.append(q)
+        else:
+            prev_pos0 = 0
+        enum[k], nedg[k], zz[k], idx[k] = s_en, s_ne, s_z, s_ix
+        redund[k], leng[k], metal[k], direc[k] = s_rd, s_ln, s_mt, s_dr
+        cnts[k] = c1
+    if p != L:
+        raise dd.DdbError(f"template pool ended at {p}, EOF {L}")
+    if int(cnts.sum()) != n_edge:
+        raise dd.DdbError(f"edge total {int(cnts.sum())} != type table {n_edge}")
+    offs = np.concatenate(offs_all) if offs_all else np.zeros(0, np.int32)
+    poss = np.concatenate(poss_all) if poss_all else np.zeros(0, np.uint16)
+    eoff = np.zeros(n_tpl, np.int64)
+    np.cumsum(cnts[:-1], dtype=np.int64, out=eoff[1:])
+
+    # -- consistency: V == 0 exactly where the template is empty; expansions in range
+    first = offs[eoff[cnts > 0]]
+    nonzero_first = int((first != 0).sum())
+    ecnt = cnts[tpl]                      # per-element edge count
+    v0_mismatch = int(((V == 0) != (ecnt == 0)).sum())
+    # -- expand (dests = V + offs: DYGR_ROUTE_ELEMENT::add_fanout stores dest - first_dest and
+    #    the element keeps the first dest) and PROVE the decode by inverting it against the
+    #    FANIN_MAP: inverted per-node fan-in counts must equal m_num_fanin_edges for ALL nodes.
+    has = V > 0
+    reps = cnts[tpl[has]].astype(np.int64)
+    srcs = np.repeat(np.flatnonzero(has), reps)
+    pick = np.repeat(eoff[tpl[has]], reps) + (np.arange(len(srcs)) - np.repeat(np.cumsum(reps) - reps, reps))
+    dsts = np.repeat(V[has].astype(np.int64), reps) + offs[pick]
+    if dsts.min() < 0 or dsts.max() >= n:
+        raise dd.DdbError(f"expanded dests out of range: {dsts.min()}..{dsts.max()}")
+    fin_cnt = np.bincount(dsts, minlength=n)
+    nd_sec = np.frombuffer(raw, "<i4", count=3 * n, offset=TWIN_OFF[die]).reshape(n, 3)
+    f1 = np.cumsum(nd_sec[:, 1].astype(np.int64)).astype(np.int32)
+    inv_bad = int((fin_cnt != f1).sum())
+    if inv_bad:
+        raise dd.DdbError(f"fan-in inversion: {inv_bad} nodes with inverted count != m_num_fanin_edges")
+    out = os.path.join(A.TMP, f"{die}_rt_fanout.npz")
+    np.savez(out, x=np.cumsum(rec["dx"]).astype(np.int16), y=np.cumsum(rec["dy"]).astype(np.int16),
+             V=V, vflag=vflag, tpl=tpl, enum=enum, nedges=nedg, z=zz, index=idx, redund=redund,
+             length=leng, metal=metal, direction=direc, cnt=cnts, eoff=eoff, offs=offs, poss=poss,
+             pool_start=np.int64(start))
+    log.info("%s: EXACT fan-out decode: %d elements (%d with fan-out, %d without, V-vs-empty "
+             "mismatches %d), %d templates (pool %d..%d), %d template edges -> %d graph edges; "
+             "offs[0]!=0 for %d templates; dest range %d..%d (N=%d); fan-in inversion PASS "
+             "(all %d nodes); -> %s",
+             die, n, int(has.sum()), int((V == 0).sum()), v0_mismatch,
+             n_tpl, start, L, int(cnts.sum()), len(dsts), nonzero_first,
+             int(dsts.min()), int(dsts.max()), n, n, out)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("nodes", "twin", "templates"))
+    ap.add_argument("cmd", choices=("nodes", "twin", "templates", "fanout"))
     ap.add_argument("--die", default="stingray4")
     a = ap.parse_args()
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
@@ -217,6 +354,8 @@ def main():
         twin(a.die)
     elif a.cmd == "templates":
         templates(a.die)
+    elif a.cmd == "fanout":
+        fanout(a.die)
 
 
 if __name__ == "__main__":
