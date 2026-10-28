@@ -7,7 +7,8 @@ Every cell of the (frame, v) plane (+ header frame) is attributed to ONE class, 
 Reports die-wide TOTAL bits per class (A) and the SET bits of an image per class (B).
 No new decoder: geometry, Dec.active and the specimen tables are used as they are.
 
-  python3.15t scripts/cycloneiv_bit_inventory.py --image <path.bin|.rbf>
+  python3.15t scripts/cycloneiv_bit_inventory.py --image <path.bin|.rbf> --record
+--record appends one line to docs/coverage-history.jsonl (the coverage-over-time ledger); use it every run.
 Log tmp/logs/cycloneiv_bit_inventory.log; JSON tmp/cycloneiv_bit_inventory.json.  Peak RSS ~4 GB.
 """
 import argparse
@@ -106,9 +107,51 @@ def le_grid(g, tiles):
     return f, v, np.broadcast_to(sg, f.shape)
 
 
+LEDGER = REPO / "docs/coverage-history.jsonl"
+# tier of each class's die bits for the ledger: verified = vendor-oracle compare, evidence = mapping without
+# per-bit oracle, unknown = nothing; 5a is split by the header counts.
+LEDGER_TIER = {"1a": "verified", "5b": "verified", "1b": "evidence", "1c": "evidence", "2a": "evidence",
+               "2b": "evidence", "3": "evidence", "5d": "evidence"}
+
+
+def git(*args):
+    import subprocess
+    return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def record(out, hdr_ver, hdr_known, hdr_unk):
+    """Append ONE line to the coverage ledger (single O_APPEND write; existing lines never rewritten)."""
+    import datetime
+    import os
+    classes = []
+    for r in out["rows"]:
+        t = r["total"]
+        if r["id"] == "5a":
+            v, e, u = hdr_ver, hdr_known, hdr_unk
+        else:
+            tier = LEDGER_TIER.get(r["id"], "unknown")
+            v, e, u = (t if tier == "verified" else 0), (t if tier == "evidence" else 0), (t if tier == "unknown" else 0)
+        assert v + e + u == t, r["id"]
+        classes.append(dict(id=r["id"], name=r["name"], tier_label=r["tier"], die_bits=t, verified=v, evidence=e,
+                            unknown=u, image_set=r["set"]))
+    line = dict(ts=datetime.datetime.now().astimezone().isoformat(timespec="seconds"), commit=git("rev-parse", "HEAD"),
+                subject=git("log", "-1", "--format=%s"), dirty=bool(git("status", "--porcelain", "--untracked-files=no")),
+                source="live", die_bits=out["die_bits"], verified=out["verified"], evidence=out["evidence"],
+                unknown=out["unknown"], image_set_total=out["set_total"], classes=classes)
+    assert line["verified"] + line["evidence"] + line["unknown"] == line["die_bits"]
+    data = (json.dumps(line, separators=(",", ":")) + "\n").encode()
+    fd = os.open(LEDGER, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        os.write(fd, data)
+    finally:
+        os.close(fd)
+    log.info("recorded ledger line for %s -> %s", line["commit"][:9], LEDGER)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--image", required=True)
+    ap.add_argument("--record", action="store_true", help="append one line to docs/coverage-history.jsonl (run after every checklist item)")
     a = ap.parse_args()
     (REPO / "tmp/logs").mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
@@ -326,6 +369,8 @@ def main():
                claim_overlaps={f"{a}<-{b}": n for (a, b), n in inv.claimed_by.items()},
                regions=regions, class6_by_offset=six_off, class6_by_vphase=[int(x) for x in ph_tot])
     json.dump(out, open(REPO / "tmp/cycloneiv_bit_inventory.json", "w"), indent=1)
+    if a.record:
+        record(out, HDR_VER, HDR_KNOWN, HDR_UNK)
 
     P = log.info
     P("=== (A) die-wide TOTAL bits per class; die = %d bits (handbook 39,425,016) ===", die_bits)
