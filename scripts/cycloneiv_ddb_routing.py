@@ -2,16 +2,17 @@
 """Cyclone IV GX `routing.ddb`: node table, wire-endpoint (twin) map, fan-out templates.
 
 Format: docs/cycloneiv-ddb-format.md "routing.ddb".  Body sections (byte offsets for stingray4):
-- 16..16+12N          node table: N x (i16 dx, i16 dy, i32 c, i32 dn); cumsum(dx, dy) = tile,
-                      cumsum(dn) = entry offset of the node's fan-out list (2 units per fan-out)
-                      in the IN-MEMORY expanded arrays (not byte-addressable in the file), c = a
-                      delta-coded per-node reference (semantics open, see doc).
+- 16..16+12N          node table = DYGR_DETAIL::ROUTE_FANIN_MAP::NODE_DATA: N x (i16 dx, i16 dy,
+                      i32 c, i32 dn); cumsum(dx, dy) = tile; cumsum(dn) = entry offset into the
+                      in-memory int+ushort arrays (2 units/entry); cumsum(c) mod 2^31 = per-node
+                      node-id reference V (semantics open, see doc).
 - 22,469,513          u32 N, then N x 12 bytes (i32 delta-coded twin id+1, i32, i32): the wire's
                       OTHER-END record (H4R90C119RT[0] -> H4R90C112LT[0]); 0 = none (every LE).
-- 63,120,855..        fan-out TEMPLATE stream: [u32 na][na x u16 attrs][i16 e][u32 0][i16 e]
+- 63,120,855..        element-TEMPLATE stream: [u32 na][na x u16 attrs][i16 e][u32 0][i16 e]
                       [i8 flag][u16][u32 nd][u16 first=0][(nd-1) x i32 deltas], e == nd - na;
-                      dests of a node r using the template = r + cumsum(0, deltas).
-Delta streams restart where the value is < -2^30 (restart value = v + 2^31); ids stored +1, 0 = NULL.
+                      how deltas expand to records is OPEN (r + cumsum REJECTED by the corpus:
+                      docs/cycloneiv-ddb-format.md "Open: node -> connectivity expansion").
+Delta streams are plain cumsum mod 2^31; ids stored +1, running value 0 = NULL.
 
   python3.15t scripts/cycloneiv_ddb_routing.py nodes     [--die stingray4]  # -> tmp/ddb/<die>_rt_nodes.npy
   python3.15t scripts/cycloneiv_ddb_routing.py twin      [--die stingray4]  # -> <die>_rt_twin.npy + name check

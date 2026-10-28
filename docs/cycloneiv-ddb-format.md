@@ -43,12 +43,12 @@ Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](cyclonev-ddb-fo
 - Then the same names again prefixed `XQ4/Q4_` (second table, same layout), then GCLK / RCLK / BIOCLK / TIOCLK / IOC / LEIM / HSSI names (16 M of the 50 M inflated).
 - Families: H4 370,260, V4 263,952, H24 12,690, V16 12,402, HSSI 1,653, LEIM 1,385, RCLKR*, GCLK, BIOCLKCS, TIOCLKCS, IOC.
 
-## routing.ddb (88 MB inflated; node table, twin map and template contents decoded; node->template assignment open)
+## routing.ddb (88 MB inflated; node table, twin map, spans, section identities decoded; connectivity expansion open)
 
-Reader: `scripts/cycloneiv_ddb_routing.py` (`nodes` / `twin` / `templates`). Shared conventions found in every delta stream here:
+Readers: `scripts/cycloneiv_ddb_routing.py` (`nodes` / `twin` / `templates`), `scripts/cycloneiv_ddb_fanout.py` (corpus ground truth + assignment-hypothesis harness). Shared conventions in every per-node delta stream here:
 
-- **Restart rule:** a delta `v < -2^30` restarts the accumulator at `v + 2^31` (plain negative deltas also have bit 31 set, so the old "bit-31 = restart" reading was wrong).
-- **Ids stored +1**, `0` = NULL.
+- **Arithmetic is plain cumsum mod 2^31.** The earlier "restart rule" (`v < -2^30` restarts at `v + 2^31`) is this same arithmetic seen from a small accumulator; with mod-2^31 cumsum the `c` stream decodes in-range for ALL nodes (the old reading lost 29 %).
+- **Ids stored +1**, running value `0` = NULL.
 
 ### Sections (byte offsets, stingray4)
 
@@ -56,26 +56,40 @@ Reader: `scripts/cycloneiv_ddb_routing.py` (`nodes` / `twin` / `templates`). Sha
 - `16..21,629,332` **node table**: N x `(i16 dx, i16 dy, i32 c, i32 dn)` (`nodes` -> `tmp/ddb/stingray4_rt_nodes.npy`).
   - `cumsum(dx), cumsum(dy)` = tile (vendor grid x 0..117, y 0..91); node ids = asm record ids. **Vendor x = 115 - plane x**; y = plane y.
   - `cumsum(dn)` = offset of the node's fan-out list in the **in-memory expanded entry arrays** (`int` + `unsigned short`, 3,612,712 each in the type table), 2 offset units per entry; max offset/2 = 3,186,259. `dn == 2 x group count` for 290,512 records (empty records count 1 implicit group). The lists are **not byte-addressable in the file** - the loader expands them from the templates below (this is why every fixed base x unit indexing attempt failed).
-  - `c`: delta stream (restart rule above, +1 convention, NULL for every LE) -> a per-node **node-id-valued** reference V: restart values are all valid ids (449,412..1,802,438); locally V tracks the node (V = r + const within a run; typical deltas +-10620+-1 = +-(118x90)+-1 = one H4-subtype block +- one tile). Suspected template/driver anchor; plain cumsum drifts out of range for ~29 % of nodes, so the full convention is still open. V is 1:1 where checked (not a shared template pointer), V(V) != V.
-- `21,629,332` `u32 197688`, i32 `-790746`, then 197,687 x `6` + 12,356 tail ints (2717, zeros, few 1/3/8/16/24/1<<26/0x50000000) - per-template small ints, not resolved.
-- `22,469,513` `u32 N`, then N x 12 bytes `(i32 f0, i32 f1, i32 f2)`: **twin / other-end map** (`twin` -> `stingray4_rt_twin.npy`). `cum_ids(f0)` = the record of the SAME WIRE's other end: `H4R90C119RT[0] -> H4R90C112LT[0]`; edge wires map to HSSI/HIO boundary records. NULL for ids 0..449,320 (LE/LEB/LL - not two-ended wires). Verified 1,440/1,440 icname pairs (same type, same row/col, span 1..30; direction letter and index may change with the end, as in the RCF alias sets). f1/f2 = small per-node ints, unresolved.
-- `44,098,833..~63.06 MB` lookup tables (`DYGR_LOOKUP` nests; affine-looking triplets `183510, 90, 180, <base>...` = per-(type, tile) tables, probably (elem, x, y, i) -> id for `get_global_id`), zeros, packed tables. Not needed for fan-outs so far.
-- `~63,060,526..84 MB` **fan-out template stream** (`templates` -> `stingray4_rt_tpl.npz`): back-to-back records
+  - `c`: mod-2^31 cumsum (+1 convention) -> per-node **node-id-valued** reference V, in range 0..N for ALL nodes; V = 0 (NULL) for every LE + 523,585 others; 362,754 distinct targets, repeated (every `RCLKR*CS29R*` is referenced by exactly 30 nodes). Reads as a designated fan-in-side neighbour (`H4R50C83RT[12] -> H4R49C87RT[13]` end-to-driver pairs); V is NOT in the node's own fan-out under any tested expansion, not a template anchor, not a flyweight back-ref (not unique).
+- `21,629,332` `u32 197688`, i32 `-790746`, then 197,687 x `6` (constant) + 12,356 tail ints: per-family serialized containers - `(count, count, -count)` triples per family in id order (149760 LE, 299520 LEB+LL, 370260 H4, 263952 V4, 12690 H24, 12402 V16, 25920, 12960, ...), a leading `2717` (unidentified count), then packed ASCII class names. No per-node or per-template assignment data.
+- `22,469,513` `u32 N`, then N x 12 bytes `(i32 f0, i32 f1, i32 f2)`: **twin / other-end map** (`twin` -> `stingray4_rt_twin.npy`). `cum_ids(f0)` = the record of the SAME WIRE's other end: `H4R90C119RT[0] -> H4R90C112LT[0]`; edge wires map to HSSI/HIO boundary records. NULL for ids 0..449,320 (LE/LEB/LL - not two-ended wires). Verified 1,440/1,440 icname pairs (same type, same row/col, span 1..30; direction letter and index may change with the end, as in the RCF alias sets).
+  - `cumsum(f1)` = per-node small value 0..30: the wire's span (named pairs have span 1..30).
+  - `cumsum(f2) mod 2^31` = per-node POINTER into the 44.1 MB table below (0 = none; max = its entry count - 2).
+- `44,098,833..62,517,553` **sorted-id list table**: `u32 4604678, u32 0`, then 4,604,678 i32: 336,060 zero-sum delta records (each record's deltas sum to 0 via a final negative; the running cumsum emits a SORTED list of node ids +1). `f2` points per node at one list; lists are shared (flyweight); LE/LEB/LL lists are empty. Members cluster at family-boundary offsets, i.e. encode (family, within-family offset) pairs. Semantics open - per-node fan-in template is the best guess, but see the negatives below.
+- `62,517,553..63,060,526` serialized `DYGR_LOOKUP` objects (class-name strings + ~197k small records; unparsed).
+- `63,060,526..EOF (88,157,812)` **element-template stream** (`templates` -> `stingray4_rt_tpl.npz`): back-to-back records
   `[u32 na][na x u16 attrs][i16 e][u32 0][i16 e][i8 flag][u16][u32 nd][u16 first][(nd-1) x i32 deltas]`, `e == nd - na`, `first` always 0.
-  - **Dests of a node r instantiating a template = r + cumsum(0, deltas)** (owner-relative, cumulative). Verified: LEB templates give 6 same-tile dests (+9360 steps = +1 LE I-region) matching the 6 asm groups exactly for records in the anchored window; H4 templates (nd 18..23) give compact 5-column footprints; one H4 blob matched a cross-check record's group tiles as sub-multiset with the known per-dest-type bit-tile skew.
-  - Parse with resync: 197,583 of the 197,688 `DYGR_ROUTE_ELEMENT_TEMPLATE`; attr sum 3,611,175 / entry sum 3,613,697 vs 3,612,712 each in the type table; 37 unparsed stretches, 610 bytes total, mostly 63.06..63.12 MB where the short LE/LEB/LL templates use a variant (i32 delta, i32 attr) pair coding seen at 63,072,300: `(-140400,100) (9360,6) (9360,2)x4`.
-  - attrs (u16, one per entry) are 0 in all templates sampled; the per-entry mux-input attribute may live in the pair-coded variant or elsewhere.
+  - Parse with resync: 197,583 of the 197,688 `DYGR_ROUTE_ELEMENT_TEMPLATE`; attr sum 3,611,175 / entry sum 3,613,697 vs 3,612,712 each in the type table; 37 unparsed stretches, 610 bytes total, mostly 63.06..63.12 MB where the short LE/LEB/LL templates use a variant (i32 delta, i32 attr) pair coding.
+  - attrs (u16, one per entry) are 0 in all templates sampled.
+  - Delta values are structured as `k x 10620 +- small` (10,620 = 118 x 90 = one uniform family block), so entries encode (family hop, position offset) in a canonical uniform-grid id space.
+  - **The expansion rule is NOT `dests = r + cumsum(0, deltas)`.** That held only in the LEB-anchored window where it was first seen and does not generalize: for corpus-grounded records (exact LE_BUFFER source ids, RCF-observed dests) NO template of any size under that rule gives a local dest set or covers the observed dests.
 
-### Open: node -> template assignment
+### Type table (zlib trailer) - what the sections are
 
-The expansion (which template each node instantiates) is the remaining piece; candidates are `c`/V, the 21.6 MB "6" section and the 44.1 MB lookups. Negative results, so you don't repeat them:
+`DYGR_ROUTE_INFO_BODY` 1; `DYGR_DETAIL::ROUTE_FANIN_MAP` 1 with `::NODE_DATA` sizeof 12 = the node table rows (so the 12-byte node records belong to a FAN-IN map); `DYGR_ROUTE_ELEMENT_TEMPLATE` 197,688 sizeof 32; payload `int` + `unsigned short` 3,612,712 each; a 5-deep `DYGR_LOOKUP<...DYGR_INT_LOOKUP_OFFSET>` tree (1 / 1,004 / 330 / 846 / 4,178 lookups, leaf `DYGR_INT_LOOKUP_OFFSET` 1,756) with `DYGR_LOOKUP_TEMPLATE` flyweights (1/67/94/47/26) = the get_global_id-style keyed lookup; `DYGR_ROUTE_BLOCK_INTERFACE` 28, `_NODE` 983, `BLOCK_IO_MAPPING_ENTRY` 7,502.
 
-- No fixed base x unit addresses the lists: scanned ALL byte bases x units {1,2,3,4,6,8} (phase A, 96-sample near-own-tile predicate) and all bases 22..66 MB with exact tile-multiset scoring at unit 4 (phase B, 48 samples) - only node-table aliasing artifacts pass. Base 61,807,052 + 4 x off matches the LEB window (162/74,932 records exact) then drifts negative and dies by off ~1.4 M: the file order is template-first-use, not node order.
-- Content-locating 60 H4/V4 k>=15 lists as stride-8 windows (exact and translation-tolerant tile shapes) over 44..88 MB: zero hits - their deltas are contiguous i32 runs inside template records, not (d, attr) pairs.
-- `V // 10620` is not a global template id (LEB and H4 nodes collide at T=44); V is not a representative-node fixpoint map (V(V) != V, V unique per node where checked).
-- asm group tiles (select-bit tile) vs dest node tiles carry per-dest-type skews (modes (0,+1) and (-4,+1)); an exact-tile cross-check needs those skews modelled per family.
+### Open: node -> connectivity expansion (assignment + delta semantics)
 
-Until assignment is decoded the block -> destination map stays learnt from the oracle; the twin map above already gives the RT/LT (driver-dependent) alias pairing without the learnt alias sets.
+Which template a node instantiates AND how template deltas map to records are still open. Corpus ground truth (exact: LE_BUFFER record = `base[I] + 90*colrank(X) + Y`, 111,530 observed sources, 1.6 M wire arcs from 2,984 designs - `cycloneiv_ddb_fanout.py observe/gt`) rejects, in addition to the older negatives:
+
+- `dests = r + cumsum` in global id space: no local template of ANY size anchors at a corpus-grounded record (0 of 197,583 for several probes).
+- Canonical-block space (`fam x 10620 + x*90 + y`, all 24 axis-mirror/major variants): no observed-dest coverage.
+- Restart/absolute entries in template deltas: only 115 deltas < -2^30 (2 junk templates) - not the mechanism.
+- Fan-in reading (template lists = sources of the owner, subset test over exact LEB sources, both id and canonical units, both mirrors): no consistent (record, template) matches.
+- f2-list expansions as fan-in/fan-out via anchor shifting (anchor = lowest node id sharing the pointer; global-id shift, tile shift, within-family-index shift): no corpus matches.
+- `nd == ng` (asm group count) need not hold; `dn == 2 x ng` holds for exactly 290,512 records only.
+- The per-(RCF type, I) name rules are NOT constant offsets: wires are driven at varying span positions and the two end records (twins) sit in different families (47 inconsistent rules; mass-applying them produced 442 template-membership violations).
+- An intersection bootstrap over learnt-alias candidate sets produces FALSE unique assignments (templates whose scattered entries happen to cover alias junk); corpus subset tests must use position-window candidates, which keep the true record but did not yield unique templates under any tested expansion.
+
+Next lead: deserialize the 5-level `DYGR_LOOKUP` tree (region 2 + the 62.5 MB object block); its leaf `DYGR_INT_LOOKUP_OFFSET` values are the likely (element, tile) -> expansion keys, and `libccl_dygr` symbol names in the Quartus binaries should pin the field layout.
+
+Until then the block -> destination map stays learnt from the oracle; the twin map already gives the RT/LT (driver-dependent) alias pairing without the learnt alias sets, and `f1` gives exact spans.
 
 ## Naming quirks found while scoring
 
