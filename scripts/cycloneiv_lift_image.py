@@ -35,6 +35,8 @@ def main():
     ap.add_argument("--max-tiles", type=int, default=0, help="debug: first N LAB tiles only")
     ap.add_argument("--phys", action="store_true", help="LCCOMB inputs traced on asm record ids (cycloneiv_phys_trace)")
     ap.add_argument("--ddb", action="store_true", help="LCCOMB inputs traced on the exact routing.ddb graph (cycloneiv_ddb_trace)")
+    ap.add_argument("--localline", choices=["full", "pq"], help="with --ddb: LCCOMB pins answered first from a unique specimen LOCAL_LINE pip "
+                    "(scripts/cycloneiv_pip_table.py; source tag specimen-localline); full = 4 bits, pq = 2 pair/sink bits")
     ap.add_argument("--phys-fallback", action="store_true", help="with --phys: learner trace where the physical one is open")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
@@ -50,6 +52,9 @@ def main():
     if a.ddb:
         import cycloneiv_ddb_trace as dt
         phys = dt.UnitView(dt.Ddb())
+        if a.localline:
+            import cycloneiv_pip_table as pt
+            phys = pt.make_localline_view(phys, pt.Resolver(phys.D.P.g, mode=a.localline))
     lift = cl.CycloneIVLift(cg.die_of("EP4CGX150"), a.tables.split(","), phys=phys, phys_fallback=a.phys_fallback)
     plane = cc.cram_plane(Path(a.image).read_bytes(), lift.geom)
     log.info("plane: %d set bits", len(plane))
@@ -70,6 +75,12 @@ def main():
     log.info("unresolved LUT inputs (mask-dependent): %d", len(des.unresolved))
     for k, n in why.most_common(8):
         log.info("  %-40s %d", k, n)
+    if a.localline:
+        tr = phys.tracer
+        log.info("localline (%s) vs ddb tracer: %s", a.localline, dict(tr.ll_stats))
+        log.info("tracer outcome counts: %s", dict(tr.why.most_common(6)))
+    import resource
+    log.info("peak RSS %.2f GB", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6)
     for k, n in des.not_lifted.items():
         log.info("NOT LIFTED %s: %d", k, n)
     nin = sum(1 for _ in des.terminals)
