@@ -1,0 +1,65 @@
+"""Closed vocabulary + weakest-link rule (docs/provenance-and-feedback.md section 2).
+
+Tier is fixed at creation and never promoted; status moves. Anything outside these sets dies.
+"""
+import db
+
+# strongest first; weakest(chain) = the right-most member present
+TIERS = ("measured", "vendor-decoded", "eliminated", "pattern-predicted", "statistical",
+         "never-exercised", "unknown")
+STATUSES = ("open", "confirmed", "verified-by-sampling", "oracle-verified", "suspect", "refuted",
+            "superseded", "conflict", "parked")
+VERIFIED_STATUSES = ("oracle-verified", "verified-by-sampling")
+KNOWN_STATUSES = ("open", "confirmed", "verified-by-sampling", "oracle-verified")   # counts as known in coverage
+EVIDENCE_KINDS = ("specimen-pair", "vendor-decode", "oracle-compare", "audit", "elimination",
+                  "absence", "image-hit", "roundtrip")
+CONFIRMING_KINDS = ("specimen-pair", "audit", "oracle-compare", "roundtrip")   # never a claim (circularity)
+SPACES = ("bit", "tile-bit", "pip", "mux-input", "cell-param", "net-attr", "stream-option",
+          "coord-map", "port-map")
+SCOPE_KINDS = ("cells", "range", "tile", "tile-class", "keys", "formula", "all")
+SCOPE_SPECIFICITY = {"cells": 0, "keys": 0, "tile": 1, "range": 2, "tile-class": 3, "formula": 4, "all": 5}
+EXPECTATION_STATUSES = ("open", "confirmed", "refuted", "parked")
+UNKNOWN_REASONS = ("unasked", "unforceable", "seen-in-image", "orphan", "conflict", "not-required-by-corpus")
+UNKNOWN_STATUSES = ("open", "parked", "promoted")
+MATCHER_KINDS = ("deterministic", "statistical", "llm-proposed")
+AUDIT_REASONS = ("suspect", "sampling", "new-pattern", "corpus-fail")
+AUDIT_STATUSES = ("queued", "built", "confirmed", "refuted", "cancelled")
+EVENTS = ("created", "confirmed", "refuted", "suspect", "cleared", "superseded", "audited", "stale",
+          "conflict", "parked", "reopened", "hit", "predicted")
+CORPUS_KINDS = ("oracle-build", "third-party-image", "roundtrip", "lec")
+# sampling rule: confirmations at N distinct scopes graduate a pattern to verified-by-sampling
+SAMPLING_N = {1: 3, 2: 5}
+
+
+def check(value, allowed, what):
+    if value not in allowed:
+        db.die(f"{what} {value!r} is not in the closed vocabulary {allowed}")
+    return value
+
+
+def rank(tier):
+    check(tier, TIERS, "tier")
+    return TIERS.index(tier)
+
+
+def weakest(tiers):
+    """Weakest tier in an evidence chain (a derived claim is as weak as its weakest parent)."""
+    tiers = list(tiers)
+    if not tiers:
+        return "unknown"
+    return max(tiers, key=rank)
+
+
+def weakest_status(statuses):
+    """Status precedence for the lift: refuted > conflict > suspect > superseded > parked > open > confirmed > verified."""
+    order = ("refuted", "conflict", "suspect", "superseded", "parked", "open", "confirmed",
+             "verified-by-sampling", "oracle-verified")
+    statuses = [check(s, STATUSES, "status") for s in statuses]
+    if not statuses:
+        return "open"
+    return min(statuses, key=order.index)
+
+
+def is_known(tier, status):
+    """Counts toward 'known' coverage: a non-unknown tier with a non-failing status."""
+    return tier not in ("unknown", "never-exercised") and status in KNOWN_STATUSES

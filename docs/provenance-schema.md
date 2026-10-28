@@ -10,6 +10,12 @@ in `schema.py` (DDL), `provenance/` (vocabulary, scope expansion, queries, feedb
 
 - One object model for MachXO2, ECP5, Gowin, Anlogic, Cyclone IV, Cyclone V: keyed by
   `(family, device, space, subject_key)`; nothing Cyclone-shaped in a column name.
+- **One database file per family / product / project, all from the same `schema.py`** (Dan,
+  2026-10-29). Every tool and query works unchanged on any of them. `families` / `devices` hold
+  only that file's rows; no table assumes another family is present; the done criterion and
+  gate state of a family are read from its own file. Cross-DB questions ATTACH
+  (`dbtools.open_many`, `dbtools.union`), never a foreign key across files. Layout:
+  `databases/<family>/<name>.db` (databases/README.md); `PLURIBUS_SQLITE_PATH` selects one.
 - Provenance as fine as the data allows: per object where an object was measured, per scope
   (pattern + region) where it was predicted, never "per class" when a finer row exists.
 - Three things never confused: **measured / decoded** (a claim with a tier), **expected** (a
@@ -189,6 +195,18 @@ Weakest link: `provenance.tiers.weakest(chain)`; a claim's effective tier =
   `(space, subject_key)` → list of (scope, claim) sorted most-specific first.
 - `scopes.expand` for a `tile-class` scope over 9,360 LABs × 305 offsets = 2.9 M indices in
   ~50 ms (numpy broadcast); the inventory does the same today.
+
+## Per-database shape (what changed from the shared-DB sketch)
+
+- The §4 sketch and the audit's "every DB holds one device" finding assumed one shared DB;
+  one device per file is now the intended shape.
+- `families` is a per-file registry (typically one row); `coverage_ledger`, `done_criteria`,
+  `gate_runs` are per file. `framework_status.py --db <path>` reads one; `--all` walks
+  `databases/**/*.db` and prints each file's state side by side (`dbtools.kept()`).
+- `claims_register.py --family F` writes into the file `PLURIBUS_SQLITE_PATH` names; it
+  refuses to register a family into a file whose `families` row is a different family.
+- Nothing in `provenance/` joins across files; the one cross-DB example is
+  `dbtools.claims_by_tier_all()`.
 
 ## Not in this design
 

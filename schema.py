@@ -13,7 +13,7 @@ Usage
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index,
-    Integer, JSON, MetaData, SmallInteger, String, Table, Text,
+    Integer, JSON, LargeBinary, MetaData, SmallInteger, String, Table, Text,
     UniqueConstraint,
 )
 
@@ -999,6 +999,336 @@ rcf_fuzz_bits = Table("rcf_fuzz_bits", metadata,
     Column("note",     Text),
 )
 Index("idx_rcf_fuzz_build", rcf_fuzz_bits.c.build, rcf_fuzz_bits.c.net)
+
+# ── Provenance framework (docs/provenance-schema.md, #141) ───────────────────
+# Generic for every family: subjects keyed (family, device, space, subject_key); sets of
+# subjects compressed as scope rows (expanded in numpy, never stored per bit); tier fixed
+# at creation, status moves; claim_events append-only; conflicts first-class.
+# Vocabulary (tiers, statuses, kinds) is closed: provenance/tiers.py dies on anything else.
+
+families = Table("families", metadata,
+    Column("id",            Text, primary_key=True),   # machxo2 | ecp5 | gowin | anlogic | cycloneiv | cyclonev
+    Column("vendor",        Text, nullable=False),
+    Column("name",          Text, nullable=False),
+    Column("lut_inputs",    Integer, nullable=False),
+    Column("bit_model",     Text, nullable=False),     # how a bit is addressed: "frame,v" | "tile,frame,bit" | "cram x,y"
+    Column("device_db",     Text),                     # where the vendored/open device data lives
+)
+
+devices = Table("devices", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("name",          Text, nullable=False),     # e.g. EP4CGX150, LCMXO2-1200, LFE5U-25F, GW1N-2
+    Column("die",           Text),
+    Column("packages",      JSON),                     # list
+    Column("die_bits",      Integer),                  # coverage denominator (NULL = not established)
+    Column("geometry",      JSON),                     # frames, bits_per_frame, FX/VY tables, tile grid, ...
+    Column("source_ref",    Text),                     # geometry source (file / doc)
+    UniqueConstraint("family", "name"),
+)
+
+address_spaces = Table("address_spaces", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("space",         Text, nullable=False),     # bit | tile-bit | pip | mux-input | cell-param | net-attr | stream-option | coord-map | port-map
+    Column("key_grammar",   Text, nullable=False),     # how subject_key is spelled in this space (as data)
+    Column("n_objects",     Integer),                  # size of the space when enumerable (bit: die_bits; pip: ddb fan-out)
+    UniqueConstraint("family", "space"),
+)
+
+scopes = Table("scopes", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text, nullable=False),
+    Column("space",         Text, nullable=False),
+    Column("kind",          Text, nullable=False),     # cells | range | tile | tile-class | keys | formula | all
+    Column("definition",    JSON, nullable=False),     # expanded by provenance/scopes.py
+    Column("scope_key",     Text, nullable=False),     # canonical string of (space, kind, definition)
+    Column("n_objects",     Integer, nullable=False, server_default="0"),  # written by the register from the expansion
+    Column("parent",        Integer, ForeignKey("scopes.id")),             # the wider scope this narrows
+    Column("label",         Text),
+    UniqueConstraint("family", "device", "scope_key"),
+)
+Index("idx_scopes_space", scopes.c.family, scopes.c.device, scopes.c.space, scopes.c.kind)
+
+evidence = Table("evidence", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("kind",          Text, nullable=False),     # specimen-pair | vendor-decode | oracle-compare | audit | elimination | absence | image-hit | roundtrip
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text, nullable=False),
+    Column("name",          Text, nullable=False),     # pair / design / image / decoder name
+    Column("source_ref",    Text, nullable=False),     # repo-relative file the row was read from
+    Column("sha256",        Text),                     # of source_ref (provenance rot check)
+    Column("generator",     Text),                     # script that produced the artefact
+    Column("build_base",    Integer, ForeignKey("postfit_builds.id")),
+    Column("build_spec",    Integer, ForeignKey("postfit_builds.id")),
+    Column("tool_version",  Text),
+    Column("stable",        Boolean),                  # rebuild gave identical bits (NULL = not rebuilt)
+    Column("result",        JSON, nullable=False),     # per-pair metadata (src/snk/hop/rcf...), digest, absence record, compare summary
+    # Changed-bit sets, packed: sorted flat indices (frame * bits_per_frame + v), delta-encoded
+    # LEB128 varints (provenance/evidence_io.py). ~1 byte/bit dense, 4-5 sparse; JSON is 8-14.
+    Column("bits_spec",     LargeBinary),              # set in the specimen, clear in the base
+    Column("bits_base",     LargeBinary),              # set in the base, clear in the specimen
+    Column("bit_encoding",  Text),                     # "dvarint:flat:<bits_per_frame>"
+    Column("n_objects",     Integer, nullable=False, server_default="0"),
+    Column("commit",        Text, nullable=False),
+    Column("created_at",    DateTime(timezone=True)),
+    UniqueConstraint("family", "device", "kind", "name", "source_ref"),
+)
+Index("idx_evidence_kind", evidence.c.family, evidence.c.device, evidence.c.kind)
+
+evidence_scopes = Table("evidence_scopes", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("evidence_id",   Integer, ForeignKey("evidence.id", ondelete="CASCADE"), nullable=False),
+    Column("scope_id",      Integer, ForeignKey("scopes.id"), nullable=False),
+    UniqueConstraint("evidence_id", "scope_id"),
+)
+Index("idx_evidence_scopes_scope", evidence_scopes.c.scope_id)
+
+matchers = Table("matchers", metadata,
+    Column("id",            Text, primary_key=True),   # slug incl. version: affine-v1, llm-proposer-v1
+    Column("kind",          Text, nullable=False),     # deterministic | statistical | llm-proposed
+    Column("name",          Text, nullable=False),
+    Column("version",       Integer, nullable=False),
+    Column("code_ref",      Text, nullable=False),     # module:class
+    Column("parameters",    JSON),
+    Column("training_evidence", JSON),                 # evidence ids a statistical matcher was fitted on
+    Column("created_commit", Text, nullable=False),
+)
+
+claim_patterns = Table("claim_patterns", metadata,
+    Column("id",            Text, primary_key=True),   # slug: ll-translate-v1; a changed law is a NEW id
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text),                     # NULL = family-wide
+    Column("matcher_id",    Text, ForeignKey("matchers.id")),
+    Column("space",         Text, nullable=False),
+    Column("description",   Text, nullable=False),
+    Column("law",           JSON, nullable=False),     # parameters as data; law.dims drives the sampling N rule
+    Column("scope_id",      Integer, ForeignKey("scopes.id")),   # where it is applied
+    Column("status",        Text, nullable=False, server_default="open"),
+    Column("confirmations", Integer, nullable=False, server_default="0"),
+    Column("refutations",   Integer, nullable=False, server_default="0"),
+    Column("verified_scope", JSON),                    # hull of confirmed scopes
+    Column("created_commit", Text, nullable=False),
+    Column("updated_at",    DateTime(timezone=True)),
+)
+Index("idx_claim_patterns_family", claim_patterns.c.family, claim_patterns.c.status)
+
+pattern_evidence = Table("pattern_evidence", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("pattern_id",    Text, ForeignKey("claim_patterns.id", ondelete="CASCADE"), nullable=False),
+    Column("evidence_id",   Integer, ForeignKey("evidence.id"), nullable=False),
+    Column("role",          Text, nullable=False),     # parent | confirm | refute
+    UniqueConstraint("pattern_id", "evidence_id", "role"),
+)
+Index("idx_pattern_evidence_ev", pattern_evidence.c.evidence_id)
+
+claims = Table("claims", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text, nullable=False),
+    Column("space",         Text, nullable=False),
+    Column("subject_key",   Text, nullable=False),     # grammar per address_spaces
+    Column("scope_id",      Integer, ForeignKey("scopes.id"), nullable=False),
+    Column("meaning",       JSON, nullable=False),     # the answer
+    Column("tier",          Text, nullable=False),     # fixed at creation (provenance.tiers.TIERS)
+    Column("status",        Text, nullable=False, server_default="open"),
+    Column("pattern_id",    Text, ForeignKey("claim_patterns.id")),   # NULL unless pattern-predicted
+    Column("n_objects",     Integer, nullable=False, server_default="0"),
+    Column("inventory_class", Text),                   # 1a..6 (ties to the ledger)
+    Column("confidence_basis", Text),
+    Column("confirmations", Integer, nullable=False, server_default="0"),
+    Column("refutations",   Integer, nullable=False, server_default="0"),
+    Column("superseded_by", Integer, ForeignKey("claims.id")),
+    Column("created_commit", Text, nullable=False),
+    Column("updated_at",    DateTime(timezone=True)),
+    UniqueConstraint("family", "device", "space", "subject_key", "scope_id"),
+)
+Index("idx_claims_pattern", claims.c.pattern_id)
+Index("idx_claims_tier", claims.c.family, claims.c.device, claims.c.tier, claims.c.status)
+Index("idx_claims_subject", claims.c.family, claims.c.device, claims.c.space, claims.c.subject_key)
+Index("idx_claims_scope", claims.c.scope_id)
+
+claim_evidence = Table("claim_evidence", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("claim_id",      Integer, ForeignKey("claims.id", ondelete="CASCADE"), nullable=False),
+    Column("evidence_id",   Integer, ForeignKey("evidence.id"), nullable=False),
+    Column("role",          Text, nullable=False),     # direct | parent | confirm | refute
+    UniqueConstraint("claim_id", "evidence_id", "role"),
+)
+Index("idx_claim_evidence_ev", claim_evidence.c.evidence_id)
+
+claim_events = Table("claim_events", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("claim_id",      Integer, ForeignKey("claims.id", ondelete="CASCADE")),
+    Column("pattern_id",    Text, ForeignKey("claim_patterns.id")),
+    Column("expectation_id", Integer),                 # FK omitted: expectations defined below; append-only log
+    Column("unknown_id",    Integer),
+    Column("event",         Text, nullable=False),     # created | confirmed | refuted | suspect | cleared | superseded | audited | stale | conflict | parked | reopened | hit
+    Column("evidence_id",   Integer, ForeignKey("evidence.id")),
+    Column("commit",        Text, nullable=False),
+    Column("ts",            DateTime(timezone=True), nullable=False),
+    Column("detail",        JSON),
+)
+Index("idx_claim_events_pattern", claim_events.c.pattern_id, claim_events.c.ts)
+Index("idx_claim_events_claim", claim_events.c.claim_id, claim_events.c.ts)
+
+claim_conflicts = Table("claim_conflicts", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("claim_a",       Integer, ForeignKey("claims.id", ondelete="CASCADE"), nullable=False),
+    Column("claim_b",       Integer, ForeignKey("claims.id", ondelete="CASCADE"), nullable=False),
+    Column("status",        Text, nullable=False, server_default="open"),   # open | adjudicated
+    Column("resolution",    Text),
+    Column("winner",        Integer, ForeignKey("claims.id")),
+    Column("opened_commit", Text, nullable=False),
+    Column("detail",        JSON),
+    UniqueConstraint("claim_a", "claim_b"),
+)
+
+expectations = Table("expectations", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text, nullable=False),
+    Column("space",         Text, nullable=False),
+    Column("subject_key",   Text, nullable=False),
+    Column("scope_id",      Integer, ForeignKey("scopes.id"), nullable=False),
+    Column("matcher_id",    Text, ForeignKey("matchers.id"), nullable=False),
+    Column("pattern_id",    Text, ForeignKey("claim_patterns.id")),
+    Column("expected",      JSON, nullable=False),
+    Column("confidence",    Float),
+    Column("confidence_basis", Text),
+    Column("supporting_evidence", JSON),               # evidence ids the prediction was derived from
+    Column("status",        Text, nullable=False, server_default="open"),  # open | confirmed | refuted | parked
+    Column("resolved_evidence", Integer, ForeignKey("evidence.id")),
+    Column("claim_id",      Integer, ForeignKey("claims.id")),              # the measured claim that confirmed it
+    Column("n_objects",     Integer, nullable=False, server_default="0"),
+    Column("created_commit", Text, nullable=False),
+    Column("updated_at",    DateTime(timezone=True)),
+    UniqueConstraint("family", "device", "space", "subject_key", "scope_id", "matcher_id"),
+)
+Index("idx_expectations_status", expectations.c.family, expectations.c.device, expectations.c.status)
+Index("idx_expectations_pattern", expectations.c.pattern_id)
+Index("idx_expectations_scope", expectations.c.scope_id)
+
+unknowns = Table("unknowns", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text, nullable=False),
+    Column("space",         Text, nullable=False),
+    Column("subject_key",   Text),                     # NULL = the whole scope
+    Column("scope_id",      Integer, ForeignKey("scopes.id"), nullable=False),
+    Column("reason",        Text, nullable=False),     # unasked | unforceable | seen-in-image | orphan | conflict | not-required-by-corpus
+    Column("status",        Text, nullable=False, server_default="open"),   # open | parked | promoted
+    Column("absence_evidence", Integer, ForeignKey("evidence.id")),        # set => never-exercised
+    Column("inventory_class", Text),
+    Column("n_objects",     Integer, nullable=False, server_default="0"),
+    Column("note",          Text),
+    Column("created_commit", Text, nullable=False),
+    Column("updated_at",    DateTime(timezone=True)),
+    UniqueConstraint("family", "device", "space", "subject_key", "scope_id"),
+)
+Index("idx_unknowns_status", unknowns.c.family, unknowns.c.device, unknowns.c.status)
+Index("idx_unknowns_scope", unknowns.c.scope_id)
+
+audits = Table("audits", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text, nullable=False),
+    Column("pattern_id",    Text, ForeignKey("claim_patterns.id")),
+    Column("claim_id",      Integer, ForeignKey("claims.id")),
+    Column("expectation_id", Integer, ForeignKey("expectations.id")),
+    Column("scope_id",      Integer, ForeignKey("scopes.id"), nullable=False),
+    Column("priority",      Integer, nullable=False, server_default="0"),  # n_objects at stake
+    Column("reason",        Text, nullable=False),     # suspect | sampling | new-pattern | corpus-fail
+    Column("status",        Text, nullable=False, server_default="queued"),  # queued | built | confirmed | refuted | cancelled
+    Column("evidence_id",   Integer, ForeignKey("evidence.id")),
+    Column("queued_commit", Text, nullable=False),
+    Column("updated_at",    DateTime(timezone=True)),
+)
+Index("idx_audits_queue", audits.c.family, audits.c.status, audits.c.priority)
+
+lift_provenance = Table("lift_provenance", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("bitstream",     Integer, ForeignKey("bitstreams.id", ondelete="CASCADE"), nullable=False),
+    Column("object_kind",   Text, nullable=False),     # lut | ff | arc | net | hard-cell | pad
+    Column("object_key",    Text, nullable=False),
+    Column("min_tier",      Text, nullable=False),
+    Column("min_status",    Text, nullable=False),
+    Column("claim_ids",     JSON, nullable=False),
+    UniqueConstraint("bitstream", "object_kind", "object_key"),
+)
+Index("idx_lift_provenance_tier", lift_provenance.c.bitstream, lift_provenance.c.min_tier)
+
+corpus_members = Table("corpus_members", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("name",          Text, nullable=False),
+    Column("kind",          Text, nullable=False),     # oracle-build | third-party-image | roundtrip | lec
+    Column("device",        Text),
+    Column("build_id",      Integer, ForeignKey("postfit_builds.id")),
+    Column("source_ref",    Text),                     # dir / manifest entry
+    Column("sha256",        Text),
+    Column("gate_script",   Text),                     # scripts/<family>_gate.py or equivalent
+    Column("required",      Boolean, nullable=False, server_default="1"),
+    Column("expected",      JSON),                     # {headline: 100, wrong: 0} by default
+    Column("added_commit",  Text, nullable=False),
+    UniqueConstraint("family", "name"),
+)
+
+gate_runs = Table("gate_runs", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("script",        Text, nullable=False),
+    Column("commit",        Text, nullable=False),
+    Column("code_stamp",    Text),
+    Column("params",        JSON),
+    Column("ts",            DateTime(timezone=True), nullable=False),
+    Column("passed",        Boolean),                  # every required member passed
+    Column("summary",       JSON),                     # totals per category, fusion/split counts
+)
+Index("idx_gate_runs_family", gate_runs.c.family, gate_runs.c.ts)
+
+gate_results = Table("gate_results", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("run_id",        Integer, ForeignKey("gate_runs.id", ondelete="CASCADE"), nullable=False),
+    Column("member_id",     Integer, ForeignKey("corpus_members.id"), nullable=False),
+    Column("category",      Text, nullable=False),     # pips | nets | connections | register clocks | sites | lut_init | ...
+    Column("matched",       Integer, nullable=False, server_default="0"),
+    Column("missing",       Integer, nullable=False, server_default="0"),
+    Column("extra",         Integer, nullable=False, server_default="0"),
+    Column("wrong",         Integer, nullable=False, server_default="0"),
+    Column("headline",      Float),                    # matched / (matched + missing + extra + wrong), %
+    Column("passed",        Boolean, nullable=False, server_default="0"),
+    Column("failing_claims", JSON),                    # claim ids under the failing cone (lift_provenance)
+    UniqueConstraint("run_id", "member_id", "category"),
+)
+Index("idx_gate_results_member", gate_results.c.member_id)
+
+done_criteria = Table("done_criteria", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False, unique=True),
+    Column("criterion",     JSON, nullable=False),     # {headline: 100, wrong: 0, required_members: n}
+    Column("state",         Text, nullable=False, server_default="open"),   # open | met
+    Column("met_run",       Integer, ForeignKey("gate_runs.id")),
+    Column("met_commit",    Text),
+    Column("updated_at",    DateTime(timezone=True)),
+)
+
+coverage_ledger = Table("coverage_ledger", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("family",        Text, ForeignKey("families.id"), nullable=False),
+    Column("device",        Text, nullable=False),
+    Column("commit",        Text, nullable=False),
+    Column("ts",            DateTime(timezone=True), nullable=False),
+    Column("inventory_class", Text, nullable=False),
+    Column("tier",          Text, nullable=False),
+    Column("status",        Text, nullable=False),
+    Column("n_objects",     Integer, nullable=False),
+    Column("denominator",   Text, nullable=False, server_default="die_bits"),  # die_bits | shown_reachable
+    Column("source",        Text, nullable=False),     # claims | inventory-live
+)
+Index("idx_coverage_ledger", coverage_ledger.c.family, coverage_ledger.c.device, coverage_ledger.c.commit)
+
 
 # ── Schema management ─────────────────────────────────────────────────────────
 

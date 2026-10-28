@@ -1,0 +1,10 @@
+family	space	key_grammar	n_objects
+cycloneiv	bit	flat index frame*bits_per_frame+v; subject_key names the meaning, e.g. LOCAL_LINE:src0:snk2:DATAD	39425016
+cycloneiv	cell-param	<cell kind>:<param>[:<index>] e.g. M9K:init:w1:17	
+cycloneiv	coord-map	<from>-><to>:<column> e.g. asm->plane:x37	
+cycloneiv	mux-input	<class>|<block key>|<group select> -> driver record / wire	
+cycloneiv	net-attr	<net>:<attr>	
+cycloneiv	pip	<sink_wire><-<source_wire> within a tile	
+cycloneiv	port-map	<block>:<port> -> wire	
+cycloneiv	stream-option	header:<bit>	
+cycloneiv	tile-bit	<tile_type>:<frame>:<bit> (Lattice/Gowin tile databases)	

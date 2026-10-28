@@ -1,0 +1,2 @@
+claim_a	claim_b	status	resolution	winner	opened_commit	detail
+ref:cycloneivEP4CGX150mux-inputddb:block->dest:LI4f288fc7ee4104ce	ref:cycloneivEP4CGX150mux-inputddb:block->dest:LIbc760aaca821cfa2	open			2a7774d3c4f9cbc8474b383989647ed6791c8c5f	json:{"band":"LI","class_keys":6,"wrong":1073}

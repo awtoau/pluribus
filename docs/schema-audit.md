@@ -21,8 +21,9 @@ opened read-only (python sqlite3, `mode=ro`); writers/readers from a grep of 317
 | ./pluribus.db | 6.6 MB | 0 | postfit_builds 8,032 (Cyclone IV specimen corpus index); all else 0 |
 | pluribus.db.stale-schema-20261028 | 0.6 MB | 0 | empty |
 
-- Every DB holds exactly ONE device (fuzz_rebuild: one device, 2,705 labels). Cross-board
-  queries (the stated point of one DB) have never been run.
+- Every DB holds exactly ONE device (fuzz_rebuild: one device, 2,705 labels). This is the
+  intended shape (Dan, 2026-10-29): one file per family / product / project, all from the same
+  `schema.py`; cross-DB questions ATTACH (`dbtools.py`). Not a finding.
 - Old snapshots lack 8–20 of the 55 tables (pre-#141 columns); `schema.init()` dies on drift,
   so none can be opened by current code without a rebuild. Consistent with "derived artefacts
   have no legacy", but it makes the kept DBs read-only archives, not working databases.
@@ -156,7 +157,8 @@ keep / generalise / merge / retire. Cost = what regeneration costs if the table 
 6. `bitstreams`: add `family` (FK families.id), rename `diamond_version` → `toolchain`.
 7. Move `fuzz_full2.db`'s four tables into schema.py or delete the DB (its content is
    superseded by fuzz_rebuild.db + corpus/machxo2/diamond-fuzz).
-8. `databases/README.md`: fix image_g (device is 5CEBA4U19C8), fuzz_full2 (not schema.py),
-   delete aw2_final_check/aw2_merge_verify/aw2_verify (byte-identical row counts to aw2.db).
+8. `databases/README.md`: fuzz_full2 is not a schema.py DB; delete
+   aw2_final_check/aw2_merge_verify/aw2_verify (byte-identical row counts to aw2.db); move the
+   files into `databases/<family>/` per the new layout (image_g row already corrected).
 9. Convert the raw-SQL `cyclonev_db_import*` writers to SQLAlchemy Core.
 10. Add the four indexes in finding 8 after measuring the readers.

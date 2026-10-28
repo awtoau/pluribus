@@ -1,0 +1,2 @@
+id	vendor	name	lut_inputs	bit_model	device_db
+cycloneiv	altera	Cyclone IV	4	frame,v	Quartus asm.ddb / routing.ddb (decoded, docs/cycloneiv-ddb-format.md)

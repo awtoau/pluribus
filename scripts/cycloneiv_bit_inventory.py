@@ -28,9 +28,24 @@ NV = 6368            # bits per frame (796 bytes * 8)
 LANE_V = 6344        # v < LANE_V: lane-model data; 6344..6351 lane tail; 6352.. CRC bytes (CRAM frames)
 DROP_F = 30000
 PRE_POST_BITS = (32 * 8, 59 * 8)      # preamble 0xFF x32, postamble 0xFF x59 (docs/cycloneiv-bitstream.md)
-FORCED = ["tmp/cycloneiv_forced_lab.json", "tmp/cycloneiv_forced_lab_58x30.json",
-          "tmp/cycloneiv_forced_lab_37x60.json", "tmp/cycloneiv_forced_lab_100x75.json"]
+# LOCAL_LINE specimen grids: evidence rows in the family DB (PLURIBUS_SQLITE_PATH), keyed by the file they
+# were migrated from (scripts/claims_register.py); the JSON path is only a fallback for a DB without them.
+FORCED = ["evidence/cycloneiv/cycloneiv_forced_lab.json", "evidence/cycloneiv/cycloneiv_forced_lab_58x30.json",
+          "evidence/cycloneiv/cycloneiv_forced_lab_37x60.json", "evidence/cycloneiv/cycloneiv_forced_lab_100x75.json"]
 FORCED_LAB = [(10, 10), (58, 30), (37, 60), (100, 75)]
+
+
+def forced_table(rel_path):
+    """{pair: {src, snk, hop, on: [flat...]}} from evidence rows; JSON fallback."""
+    import evidence_io_bridge as eb
+    tab = eb.specimen_table("cycloneiv", "EP4CGX150", rel_path)
+    if tab is not None:
+        return tab
+    p = REPO / rel_path
+    if not p.exists():
+        raise SystemExit(f"no evidence rows for {rel_path} in the DB and no JSON fallback at {p}")
+    log.warning("%s: read from JSON (no evidence rows in the DB; run scripts/claims_register.py --family cycloneiv)", rel_path)
+    return json.loads(p.read_text())
 COL_LO = 19          # column band starts at FX-19 (specimen bits reach FX-19); pitch 35 so FX+16/17 spill into the next band
 ROW_PHASE0 = 68      # tile row band of y = [VY-68, VY+1] (70 v): approximate binning, see doc
 
@@ -108,8 +123,9 @@ def le_grid(g, tiles):
 
 
 LEDGER = REPO / "docs/coverage-history.jsonl"
-# tier of each class's die bits for the ledger: verified = vendor-oracle compare, evidence = mapping without
-# per-bit oracle, unknown = nothing; 5a is split by the header counts.
+# Fallback tier label per class when the DB holds no claims (verified = vendor-oracle compare, evidence =
+# mapping without per-bit oracle, unknown = nothing; 5a split by the header counts). With claims present the
+# ledger line carries the tier x status breakdown read from the claims table (provenance-schema.md).
 LEDGER_TIER = {"1a": "verified", "5b": "verified", "1b": "evidence", "1c": "evidence", "2a": "evidence",
                "2b": "evidence", "3": "evidence", "5d": "evidence"}
 
@@ -141,6 +157,13 @@ def record(out, hdr_ver, hdr_known, hdr_unk, commit=None, ts=None, source="live"
                 subject=git("log", "-1", "--format=%s", commit), dirty=dirty, source=source, die_bits=out["die_bits"], verified=out["verified"], evidence=out["evidence"],
                 unknown=out["unknown"], image_set_total=out["set_total"], classes=classes)
     assert line["verified"] + line["evidence"] + line["unknown"] == line["die_bits"]
+    # tier x status per class from the claims table (real rows only); also mirrored into coverage_ledger
+    import evidence_io_bridge as eb
+    tiers_by_class = eb.ledger_tiers("cycloneiv", "EP4CGX150", commit, [(r["id"], r["total"]) for r in out["rows"]])
+    if tiers_by_class:
+        line["claims"] = tiers_by_class
+        for c in classes:
+            c["tiers"] = tiers_by_class.get(c["id"], {})
     data = (json.dumps(line, separators=(",", ":")) + "\n").encode()
     fd = os.open(LEDGER, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
     try:
@@ -224,7 +247,7 @@ def main():
     # ---- 3: specimens ---------------------------------------------------------------------
     pats, rel = [], None
     for fp, (lx, ly) in zip(FORCED, FORCED_LAB):
-        tab = json.loads((REPO / fp).read_text())
+        tab = forced_table(fp)
         cur = {}
         for r in tab.values():
             cur[(r["src"], r["snk"], r["hop"][4])] = tuple(sorted((b // NV - g.FX[lx], b % NV - (g.vy0 + g.vpitch * ly)) for b in r["on"]))
