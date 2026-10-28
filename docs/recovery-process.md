@@ -74,6 +74,28 @@ already documented. This doc makes the method binding, not advisory.
   (the #136/#138 alias-scoring failure).
 - Any table is being learnt from more than ~10 designs — you are doing statistics; go to Phase 0.
 
+## Specimen rules for agents (binding; Dan, 2026-10-28)
+
+The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
+
+- **Specimen = base build + specimen build, differing in ONE thing.** Answer = raw config-bit
+  difference between the two. No decoder (`Dec.active`, asm firing, learnt maps) in the loop.
+- **Smallest first.** Tier 0: one hand-placed LUT, one net (output fed to its own input), base has
+  the input unconnected. Tier 1: two LUTs, same LAB, one net. Only then scale.
+- **Same cells, same placement, same lut_mask in base and specimen** — the diff is routing only.
+- **Split multi-mux diffs by diff-of-diffs:** vary ONLY the input, or ONLY the source position.
+  Prefer forcing one pip via RCF input where it works.
+- **Report before scaling.** After Tier 0/1 report: bits flipped, muxes on the RCF path, rebuild
+  gives identical bits (y/n). Do not start a sweep until that is reported and checked.
+- **Do not get clever.** No new decoders, no statistics/voting, no pattern inference as a source,
+  no tooling beyond gen/build/diff/store. A pattern is allowed only as a prediction that a
+  brute-force specimen then verifies; on any miss, enumerate.
+- **Do not widen scope.** Do not retire code, rewire the lifter, or change the gate (#142 is a
+  separate, gated step). One question per build.
+- **Stop and report** if the method cannot be applied (e.g. forcing impossible, diff unstable).
+  Never slide back to decoder matching to keep going.
+- Agent briefs quote this section; they do not paraphrase it.
+
 ## Case study: Cyclone IV (#141)
 
 - The method was documented in four places before the deviation (#108, CLAUDE.md device-db rule,
