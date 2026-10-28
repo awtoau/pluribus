@@ -1,0 +1,8 @@
+[board]
+name    = "Synthetic test board"
+device  = "TESTDEV"
+package = "TQFP32"
+lifter  = "machxo2"
+
+[files]
+pins_tsv = "pins.tsv"

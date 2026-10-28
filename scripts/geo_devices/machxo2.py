@@ -147,7 +147,9 @@ def tiles(opts=None):
                 dcols[k][i] = d[k]
             cols["set"][i] = d["feat"]
     out = dict(die=DEFAULT_DEVICE, nx=nx, ny=ny, kinds=KINDS, tiers=tier_names, flags=["edge"], **cols)
-    out["_design"] = None if not design else dict(label=design[1], source=design[2], cols=dcols)
+    out["_design"] = None if not design else dict(
+        label=design[1], source=design[2], cols=dcols,
+        names=dict(lut="LUT INITs non-zero", ff="FF registers configured", feat="Config features set (arcs, enums, words)"))
     return out
 
 
@@ -169,7 +171,7 @@ def pins(path, device, package, specials, no_site_roles, pin_cols):
         role = "unlisted" if bonded is None else (sp or "none")
         rows.append([pin, pad, bank or "", side or "", x, y, z, site or "", ty or "", (json.loads(fn) if fn else None) or [], ibis or "",
                      roles.index(role), 1 if bonded else 0, usage or "", sidx[src], (json.loads(conf) if conf else None) or [],
-                     0 if role in tuple(no_site_roles) + ("unlisted",) else 1])
+                     0 if role in tuple(no_site_roles) else 1])
     con.close()
     if not rows:
         raise SystemExit(f"geo_data: no device_pins rows for {device} {package}; run scripts/pins_register_machxo2.py")

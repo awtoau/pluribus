@@ -1,0 +1,6 @@
+# synthetic fixture for tests/test_geo_board.py (no real board data)
+# pin  row  col  pio  dir  label  function  confidence  chip_ref  chip_pin  chip_signal  net_in  net_out  note
+1	2	0	A	in	CLK_IN	clock input	10	U1	5	CLK	n_clk		first note
+2	2	0	B	out	?		3					n_out	
+3	3	0	A	out	pin3		3						
+4	3	0	B	bidir	DATA0	data line	8	U2	1	D0	n_d0		

@@ -19,6 +19,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import geo_devices  # noqa: E402
+from geo_devices import common  # noqa: E402
 
 GEO = REPO / "tmp/geo"
 SCHEMA = 2
@@ -67,12 +68,19 @@ def build(device=None, package=None, path=None, image=True, family=FAMILY, opts=
             tile_pins.setdefault(t, []).append(i)
     for a in tile_pins.values():
         a.sort(key=lambda i: (rows[i][6], rows[i][0]))
+    pins["geo"] = common.geo_positions(pk, grid, rows, tiles["nx"], ny)
+    if opts and opts.get("board"):
+        board, bsrc = common.load_board(opts["board"], package)
+        if board:
+            pins["board"] = [board.get(r[0]) for r in rows]
+            pins["board_source"] = bsrc
+    pat = common.pattern(pk, grid, rows, tiles["nx"], ny, tile_pins)
     ui = dict(ad.UI)
     if ui.get("tier_class") is None:
         ui["tier_class"] = ad.tier_class(tiles)
     pl = dict(schema=SCHEMA, family=family, device=device, package=pk, geom=ad.GEOM,
               tiles=tiles, pins=pins, grid=grid, xref=dict(tile_pins={str(k): v for k, v in sorted(tile_pins.items())}),
-              image=ad.image(tiles) if image and hasattr(ad, "image") else None, ui=ui)
+              image=ad.image(tiles) if image and hasattr(ad, "image") else None, ui=ui, pattern=pat)
     if design:
         pl["design"] = design
     return pl

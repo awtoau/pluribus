@@ -1,9 +1,10 @@
 :root{--bg:#fbfbfa;--fg:#1d1d1b;--mut:#6b6b66;--card:#fff;--line:#d9d8d3;--ver:#2f9e6a;--evi:#e0a31b;--unk:#9a9992;--ovh:#4f7fd0;--bad:#d23a3a;--lab:#4f7fd0;--m9k:#9b59b6;--mul:#d9693a;--io:#3aa7a7;--accent:#2a5bd7;--bkl:42%;
---pn0:#374151;--pn1:#d97706;--pn2:#9333ea;--pn3:#dc2626;--pn4:#db2777;--pn5:#16a34a;--pn6:#92400e;--pn7:#6b7280;--pn8:#9ca3af}
+--k0:#4f7fd0;--k1:#9b59b6;--k2:#d9693a;--k3:#3aa7a7;--k4:#8d95a8;--k5:#c4a53a;
+--pn0:#374151;--pn1:#d97706;--pn2:#9333ea;--pn3:#dc2626;--pn4:#db2777;--pn5:#16a34a;--pn6:#92400e;--pn7:#6b7280;--pn8:#9ca3af;--pn9:#b8bcc4}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#17181a;--fg:#e8e8e4;--mut:#9a9a94;--card:#202225;--line:#38393c;--ver:#46c08a;--evi:#f0b93a;--unk:#6c6d71;--ovh:#6c9bf0;--bad:#ff6b6b;--lab:#6c9bf0;--m9k:#c08be0;--mul:#f08a5a;--io:#55c4c4;--accent:#7fa2ff;--bkl:62%;
---pn0:#e5e7eb;--pn1:#fbbf24;--pn2:#c084fc;--pn3:#f87171;--pn4:#f472b6;--pn5:#4ade80;--pn6:#d6a36a;--pn7:#9ca3af;--pn8:#6b7280}}
+--pn0:#e5e7eb;--pn1:#fbbf24;--pn2:#c084fc;--pn3:#f87171;--pn4:#f472b6;--pn5:#4ade80;--pn6:#d6a36a;--pn7:#9ca3af;--pn8:#6b7280;--pn9:#5f6368;--k0:#6c9bf0;--k1:#c08be0;--k2:#f08a5a;--k3:#55c4c4;--k4:#8a93a6;--k5:#d8bd5a}}
 :root[data-theme=dark]{--bg:#17181a;--fg:#e8e8e4;--mut:#9a9a94;--card:#202225;--line:#38393c;--ver:#46c08a;--evi:#f0b93a;--unk:#6c6d71;--ovh:#6c9bf0;--bad:#ff6b6b;--lab:#6c9bf0;--m9k:#c08be0;--mul:#f08a5a;--io:#55c4c4;--accent:#7fa2ff;--bkl:62%;
---pn0:#e5e7eb;--pn1:#fbbf24;--pn2:#c084fc;--pn3:#f87171;--pn4:#f472b6;--pn5:#4ade80;--pn6:#d6a36a;--pn7:#9ca3af;--pn8:#6b7280}
+--pn0:#e5e7eb;--pn1:#fbbf24;--pn2:#c084fc;--pn3:#f87171;--pn4:#f472b6;--pn5:#4ade80;--pn6:#d6a36a;--pn7:#9ca3af;--pn8:#6b7280;--pn9:#5f6368;--k0:#6c9bf0;--k1:#c08be0;--k2:#f08a5a;--k3:#55c4c4;--k4:#8a93a6;--k5:#d8bd5a}
 *{box-sizing:border-box}[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:10px 14px}
 h1{font-size:17px;margin:0}p.sub{margin:0 0 10px;color:var(--mut)}
@@ -57,3 +58,5 @@ svg text{fill:var(--mut);font:9px system-ui,sans-serif}
 #tip{position:fixed;pointer-events:none;z-index:5;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:12px;box-shadow:0 2px 8px #0003;display:none}
 #oc{margin:0 auto;max-width:100%;height:auto}
 .lyr{display:grid;grid-template-columns:1fr 90px;gap:6px;align-items:center}
+.posb{margin:4px 0;padding:4px 8px;border-left:3px solid var(--accent);background:var(--bg);font-size:12.5px}.posb b{display:block;color:var(--mut)}
+.pe{margin-bottom:8px;font-size:12.5px}svg.sc{width:96px;height:96px;display:block;border:1px solid var(--line);border-radius:4px;margin:3px 0}svg.sc circle{cursor:pointer}
