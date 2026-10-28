@@ -127,23 +127,38 @@ def extract(P, names, geom):
     for (tc, kid, dy, li_idx), cnt in votes.items():
         per_key[(tc, kid)].append((cnt, dy, li_idx))
 
-    lis_map = {}
+    lis_map_raw = {}   # (tc, kid) -> (best_cnt, dy, li_idx)
     stats = collections.Counter()
     for (tc, kid), entries in per_key.items():
         entries.sort(reverse=True)
         best_cnt, best_dy, best_li = entries[0]
         if len(entries) == 1 or best_cnt > entries[1][0] * 2:
-            lis_map[(tc, kid)] = (best_dy, best_li)
+            lis_map_raw[(tc, kid)] = (best_cnt, best_dy, best_li)
             stats["resolved"] += 1
         else:
             stats["ambiguous"] += 1
+
+    # deduplicate per (tc, li_idx): keep highest-voted (kid, dy) — prevents li_inv collisions
+    # when multiple blocks in the same class map to the same li_idx (last-writer-wins dropped 71%).
+    best_per_li: dict = {}   # (tc, li_idx) -> (best_cnt, kid, dy)
+    for (tc, kid), (best_cnt, dy, li_idx) in lis_map_raw.items():
+        key = (tc, li_idx)
+        prev = best_per_li.get(key)
+        if prev is None or best_cnt > prev[0]:
+            best_per_li[key] = (best_cnt, kid, dy)
+
+    lis_map = {(tc, kid): (dy, li_idx)
+               for (tc, li_idx), (_cnt, kid, dy) in best_per_li.items()}
+    stats["dedup_dropped"] = stats["resolved"] - len(lis_map)
+    stats["resolved"] = len(lis_map)
 
     # coverage: resolved per class
     by_class = collections.Counter(tc for tc, kid in lis_map)
     for cls in sorted(by_class):
         log.info("  class %2d: %d entries", cls, by_class[cls])
 
-    log.info("resolved %d, ambiguous %d", stats["resolved"], stats["ambiguous"])
+    log.info("resolved %d (dedup dropped %d), ambiguous %d",
+             stats["resolved"], stats["dedup_dropped"], stats["ambiguous"])
 
     # write output
     out = {

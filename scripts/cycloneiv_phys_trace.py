@@ -595,7 +595,7 @@ class PhysTracer:
         cands, why = self.learner.dec.sources(self.plane, self.geom, key, x, y)
         if not cands:
             return None, f"{why}:LE input"
-        found, whys = set(), []
+        found, whys, li_miss = set(), [], False
         for c in cands:
             k2, dx, dy = rd.parse_src(c)
             if k2[0] == "CONST":
@@ -613,6 +613,7 @@ class PhysTracer:
                 b = self.li_block(x + dx, y + dy, k2[2])
                 if b < 0:
                     whys.append(f"LI {k2[2]}: no driver block in the map")
+                    li_miss = True
                     continue
                 r = int(self.fired[b])
                 if r < 0:
@@ -634,6 +635,12 @@ class PhysTracer:
             return got, "ok"
         if found:
             return self._fallback(key, x, y, "ambiguous driver")
+        # no phys result: if any LI block was absent from the map, fall back to the learner
+        # (restores the 3.94% learner baseline for unresolved entries)
+        if li_miss and self.learner is not None:
+            g2, w2 = self.learner.trace(key, x, y)
+            if g2 is not None:
+                return g2, f"learner (LI map miss)"
         return self._fallback(key, x, y, whys[0] if whys else "no candidate")
 
     def _fallback(self, key, x, y, why, got=None):
