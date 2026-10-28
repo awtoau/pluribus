@@ -107,11 +107,11 @@ def _load_fixture():
                 "INSERT INTO reachability (bitstream,src,dst,min_hops) "
                 "VALUES (:b,'n307',:d,:h)"), {"b": bs, "d": dst, "h": hops})
 
-        # patterns + shift_reg_bits: one 2-bit shift register
+        # netlist_patterns + shift_reg_bits: one 2-bit shift register
         detail = json.dumps({"length": 2, "clk_net": "clk0", "ce_net": "1'b1",
                              "head_ff": "sr0", "tail_ff": "sr1"})
         pat_id = c.execute(text(
-            "INSERT INTO patterns (bitstream,pattern_type,label,detail) "
+            "INSERT INTO netlist_patterns (bitstream,pattern_type,label,detail) "
             "VALUES (:b,'shift_reg','shift_reg_0',:d) RETURNING id"),
             {"b": bs, "d": detail}).fetchone()[0]
         for bi, (ff, q) in enumerate((("sr0", "q0"), ("sr1", "q1"))):
@@ -123,7 +123,7 @@ def _load_fixture():
 
         # a non-shift pattern too, so patterns() filtering is exercised
         c.execute(text(
-            "INSERT INTO patterns (bitstream,pattern_type,label,detail) "
+            "INSERT INTO netlist_patterns (bitstream,pattern_type,label,detail) "
             "VALUES (:b,'const_ff','ff_x',:d)"),
             {"b": bs, "d": json.dumps({"stuck_value": "0"})})
 

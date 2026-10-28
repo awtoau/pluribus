@@ -136,7 +136,7 @@ def main():
 
         # ── patterns ───────────────────────────────────────────────────────────
         import json as _json
-        pt = schema.patterns
+        pt = schema.netlist_patterns
         pattern_rows = conn.execute(
             select(pt.c.pattern_type, pt.c.label, pt.c.detail).where(
                 pt.c.bitstream == bs_id
@@ -290,7 +290,7 @@ def main():
         lines.append(f"\n-- constant FFs ({len(const_ffs)}) --")
         lines.append("  FFs with D=const, CE=1, LSR=0 not driving a pad (stuck-at in fabric)")
         lines.append("  These may be unused registers, tie-offs, or synthesis artefacts.")
-        lines.append("  (Full list omitted — query: SELECT * FROM patterns WHERE pattern_type='const_ff')")
+        lines.append("  (Full list omitted — query: SELECT * FROM netlist_patterns WHERE pattern_type='const_ff')")
 
     lines.append("")
     lines.append("== pin list ==")

@@ -6,7 +6,7 @@ Two layers, mirroring tests/test_gowin_lift.py:
     bit-order convention (the #63-class trap: a&b&c&d must stay 0x8000).
   * DB round-trip: load that config through the dedicated anlogic load path
     (load.load(..., lifter="anlogic")) into a fresh temp SQLite DB and query
-    back the anlogic_tiles grid + luts.
+    back the tiles grid (family='anlogic') + luts.
 
 Run with:
   python3 -m pytest tests/test_anlogic_lift.py -v
@@ -145,13 +145,13 @@ def test_db_roundtrip(anloconfig, fresh_db):
     import schema
     from sqlalchemy import select, func
     with api.engine().connect() as c:
-        n_tiles = c.execute(select(func.count()).select_from(schema.anlogic_tiles)
-                            .where(schema.anlogic_tiles.c.bitstream == nl.bs_id)).scalar()
+        n_tiles = c.execute(select(func.count()).select_from(schema.tiles)
+                            .where(schema.tiles.c.bitstream == nl.bs_id)).scalar()
         n_luts = c.execute(select(func.count()).select_from(schema.luts)
                            .where(schema.luts.c.bitstream == nl.bs_id)).scalar()
         types = {r[0] for r in c.execute(
-            select(schema.anlogic_tiles.c.tile_type)
-            .where(schema.anlogic_tiles.c.bitstream == nl.bs_id))}
+            select(schema.tiles.c.tile_type)
+            .where(schema.tiles.c.bitstream == nl.bs_id))}
         fns = {r[0] for r in c.execute(
             select(schema.luts.c.fn).where(schema.luts.c.bitstream == nl.bs_id))}
     assert n_tiles == 3

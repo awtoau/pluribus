@@ -10,7 +10,7 @@ already filled — nothing here recomputes reachability, patterns, or naming.
     nl.efb_port("JUPDATE")                          # -> net
     nl.name("n307")                                 # -> friendly name
     nl.net_for_pad("ADC_D0A")                       # -> net
-    nl.shift_registers()                            # from patterns table
+    nl.shift_registers()                            # from netlist_patterns table
     nl.spi_reg(0x17)                                # -> {name, bit_fields}
     nl.taint_fwd("n307", stop_at="FF")             # from reachability
 
@@ -268,7 +268,7 @@ class Netlist:
             {"label", "length", "clk_net", "ce_net", "head_ff", "tail_ff",
              "bits": [{"bit_index", "ff_cell", "q_net"}, ...]}
         """
-        pat = schema.patterns
+        pat = schema.netlist_patterns
         srb = schema.shift_reg_bits
         out: List[Dict[str, Any]] = []
         with self._eng.connect() as conn:
@@ -299,12 +299,12 @@ class Netlist:
 
     def patterns(self, pattern_type: Optional[str] = None
                  ) -> List[Dict[str, Any]]:
-        """Raw rows from the `patterns` table (all types, or one type).
+        """Raw rows from the `netlist_patterns` table (all types, or one type).
 
         Covers every detector — patterns.py's stuck_pad / orphan_pad /
         shared_net_pad / pclk_lane / const_ff as well as reach3.py's shift_reg.
         """
-        pat = schema.patterns
+        pat = schema.netlist_patterns
         conds = [pat.c.bitstream == self.bs_id]
         if pattern_type is not None:
             conds.append(pat.c.pattern_type == pattern_type)

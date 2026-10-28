@@ -46,7 +46,7 @@ def main():
         bs_id = row[0]
 
         conn.execute(
-            delete(schema.patterns).where(schema.patterns.c.bitstream == bs_id)
+            delete(schema.netlist_patterns).where(schema.netlist_patterns.c.bitstream == bs_id)
         )
 
         n = {}   # counts per type
@@ -90,7 +90,7 @@ def main():
                                             "stuck_value": val, "clk_net": clk}),
             })
         if stuck_inserts:
-            conn.execute(insert(schema.patterns), stuck_inserts)
+            conn.execute(insert(schema.netlist_patterns), stuck_inserts)
         n["stuck_pad"] = len(seen_stuck)
 
         # ── orphan_pad ─────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ def main():
                                                     "spine/global route or genuinely floating"}),
             })
         if orphan_inserts:
-            conn.execute(insert(schema.patterns), orphan_inserts)
+            conn.execute(insert(schema.netlist_patterns), orphan_inserts)
         n["orphan_pad"] = len(seen_orphan)
 
         # ── shared_net_pad ─────────────────────────────────────────────────
@@ -169,7 +169,7 @@ def main():
                                                     "LVDS pair, bus, or netlist recovery gap"}),
             })
         if shared_inserts:
-            conn.execute(insert(schema.patterns), shared_inserts)
+            conn.execute(insert(schema.netlist_patterns), shared_inserts)
         n["shared_net_pad"] = len(shared_inserts)
 
         # ── pclk_lane ──────────────────────────────────────────────────────
@@ -200,7 +200,7 @@ def main():
                                             "site": f"R{row}C{col}:PIO{pio}"}),
             })
         if pclk_inserts:
-            conn.execute(insert(schema.patterns), pclk_inserts)
+            conn.execute(insert(schema.netlist_patterns), pclk_inserts)
         n["pclk_lane"] = len(pclk_inserts)
 
         # ── const_ff ───────────────────────────────────────────────────────
@@ -242,7 +242,7 @@ def main():
                                                     "unused register or deliberately tied"}),
             })
         if cff_inserts:
-            conn.execute(insert(schema.patterns), cff_inserts)
+            conn.execute(insert(schema.netlist_patterns), cff_inserts)
         n["const_ff"] = len(cff_inserts)
 
     total = sum(n.values())

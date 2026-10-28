@@ -1050,7 +1050,7 @@ def section_spi_efb(conn, bs_id):
 
 def section_patterns(conn, bs_id):
     """Show detected structural patterns: shift registers, cone groups, const nets."""
-    pat = schema.patterns
+    pat = schema.netlist_patterns
     ch  = schema.cone_hashes
     co  = schema.const_nets
     ls  = schema.lut_symbolic

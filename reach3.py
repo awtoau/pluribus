@@ -7,7 +7,7 @@ Runs after reach2.py. Eight passes, each building one table:
                               expression with real net names substituted in
   Pass 2  (ff_d_functions retired 2026-10-29: write-only, docs/schema-audit.md)
   Pass 3  shift_registers   — chains of FFs sharing a clock/enable (Q feeds next D)
-                              written into the 'patterns' + 'shift_reg_bits' tables
+                              written into the 'netlist_patterns' + 'shift_reg_bits' tables
   Pass 4  clock_crossings   — FFs whose input cone contains a FF on a different clock
   Pass 5  ebr_buses         — group block-RAM ports into write/read data/addr/ctrl buses
   Pass 6  net_stats         — fan-in, fan-out, is_clock, is_const, is_boundary per net
@@ -420,7 +420,7 @@ def _walk_ff_chains(edges, ff_by_q_net):
 def pass_shift_registers(bs_id):
     t_ffs  = schema.ffs
     t_luts = schema.luts
-    t_pat  = schema.patterns
+    t_pat  = schema.netlist_patterns
     t_srb  = schema.shift_reg_bits
 
     with engine().begin() as conn:

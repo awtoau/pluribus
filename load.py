@@ -368,7 +368,7 @@ def load_anlogic(label, config_path, device, package):
     (Anlogic muxes are binary-encoded; the mux/expr decode is future work — see
     lifters/anlogic_lift.py).  So rather than drive load()'s routing-centric
     generic core, this inserts exactly what is recovered: the bitstream row, the
-    anlogic_tiles grid, and the LUT cells (with classify_lut fn), each LUT's
+    tiles grid (family='anlogic'), and the LUT cells (with classify_lut fn), each LUT's
     output net.  arcs / net_fanout / reach layers stay empty for this family.
 
     Always-rebuild per label (project rule): every dependent row for the label
@@ -412,13 +412,14 @@ def load_anlogic(label, config_path, device, package):
         print(f"  bitstream id={bs_id}")
 
         # always-rebuild: drop this label's anlogic rows before re-inserting
-        for tbl in (schema.anlogic_tiles, schema.luts, schema.net_fanout,
+        for tbl in (schema.tiles, schema.luts, schema.net_fanout,
                     schema.nets):
             conn.execute(delete(tbl).where(tbl.c.bitstream == bs_id))
 
         if pc.tiles:
-            conn.execute(insert(schema.anlogic_tiles), [
-                {"bitstream": bs_id, "name": t["name"], "tile_type": t["type"],
+            conn.execute(insert(schema.tiles), [
+                {"bitstream": bs_id, "family": "anlogic",
+                 "name": t["name"], "tile_type": t["type"],
                  "x": t["x"], "y": t["y"], "start_frame": t["start_frame"],
                  "start_bit": t["start_bit"], "rows": t["rows"], "cols": t["cols"],
                  "occupancy": t["occupancy"]}

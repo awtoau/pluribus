@@ -28,12 +28,14 @@ LOG = REPO / "tmp/logs/lift_summary.log"
 COUNT_TABLES = [
     "luts", "ffs", "nets", "net_fanout", "pad_map", "efb_config",
     "ebr_init_blocks", "const_nets", "clock_domain_summary",
-    "arcs", "cdc_synchronisers", "patterns",
+    "arcs", "cdc_synchronisers",
 ]
-# Same JSON keys as before the hard_cell_ports merge (phase F step 4) so old summaries diff.
+# Same JSON keys as before phase F steps 4/5 (hard_cell_ports merge, netlist_patterns
+# rename) so old summaries still diff.
 COUNT_FILTERED = {
     "efb_ports": "hard_cell_ports where bitstream=:b and cell='EFB'",
     "ebr_ports": "hard_cell_ports where bitstream=:b and cell<>'EFB'",
+    "patterns":  "netlist_patterns where bitstream=:b",
 }
 
 
