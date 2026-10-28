@@ -34,8 +34,8 @@ def fresh_db(tmp_path, monkeypatch):
     eng = db.engine()
     with eng.begin() as c:
         c.execute(text(
-            "INSERT INTO bitstreams (label, filename, device, package) "
-            "VALUES ('TEST','test.config','LCMXO2-1200','TQFP100')"))
+            "INSERT INTO bitstreams (label, filename, device, package, family) "
+            "VALUES ('TEST','test.config','LCMXO2-1200','TQFP100','machxo2')"))
     yield db_path
     db._engine = None
 

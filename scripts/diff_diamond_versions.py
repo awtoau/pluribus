@@ -3,7 +3,7 @@
 
 Usage
 -----
-  python3 scripts/diff_diamond_versions.py LABEL1 LABEL2 [--db DB_PATH]
+  python3 scripts/diff_toolchains.py LABEL1 LABEL2 [--db DB_PATH]
 
 Compares two bitstreams (typically from different Diamond versions) and
 reports encoding deltas at tile/fuse level.  Helps distinguish version drift
@@ -12,7 +12,7 @@ from genuine database gaps.
 Example
 -------
   # Compare MachXO2 designs from Diamond 3.14 vs 3.12:
-  python3 scripts/diff_diamond_versions.py test_v314 test_v312
+  python3 scripts/diff_toolchains.py test_v314 test_v312
   
   # Produces a report showing which tiles/fuses differ and their delta patterns.
 
@@ -40,7 +40,7 @@ def get_bitstream_info(conn, label):
     """Fetch basic bitstream metadata."""
     row = conn.execute(
         select(schema.bitstreams.c.id, schema.bitstreams.c.device,
-               schema.bitstreams.c.diamond_version, schema.bitstreams.c.loaded_at)
+               schema.bitstreams.c.toolchain, schema.bitstreams.c.loaded_at)
         .where(schema.bitstreams.c.label == label)
     ).fetchone()
     if not row:
@@ -49,7 +49,7 @@ def get_bitstream_info(conn, label):
         "label": label,
         "id": row[0],
         "device": row[1],
-        "diamond_version": row[2],
+        "toolchain": row[2],
         "loaded_at": row[3],
     }
 
@@ -83,12 +83,12 @@ def report_diff(bs1_info, bs2_info, tiles1, tiles2, nets1, nets2):
     
     print(f"\nBitstream 1: {bs1_info['label']}")
     print(f"  Device: {bs1_info['device']}")
-    print(f"  Diamond version: {bs1_info['diamond_version'] or '(unknown)'}")
+    print(f"  Diamond version: {bs1_info['toolchain'] or '(unknown)'}")
     print(f"  Nets: {nets1}")
     
     print(f"\nBitstream 2: {bs2_info['label']}")
     print(f"  Device: {bs2_info['device']}")
-    print(f"  Diamond version: {bs2_info['diamond_version'] or '(unknown)'}")
+    print(f"  Diamond version: {bs2_info['toolchain'] or '(unknown)'}")
     print(f"  Nets: {nets2}")
     
     print("\n" + "-" * 70)
@@ -124,9 +124,9 @@ def report_diff(bs1_info, bs2_info, tiles1, tiles2, nets1, nets2):
     print("Interpretation")
     print("-" * 70)
     
-    if bs1_info['diamond_version'] and bs2_info['diamond_version']:
-        if bs1_info['diamond_version'] != bs2_info['diamond_version']:
-            print(f"\n✓ Version difference detected: {bs1_info['diamond_version']} vs {bs2_info['diamond_version']}")
+    if bs1_info['toolchain'] and bs2_info['toolchain']:
+        if bs1_info['toolchain'] != bs2_info['toolchain']:
+            print(f"\n✓ Version difference detected: {bs1_info['toolchain']} vs {bs2_info['toolchain']}")
             print("\nEncoding deltas may be:")
             print("  1. Legitimate version drift (e.g., fuse reallocation, tile changes)")
             print("  2. Decoder misalignment (prjtrellis DB updated for newer Diamond)")

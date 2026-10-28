@@ -52,8 +52,8 @@ def eng():
 def insert_bitstream(label="TEST"):
     with eng().begin() as conn:
         conn.execute(text(
-            "INSERT INTO bitstreams (label, filename, device, package) "
-            "VALUES (:l,:f,:d,:p) ON CONFLICT (label) DO NOTHING"
+            "INSERT INTO bitstreams (label, filename, device, package, family) "
+            "VALUES (:l,:f,:d,:p,'machxo2') ON CONFLICT (label) DO NOTHING"
         ), {"l": label, "f": "test.config", "d": "LCMXO2-1200", "p": "TQFP100"})
     with eng().connect() as conn:
         row = conn.execute(
@@ -79,8 +79,8 @@ def test_schema_creates_all_required_tables():
 def test_bitstream_insert_and_select():
     with eng().begin() as conn:
         conn.execute(text(
-            "INSERT INTO bitstreams (label, filename, device, package) "
-            "VALUES (:l,:f,:d,:p)"
+            "INSERT INTO bitstreams (label, filename, device, package, family) "
+            "VALUES (:l,:f,:d,:p,'machxo2')"
         ), {"l": "V01", "f": "v01.config", "d": "LCMXO2-1200", "p": "TQFP100"})
 
     with eng().connect() as conn:
@@ -143,8 +143,8 @@ def test_bulk_insert_net_fanout():
 def test_upsert_bitstream_stable_id():
     """ON CONFLICT DO UPDATE keeps the same primary key."""
     upsert = text(
-        "INSERT INTO bitstreams (label,filename,device,package) "
-        "VALUES (:l,:f,:d,:p) "
+        "INSERT INTO bitstreams (label,filename,device,package,family) "
+        "VALUES (:l,:f,:d,:p,'machxo2') "
         "ON CONFLICT (label) DO UPDATE SET filename=:f, device=:d, package=:p "
         "RETURNING id"
     )

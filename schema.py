@@ -27,7 +27,8 @@ bitstreams = Table("bitstreams", metadata,
     Column("filename",         Text,     nullable=False),
     Column("device",           Text,     nullable=False),
     Column("package",          Text,     nullable=False),
-    Column("diamond_version",  Text),    # e.g. "3.14.0.201", NULL if unknown
+    Column("family",           Text,     nullable=False),  # lifter name: machxo2 | ecp5 | gowin | anlogic | cyclonev
+    Column("toolchain",        Text),    # vendor tool version string (e.g. Diamond "3.14.0.201"), NULL if unknown
     Column("loaded_at",        DateTime(timezone=True)),
 )
 

@@ -61,8 +61,8 @@ def _load_fixture():
     eng = _eng()
     with eng.begin() as c:
         c.execute(text(
-            "INSERT INTO bitstreams (label, filename, device, package) "
-            "VALUES ('TEST','test.config','LCMXO2-1200','TQFP100')"))
+            "INSERT INTO bitstreams (label, filename, device, package, family) "
+            "VALUES ('TEST','test.config','LCMXO2-1200','TQFP100','machxo2')"))
         bs = c.execute(
             text("SELECT id FROM bitstreams WHERE label='TEST'")).fetchone()[0]
 
