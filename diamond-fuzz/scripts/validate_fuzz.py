@@ -27,7 +27,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 _SCRIPTS    = Path(__file__).parent
 _FUZZ_ROOT  = _SCRIPTS.parent
@@ -37,14 +37,8 @@ RESULTS_DIR = _FUZZ_ROOT / "results"
 sys.path.insert(0, str(_PLURIBUS / "scripts"))
 import toolchain  # noqa: E402  (path set above)
 
-# A prjtrellis SOURCE build, which is what supplies libtrellis/build here -- not
-# the packaged suite.  $TRELLIS_ROOT wins, else a sibling checkout (#90).
-_PRJT       = Path(os.environ.get("TRELLIS_ROOT")
-                   or toolchain.sibling_repo("prjtrellis", "TRELLIS_ROOT",
-                                             "prjtrellis source build"))
-ECPUNPACK   = _PRJT / "libtrellis/build/ecpunpack"
-TRELLIS_DB  = _PRJT / "database"
-DIAMOND_LIB = _PRJT / "libtrellis/build"
+ECPUNPACK   = Path(toolchain.tool("ecpunpack", "ECPUNPACK"))
+TRELLIS_DB  = Path(toolchain.trellis_dbroot())
 
 sys.path.insert(0, str(_PLURIBUS))
 import db
@@ -54,26 +48,29 @@ from sqlalchemy import text as sa_text
 # ── ecpunpack ────────────────────────────────────────────────────────────────
 
 def unpack_bit(bit_path: Path, config_path: Path) -> bool:
-    env = dict(os.environ)
-    env["LD_LIBRARY_PATH"] = str(DIAMOND_LIB)
     r = subprocess.run(
         [str(ECPUNPACK), "--db", str(TRELLIS_DB),
          str(bit_path), str(config_path)],
-        env=env, capture_output=True, text=True
+        capture_output=True, text=True
     )
     return r.returncode == 0
 
 
 # ── Pluribus load ─────────────────────────────────────────────────────────────
 
+_NO_PINS = _PLURIBUS / "tmp" / "validate_fuzz_no_pins.tsv"   # fuzz targets carry no pin annotations
+
+
 def load_fuzz_config(target_name: str, config_path: Path, label: str) -> bool:
+    _NO_PINS.parent.mkdir(parents=True, exist_ok=True)
+    _NO_PINS.touch()
     cmd = [
         sys.executable, str(_PLURIBUS / "load.py"),
         "--label",  label,
         "--config", str(config_path),
-        "--device", "LCMXO2-1200HC",
+        "--device", "LCMXO2-1200",
         "--package", "TQFP100",
-        "--no-nets-tsv",
+        "--fuzz", "--pins", str(_NO_PINS),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(_PLURIBUS))
     if r.returncode != 0:
@@ -260,7 +257,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target",   help="Validate a single target by name")
     ap.add_argument("--all",      action="store_true", help="Validate all targets")
-    ap.add_argument("--jobs",     type=int, default=1, help="Parallel workers")
+    ap.add_argument("--jobs",     type=int, default=1, help="Parallel worker threads")
+    ap.add_argument("--limit",    type=int, default=0, help="Cap the number of targets (0 = all)")
     ap.add_argument("--baseline", help="Path to baseline .config to diff against")
     args = ap.parse_args()
 
@@ -281,11 +279,19 @@ def main():
         ap.print_help()
         sys.exit(1)
 
+    if args.limit:
+        targets = targets[:args.limit]
+
     print(f"Validating {len(targets)} targets with {args.jobs} worker(s)...")
 
     results = []
     if args.jobs > 1:
-        with ProcessPoolExecutor(max_workers=args.jobs) as ex:
+        # Workers are threads waiting on ecpunpack / load.py children (external stage CLIs;
+        # load.py stays a subprocess: it owns sys.exit and module state).  One pool lease.
+        import heavy_guard
+        with heavy_guard.lease(args.jobs * heavy_guard.JOB_GB["validate_fuzz_target"],
+                               "validate_fuzz", heavy_guard.stdout_log()), \
+                ThreadPoolExecutor(max_workers=args.jobs) as ex:
             futs = {ex.submit(validate_target, t, baseline_text): t for t in targets}
             for fut in as_completed(futs):
                 r = fut.result()
