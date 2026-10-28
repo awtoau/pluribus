@@ -32,7 +32,7 @@ Buckets
 
 Parallelised at the bitstream level (independent per target) with a thread
 pool: each worker thread builds ONE MachXO2Lift and reuses it across its targets;
-yosys runs as a subprocess per target.  Every target holds a heavy_guard lease.
+yosys runs as a subprocess per target.  The pool holds one heavy_guard lease (workers x JOB_GB).
 
 Runs under python3.15t (NoGIL).  Trellis paths (TRELLIS_BUILD / TRELLIS_DBROOT)
 default to the free-threaded pytrellis build + prjtrellis DB; override via env.
@@ -439,12 +439,6 @@ def _sanitize_portset(names):
 def process_target(name):
     """Full per-target flow.  Returns a result dict (never raises)."""
     import heavy_guard
-    with heavy_guard.lease(heavy_guard.JOB_GB["lifter_equiv_target"], f"lifter_equiv {name}",
-                           heavy_guard.stdout_log()):
-        return _process_target(name)
-
-
-def _process_target(name):
     tdir = os.path.join(TARGETS_DIR, name)
     fuzz_v = os.path.join(tdir, "fuzz.v")
     bit = os.path.join(tdir, "impl1", "fuzz_impl1.bit")
@@ -617,7 +611,12 @@ def main():
     jsonl_path = os.path.join(REPO, "tmp", "lifter_equiv_corpus.jsonl")
     results = []
     with open(jsonl_path, "w") as jf:
-        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        # One lease for the whole pool (workers x declared peak): targets run < 1 s each,
+        # a per-target lease would be gated by the 3 s lease ramp (1000 targets = 50 min).
+        import heavy_guard
+        with heavy_guard.lease(args.workers * heavy_guard.JOB_GB["lifter_equiv_target"],
+                               "lifter_equiv_corpus", heavy_guard.stdout_log()), \
+                ThreadPoolExecutor(max_workers=args.workers) as ex:
             futs = {ex.submit(process_target, t): t for t in targets}
             done = 0
             for fut in as_completed(futs):
