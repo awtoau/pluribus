@@ -32,6 +32,11 @@ already documented. This doc makes the method binding, not advisory.
 
 - Corpus = vendor builds with full back-annotation (post-fit netlist + routing report).
   **Verification only** — never a table source.
+- **Vendor-tool outputs are kept, never regenerated** (Dan, Bluebird rule, restated 2026-10-28):
+  every build lives under `corpus/<family>/<name>/` with its outputs; `design.toml` records the
+  generator inputs AND the provenance — vendor tool + version, build date. Sources + toml are
+  git-tracked; bulky outputs stay on disk and are reused (solvers cache against them). A build is
+  redone only when the tool version changes deliberately, and then as a new provenance entry.
 - Declare ONE fixed gate set in the issue; every number ever reported cites it. A changed set is
   a new baseline, stated as such.
 - Headline per the scoring-faults rules: matched / (matched + missing + extra + wrong). Missing
