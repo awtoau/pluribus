@@ -4,6 +4,16 @@ How pluribus recovers a new FPGA family. Written after the Cyclone IV methodolog
 (#141, 2026-10-28): the statistical routing detour cost ~5 days against a method that was
 already documented. This doc makes the method binding, not advisory.
 
+## Principle: brute force first
+
+- The die is finite and the host is big (32 cores, 64 GB): enumerate, don't infer. Specimen
+  sweeps, offset searches, candidate pairings — run them exhaustively in parallel; the recovery
+  is CPU+RAM work and should be quick.
+- Pattern generalisation (tile classes, mirrors, strides) is an optimisation only. Every
+  generalised answer verifies against brute-force ground truth; on ANY mismatch, bail and
+  enumerate that region outright. A pattern that fails verification never degrades to "mostly
+  holds" — it reverts to enumeration.
+
 ## Phase 0 — data-source decision (before any recovery code)
 
 - Enumerate the sources, in order of strength:
