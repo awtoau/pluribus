@@ -102,3 +102,8 @@ PLURIBUS_SQLITE_PATH=... python3.15t scripts/framework_status.py
 - Memory: the import is light (< 1 GB); `--validate` runs under `heavy_guard.lease(3, ...)`
   because reach2 on a 2.6 M-row file peaks at 2.1 GB.
 - Order: after phase F (table names above are the post-step-4/5/6 ones).
+
+## Kept set (2026-10-29)
+
+- Non-DJI real-design lifts (fnirsi, repl) are dropped, regenerable on demand with `scripts/regen_databases.py --run fnirsi|repl`.
+- Kept: DJI / Cyclone IV work (`dji_g.db`, `cycloneiv/gx150.db`), pipeline-test data (`machxo2/fuzz_rebuild.db`, Cyclone V padmap DB), all provenance DBs.

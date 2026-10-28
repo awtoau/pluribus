@@ -10,6 +10,8 @@ tottime (hot-loop share).  Scratch copies of DBs / caches live in tmp/profile_st
 originals (databases/*.db, tmp/ddb/*, tmp/cycloneiv_bit_inventory.json) are never written.
 Results: tmp/profile_stages.json; log tmp/logs/profile_stages.log.
 Threads stay <= 8 per stage (shared box).
+The reach*/report@<tag> stages read databases/{repl,fnirsi}.db, dropped 2026-10-29 (non-DJI real-design lifts):
+regenerate on demand with scripts/regen_databases.py --run fnirsi|repl, then place the file at databases/<name>.db.
 """
 import argparse
 import json

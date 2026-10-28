@@ -12,8 +12,8 @@ opened read-only (python sqlite3, `mode=ro`); writers/readers from a grep of 317
 |---|---|---|---|
 | aw2.db, aw2_final_check.db, aw2_merge_verify.db, aw2_verify.db | ~620 MB each | 1 LCMXO2-1200 each | identical counts: reachability + reachability_rev 2.65 M each, ff_cones 1.14 M, dominators 303 k, critical_paths 220 k, arcs 12 k, luts 2,611, ffs 1,108 — three of the four are duplicates |
 | the private-project check DB | 683 MB | 1 LCMXO2-1200 | reachability 2.84 M, ff_cones 1.27 M, dominators 402 k, critical_paths 267 k |
-| repl.db | 23 MB | 1 LCMXO2-1200 | reachability 106 k, arcs 6,281, luts 815 |
-| fnirsi.db | 464 MB | 1 GW1N-2 | reachability 1.93 M, ff_cones 916 k, arcs 37 k, alu_cells 192, ebr_ports 840 |
+| repl.db | dropped 2026-10-29 | non-DJI real-design lift; regenerable on demand (`regen_databases.py --run repl`) | was reachability 106 k, arcs 6,281, luts 815 |
+| fnirsi.db | dropped 2026-10-29 | non-DJI real-design lift; regenerable on demand (`regen_databases.py --run fnirsi`) | was reachability 1.93 M, ff_cones 916 k, arcs 37 k, alu_cells 192, ebr_ports 840 |
 | fuzz_rebuild.db | 22 MB (regenerated 2026-10-29: 25 MB, 2,779 labels, all load; the one earlier fail was a transient mid-edit of `load.py`, passes on re-run) | 2,705 LCMXO2-1200 | pad_map 135 k, arcs 69 k, nets 32 k |
 | cyclonev_merge_verify.db, cyclonev_verify_all_padmap.db | 35 MB | 1 5CEBA4U19C8 | net_fanout 167 k, nets 144 k, arcs 70 k, luts 33 k, ffs 11.5 k |
 | image_g.db | 77 MB | 1 **5CEBA4U19C8** | same counts as the cyclonev DBs + reachability 168 k — README says "EP4CGX150 image lift"; the device column and the counts say Cyclone V. README row is wrong (or the file is misnamed) |
