@@ -93,11 +93,11 @@ def afx_map(g, grec, gid, fa, names):
     ex = x_of_rec[grec[gid]]
     m = (ex >= 0) & (ex <= g.xmax)
     packed = ex[m].astype(np.int64) * 6154 + fa[m]
-    u, c = np.unique(packed, return_counts=True)
+    u, c = fastops.unique_counts(packed)
     ux, ufa = (u // 6154).astype(np.int32), (u % 6154).astype(np.int32)
     afx = {x: g.FX[x] for x in g.FX}
     peaks = {}
-    for x in np.unique(ux).tolist():
+    for x in fastops.unique(ux).tolist():
         sel = np.flatnonzero(ux == x)
         best = int(np.argmax(c[sel]))
         if c[sel][best] >= AFX_MIN_VOTES:
@@ -186,10 +186,10 @@ def prepare():
     key[g_a[second[ok]], 1] = l_a[second[ok]]
     noA = key[:, 0] < 0           # groups without non-select entries: key on their own first position
     key[noA, 0] = lin[gstart[noA]]
-    _, block = np.unique(key, axis=0, return_inverse=True)
-    block = block.astype(np.int32).reshape(-1)
+    _, block = fastops.unique_rows2_inverse(key)
+    block = block.astype(np.int32)
     # entry -> unique (block, position) id: a bit may appear in several groups of one block
-    u, inv = np.unique(block[gid].astype(np.int64) << 32 | (lin & 0xFFFFFFFF), return_inverse=True)
+    u, inv = fastops.unique_inverse(block[gid].astype(np.int64) << 32 | (lin & 0xFFFFFFFF))
     e_ukey, ukey_block = inv.astype(np.int32), (u >> 32).astype(np.int32)
     os.makedirs(A.TMP, exist_ok=True)
     for name, arr in (("pf", pf), ("pv", pv), ("pred", pred), ("gid", gid), ("grec", grec), ("gstart", gstart),
@@ -243,7 +243,7 @@ class Dec:
         gid = np.asarray(self.gid)
         sp = s[self.pred[s]]
         nset_pred = np.bincount(gid[sp], minlength=len(self.gsize))
-        uk = fastops.mark_unique(self.e_ukey[s], len(self.ukey_block)) if method == "dense" else np.unique(self.e_ukey[s])
+        uk = fastops.mark_unique(self.e_ukey[s], len(self.ukey_block)) if method == "dense" else fastops.unique(self.e_ukey[s])
         bset = np.bincount(self.ukey_block[uk], minlength=self.nblocks)
         act = (self.npred > 0) & (nset_pred == self.npred) & (bset[self.block] == self.npred)
         gids = np.flatnonzero(act)
