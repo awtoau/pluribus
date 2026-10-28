@@ -1,13 +1,16 @@
 #!/usr/bin/env python3.15t
-"""Rebuild the provenance tables of ONE family from its artefacts (docs/provenance-schema.md).
+"""Rebuild the DERIVED provenance tables of ONE family from its evidence rows + artefacts (docs/provenance-schema.md).
 
-  python3.15t scripts/claims_register.py --family cycloneiv [--device EP4CGX150] [--verify-json]
+  python3.15t scripts/claims_register.py --family cycloneiv [--device EP4CGX150]
+  python3.15t scripts/claims_register.py --family cycloneiv --import-json DIR [--verify-json]   # one-shot legacy migration
   python3.15t scripts/claims_register.py --family ecp5 | machxo2 | gowin | cyclonev
 
-Always-rebuild: every run deletes the family's rows in every provenance table and reinserts.
-One database per family (PLURIBUS_SQLITE_PATH); the script dies if the file holds another family.
---verify-json: round-trip check of every migrated evidence JSON (row counts + canonical hash),
-prints a table; required before any JSON is git-rm'd.
+Evidence rows are PRIMARY data (written by the specimen tools through provenance.evidence_io) and are
+never wiped. Everything else (scopes' claims, patterns, expectations, unknowns, conflicts, events,
+corpus, ledger) is derived and rebuilt from scratch every run. One database per family
+(PLURIBUS_SQLITE_PATH); the script dies if the file holds another family.
+--import-json DIR: migrate legacy pair JSONs (and derived map/table JSONs, verbatim) into evidence rows.
+--verify-json: round-trip check (pair count + canonical hash) of every JSON in DIR against the rows.
 Log: tmp/logs/claims_register.log
 """
 import argparse
@@ -62,10 +65,12 @@ SPACES = {
     "port-map": "<block>:<port> -> wire",
     "net-attr": "<net>:<attr>",
 }
-PROVENANCE_TABLES = (S.coverage_ledger, S.gate_results, S.gate_runs, S.done_criteria, S.corpus_members,
-                     S.lift_provenance, S.audits, S.unknowns, S.expectations, S.claim_conflicts,
-                     S.claim_events, S.claim_evidence, S.claims, S.pattern_evidence, S.claim_patterns,
-                     S.matchers, S.evidence_scopes, S.evidence, S.scopes, S.address_spaces, S.devices)
+# Derived tables, wiped every run. NOT evidence / evidence_scopes / scopes (evidence is primary; scopes are
+# keyed canonically and reused).
+DERIVED_TABLES = (S.coverage_ledger, S.gate_results, S.gate_runs, S.done_criteria, S.corpus_members,
+                  S.lift_provenance, S.audits, S.unknowns, S.expectations, S.claim_conflicts,
+                  S.claim_events, S.claim_evidence, S.claims, S.pattern_evidence, S.claim_patterns,
+                  S.matchers, S.address_spaces, S.devices)
 EV_DIR = REPO / "evidence" / "cycloneiv"
 NV = 6368
 DK_LUT = None   # filled from cycloneiv_le_locate when available
@@ -94,6 +99,11 @@ class Reg:
         key = SC.canonical(space, kind, definition)
         if key in self._scopes:
             return self._scopes[key]
+        row = self.conn.execute(select(S.scopes.c.id).where(and_(
+            S.scopes.c.family == self.family, S.scopes.c.device == self.device, S.scopes.c.scope_key == key))).fetchone()
+        if row:
+            self._scopes[key] = row[0]
+            return row[0]
         if n is None:
             n = SC.count(kind, definition, self.geom) if kind not in ("formula", "all") else SC.count(kind, definition)
         sid = self.conn.execute(insert(S.scopes).values(
@@ -174,14 +184,14 @@ class Reg:
 # ── common ───────────────────────────────────────────────────────────────────
 
 def wipe(conn, family):
-    """Always-rebuild. One family per database (check_single_family), so tables without a family column
-    (matchers, link tables, claim_events) are emptied outright."""
-    for t in PROVENANCE_TABLES:
+    """Always-rebuild of the DERIVED tables. One family per database (check_single_family), so tables
+    without a family column (matchers, link tables, claim_events) are emptied outright. Evidence stays."""
+    for t in DERIVED_TABLES:
         if "family" in t.c:
             conn.execute(delete(t).where(t.c.family == family))
         else:
             conn.execute(delete(t))
-    conn.execute(delete(S.families).where(S.families.c.id == family))
+    # families row stays: evidence / scopes reference it
 
 
 def check_single_family(conn, family):
@@ -193,7 +203,10 @@ def check_single_family(conn, family):
 
 def ensure_family(conn, family):
     f = FAMILIES[family]
-    conn.execute(insert(S.families).values(id=family, **f))
+    if conn.execute(select(S.families.c.id).where(S.families.c.id == family)).fetchone():
+        conn.execute(update(S.families).where(S.families.c.id == family).values(**f))
+    else:
+        conn.execute(insert(S.families).values(id=family, **f))
     for sp, g in SPACES.items():
         conn.execute(insert(S.address_spaces).values(family=family, space=sp, key_grammar=g))
 
@@ -245,7 +258,26 @@ def _adjacent_columns(geom):
     return sorted(adj)
 
 
-def register_cycloneiv(conn, device, commit, verify):
+def import_json_dir(conn, device, commit, json_dir):
+    """One-shot legacy migration: pair JSONs -> specimen-pair rows; map / table JSONs -> derived-table rows (verbatim)."""
+    migrated = {}
+    for p in sorted(Path(json_dir).glob("*.json")):
+        gen = "scripts/cycloneiv_m9k.py" if "_m9k_" in p.name else "scripts/cycloneiv_forced.py"
+        rel = os.path.relpath(p, REPO)
+        r = E.import_json_file(conn, str(p), "cycloneiv", device, NV, commit, gen, str(REPO))
+        if r is None:
+            d = json.loads(p.read_text())
+            E.record_decode(conn, "cycloneiv", device, p.name, {"file": d}, commit, rel, generator=gen,
+                            kind="derived-table", n_objects=len(d.get("cells", d)))
+            log.info("evidence %-42s derived table stored verbatim", p.name)
+            continue
+        migrated[p.name] = r
+        log.info("evidence %-42s %4d pairs  json %s  db %s  %s", p.name, r[0], r[1][:10], r[2][:10],
+                 "OK" if r[1] == r[2] else "MISMATCH")
+    return migrated
+
+
+def register_cycloneiv(conn, device, commit):
     geom = _geom(device)
     sha_geom = hashlib.sha256((REPO / "lifters/data/cycloneiv_ep4cgx150_geom.json").read_bytes()).hexdigest()
     conn.execute(insert(S.devices).values(
@@ -269,19 +301,15 @@ def register_cycloneiv(conn, device, commit, verify):
     R.matcher("llm-proposer-v1", "llm-proposed", "Claude-API proposer (candidates only; checked before registration)", 1,
               "pattern_proposer_llm:propose")
 
-    # ── evidence migration (every pair JSON under evidence/cycloneiv) ───────────────────────
-    migrated = {}
+    # ── evidence rows (primary data; legacy JSON arrives only through --import-json) ─────────
     maps, tables = {}, {}
-    for p in sorted(EV_DIR.glob("*.json")):
-        gen = "scripts/cycloneiv_m9k.py" if "_m9k_" in p.name else "scripts/cycloneiv_forced.py"
-        r = E.import_json_file(conn, str(p), "cycloneiv", device, NV, commit, gen, str(REPO))
-        if r is None:
-            d = json.loads(p.read_text())
-            (maps if "cells" in d else tables)[p.name] = d
-            continue
-        migrated[p.name] = r
-        log.info("evidence %-42s %4d pairs  json %s  db %s  %s", p.name, r[0], r[1][:10], r[2][:10],
-                 "OK" if r[1] == r[2] else "MISMATCH")
+    for r in conn.execute(select(S.evidence.c.name, S.evidence.c.result).where(and_(
+            S.evidence.c.family == "cycloneiv", S.evidence.c.device == device, S.evidence.c.kind == "derived-table"))):
+        d = r[1]["file"]
+        (maps if "cells" in d else tables)[r[0]] = d
+    n_ev = conn.execute(select(__import__("sqlalchemy").func.count()).select_from(S.evidence).where(and_(
+        S.evidence.c.family == "cycloneiv", S.evidence.c.kind == "specimen-pair"))).scalar()
+    log.info("cycloneiv: %d specimen-pair evidence rows, %d derived tables in the DB", n_ev, len(maps) + len(tables))
     ev_by_file = {}
     for r in conn.execute(select(S.evidence.c.id, S.evidence.c.name, S.evidence.c.source_ref, S.evidence.c.result,
                                  S.evidence.c.bits_spec, S.evidence.c.bits_base)
@@ -547,7 +575,6 @@ def register_cycloneiv(conn, device, commit, verify):
                                 generator="scripts/cycloneiv_corpus_fetch.py", n_objects=int(a.get("set_bits", 0) or 0))
     C.ensure_criterion(conn, "cycloneiv")
     log.info("cycloneiv: no REQUIRED corpus member declared yet (the gate set must be declared as corpus_members(required=1))")
-    return migrated
 
 
 # ── Lattice (ECP5 / MachXO2) ────────────────────────────────────────────────
@@ -689,23 +716,19 @@ def register_cyclonev(conn, commit):
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
-def verify_json(conn, device):
+def verify_json(conn, device, json_dir):
     """Round-trip every migrated JSON: pair count + canonical hash of file == of DB rows."""
     ok = True
     print(f"{'file':44s} {'pairs':>6s} {'json sha256':>12s} {'db sha256':>12s}  verdict")
-    for p in sorted(EV_DIR.glob("*.json")):
+    for p in sorted(Path(json_dir).glob("*.json")):
         pairs = E.read_json_pairs(str(p), NV)
         if pairs is None:
             d = json.loads(p.read_text())
-            if "cells" in d:
-                w = int(d["width"])
-                subj, rebuild = f"M9K:init:w{w}", lambda m: m["map"]
-            else:
-                subj, rebuild = "LOCAL_LINE:role-table", lambda m: m["table"]
-            m = conn.execute(select(S.claims.c.meaning).where(and_(S.claims.c.family == "cycloneiv", S.claims.c.subject_key == subj))).fetchone()
+            m = conn.execute(select(S.evidence.c.result).where(and_(S.evidence.c.family == "cycloneiv", S.evidence.c.kind == "derived-table",
+                                                                   S.evidence.c.name == p.name))).fetchone()
             canon = lambda o: hashlib.sha256(json.dumps(o, sort_keys=True, separators=(",", ":")).encode()).hexdigest()  # noqa: E731
             hj = canon(d)
-            hd = canon(rebuild(m[0])) if m else "-"
+            hd = canon(m[0]["file"]) if m else "-"
             good = hj == hd
             ok &= good
             print(f"{p.name:44s} {'claim':>6s} {hj[:12]:>12s} {hd[:12]:>12s}  {'OK' if good else 'MISMATCH'}")
@@ -726,18 +749,22 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--family", required=True, choices=sorted(FAMILIES))
     ap.add_argument("--device", default=None)
-    ap.add_argument("--verify-json", action="store_true")
+    ap.add_argument("--import-json", default=None, metavar="DIR", help="one-shot: migrate legacy evidence JSONs into evidence rows")
+    ap.add_argument("--verify-json", action="store_true", help="round-trip check of every JSON in --import-json DIR")
     a = ap.parse_args()
     commit = git_head()
-    schema_init = S.init
-    schema_init()
+    S.init()
     with db.engine().begin() as conn:
         check_single_family(conn, a.family)
         wipe(conn, a.family)
         ensure_family(conn, a.family)
+        if a.import_json:
+            if a.family != "cycloneiv":
+                db.die("--import-json is wired for cycloneiv evidence JSON shapes only")
+            import_json_dir(conn, a.device or "EP4CGX150", commit, a.import_json)
         if a.family == "cycloneiv":
             dev = a.device or "EP4CGX150"
-            register_cycloneiv(conn, dev, commit, a.verify_json)
+            register_cycloneiv(conn, dev, commit)
         elif a.family == "ecp5":
             dev = "LFE5U-25F"
             register_ecp5(conn, commit)
@@ -761,10 +788,12 @@ def main():
             if "family" in t.c:
                 stmt = stmt.where(t.c.family == a.family)
             log.info("%-16s %8d", t.name, conn.execute(stmt).scalar())
-    if a.verify_json and a.family == "cycloneiv":
+    if a.verify_json:
+        if not a.import_json:
+            db.die("--verify-json needs --import-json DIR (the files to compare against)")
         with db.engine().connect() as conn:
-            ok = verify_json(conn, a.device or "EP4CGX150")
-        print("VERIFY", "OK: every pair file round-trips" if ok else "FAILED: do not remove any JSON")
+            ok = verify_json(conn, a.device or "EP4CGX150", a.import_json)
+        print("VERIFY", "OK: every file round-trips" if ok else "FAILED: do not remove any JSON")
         sys.exit(0 if ok else 1)
 
 

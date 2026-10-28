@@ -1,10 +1,10 @@
 id	kind	name	version	code_ref	parameters	training_evidence	created_commit
-affine-v1	deterministic	affine address law fitted on measured parents	1	pattern_matchers:AffineLaw			2a7774d3c4f9cbc8474b383989647ed6791c8c5f
-afx-mirror-v1	statistical	asm column base from vote peaks (afx_map)	1	cycloneiv_asm_decode:afx_map			2a7774d3c4f9cbc8474b383989647ed6791c8c5f
-class-generalise-v1	deterministic	class-wide generalisation from >=2 agreeing positions	1	pattern_matchers:TileClassTranslate	json:{"min_positions":2}		2a7774d3c4f9cbc8474b383989647ed6791c8c5f
-clock-polarity-fit-v1	statistical	greedy LAB clock-polarity fit (Jaccard 0.85)	1	cycloneiv_route_learn			2a7774d3c4f9cbc8474b383989647ed6791c8c5f
-llm-proposer-v1	llm-proposed	Claude-API proposer (candidates only; checked before registration)	1	pattern_proposer_llm:propose			2a7774d3c4f9cbc8474b383989647ed6791c8c5f
-lut-anchor-v1	deterministic	LUT INIT anchor law (DK offsets from LE anchor)	1	cycloneiv_le_locate:DK			2a7774d3c4f9cbc8474b383989647ed6791c8c5f
-tile-translate-v1	deterministic	tile-class translation by (frame, v) offset	1	pattern_matchers:TileClassTranslate			2a7774d3c4f9cbc8474b383989647ed6791c8c5f
-vendor-ddb-v1	deterministic	routing.ddb / asm.ddb decode (group k == edge k)	1	cycloneiv_ddb_map	json:{"rule":"group k == edge k"}		2a7774d3c4f9cbc8474b383989647ed6791c8c5f
-vote-v1	statistical	voted / learnt over many builds (phys_map, li_map, asm_names)	1	pattern_matchers:VoteMatcher	json:{"source":"cycloneiv_phys_trace / cycloneiv_li_map / cycloneiv_asm_tables"}		2a7774d3c4f9cbc8474b383989647ed6791c8c5f
+affine-v1	deterministic	affine address law fitted on measured parents	1	pattern_matchers:AffineLaw			85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7
+afx-mirror-v1	statistical	asm column base from vote peaks (afx_map)	1	cycloneiv_asm_decode:afx_map			85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7
+class-generalise-v1	deterministic	class-wide generalisation from >=2 agreeing positions	1	pattern_matchers:TileClassTranslate	json:{"min_positions":2}		85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7
+clock-polarity-fit-v1	statistical	greedy LAB clock-polarity fit (Jaccard 0.85)	1	cycloneiv_route_learn			85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7
+llm-proposer-v1	llm-proposed	Claude-API proposer (candidates only; checked before registration)	1	pattern_proposer_llm:propose			85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7
+lut-anchor-v1	deterministic	LUT INIT anchor law (DK offsets from LE anchor)	1	cycloneiv_le_locate:DK			85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7
+tile-translate-v1	deterministic	tile-class translation by (frame, v) offset	1	pattern_matchers:TileClassTranslate			85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7
+vendor-ddb-v1	deterministic	routing.ddb / asm.ddb decode (group k == edge k)	1	cycloneiv_ddb_map	json:{"rule":"group k == edge k"}		85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7
+vote-v1	statistical	voted / learnt over many builds (phys_map, li_map, asm_names)	1	pattern_matchers:VoteMatcher	json:{"source":"cycloneiv_phys_trace / cycloneiv_li_map / cycloneiv_asm_tables"}		85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7

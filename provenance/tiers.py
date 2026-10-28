@@ -12,7 +12,7 @@ STATUSES = ("open", "confirmed", "verified-by-sampling", "oracle-verified", "sus
 VERIFIED_STATUSES = ("oracle-verified", "verified-by-sampling")
 KNOWN_STATUSES = ("open", "confirmed", "verified-by-sampling", "oracle-verified")   # counts as known in coverage
 EVIDENCE_KINDS = ("specimen-pair", "vendor-decode", "oracle-compare", "audit", "elimination",
-                  "absence", "image-hit", "roundtrip")
+                  "absence", "image-hit", "roundtrip", "derived-table")   # derived-table: computed from other rows by a named generator, kept verbatim
 CONFIRMING_KINDS = ("specimen-pair", "audit", "oracle-compare", "roundtrip")   # never a claim (circularity)
 SPACES = ("bit", "tile-bit", "pip", "mux-input", "cell-param", "net-attr", "stream-option",
           "coord-map", "port-map")
