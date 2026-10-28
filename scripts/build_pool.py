@@ -28,8 +28,8 @@ import heavy_guard  # noqa: E402
 
 log = logging.getLogger("build_pool")
 
-POLL_S = 1.0            # admission re-check; MemAvailable moves on a ~second scale
-STAGGER_S = 2.0         # a started chain reaches its map-step allocation in ~2 s (map takes ~9 s)
+POLL_S = 0.5            # admission re-check; MemAvailable moves on a ~second scale
+STAGGER_S = 0.25        # was 2.0: capped starts at 0.5/s, i.e. ~10 concurrent 20 s chains; the lease and the RAM floor bound memory now
 ADMIT_ANYWAY_S = 60.0   # idle pool + short RAM this long = foreign RAM hog, run one job anyway
 
 
@@ -40,7 +40,7 @@ def mem_available_gb():
     raise RuntimeError("MemAvailable missing from /proc/meminfo")
 
 
-def map_adaptive(fn, items, per_job_gb=2.0, reserve_gb=10.0, max_workers=None, disk_floor_gb=10.0):
+def map_adaptive(fn, items, per_job_gb=1.2, reserve_gb=10.0, max_workers=None, disk_floor_gb=10.0):
     items = list(items)
     max_workers = max_workers or max(1, (os.cpu_count() or 8) - 2)
     cv = threading.Condition()

@@ -51,14 +51,15 @@ def stdout_log():
     return lg
 
 
-def _wait(pred, what, log):
+def _wait(pred, what, log, poll=None):
+    poll = POLL_S if poll is None else poll
     t0, last = time.monotonic(), 0.0
     while not pred():
         now = time.monotonic()
         if now - last >= LOG_S:
             log.info("%s (waited %.0fs)", what, now - t0)
             last = now
-        threading.Event().wait(POLL_S)
+        threading.Event().wait(poll)
 
 
 def available_gb():
@@ -84,7 +85,7 @@ JOB_GB = {
     "ecp5_target_extra_25f": 0.35,   # marginal RSS of one more concurrent 25F target on a shared graph
     "quartus_fit_small": 1.06,       # quartus_fit RSS, corpus-size Cyclone V design (map: 0.53)
     "cyclonev_sim_job": 0.07,        # load.py / verilog.py child of lifted_sim_check (iverilog path)
-    "quartus_chain_cyc4": 1.5,       # map/fit/asm chain, Cyclone IV GX specimen (peak ~1.3, docs/rust-candidates.md)
+    "quartus_chain_cyc4": 1.2,       # map/fit/asm chain, Cyclone IV GX specimen (peak ~1.3, docs/rust-candidates.md)
     "cyc4_dec_active": 1.2,          # Dec.active, RSS 1.11 (anon 0.40, rest shared page cache); was 2.1 before #149
     "cyc4_tracer": 2.6,              # ddb_trace score x3: RSS 2.51 (anon 1.7); was 3.26 before #149
     "cyc4_bit_inventory": 2.6,       # bit inventory: RSS 2.3-2.6 (anon 1.0, rest mmap)
@@ -116,7 +117,8 @@ BATCH_MAX_GB = float(os.environ.get("PLURIBUS_BATCH_MAX_GB", "46"))
 # degrades speed and takes the box down, not job count.
 LEASE_PATH = LOCK_PATH + ".leases"
 LEASE_BUDGET_GB = float(os.environ.get("PLURIBUS_LEASE_BUDGET_GB", str(BATCH_MAX_GB)))
-LEASE_RAMP_S = 3.0  # a freshly admitted job reaches its peak allocation within seconds; MemAvailable lags until then
+LEASE_RAMP_S = 0.5  # was 3.0: one admission per ramp window capped a 20 s Quartus chain pool at ~5 concurrent jobs; leases are accounted by declared GB, the RAM floor covers the lag
+LEASE_POLL_S = 0.5  # lease admission re-check (was POLL_S = 5): waiting is an Event.wait, no CPU
 
 
 def _alive(pid):
@@ -232,7 +234,7 @@ def lease(gb, name, log, budget_gb=None, on_blocked=None):
 
     _wait(try_admit, f"{name}: waiting for {gb:g} GB of the {budget:g} GB memory budget "
                      f"(leased {sum(v['gb'] for v in lease_ledger().values()):.1f}, "
-                     f"avail {available_gb():.1f})", log)
+                     f"avail {available_gb():.1f})", log, poll=LEASE_POLL_S)
     t_run = time.monotonic()
     base = tree_rss_gb()
     st = {"peak": base, "conc": 1}
