@@ -31,8 +31,10 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
   1. **Vendor device DB on disk** (Quartus .ddb, Diamond/Trellis DB, Gowin chipdb) — exact, complete
   2. **Minimal-diff specimens** — 1–2 cells, one net, one question per build; vendor tool pins placement/routing; diff or single-path readback gives exact answers; tile regularity generalises
   3. **Open projects** — prjtrellis, mistral, apicula, X-Ray: both a source and a format Rosetta
-- **Statistics over random builds is not a source.** Pooled/voted/learnt tables are banned as a
-  decode path. Allowed only as a change detector (like real-design LUT counts).
+- **Exact labels or nothing.** A table entry is derived only from builds whose vendor output names the feature (RCF path, post-fit `.vo` parameter, MIF). Two derivations exist:
+  - **(a) Pair diff:** two builds differing in ONE named feature.
+  - **(b) Labelled intersection:** over builds with complete labels for the tile, bits(f) = AND of planes with f, AND-NOT of the OR of planes without f, restricted to builds whose enclosing tile is otherwise identical. Every supporting build id is recorded; ONE contradicting build voids the entry (zero tolerance, never a vote). Must-be-clear cells are part of the entry.
+- **Banned as a decode path:** majority or weighted voting, agreement thresholds below 100 %, learnt or fitted maps as a source, labels produced by our own decoder (alias matching), entries without build ids. Allowed only as a change detector (like real-design LUT counts).
 - **Where statistics IS fine (not a table source):**
   - **Triage:** frequency of set bits across images/corpus to rank which unknown regions matter.
   - **Hypotheses:** a fitted pattern (e.g. an address law) is a prediction; a specimen then verifies it.
@@ -59,6 +61,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
   The queryable index is the `corpus_builds` table (`schema.py`), rebuilt by
   `scripts/corpus_register.py --family <f>` (full rescan — derived index, rebuild is the
   migration); run it after every build batch. Check the DB before regenerating anything.
+- **Bookkeeping is enforced by code, not memory:** `claims_register` rejects a specimen-pair row without `build_base`/`build_spec`; `build_pool` runs `corpus_register` at batch end; a gate script exits non-zero if `record_gate_run` was not called; refused/failed builds are stored with a status (no silent loss).
 - Declare ONE fixed gate set in the issue; every number ever reported cites it. A changed set is
   a new baseline, stated as such.
 - Headline per the scoring-faults rules: matched / (matched + missing + extra + wrong). Missing
@@ -83,6 +86,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
 - With exact tables, **wrong must be 0**. Any wrong point is a decode bug, not noise.
 - Count faulty cones (root causes) beside faulty points: one wrong input poisons a whole carry
   chain and inflates point counts.
+- **A decode rule (firing, select, coordinate map) changes only on a specimen that shows the new prediction.** Gate-only tests of decoder variants are banned. When a rule changes, entries made under the old rule are re-tiered or deleted in the same commit.
 
 ## Done criterion — the corpus is the acceptance test (Dan, 2026-10-29)
 
@@ -102,8 +106,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
   would re-open. Status: `scripts/framework_status.py` (per family, per database).
 - Today: ECP5 corpus = the 240 Diamond-oracle targets of `tests/baselines/ecp5_oracle.json`;
   MachXO2 = the four `machxo2_gate.py` sets; Gowin = `gowin_lec.py` designs; Cyclone V =
-  `corpus_builds` ok rows; Cyclone IV = NO required member yet — the gate set must be declared
-  before its done state means anything (`claims_register.py` logs this).
+  `corpus_builds` ok rows; Cyclone IV = the 76 required `gx150_rb` members (af73c732b).
 
 ## Tripwires — stop and review the premise when any fires
 
@@ -112,7 +115,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
 - The gate is flat across two attempts at the same level.
 - An approach scores worse than a strictly weaker one — measurement bug until proven otherwise
   (the #136/#138 alias-scoring failure).
-- Any table is being learnt from more than ~10 designs — you are doing statistics; go to Phase 0.
+- A table entry whose supporting set tolerated a contradiction, or whose label is not a vendor output, is statistics; go to Phase 0.
 
 ## Specimen rules for agents (binding; Dan, 2026-10-28)
 
@@ -131,10 +134,11 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
   no tooling beyond gen/build/diff/store. A pattern is allowed only as a prediction that a
   brute-force specimen then verifies; on any miss, enumerate.
 - **Do not widen scope.** Do not retire code, rewire the lifter, or change the gate (#142 is a
-  separate, gated step). One question per build.
+  separate, gated step). **One feature per DIFF, any number per DESIGN:** a pair changes one thing; a labelled design may carry many features, each solved separately by intersection (Phase 0). Progress is counted in answered features, never builds.
 - **Stop and report** if the method cannot be applied (e.g. forcing impossible, diff unstable).
   Never slide back to decoder matching to keep going.
-- Agent briefs quote this section; they do not paraphrase it.
+- **Every agent brief states:** (1) the question as "decode X from Y"; (2) the prediction and what refutes it; (3) the oracle; (4) the build cap and yield floor ("Yield rule"); (5) the stop criterion and what is reported at stop; (6) the issue that owns the gap; (7) the ledger row that will show the result. A brief missing an item is returned.
+- Every report states yield vs floor, issues filed, and rules it could not follow. Briefs quote this section; they do not paraphrase it.
 
 ### Specimen design (every family; Dan, 2026-10-29)
 
@@ -148,17 +152,15 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
   back-annotation or the family's equivalent) so the router uses the same area; only the new thing
   routes freely.
 - **Control nets come from the same LAB/tile** and exist in both builds.
-- **Null controls first:** same design renamed, and a different fitter seed with all else pinned. The diff
-  must be empty; if not, nothing else is trusted.
+- **Null controls first:** same design renamed. The diff must be empty; if not, nothing else is trusted. A seed change is a null only under back-annotated routing; otherwise its diff is recorded as the placement/routing noise floor.
 - **A noisy diff means the object was too big:** shrink it (diffs mixing routing bits of the added
   connection with the feature bits, as in the first control-line sets) rather than add statistics.
 
 ### Priority order (binding; Dan, 2026-10-29)
 
-- **Target = die coverage %, not one image.** Metric: % of the die's configuration bits with a
-  verified meaning (`scripts/cycloneiv_bit_inventory.py`). A single image only breaks ties.
-- **Rank work by unknown bits converted per specimen.** Big, regular blocks first (M9K = 36 % of
-  the die, uniform columns); small/irregular last.
+- **Rank by what gates the lift.** The queue is the latest gate run's per-hop table by wire class, largest missing + wrong first. The Done criterion (corpus gate) is the target. Die coverage % (`scripts/cycloneiv_bit_inventory.py`) is reported, and ranks only classes the gate does not touch.
+- **A metric change is a new baseline,** stated as such; it never replaces the gate in the headline.
+- Within a gate-neutral class: unknown bits converted per specimen, big regular blocks first (M9K = 36 % of the die), small/irregular last.
 - **Easy and large before hard and small.** Edges, corners and one-off pin cases come AFTER the
   interior class they truncate is fully known: an edge is a deviation from the interior pattern,
   so the pattern must exist first.
@@ -174,12 +176,19 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
 
 Pairs prove a bit SET; the aim is to state what each single cell does. Evidence levels, weakest first (recorded on the evidence row, never mixed in one count):
 1. **Set**: base + specimen differ by one design change; the diff is a set of cells (typically 3-6 for a routing choice).
-2. **Attributed**: exact enumeration over a grid shows which variable each cell depends on (source, sink, port, position); `scripts/cycloneiv_localline_bits.py` is the model.
-3. **Isolated (strict single cell)**: two vendor builds of the same design that differ by one small design change and by EXACTLY ONE cell. The alternate bitstream is always a vendor build of a slightly different design, never a hand-edited file.
+2. **Attributed** (the acceptance level for routing, control and mode bits): feature f has a full pattern P(f) over a footprint F (set and must-be-clear cells); every cell of F is tied to f or to one named variable by a grid in which each variable is varied alone (>= 2 values each, other variables fixed); rebuild-stable. A 2-5 cell group is a complete answer. `scripts/cycloneiv_localline_bits.py` is the model.
+3. **Isolated (strict single cell; required only for cells claimed to be single-bit flags)**: two vendor builds of the same design that differ by one small design change and by EXACTLY ONE cell. The alternate bitstream is always a vendor build of a slightly different design, never a hand-edited file.
 4. **Hardware-confirmed**: the isolated cell flipped on real silicon changes the predicted behaviour (needs a board; decision #156).
-- **Bit hunter** (`scripts/cycloneiv_bit_hunter.py`): automated search for level-3 pairs. One pinned base design, hundreds of variants that each change exactly one knob (a LUT-mask bit, source/sink LE, port via a forced route, FF on/off, tied constant, control line), all pairs compared at full-plane level, pairs at distance 1 recorded (`n_objects = 1`), pairs at distance 2-3 split by in-between variants. It will not always find one; a hit is exact. Calibration first: one LUT-mask bit must flip exactly one cell (verified INIT cells), else the harness is wrong.
+- **Bit hunter** (`scripts/cycloneiv_bit_hunter.py`): automated search for level-3 pairs. Calibration pairs are not results; a knob that gives no distance-1 pair in 20 variants is closed at level 2 and not re-run; re-measuring a verified/measured cell counts 0 in every ledger. One pinned base design, hundreds of variants that each change exactly one knob (a LUT-mask bit, source/sink LE, port via a forced route, FF on/off, tied constant, control line), all pairs compared at full-plane level, pairs at distance 1 recorded (`n_objects = 1`), pairs at distance 2-3 split by in-between variants. It will not always find one; a hit is exact. Calibration first: one LUT-mask bit must flip exactly one cell (verified INIT cells), else the harness is wrong.
 - Confounded cells (identical membership over every pair so far) are listed as a queue of minimal specimens, not guessed.
 - A role is written for a cell only at level 2 or 3; a level-1 set never becomes a per-cell claim.
+
+## Yield rule (stop and continue; Dan, 2026-10-29)
+
+- Before launch every sweep states: the question ("decode X from Y"), the predicted diff (cells, +/-, must-be-clear), a build cap and a yield floor.
+- **Yield = distinct new meaning-bearing cells or answered features per 100 builds,** computed by `scripts/progress_ledger.py` from evidence rows new since the last ledger row; the row prints yield vs floor. Defaults: routing 10 features per 100 builds, isolation hunts 1 new cell per 100.
+- **Stop on:** yield below the floor over the last 200 builds, the first prediction miss, or the cap. Stop = report + numbered issue, not another round.
+- A gate flat (< 0.5 pp) across two attempts at one level stops that level.
 
 ## Patterns and certainty (Dan, 2026-10-29)
 

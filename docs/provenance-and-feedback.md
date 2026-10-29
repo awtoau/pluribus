@@ -89,6 +89,7 @@ Tier `never-exercised` (believed unreachable):
 - Not `verified`, not "understood", not predicted from. Inventory shows it as its own line with
   its absence evidence summary; coverage % counts it in the denominator (below).
 - Without the absence row the bit is `unknown(reason=unasked)`; "we never saw it" is not evidence.
+- **Headline composition (Dan, 2026-10-29):** headline unknown = die_bits - (verified + measured + sampled + predicted + decoded + suspect + refuted). "Set in none of N held designs" is a triage sub-line under unknown with N stated; it is never a tier, never subtracted from the headline, never `pattern-predicted`. The tier vocabulary is closed: no new label without a doc change in the same commit.
 
 Denominator split:
 

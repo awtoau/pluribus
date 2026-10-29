@@ -167,9 +167,10 @@ LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58
 
 ## Cost
 
-- One specimen pair ≈ 15 s of Quartus (measured 2026-10-28); the matrix is a few thousand
-  builds, embarrassingly parallel across 32 cores within the 20 GB free-RAM rule — minutes to
-  low hours of wall-clock, re-runnable at will.
+- One specimen pair ≈ 15 s of Quartus (measured 2026-10-28). Per-pair specimens answer ~1 feature
+  per build; the 14.9 M-arc routing universe at that rate is the ceiling in
+  `provenance-and-feedback.md` (~180 days), so the matrix below is a sampling plan
+  (recovery-process.md "Patterns and certainty"), not an enumeration.
 
 ## Raw-diff specimens (forced single-hop)
 
