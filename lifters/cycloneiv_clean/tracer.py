@@ -268,6 +268,10 @@ class Lut:
         addr = np.stack([F.absolute(bs, g.sites[le][0]) for le in range(16)], axis=1)
         r, j, k = P.sof_to_rbf(addr.ravel(), P.load_tables())
         self.cell = (r * P.BITS_PER_FRAME + (j - 1) * P.LANES + k).reshape(addr.shape)
+        gc = next(f for f in F.fields(w, D.enum_tables(), block_types={18}) if f.name == "LE_USE_CARRY")
+        ac = np.stack([F.absolute(bs, gc.sites[le][0])[:, 0] for le in range(16)], axis=1)
+        r, j, k = P.sof_to_rbf(ac.ravel(), P.load_tables())
+        self.carry_cell = (r * P.BITS_PER_FRAME + (j - 1) * P.LANES + k).reshape(ac.shape)      # [labs, 16], one cell per LE
         labs = json.load(open(os.path.join(P.REPO, "lifters", "data", "cycloneiv_ep4cgx150_labs.json")))["labs"]
         self.xs = sorted({x for x, _ in labs})
         self.col = {x: i for i, x in enumerate(self.xs)}
@@ -276,9 +280,34 @@ class Lut:
     def cells(self, bits):
         return bits[self.cell]
 
+    def carry_in(self, bits):
+        """bool [labs, 16]: LE_USE_CARRY bit CLEAR = the LUT's C input comes from the carry chain (sum_lutc_input = cin)."""
+        return bits[self.carry_cell] == 0
+
     def lab(self, x, y):
         c = self.col.get(x)
         return -1 if c is None or not 1 <= y <= 90 else c * 90 + y - 1
+
+
+class Extras:
+    """Decoders that add programmed edges outside the flag rule: clock network (clocks.py) and LOCAL_INTERCONNECT -> LAB_CONTROL_MUX
+    (lab_control.py, edges absent from the routing graph: ids >= st.n_edges, appended to st.esrc / st.edst)."""
+
+    def __init__(self, st, lut, rt=None):
+        from . import clocks, lab_control
+        if len(st.esrc) != st.n_edges:
+            raise SystemExit("Static already extended")
+        self.st = st
+        self.clocks = clocks.Clocks(st, lut, rt)
+        self.imp = lab_control.Implicit(lut, rt, n_real=st.n_edges)
+        st.esrc = np.concatenate([st.esrc, self.imp.esrc])
+        st.edst = np.concatenate([st.edst, self.imp.edst])
+        st._key = None
+
+    def apply(self, bits, fired):
+        """{variant: edge ids} with the clock and LAB-control edges added to every variant."""
+        imp = self.imp.apply(bits)
+        return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp])) for v, e in fired.items()}
 
 
 # source: io_decode.json `values` rows with setting 'default' (pair builds, docs/cycloneiv-clean-io.md): pattern of each group per base kind
@@ -327,13 +356,14 @@ class Tracer:
 
     def __init__(self, workers=4):
         self.st, self.lut, self.io, self.workers = Static(), Lut(), Io(), workers
+        self.ext = Extras(self.st, self.lut)
 
     def run(self, rbf):
         bits = plane_bits(rbf)
-        fired = self.st.fire(bits, workers=self.workers)
+        fired = self.ext.apply(bits, self.st.fire(bits, workers=self.workers))
         g = Graph(self.st, fired[HEADLINE_VARIANT])
         return dict(edges=fired, edge_src=self.st.esrc, edge_dst=self.st.edst, nets=tracer_nets(g),
-                    lut_cells=self.lut.cells(bits), io=self.io.classify(rbf))
+                    lut_cells=self.lut.cells(bits), io=self.io.classify(rbf), le_clock_blk=self.ext.clocks.le_blk(bits))
 
 
 def main():

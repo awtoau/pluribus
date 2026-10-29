@@ -14,11 +14,13 @@ Per category: matched / (matched + missing + extra + wrong); a missing connectio
             only surplus edges = extra; both = wrong.  Tracer root trees touching no GT edge count as extra nets.
   lut_init  per LE with a combinational GT LUT: tracer cells == .vo lut_mask with cell index 15 - l (O1; the .vo ports are the
             physical post-fit pins: q102~0 sits on datab where the RCF route_port says DATAB, so no RCF permutation applies).
-            Arithmetic-mode LE = missing (mapping not defined; the relation test is logged beside); cells differ = wrong; tracer LE
-            with set cells and no GT LUT = extra.
-  register_clock  per GT FF: the programmed trees reaching the LAB's BLK_CLK_BUF elements all contain the GT clock-net root = matched;
-            none reach = missing; some contain it = ambiguous = missing; none contain it = wrong.  The tracer cannot claim FFs (register
-            mode not decoded), so extra is always 0 here (not measured).
+            Arithmetic-mode LEs use the same relation (one LE_LUT_FUNCTION group per LE, no mode variant in the asmdb); the LE_USE_CARRY
+            bit is compared with the .vo sum_lutc_input (clear = cin) and logged beside.  Cells differ = wrong; tracer LE with set cells
+            and no GT LUT = extra.
+  register_clock  per GT FF: the tracer's claim for that (LAB, LE) = BLK_CLK_BUF line chosen by LE_CLOCK_SELECT + LAB_CLOCK_FAST_MUX
+            (clocks.py); the programmed tree(s) containing that BLK_CLK_BUF all have the GT clock-net root = matched; no line / no tree =
+            missing; some roots match = ambiguous = missing; none match = wrong.  extra = (LAB, LE) with a claimed line in a programmed
+            tree and no FF in the .vo.  No register-used bit is decoded: every LE of a LAB with a driven selected line is claimed.
   pins      GT ball set vs balls of IO sites whose CFF key groups equal a decoded default pattern (direction class must agree: else wrong).
 No rule changes between runs: headline variant is fixed (`lit_x`); the other three tracer variants are reported beside it.
 Log: tmp/logs/cycloneiv_clean_gate.log; results tmp/cycloneiv_clean/gate_<set>.json.
@@ -124,8 +126,9 @@ class Ctx:
         self.rt = ddb.Routing()
         self.st = T.Static()
         self.res = T.Resolver(self.rt)
-        self.st.edge_ids([0], [0])          # build the (src, dst) key index before worker threads start
         self.lut = T.Lut()
+        self.ext = T.Extras(self.st, self.lut, self.rt)
+        self.st.edge_ids([0], [0])          # build the (src, dst) key index (after the implicit edges are appended) before worker threads start
         self.io = T.Io()
         self.enum = np.where(self.rt.tpl >= 0, self.rt.enum[np.maximum(self.rt.tpl, 0)].astype(np.int32), -1)
         self.tname = {v: k for k, v in names.enums().items()}
@@ -144,7 +147,7 @@ def score_design(cx, d, fire_workers):
     t0 = time.time()
     st, rt = cx.st, cx.rt
     bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
-    fired = st.fire(bits, workers=fire_workers)
+    fired = cx.ext.apply(bits, st.fire(bits, workers=fire_workers))
     nets = T.parse_rcf(os.path.join(d, "routing.rcf"))
     allnames = sorted({e for n in nets for pc in n["edges"] for e in pc} | {r for n in nets for r in n["roots"]})
     idx = {n: i for i, n in enumerate(allnames)}
@@ -218,18 +221,21 @@ def score_design(cx, d, fire_workers):
     # ---- LUT INIT
     ports, lcs, ffs = parse_vo(os.path.join(d, "postfit.vo"))
     cells = cx.lut.cells(bits).astype(np.uint8)
+    carry = cx.lut.carry_in(bits)
     lc, why_l = counts(), collections.Counter()
     gt_sites = set()
     for (x, y, nn), L in lcs.items():
         i = cx.lut.lab(x, y)
         gt_sites.add((i, nn))
+        if i >= 0:
+            why_l["carry_flag_agrees" if (L["mode"] == "cin") == bool(carry[i, nn]) else "carry_flag_differs"] += 1
         if i < 0 or L["mask"] is None:
             lc["missing"] += 1
             why_l["site_or_mask_unresolved"] += 1
         elif L["arith"]:
-            lc["missing"] += 1
-            why_l["arithmetic_mode"] += 1
-            why_l["arithmetic_same_relation" if tuple(int(b) for b in cells[i, nn]) == lut_expected(L["mask"]) else "arithmetic_other"] += 1
+            ok = tuple(int(b) for b in cells[i, nn]) == lut_expected(L["mask"])
+            lc["matched" if ok else "wrong"] += 1
+            why_l["arithmetic_cells_equal" if ok else "arithmetic_cells_differ"] += 1
         else:
             ok = tuple(int(b) for b in cells[i, nn]) == lut_expected(L["mask"])
             lc["matched" if ok else "wrong"] += 1
@@ -250,20 +256,27 @@ def score_design(cx, d, fire_workers):
             if port == "CLK":
                 gt_clk[cell] = rs
     rc, why_r = counts(), collections.Counter()
+    blk = cx.ext.clocks.le_blk(bits)                    # tracer claim: BLK_CLK_BUF record per (LAB, LE) from LAB clock mux + LE_CLOCK_SELECT
+    gt_sites_ff = set()
     for name, (x, y, nn) in ffs.items():
+        i = cx.lut.lab(x, y)
+        gt_sites_ff.add((i, nn))
         gr = gt_clk.get(name)
         if not gr:
             rc["missing"] += 1
             why_r["gt_clock_unresolved"] += 1
             continue
-        cand = set()
-        for b in cx.blk.get((x, y), ()):
-            cand |= node_roots.get(b, set())
+        b = int(blk[i, nn]) if i >= 0 else -1
+        if b < 0:
+            rc["missing"] += 1
+            why_r["lab_clock_mux_selects_no_line"] += 1
+            continue
+        cand = node_roots.get(b, set())
         if not cand:
             rc["missing"] += 1
-            why_r["no_programmed_clock_reaches_lab"] += 1
+            why_r["selected_line_not_in_a_programmed_tree"] += 1
             continue
-        has = {c for c in cand if any(c in node_roots.get(r, ()) or c == r for r in gr)}
+        has = cand & set(gr)
         if has == cand:
             rc["matched"] += 1
         elif not has:
@@ -271,7 +284,9 @@ def score_design(cx, d, fire_workers):
             why_r["clock_net_differs"] += 1
         else:
             rc["missing"] += 1
-            why_r["ambiguous_clock_candidates"] += 1
+            why_r["ambiguous_clock_roots"] += 1
+    claimed = np.argwhere(blk >= 0)
+    rc["extra"] = sum(1 for i, nn in claimed.tolist() if (i, nn) not in gt_sites_ff and node_roots.get(int(blk[i, nn])))
     out["register_clock"], out["clock_scope"] = rc, dict(why_r)
     # ---- pins
     pins_gt = parse_pin(os.path.join(d, "build.pin"))
@@ -327,6 +342,7 @@ def main():
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--record", action="store_true", help="write gate_runs / gate_results (PLURIBUS_SQLITE_PATH)")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--baseline", action="store_true", help="mark the recorded run as a baseline (params.baseline)")
     args = ap.parse_args()
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     os.makedirs(OUT, exist_ok=True)
@@ -424,7 +440,7 @@ def record(args, good, tot, var):
                             required=False)
             results[name] = {c: r[c] for c in CATS}
         run = C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_clean_gate.py", commit, results,
-                                params={"set": args.set, "root": args.root, "headline_variant": HEADLINE, "baseline": True,
+                                params={"set": args.set, "root": args.root, "headline_variant": HEADLINE, "baseline": args.baseline, "tag": args.tag,
                                         "designs": len(good)},
                                 summary={"totals": tot, "pips_variants": var,
                                          "headline": {c: round(headline(tot[c]), 4) for c in CATS}})

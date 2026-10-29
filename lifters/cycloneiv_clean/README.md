@@ -8,6 +8,7 @@ Cyclone IV GX (EP4CGX150) address engine rebuilt from vendor-derived facts only.
 - `plane.py`: geometry (A6) and the sof -> rbf closed form (A5). `address_to_plane` = raw address as sof bit index, then A5 (one function for routing and LUT cells); `CANDIDATES` keeps the rejected alternative for the oracles.
 - `sofio.py`: sof / rbf file helpers around `quartus_cpf` (black box).
 - `names.py`: RCF element names (A7).
+- `clocks.py`, `lab_control.py`, `muxsel.py`: clock network + register clock lines, LI -> LAB_CONTROL_MUX through the LAB_PIA_TO_INPUT input map, LAB mux selection decode (tests `test_decoders.py`).
 - `tracer.py`: P2. rbf -> programmed edges (4 flag-rule variants), nets, LUT INIT cells, IO default-pattern classes; RCF ground-truth parse. CLI: `python3.15t -m lifters.cycloneiv_clean.tracer <rbf> <out.npz>`.
 - Gate (P3): `scripts/cycloneiv_clean_gate.py`; baseline rows in `gate_runs` (`params.baseline`), log `tmp/logs/cycloneiv_clean_gate.log`, results `tmp/cycloneiv_clean/gate_*.json`.
 
@@ -49,5 +50,11 @@ AFX ladder, descending-x mirror, any (dx, df) / per-column / per-source table or
 - Entry roles: expected 1 iff `b0 == +1` (select) or `b1 == -1`; with exclusion, every other entry of the group is expected 0. Variants: `lit` / `lit_x` (literal rule, set-only / with exclusion), `sel` / `sel_x` (first entry always the select). Headline variant `lit_x`, fixed before the first GT comparison.
 - Set-only over-fires: the three inputs sharing one select bit differ only in the second-level bits, so exclusion is required (rb_000..009, 2026-10-30: set-only extras 42,425, with exclusion 2,585).
 - Not decided by the flags: 3-groups with `b0 = 0` on the select entry (no expected-1 entry under `lit`); 2-groups (R24 / C16 / wide muxes) whose second entry is set with `b0 = b1 = 0`.
-- Not in asm.ddb groups at all: clock network edges (CLKBUF_OUT -> GLOBAL_CLK_H, GLOBAL_CLK_H -> GLOBAL_CLK_V, GLOBAL_CLK_V -> SCLK_TO_ROWCLK_BUF, LAB_CLK -> BLK_CLK_BUF: empty or flag-0 groups) and LOCAL_INTERCONNECT -> BLOCK_INPUT_MUX / LAB_CONTROL_MUX (not in the routing.ddb fan-out). So register-clock recovery is 0 until the clock mux settings are placed (not in asm.ddb routing).
+- Clock network (`clocks.py`, #165): fan-in is a tree CLKBUF_OUT -> GLOBAL_CLK_H -> GLOBAL_CLK_V -> SCLK_TO_ROWCLK_BUF -> LAB_CLK (fan-in 30, the mux) -> BLK_CLK_BUF.
+  - SCLK -> LAB_CLK: 12-entry groups, literal rule (already matched). H -> V: 1-entry group, flags 0 / 0, address in the asmdb DEFAULT-bit list (blank = 1): programmed iff the bit is CLEARED (all 120 such edges of the device).
+  - Empty-group edges with fan-in 1 (145,283, all clock) are structural: they conduct when their destination is used; demand propagates up the unique parent from used SCLK and from the LAB-selected BLK_CLK_BUF.
+  - LAB side: LAB_CLOCK_FAST_MUX gi 0 / gi 1 choose a LAB clock line j (first-level bit j = BLK_CLK_BUF index j); LE_CLOCK_SELECT bit 1 = gi 0, 0 = gi 1.
+- LOCAL_INTERCONNECT has no fan-out in routing.ddb: LI -> LAB_CONTROL_MUX edges come from LAB_PIA_TO_INPUT gi k (`lab_control.py`, `muxsel.py`): control mux index k of the LAB, input number = LI index, aux = first-level bit, nxt = second-level state (none / bit0 / bit1).
+- LE_USE_CARRY bit clear = C input from the carry chain (`sum_lutc_input = cin`); LE_LUT_FUNCTION has one group per LE, so arithmetic-mode LEs use the combinational cell relation.
+- Open: LI -> BLOCK_INPUT_MUX (IO tiles). VIO: MIO_LABLINE_TO_DATA gi 0 (absolute CRAM bits, `muxsel` table, input = LI index) selects the edge input for every ground-truth edge; the BLOCK_INPUT_MUX index <-> (SUB_LOC, group) table and the tile of SUB_LOC 0 / 1 sites are not decoded. HIO groups are class 20 (two-vector mux), not decoded.
 - `.vo` LUT ports are the physical post-fit pins (no RCF route_port permutation applies); LUT cell index = 15 - l of the `.vo` lut_mask bit l.
