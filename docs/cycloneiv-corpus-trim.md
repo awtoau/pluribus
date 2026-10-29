@@ -15,6 +15,6 @@
 | ho2_* | 32 | 0.10 GB | moved | no references |
 | gxnb10x10d1_*, gxnb100x75d1_* | 1024 | 5.8 GB | kept | requested keep; compare_nb baseline |
 | gxll_*, gxll100x75_* | 960 | ~0 | kept | requested keep; profile_stages uses gxll_00_02 |
-| gx150_sp_* | 300 | 3.44 GB | kept | default `--designs` of learner_baseline, asm_decode, io_bits, image_pass, verify_all |
+| gx150_sp_* | 300 | 3.44 GB | kept | default `--designs` of asm_decode, io_bits, image_pass, verify_all |
 
 - Freed: 8.93 GB.

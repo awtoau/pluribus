@@ -34,7 +34,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
 - **Exact labels or nothing.** A table entry is derived only from builds whose vendor output names the feature (RCF path, post-fit `.vo` parameter, MIF). Two derivations exist:
   - **(a) Pair diff:** two builds differing in ONE named feature.
   - **(b) Labelled intersection:** over builds with complete labels for the tile, bits(f) = AND of planes with f, AND-NOT of the OR of planes without f, restricted to builds whose enclosing tile is otherwise identical. Every supporting build id is recorded; ONE contradicting build voids the entry (zero tolerance, never a vote). Must-be-clear cells are part of the entry.
-- **Banned as a decode path:** majority or weighted voting, agreement thresholds below 100 %, learnt or fitted maps as a source, labels produced by our own decoder (alias matching), entries without build ids. Allowed only as a change detector (like real-design LUT counts).
+- **Banned as a decode path:** majority or weighted voting, agreement thresholds below 100 %, learnt or fitted maps as a source, labels produced by our own decoder (alias matching), entries without build ids. No learned-table scorer or comparator is kept in the repo (the Cyclone IV learner baseline was deleted 2026-10-29: it outscored the exact path on pins and invited its use). The change-detector allowance covers real-design LUT/FF/net counts only.
 - **Where statistics IS fine (not a table source):**
   - **Triage:** frequency of set bits across images/corpus to rank which unknown regions matter.
   - **Hypotheses:** a fitted pattern (e.g. an address law) is a prediction; a specimen then verifies it.
