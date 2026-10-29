@@ -46,12 +46,19 @@ IMAGE = REPO / "sources/cycloneiv-corpus/neptuno_cgx150_mc2/mc2.rbf"   # the thi
 DROP_DIRS = ("db", "incremental_db", "qdb")
 STAGES = ("build", "determinism", "register", "evidence", "derived", "gates", "swap")
 # derived artifact -> regenerating command (cwd = view). Inputs the commands read from corpus/cycloneiv are the NEW tree.
-DERIVED = {
-    "cycloneiv_ep4cgx150_li_map.json": ["scripts/cycloneiv_li_map.py", "extract", "--designs", "gx150_*", "--split", "even"],
-    "cycloneiv_ep4cgx150_phys_map.json": ["scripts/cycloneiv_phys_trace.py", "learn", "--designs", "gx150_*", "--split", "even"],
-    "cycloneiv_ep4cgx150_ddb_map.npz": ["scripts/cycloneiv_ddb_trace.py", "export"],
-    "cycloneiv_ep4cgx150_asm_names.json": ["scripts/cycloneiv_asm_tables.py"],
-}
+DERIVED = [   # (artifact or None for a cache-prep step, command); order matters: caches first
+    (None, ["scripts/cycloneiv_ddb_asm.py", "parse"]),                       # asm.ddb -> tmp/ddb/<die>_asm_*.npy
+    (None, ["scripts/cycloneiv_ddb_routing.py", "fanout"]),                  # routing.ddb -> <die>_rt_fanout.npz
+    (None, ["scripts/cycloneiv_ddb_routing.py", "nodes"]),
+    (None, ["scripts/cycloneiv_ddb_routing.py", "twin"]),
+    (None, ["scripts/cycloneiv_ddb_routing.py", "templates"]),
+    (None, ["scripts/cycloneiv_asm_decode.py", "prepare"]),                  # tmp/ddb/<die>_dec_*.npy from the vendor files
+    (None, ["scripts/cycloneiv_ddb_blockmap.py", "build"]),                  # tmp/ddb/<die>_blockmap.npz
+    ("cycloneiv_ep4cgx150_ddb_map.npz", ["scripts/cycloneiv_ddb_trace.py", "export"]),
+    ("cycloneiv_ep4cgx150_li_map.json", ["scripts/cycloneiv_li_map.py", "extract", "--designs", "gx150_*", "--split", "even"]),
+    ("cycloneiv_ep4cgx150_phys_map.json", ["scripts/cycloneiv_phys_trace.py", "learn", "--designs", "gx150_*", "--split", "even"]),
+]
+# Not regenerated (no regenerating CLI or inputs are device probes, not builds): asm_names.json, geom.json, labs.json.
 # Backstop per regeneration/gate command: first full run, nothing measured yet; the 60 s CPU-stall guard is primary.
 CMD_OVERALL_S = 4 * 3600
 log = logging.getLogger("rebuild_all")
@@ -403,7 +410,7 @@ def make_view(root):
         if p.name != "cycloneiv":
             os.symlink(p, v / "databases" / p.name)
     for p in (REPO / "databases/cycloneiv").iterdir():
-        if p.name != "gx150.db":
+        if not p.name.startswith("gx150.db"):          # never link the live DB's -wal/-shm
             os.symlink(p, v / "databases/cycloneiv" / p.name)
     (v / "tmp/logs").mkdir(parents=True)
     (v / "tmp/limits").mkdir()
@@ -431,7 +438,13 @@ def run_in_view(view, cmd, what):
 def stage_derived(root):
     view = make_view(root)
     res = {}
-    for fn, cmd in DERIVED.items():
+    for fn, cmd in DERIVED:
+        if fn is None:
+            r = run_in_view(view, cmd, "prep " + cmd[0].split("/")[-1] + " " + cmd[1])
+            if r.returncode != 0:
+                log.error("cache prep failed: %s", (r.stderr or r.stdout)[-300:])
+                res["prep:" + cmd[0]] = {"status": "failed", "rc": r.returncode}
+            continue
         stored = REPO / "lifters/data" / fn
         r = run_in_view(view, cmd, f"regen {fn}")
         new = view / "lifters/data" / fn

@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 import cycloneiv_asm_decode as AD  # noqa: E402
 import cycloneiv_asm_tables as AT  # noqa: E402
 import cycloneiv_corpus as cc  # noqa: E402
+import cycloneiv_r4_coltable as CT  # noqa: E402
 import cycloneiv_ddb_blockmap as BM  # noqa: E402
 import cycloneiv_phys_trace as PT  # noqa: E402
 import cycloneiv_route_decode as rd  # noqa: E402
@@ -78,6 +79,8 @@ class Ddb:
                 self.cm[X] = int(P.vx[r])
         self.cm_cols = np.array(sorted(self.cm))
         self.x_of_vx = {v: X for X, v in self.cm.items()}
+        if CT.enabled():
+            log.info("R4 column table applied to the asm frames: %s", CT.apply(self))
         sel = np.flatnonzero((Q.enum == 282) & (Q.index < LI_N))
         self.li_of = {(int(P.vx[r]), int(P.vy[r]), int(Q.index[r])): int(r) for r in sel.tolist()}
         self.is_li = np.zeros(self.N, bool)
@@ -198,6 +201,7 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
     Returns the resolved dest records of this design (for the extra count)."""
     P, Q = D.P, D.Q
     children = collections.defaultdict(list)
+    sn_of = pips
     for dn, sn in pips.items():
         children[sn].append(dn)
     resolved = set()
@@ -239,7 +243,16 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
                     fan = D.fan_of(rs)
                 tx, ty = XM - dn[3], dn[4]
                 dvx, dvy = WIN_OF[typ]
-                c = fan[(Q.enum[fan] == ENUM_OF[typ]) & (np.abs(P.vx[fan] - tx) <= dvx) & (np.abs(P.vy[fan] - ty) <= dvy)]
+                if typ == "R4" and CT.enabled() and sn_of[dn][0] == "LE_BUFFER":
+                    cell = CT.table().get((dn[3], sn_of[dn][3] - dn[3]))       # LB -> R4: (dx, dy 0) from the measured column table
+                    if cell is None:
+                        hops[cls]["missing"] += 1
+                        why[cls]["R4 column table: no cell for (dest column, source rel) (counted missing)"] += 1
+                        count_unreached(children, dn, P, hops, why, "below an unresolved hop", self_too=False)
+                        continue
+                    c = fan[(Q.enum[fan] == ENUM_OF[typ]) & (P.vx[fan] - D.vx_of(dn[3]) == cell[0]) & (P.vy[fan] == ty)]
+                else:
+                    c = fan[(Q.enum[fan] == ENUM_OF[typ]) & (np.abs(P.vx[fan] - tx) <= dvx) & (np.abs(P.vy[fan] - ty) <= dvy)]
                 if len(c) == 0:
                     hops[cls]["missing"] += 1
                     why[cls]["no fan-out edge of the source in the dest window"] += 1
@@ -392,6 +405,7 @@ def record(dres):
         return C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_ddb_trace.py", E.git_head(REPO), results,
                                  params={"tracer": "ddb", "hop_override": os.environ.get("PLURIBUS_HOP_OVERRIDE", "0"),
                                          "relax_active": os.environ.get("PLURIBUS_RELAX_ACTIVE", "0"),
+                                         "r4_coltable": os.environ.get("PLURIBUS_R4_COLTABLE", "0"),
                                          "scoring": "ambiguous_as_missing"})
 
 

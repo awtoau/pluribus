@@ -80,3 +80,17 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Observed rel 0: df -70 in most columns; -74 at X27, X29, X85, X87; -65 at X40, X71; -95 at X42, X73; -105 at X34, X41, X50, X72, X79. No fit (|df| <= 140, 5 data rows) at X22, X35, X51, X64, X80 (right neighbour X+1 = M9K) and X63.
 - Observed rel +3: (-6, 0) in most; (-7, -35) at X18, X19, X31, X32, X38, X39, X47, X48, X60, X61, X69, X70, X76, X77, X89; (-5, 0) at X21, X22, X34, X35, X41, X42, X50, X51, X63, X64, X72, X73, X79, X80.
 - No rule fitted (process: enumerate, then fit). Next: fit candidates against this table as predictions on held-out columns.
+
+## Per-column table as resolver lookup (#162/#160, flag `PLURIBUS_R4_COLTABLE`, default OFF; 2026-10-29)
+- Code: `scripts/cycloneiv_r4_coltable.py` (table from the derived-table row; `apply` shifts the asm frames of every LB -> R4 edge matched by (dest column, source rel): +df frames, superseding the hop-override shift on those edges); `hop_forward` resolves LB-sourced R4 hops by (dx, dy 0) from the table, no cell = unresolved = missing. Non-LB-sourced R4 hops keep the window resolver.
+- Table edges: 465,996 of 970,224 LB -> R4 edges shifted, 0 ambiguous.
+- Gate (76 odd designs, scoring ambiguous_as_missing; gate_run 2 = flag off, 3 = on); matched / missing / extra / wrong:
+  - R4: 902 / 148,831 / 0 / 4,085 -> 3,997 / 149,316 / 0 / 505.
+  - LI: 10,199 / 133,630 / 0 / 4,304 -> 10,196 / 133,772 / 0 / 4,165.
+  - C4: 13,012 / 118,305 / 0 / 1,964 -> 13,001 / 118,855 / 0 / 1,425.
+  - C16, R24 unchanged (0 / 4,881 / 0 / 0; 0 / 4,756 / 0 / 0).
+  - ALL: 24,113 / 410,403 / 0 / 10,353 (5.420 %) -> 27,194 / 411,580 / 0 / 6,095 (6.113 %).
+  - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 69,719 / 159,813 / 0 / 29,577.
+- Missing rises (R4 +485, LI +142, C4 +550, pins +2,416) and LI / C4 matched fall by 3 / 11: default stays OFF (rule: no fault category may rise). Missing grows where the table has no cell (rel +1/+2 absent; M9K-neighbour columns) and below those hops.
+- Table + `PLURIBUS_HOP_OVERRIDE=1`: R4 3,997 -> 829 matched, wrong 505 -> 2,420 (hop shift on the remaining R4 edges is wrong). Not an additive pair; the table alone is better.
+- Not done (flag off): bit inventory / progress ledger reruns.

@@ -231,6 +231,7 @@ class Dec:
         self.nblocks = int(self.block.max()) + 1
         if self.hop_override:
             self.pf = self._hop_pf()
+        self.pf_tag = "_hop" + self.hop_mode if self.hop_override else ""   # cache-key suffix; cycloneiv_r4_coltable.apply() extends it
 
     def _hop_pf(self):
         """pf with the LB -> R4 column displacement applied (derived array, cached beside the tables, mmapped).
@@ -289,7 +290,7 @@ class Dec:
         artifact cached beside the tables and mmapped (shared by all processes); built once per plane shape."""
         c = self.__dict__.get("_flat_cache")
         if c is None or c[0] != plane.shape:
-            path = f"{DEC}_flat{'_hop' + self.hop_mode if self.hop_override else ''}_{plane.shape[0]}x{plane.shape[1]}.npy"
+            path = f"{DEC}_flat{self.pf_tag}_{plane.shape[0]}x{plane.shape[1]}.npy"
             try:
                 fl = np.load(path, mmap_mode="r")
                 if fl.shape != self.pf.shape:

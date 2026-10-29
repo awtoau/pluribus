@@ -186,7 +186,7 @@ class Phys:
     def active(self, name, plane=None):
         """Fired group ids of a design (select-only groups dropped), cached per design name."""
         sub = ("active_relax" if os.environ.get("PLURIBUS_RELAX_ACTIVE", "0") == "1" else "active") \
-            + ("_hop" + self.dec.hop_mode if self.dec.hop_override else "")   # cache keyed by rule and hop override
+            + self.dec.pf_tag   # cache keyed by rule and hop override
         os.makedirs(os.path.join(WORK, sub), exist_ok=True)
         path = os.path.join(WORK, sub, f"{name}.npy") if name else None
         if path and os.path.exists(path):
