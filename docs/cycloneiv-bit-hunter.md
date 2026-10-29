@@ -96,3 +96,32 @@ clock polarity 2/2; all others 0 (src LE 0/8, snk LE 0/14, port 0/1, tie 0/6, ff
   - A dangling sink with no fan-out is swept by the fitter (also the earlier `lab_modes` fan group, 0/45 honoured): the second sink must drive a pin.
 - 448 second-sink variants honoured=False came from that sweep; rerun with the pin-driven sink: 336 ok, 112 refused (fitter picked another port).
 - Bare grid (unused ports unconnected, 480 variants): source move 6-8 cells, port change 4, sink move 10+; no distance-1 pair.
+
+## Round 3 (2026-10-29)
+### 1. Distinct net per LUT port (INIT bit labels)
+- Design `dn`: u0 and u1 ports tied to four different input pins (u1 keeps u0's net on the forced port). Same LE x bit enumeration as round 2 on LEs 0, 1, 2, 8, 15.
+- Result vs X10Y10 (bit label -> cell, tile-relative): LEs 1, 2, 8, 15 (sink role) 64 / 64 bits identical at each of the 3 other LABs. LE 0 (source role, four free pins) still permuted (2-4 / 16 identical).
+- Cell sets identical in 5 / 5 LEs at every LAB.
+- Conclusion: the label shifts of round 2 come from the fitter swapping ports that carry the same net; where a port is anchored and nets are distinct the INIT label -> cell map is the same at all LABs.
+- Rule for specimens: give every LUT port a distinct net, or compare cell sets only.
+
+### 2. Control nets driven from a pin (X10Y10, X58Y30)
+- Base: FF in the test LE, clock from a same-LAB LUT, pins `enap`, `clrp`, `sclp` already feed test-LUT ports B/C/D (so the pins and their routes exist in base); control ports unconnected. Spec connects ONE pin to ONE control port. Base routing back-annotated.
+- Cells added by connecting `enap`: ena 4, aclr 5, sclr 5 (X10Y10); 3, 4, 4 (X58Y30). Other pins 11-16.
+- Control-port cells by subtraction (intersection over the three pins; identical at both LABs):
+
+| port | cells (df, dv) |
+|---|---|
+| ena | (-8, -30), (-7, -30) |
+| aclr | (-1, -32), (0, -32), (3, -68) |
+| sclr | (2, -32), (4, -1) |
+
+- The rest of each set is the pin's route into the LAB (one cell cleared, one set at X10Y10): ena/enap = port cells + (-19, -35) cleared + (-10, -35) set.
+- No single-cell state: a control port connects as a 2-3 cell group. sload (+ asdata) is refused by the fitter in all 3 variants per LAB.
+- The ena and aclr groups sit in the rows next to the clock-polarity cell (-6, -30).
+
+### 3. LOCAL_LINE second sink: 2-cell sets per LAB
+- Pin-driven second sink, unconnected vs connected, at X10Y10 plus X58Y30, X37Y60, X100Y75 (sink rows k2 = 2 and 16): 42 role tables, 157 (LAB, row, port, line) entries; each LAB's table equals X10Y10's in 12 / 12 comparisons.
+- Port C (lines 2, 4): fixed port cell (-10, row-1) plus a line cell ((-17, row) line 2, (-16, row-1) line 4).
+- Port D (lines 0, 6, 8, 10, 12, 14): the two cells are (-15..-11 .. -13, row) and (-9, row-1 or row); which of the two rows each takes depends on the line, so port and line cells are not separable into one fixed port cell. The df -9 column belongs to port D, the df -11..-15 column to the line.
+- Tables: `tmp/bit_hunter/round3.json` (`ll`).

@@ -85,9 +85,11 @@ def verilog(p):
     if p["fam"] == "A":
         bare = p.get("bare")      # bare: unused ports unconnected (mask must ignore them: constants only)
         t = tied(p["tie"])
+        if p.get("dn"):       # distinct input pin per LUT port: the fitter cannot swap ports without changing a net
+            t = {c: "in" + c.lower() for c in PORTS}
         sink = ", ".join([f".data{p['port'].lower()}(u0_o)"] + ([] if bare else [f".data{c.lower()}({t[c]})" for c in PORTS if c != p["port"]])) + ", .combout(y)"
-        src = ", ".join(([] if bare else [f".data{c.lower()}(ina)" for c in PORTS]) + [".combout(u0_o)"])
-        v = "module top(input ina, output y);\n  wire u0_o;\n" + CELL.format(m=p["smask"], c=p["slutc"], n="u0", ports=src)
+        src = ", ".join(([] if bare else [f".data{c.lower()}({'in' + c.lower() if p.get('dn') else 'ina'})" for c in PORTS]) + [".combout(u0_o)"])
+        v = ("module top(input ina, input inb, input inc, input ind, output y);" if p.get("dn") else "module top(input ina, output y);") + "\n  wire u0_o;\n" + CELL.format(m=p["smask"], c=p["slutc"], n="u0", ports=src)
         v += CELL.format(m=p["kmask"], c=p["klutc"], n="u1", ports=sink)
         if p.get("k2"):      # second sink drives pin y2 (a dangling cell is swept); port "" = placed but unconnected
             p2 = p["k2"][1]
@@ -103,7 +105,9 @@ def verilog(p):
     if ta != "ina" and t["A"] == "ina":
         t["A"] = ta
     gclk = g("gclk", None) is not None
-    ports = "input ina" + (", input clkp" if p["clk"] == "PIN" else "") + ", output y" + (", output y2" if g("out") == "both" else "")
+    if g("pins"):         # control nets from input pins: in the base each pin already feeds a test-LUT port
+        t["B"], t["C"], t["D"] = "enap", "clrp", "sclp"
+    ports = "input ina" + (", input enap, input clrp, input sclp" if g("pins") else "") + (", input clkp" if p["clk"] == "PIN" else "") + ", output y" + (", output y2" if g("out") == "both" else "")
     v = f"module top({ports});\n  wire t_o, q;\n"
     for sg, m in SRC_MASK.items():     # control sources exist in every build; output dangles until a control knob uses it
         v += f"  wire {sg};\n" + CELL.format(m=m, c="datac", n=f"s{sg}{nm}", ports=", ".join(f".data{c.lower()}(ina)" for c in PORTS) + f", .combout({sg})")
@@ -145,6 +149,10 @@ def qsf(p):
     q += [f"set_location_assignment PIN_{v} -to {k}" for k, v in PINS.items()]
     if p.get("k2"):
         q.append("set_location_assignment PIN_A13 -to y2")
+    if p.get("dn"):
+        q += ["set_location_assignment PIN_A15 -to inb", "set_location_assignment PIN_AA17 -to inc", "set_location_assignment PIN_AK13 -to ind"]
+    if p.get("pins"):
+        q += ["set_location_assignment PIN_A15 -to enap", "set_location_assignment PIN_AA17 -to clrp", "set_location_assignment PIN_AK13 -to sclp"]
     if p.get("clk") == "PIN":
         q.append("set_location_assignment PIN_W15 -to clkp")
     if p.get("out") == "both":
@@ -156,8 +164,14 @@ def qsf(p):
     return q + [f"set_global_assignment -name SEED {p.get('seed', 1)}", 'set_global_assignment -name FITTER_EFFORT "FAST FIT"']
 
 
-def base_rcf_path(lab):
-    return TMP / f"base_b_{lab[0]}x{lab[1]}.rcf"
+def base_rcf_path(lab, pins=False):
+    return TMP / f"base_b{'_pins' if pins else ''}_{lab[0]}x{lab[1]}.rcf"
+
+
+def boot_of(p):
+    """The free-fit build whose routing back-annotates family-B variant p."""
+    b = {**base_b(p["lab"]), "ff": 1, "pins": 1} if p.get("pins") else base_b(p["lab"])
+    return {**b, "boot": 1}
 
 
 def write_design(p):
@@ -169,7 +183,7 @@ def write_design(p):
         dests = [("u1", p["port"])] + ([("u2", p["k2"][1])] if p.get("k2") and p["k2"][1] else [])
         (d / "src" / "force.rcf").write_text(lm.rcf_multi(tuple(p["lab"]), lm.ll_of_src()[p["src"]], dests))
     elif not p.get("boot"):
-        (d / "src" / "force.rcf").write_text(base_rcf_path(p["lab"]).read_text())   # base routing pins every shared net
+        (d / "src" / "force.rcf").write_text(base_rcf_path(p["lab"], bool(p.get("pins"))).read_text())   # base routing pins every shared net
     (d / "design.toml").write_text(
         f'top = "top"\npurpose = "bit_hunter {n}"\nexercises = {fz.toml_list(["bit_hunter"])}\n'
         f"qsf = {fz.toml_list(qsf(p))}\ndevice = \"{cf.DEVICE}\"\ntool = \"quartus\"\n"
@@ -222,7 +236,7 @@ def build_variant(p):
         return {"name": n, "params": p, "status": "build-fail", "step": f}
     ok = honoured(n, p)
     if p["fam"] == "B" and p.get("boot") and ok:
-        shutil.copyfile(CORPUS / n / "routing.rcf", base_rcf_path(p["lab"]))
+        shutil.copyfile(CORPUS / n / "routing.rcf", base_rcf_path(p["lab"], bool(p.get("pins"))))
     keys = np.asarray(cc.load_plane_only(n).keys, np.int64)
     prune(n)
     PLANES.mkdir(parents=True, exist_ok=True)
@@ -241,7 +255,13 @@ def run_variants(plist, jobs):
             todo.append(p)
             seen.add(n)
     log.info("%d variants requested, %d to build", len(plist), len(todo))
-    need = [{**base_b(lab), "boot": 1} for lab in {tuple(p["lab"]) for p in todo if p["fam"] == "B"} if not base_rcf_path(lab).exists()]
+    need, seen_b = [], set()
+    for p in todo:
+        if p["fam"] == "B" and not p.get("boot"):
+            bp = boot_of(p)
+            if pname(bp) not in seen_b and not base_rcf_path(bp["lab"], bool(bp.get("pins"))).exists():
+                seen_b.add(pname(bp))
+                need.append(bp)
     if need:     # every family-B variant is back-annotated with its LAB's base routing: build the bases first
         for p in need:
             r = build_variant(p)
@@ -526,6 +546,142 @@ def law():
     return cell
 
 
+DN_LES = (0, 1, 2, 8, 15)
+PIN_NETS = ("enap", "clrp", "sclp")
+CTLS = ("ena", "clr", "sclr", "sload")
+
+
+def dn_pairs(labs=ALL_LABS):
+    """Distinct net per LUT port: same LE/bit enumeration as init_pairs on a subset of LEs."""
+    out = []
+    for lab in labs:
+        b = {**base_params(), "lab": list(lab), "dn": 1}
+        for bit in range(16):
+            out.append((b, {**b, "smask": f"{1 << bit:04X}"}, {"lab": lab, "le": 0, "bit": bit}))
+        for le in DN_LES[1:]:
+            bk = {**b, "snk": 2 * le}
+            for bit in range(16):
+                out.append((bk, {**bk, "kmask": f"{1 << bit:04X}"}, {"lab": lab, "le": le, "bit": bit}))
+    return out
+
+
+def ctl_variants(labs=((10, 10), (58, 30))):
+    out = []
+    for lab in labs:
+        b = {**base_b(lab), "ff": 1, "pins": 1}
+        out.append(b)
+        for c in CTLS:
+            for q in PIN_NETS:
+                v = {**b, c: q}
+                if c == "sload":
+                    v["asdata"] = "ina"
+                out.append(v)
+    return out
+
+
+def ll_lab_variants(labs=((58, 30), (37, 60), (100, 75)), positions=(2, 16)):
+    """The honoured pin-driven second-sink pairs at X10Y10, rebuilt at other LABs."""
+    out, seen = [], set()
+    for n, x in okvars().items():
+        p = x["params"]
+        if p["fam"] == "A" and p.get("k2") and p["k2"][0] in positions and p["lab"] == [10, 10]:
+            for lab in labs:
+                out.append({**p, "lab": list(lab)})
+            seen.add(n)
+    return out
+
+
+def round3():
+    return ([p for pr in dn_pairs() for p in pr[:2]] + ctl_variants() + ll_lab_variants())
+
+
+def _rel(g, keys):
+    """[(df, dv)] tile-relative of plane keys, sorted."""
+    return sorted(tile_of(g, *divmod(k, NV))[2:] for k in keys)
+
+
+def analyse3():
+    import cycloneiv_geom as cg
+    g = cg.load(cg.die_of(cf.DEVICE))
+    ok = okvars()
+    res = {}
+    # (1) distinct net per port: labels vs X10Y10 and cell sets
+    cell = {}
+    for pb, pv, m in dn_pairs():
+        nb, nv = pname(pb), pname(pv)
+        if nb in ok and nv in ok:
+            cs = pair_cells(tagged(nv), tagged(nb))
+            if len(cs) == 1:
+                cell[(tuple(m["lab"]), m["le"], m["bit"])] = tile_of(g, *divmod(cs[0][0], NV))[2:]
+    dn = {}
+    for lab in ALL_LABS[1:]:
+        same = tot = setok = 0
+        for le in (0,) + DN_LES[1:]:
+            a = {b: cell.get(((10, 10), le, b)) for b in range(16)}
+            c = {b: cell.get((lab, le, b)) for b in range(16)}
+            if None in a.values() or None in c.values():
+                continue
+            tot += 16
+            same += sum(1 for b in range(16) if a[b] == c[b])
+            setok += sorted(a.values()) == sorted(c.values())
+        dn[str(lab)] = {"labels_equal": same, "of": tot, "cell_sets_equal": setok, "les": len(DN_LES)}
+        log.info("DN lab %s: bit labels identical to X10Y10 %d / %d; cell sets identical %d / %d LEs", lab, same, tot, setok, len(DN_LES))
+    res["dn"] = dn
+    # (2) control nets from pins: subtract to port / net cells
+    ctl = {}
+    for lab in ((10, 10), (58, 30)):
+        b = {**base_b(lab), "ff": 1, "pins": 1}
+        if pname(b) not in ok:
+            continue
+        S = {}
+        for c in CTLS:
+            for q in PIN_NETS:
+                v = {**b, c: q, **({"asdata": "ina"} if c == "sload" else {})}
+                if pname(v) in ok:
+                    cs = pair_cells(tagged(pname(v)), tagged(pname(b)))
+                    S[(c, q)] = {(k, ina) for k, ina in cs}
+        rel = lambda st: sorted(set(_rel(g, [k for k, _ in st])))   # noqa: E731
+        info = {"sizes": {f"{c}/{q}": len(v) for (c, q), v in S.items()}}
+        for q in PIN_NETS:
+            sets = [S[(c, q)] for c in CTLS if (c, q) in S]
+            info[f"net:{q}"] = rel(set.intersection(*sets)) if len(sets) > 1 else None
+        for c in CTLS:
+            sets = [S[(c, q)] for q in PIN_NETS if (c, q) in S]
+            info[f"port:{c}"] = rel(set.intersection(*sets)) if len(sets) > 1 else None
+        ctl[str(lab)] = info
+        log.info("CTL %s sizes %s", lab, info["sizes"])
+        for k, v in info.items():
+            if k != "sizes":
+                log.info("CTL %s %s: %s", lab, k, v)
+    res["ctl"] = ctl
+    # (3) LOCAL_LINE roles: second-sink connect sets per LAB, port cell = common over lines, line cell = rest
+    allv = load_vars()
+    grp = collections.defaultdict(dict)
+    for n, x in allv.items():
+        p = x["params"]
+        if n in ok and p["fam"] == "A" and p.get("k2"):
+            grp[(tuple(p["lab"]), p["src"], p["snk"], p["port"], p["k2"][0])][p["k2"][1]] = n
+    roles = collections.defaultdict(lambda: collections.defaultdict(list))
+    ll = lm.ll_of_src()
+    for (lab, src, snk, port, pos), d in grp.items():
+        if "" in d:
+            for pt, n in d.items():
+                if pt:
+                    cs = pair_cells(tagged(n), tagged(d[""]))
+                    roles[(lab, pos, pt)][ll[src]].append(_rel(g, [k for k, _ in cs]))
+    out = {}
+    for (lab, pos, pt), byI in sorted(roles.items()):
+        sets = [tuple(v[0]) for v in byI.values()]
+        common = set(sets[0]).intersection(*[set(x) for x in sets[1:]]) if len(sets) > 1 else set()
+        out[f"{lab}/k2@{pos}/port{pt}"] = {"lines": len(byI), "port_cells": sorted(common),
+                                           "line_cells": {str(I): sorted(set(v[0]) - common) for I, v in sorted(byI.items())}}
+    res["ll"] = out
+    for k, v in out.items():
+        log.info("LL %s: port cells %s; line cells %s", k, v["port_cells"], v["line_cells"])
+    (TMP / "round3.json").write_text(json.dumps(res, indent=1, default=list))
+    return res
+
+
 def nulls():
     """Null controls: same design renamed, other fitter seed, all else pinned.  Diff vs the plain build must be empty."""
     c, b = base_b(), base_params()
@@ -754,7 +910,7 @@ def record_pairs(cells, D, par, g):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("calib", "batch1", "batch2", "batch3", "round2a", "round2b", "law", "adapt", "report", "record", "replicate"))
+    ap.add_argument("cmd", choices=("calib", "batch1", "batch2", "batch3", "round2a", "round2b", "law", "round3", "analyse3", "adapt", "report", "record", "replicate"))
     ap.add_argument("--jobs", type=int, default=0)
     ap.add_argument("--budget", type=int, default=100)
     ap.add_argument("--depth", type=int, default=3)
@@ -781,6 +937,11 @@ def main():
     elif a.cmd == "round2b":
         run_variants(round2b(), a.jobs)
         report()
+    elif a.cmd == "round3":
+        run_variants(round3(), a.jobs)
+        analyse3()
+    elif a.cmd == "analyse3":
+        analyse3()
     elif a.cmd == "law":
         law()
     elif a.cmd == "batch3":
