@@ -169,3 +169,18 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - The 88 double-offset frames were the old labelling putting 8 non-LAB bands' frames into LAB planes, not the mirror; the relabel alone removes them (v3 collapse check).
 - Entries dropped by v3 (real pf under the old placement -> DROP): 5,136,452 (172 distinct asm frames; the 151 of the 400,000-entry sample), all previously placed in LAB planes, 0 gained. They sit in 12 asm bands, old afx bases 233, 731, 1041, 1758, 2256, 2566, 3279, 3847, 4087, 4804, 5372, 5612: the vendor columns with no LAB column (8 M9K + 4 MUL). Feeding record classes (source enum): R4 2,148,570; C4 1,555,486; LE_BUFFER 413,856; LI 291,456; enums 284 / 286 / 307 / 665: 295,632 / 147,816 / 1,044 / 12,672; R24 164,848; C16 105,072.
 - v4 keeps them dropped: placing them needs the per-band sof offsets of those 12 columns (the LAB ladder 6173 - FX - afx gives 6057, 5987, 5917, ... per LAB band, not these) and their plane columns; not derived here.
+
+### v6: raw asm address = sof bit index, sof2rbf, vendor x = fitter X (`PLURIBUS_COORD_V2=6`, 2026-10-30, gate_run 12; `scripts/cycloneiv_coordv6_arcs.py`, `cycloneiv_coordv6_validate.py`)
+- Model: plane cell = `rbf_of_sof(raw address)` (frame 37 + r, v = 793 (7 - k) + j) for every entry; no AFX, no bands, no relabel, no hop shift; blocks rebuilt by `prepare`. Tracer: vendor x = fitter X (`mir()` identity in `cycloneiv_ddb_trace.py` / `cycloneiv_phys_trace.py`), LE_BUFFER roots by (index, X, Y) from the record table instead of colrank. Needs untracked vendor-analysis `sof2rbf.py`.
+- `stingray4_asm_pos.npy` = running sum of the asm.ddb deltas (flat address frame + 6154 v, flags in a separate array): raw.
+- Arcs (399 forced LB -> R4 arcs, results_r4*): diff cells -> v6 entries -> owner records: >= 2 flipped cells of one record at the source tile in 399 / 399 and at the destination tile in 399 / 399 (rel -1 96, 0 102, +3 111, +4 90). The earlier test (group cells of the resolved fan-out record all inside the diff, `cycloneiv_coordv6_validate.py`) is 0 / 399 for every candidate: that test needs the cells of the exact group, the tile test does not.
+- Gate (76 odd designs, corrected scoring; off = gate_run 10), matched / missing / extra / wrong:
+  - LI: 10,199 / 133,630 / 0 / 4,304 -> 19,481 / 128,643 / 0 / 9
+  - R4: 902 / 148,831 / 0 / 4,085 -> 13,263 / 140,534 / 0 / 21
+  - C4: 13,012 / 118,305 / 0 / 1,964 -> 17,422 / 115,840 / 0 / 19
+  - C16, R24: unchanged (0 / 4,881 / 0 / 0; 0 / 4,756 / 0 / 0)
+  - ALL: 24,113 / 410,403 / 0 / 10,353 (5.420 %) -> 50,166 / 394,654 / 0 / 49 (11.277 %)
+  - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 64,111 / 180,239 / 0 / 14,826 (matched -5,561, missing +22,842, wrong -17,199)
+- Fragmentation: (block, dest) units 1,616,526 -> 1,641,236; dest records with > 1 block 186,723 -> 186,746.
+- Rise: pins missing (+22,842); pin tracing still uses learned tables from the old convention.
+- LUT INIT cells (asmdb `lut_asm_addr`, 2,396,160 addresses; frame law = geometry FX[X] + df[k], order column rank, row, LE, k): "asm frame + 43" equals the law for 2,396,160 / 2,396,160 with columns paired right-to-left. v6 (plane frame = 6190 - asm frame) equals the law in 299,520 (12.5 %) with columns paired left-to-right (asm column rank c at plane X = c-th from the left); 0 under right-to-left; all v6 frames within 10 of the law (in-column order reversed). plane v matches 6344 - asm v for all.

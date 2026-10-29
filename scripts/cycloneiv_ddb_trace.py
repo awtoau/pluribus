@@ -40,6 +40,12 @@ OUT = os.path.join(REPO, "lifters", "data", "cycloneiv_ep4cgx150_ddb_map.npz")
 WIRE_T = ("R4", "C4", "C16", "R24")
 LI_T = "LOCAL_INTERCONNECT"
 XM = 115
+V6 = AD.COORD_V6      # v6: vendor x = fitter X (no mirror), LE_BUFFER roots looked up by (index, X, Y)
+
+
+def mir(x):
+    """fitter column <-> vendor x (an involution): identity under v6, 115 - x otherwise."""
+    return x if V6 else XM - x
 LI_N = 38                # LOCAL_INTERCONNECT elements per LAB tile (enum 282, template index 0..37)
 
 
@@ -73,10 +79,16 @@ class Ddb:
         # EXACT fitter LAB column -> vendor tile x: LE_BUFFER record = base[I] + 90 * colrank(X) + Y
         base = self.T.unnamed[("LE_BUFFER", "0")]
         self.cm = {}
-        for X, rk in self.T.colrank.items():
-            r = base + 90 * rk + 30
-            if int(P.vy[r]) == 30 and 0 <= int(P.vx[r]) < 118 and Q.enum[r] == 45:
-                self.cm[X] = int(P.vx[r])
+        if V6:
+            le = np.flatnonzero(Q.enum == 45)
+            self.le_of = {(int(Q.index[r]), int(P.vx[r]), int(P.vy[r])): int(r) for r in le.tolist()}
+            self.cm = {X: X for X in self.T.colrank if (0, X, 30) in self.le_of}
+        else:
+            self.le_of = None
+            for X, rk in self.T.colrank.items():
+                r = base + 90 * rk + 30
+                if int(P.vy[r]) == 30 and 0 <= int(P.vx[r]) < 118 and Q.enum[r] == 45:
+                    self.cm[X] = int(P.vx[r])
         self.cm_cols = np.array(sorted(self.cm))
         self.x_of_vx = {v: X for X, v in self.cm.items()}
         if CT.enabled() and os.environ.get("PLURIBUS_R4_COLTABLE") != "2":      # =2: table resolver only, no asm frame shift (diagnostic)
@@ -98,13 +110,13 @@ class Ddb:
             return self.cm[X]
         j = np.searchsorted(self.cm_cols, X) - 1
         if j < 0:
-            return XM - X
+            return mir(X)
         xl = int(self.cm_cols[j])
-        return self.cm[xl] - (X - xl)
+        return self.cm[xl] + (X - xl if V6 else -(X - xl))
 
     def li_rec(self, x, y, i):
         """LOCAL_INTERCONNECT (RCF LAB tile x, y; index i) -> record, or -1."""
-        return self.li_of.get((XM - x, y, i), -1)
+        return self.li_of.get((mir(x), y, i), -1)
 
 
 class UnitView:
@@ -141,7 +153,7 @@ class UnitView:
     def src_code(self, u, s):
         P = self.P
         b = int(self.fblock[u])
-        dvx = int(P.vx[s]) - (PT.XMIRROR - int(P.btx[b]))
+        dvx = int(P.vx[s]) - PT.mir(int(P.btx[b]))
         dvy = int(P.vy[s]) - int(P.bty[b])
         if abs(dvx) > PT.SWIN or abs(dvy) > PT.SWIN:
             return -1
@@ -226,7 +238,9 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
     colrank = T.colrank
     for sn in list(children):
         base = T.unnamed.get((sn[0], str(sn[2]))) if sn[0] == "LE_BUFFER" else None
-        if base is not None and sn[3] in colrank:
+        if V6 and sn[0] == "LE_BUFFER" and (int(sn[2]), sn[3], sn[4]) in D.le_of:
+            stack.append((sn, D.le_of[(int(sn[2]), sn[3], sn[4])]))
+        elif not V6 and base is not None and sn[3] in colrank:
             stack.append((sn, base + 90 * colrank[sn[3]] + sn[4]))
         elif sn[0] == "LE_BUFFER":
             count_unreached(children, sn, P, hops, why, "LE_BUFFER root not resolvable", self_too=False)
@@ -260,7 +274,7 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
                 cls = typ
                 if fan is None:
                     fan = D.fan_of(rs)
-                tx, ty = XM - dn[3], dn[4]
+                tx, ty = mir(dn[3]), dn[4]
                 dvx, dvy = WIN_OF[typ]
                 if typ == "R4" and CT.enabled() and sn_of[dn][0] == "LE_BUFFER" and str(sn_of[dn][3] - dn[3]) not in CT.window_rels():
                     cell = CT.table().get((dn[3], sn_of[dn][3] - dn[3]))       # LB -> R4: (dx, dy 0) from the measured column table

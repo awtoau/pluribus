@@ -51,6 +51,13 @@ OUT = os.path.join(REPO, "lifters", "data", "cycloneiv_ep4cgx150_phys_map.json")
 LI_MAP = os.path.join(REPO, "lifters", "data", "cycloneiv_ep4cgx150_li_map.json")
 WORK = os.path.join(REPO, "tmp", "cycloneiv", "phys")
 NODES = os.path.join(D.A.TMP, f"{DIE}_rt_nodes.npy")
+
+
+def mir(x):
+    """fitter column <-> vendor x: identity under PLURIBUS_COORD_V2=6, else 115 - x (an involution)."""
+    return x if D.COORD_V6 else 115 - x
+
+
 XMIRROR = 115            # vendor x = XMIRROR - plane x (docs/cycloneiv-ddb-format.md); offsets absorb any error
 GX, GY = 118, 92         # vendor grid
 NV = 6368                # plane linear address = frame * NV + v (cycloneiv_asm_decode.prepare)
@@ -206,7 +213,7 @@ class Phys:
 
     def src_code(self, b, s):
         """Source record s of block b as a tile-relative code (family, dvx, dvy), or -1 when far away."""
-        dvx = int(self.vx[s]) - (XMIRROR - int(self.btx[b]))
+        dvx = int(self.vx[s]) - mir(int(self.btx[b]))
         dvy = int(self.vy[s]) - int(self.bty[b])
         if abs(dvx) > SWIN or abs(dvy) > SWIN:
             return -1
@@ -277,7 +284,7 @@ class Phys:
                 if len(vs) > 1:
                     multi.append((i, vs[1:]))
         f, ddx, ddy = fam[inv], dvx[inv], dvy[inv]
-        vxb = XMIRROR - self.btx.astype(np.int32) + ddx
+        vxb = (self.btx.astype(np.int32) if D.COORD_V6 else XMIRROR - self.btx.astype(np.int32)) + ddx
         vyb = self.bty.astype(np.int32) + ddy
         ok = (f >= 0) & (vxb >= 0) & (vxb < GX) & (vyb >= 0) & (vyb < GY)
         recs = self.idx3[f[ok], vxb[ok], vyb[ok]]
@@ -290,7 +297,7 @@ class Phys:
         for i, extra in multi:              # further outputs of the same blocks
             for b in np.flatnonzero(inv == i).tolist():
                 for fm, dx, dy in extra:
-                    r = self.rec_of(fm, XMIRROR - int(self.btx[b]) + dx, int(self.bty[b]) + dy)
+                    r = self.rec_of(fm, mir(int(self.btx[b])) + dx, int(self.bty[b]) + dy)
                     if r >= 0:
                         r2b[r] = b
         for (tx, ty, kid), vs in self.wires_tile.items():   # exact per-tile overrides
@@ -298,7 +305,7 @@ class Phys:
             if b < 0:
                 continue
             for fm, dx, dy in vs:
-                r = self.rec_of(fm, XMIRROR - tx + dx, ty + dy)
+                r = self.rec_of(fm, mir(tx) + dx, ty + dy)
                 if r >= 0:
                     r2b[r] = b
         return r2b
@@ -367,7 +374,7 @@ def learn(P, names, xm, ym):
             if P.src_code(b, s) in defaults.get(k, ()):
                 continue
             nd[k] += 1
-            vxb, vyb = XMIRROR - tx, ty
+            vxb, vyb = mir(tx), ty
             cand = set()
             for dx in range(-WIN, WIN + 1):
                 for dy in range(-WIN, WIN + 1):
@@ -419,7 +426,7 @@ def learn(P, names, xm, ym):
             f, vx, vy = int(P.fam[r]), int(P.vx[r]), int(P.vy[r])
             for dvx in range(-WIN, WIN + 1):
                 for dvy in range(-WIN, WIN + 1):
-                    tx, ty = XMIRROR - (vx - dvx), vy - dvy
+                    tx, ty = mir(vx - dvx), vy - dvy
                     c = tile_class(tx, ty, xm, ym)
                     for kid, code in widx.get((c, f, dvx, dvy), ()):
                         use_w[(c, kid, code)] += 1
@@ -507,7 +514,7 @@ def verify(P, names):
                 continue
             w = P.wires.get(k)
             if w is not None:
-                r = P.rec_of(w[0], XMIRROR - tx + w[1], ty + w[2])
+                r = P.rec_of(w[0], mir(tx) + w[1], ty + w[2])
                 if r >= 0 and r in src_set and r != s:
                     ok_n["wire"] += 1
                 else:

@@ -40,8 +40,9 @@ FRAME_MIRROR = 17      # plane offset k within a LAB column <-> asm offset 17 - 
 ROW_MIRROR = 6344      # plane v <-> asm 6344 - v
 NAME = re.compile(r"^(H4|V4|H24|V16)(?:R(\d+)C(\d+)|_C(\d+)(UP|DN)_R|R(\d+)_(RT|LT)_C)(RT|LT|UP|DN)?\[(\d+)\]$")
 COORD_MODE = os.environ.get("PLURIBUS_COORD_V2", "0")       # coordinate model v2 (docs/cycloneiv-hop-override.md), default OFF
-COORD_V2 = COORD_MODE in ("1", "2", "3")                     # 1: F3 for all records | 2: F3 for LE_BUFFER-sourced records only + EXC4 | 3: F1 relabel only
-COORD_TAG = {"1": "v2", "2": "v2b", "3": "v3"}.get(COORD_MODE, "")
+COORD_V2 = COORD_MODE in ("1", "2", "3", "5", "6")                     # 1: F3 for all records | 2: F3 for LE_BUFFER-sourced records only + EXC4 | 3: F1 relabel only
+COORD_V6 = COORD_MODE == "6"                                  # 6: raw asm address = sof bit index, sof2rbf, vendor x = fitter X
+COORD_TAG = {"1": "v2", "2": "v2b", "3": "v3", "5": "v5", "6": "v6"}.get(COORD_MODE, "")
 # (source LAB column X, rel) -> frame shift, LE_BUFFER -> R4 groups; table of the 16 arcs that missed plain F3 (not a rule)
 EXC4 = {(27, 4): 4, (28, -1): -4, (29, -1): 4, (30, 4): -4, (85, 4): 4, (86, -1): -4, (87, -1): 4, (88, 4): -4}
 DEC = os.path.join(A.TMP, f"{DIE}_dec{COORD_TAG}")
@@ -160,6 +161,52 @@ def coord_v2(g, afx, grec, gid, fa):
     return K, afx_u
 
 
+NONLAB_BASES = (233, 731, 1041, 1758, 2256, 2566, 3279, 3847, 4087, 4804, 5372, 5612)    # old afx bases of the 8 M9K + 4 MUL vendor columns
+M9K_SUB = 20            # LAB-like sub-band of an M9K band (asm offsets 0..19 hold the interconnect entries)
+
+
+def coord_v5_m9k(pf, fa, va, g, afx):
+    """v5: entries of the 8 M9K vendor bands (offset 0..19) placed by the ladder sof - asm = 6173 - FX[plane column] - base, then the
+    exact sof -> rbf map (vendor-analysis sof2rbf, incl. the mirror mask).  MUL bands stay dropped (ladder unvalidated there)."""
+    sys.path.insert(0, os.path.join(REPO, "vendor-analysis", "altera", "scripts"))
+    try:
+        import sof2rbf as S
+    except ImportError:
+        db_die("PLURIBUS_COORD_V2=5 needs vendor-analysis/altera/scripts/sof2rbf.py")
+    cols = [x for x in sorted(g.kind) if g.kind[x] in ("M9K", "MUL")]
+    n = 0
+    for base, X in zip(NONLAB_BASES, cols):
+        if g.kind[X] != "M9K":
+            continue
+        m = np.flatnonzero((fa >= base) & (fa < base + M9K_SUB) & (pf == DROP_F))
+        sf = fa[m] + (6173 - g.FX[X] - base)
+        r, _j, _k = S.rbf_of_sof(va[m] * 6154 + sf)
+        pf[m] = (37 + r).astype(np.int32)
+        n += len(m)
+    log.info("coord v5: %d entries of the M9K bands placed by the ladder + sof2rbf", n)
+    return pf
+
+
+def identity_plane(pos):
+    """v6: raw asm address -> sof bit index (identity) -> plane (frame, v) by the exact sof2rbf map (incl. mirrored M9K blocks).
+    Addresses past the sof data (or negative) get DROP_F."""
+    sys.path.insert(0, os.path.join(REPO, "vendor-analysis", "altera", "scripts"))
+    try:
+        import sof2rbf as S
+    except ImportError:
+        db_die("PLURIBUS_COORD_V2=6 needs vendor-analysis/altera/scripts/sof2rbf.py")
+    pf = np.full(len(pos), DROP_F, np.int32)
+    pv = np.zeros(len(pos), np.int32)
+    for a in range(0, len(pos), 4_000_000):
+        p = np.asarray(pos[a:a + 4_000_000]).astype(np.int64)
+        ok = (p >= 0) & (p < S.NSOF)
+        r, j, k = S.rbf_of_sof(p[ok])
+        i = np.flatnonzero(ok) + a
+        pf[i] = (S.NP + r).astype(np.int32)
+        pv[i] = (793 * (7 - k) + j).astype(np.int32)
+    return pf, pv
+
+
 def db_die(msg):
     log.error(msg)
     raise SystemExit(msg)
@@ -203,11 +250,14 @@ def prepare():
     fa = (pos % 6154).astype(np.int64)
     afx = afx_map(g, np.asarray(grec), gid, fa, names)
     pf, pv = asm_to_plane_afx(fa, pos // 6154, g, afx)
-    if COORD_V2:
+    if COORD_V6:
+        pf, pv = identity_plane(pos)
+        afx = {}
+    elif COORD_V2:
         K, afx_v2 = coord_v2(g, afx, np.asarray(grec), gid, fa)
         pf, pv = asm_to_plane_afx(fa, pos // 6154, g, afx_v2)
         grec_a = np.asarray(grec)
-        if COORD_MODE == "3":
+        if COORD_MODE in ("3", "5"):
             ke = np.full(len(gid), -1, np.int64)                  # F1 relabel only: band placement everywhere
         elif COORD_MODE == "2":
             zf = np.load(os.path.join(A.TMP, f"{DIE}_rt_fanout.npz"))
@@ -230,6 +280,8 @@ def prepare():
             ke = K[grec_a[gid]]
         m = (ke >= 0) & (pf != DROP_F)
         pf[m] = (ke[m] - fa[m]).astype(np.int32)
+        if COORD_MODE == "5":
+            pf = coord_v5_m9k(pf, fa, pos // 6154, g, afx)
         afx = {int(x): int(b) for x, b in afx_v2.items()}
         log.info("coord v2: %d entries placed about the source LAB column, %d by band", int(m.sum()), int(((pf != DROP_F) & ~m).sum()))
     log.info("entries outside any band (dropped, never fire): %d / %d", int((pf == DROP_F).sum()), len(pf))
