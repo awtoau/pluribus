@@ -3,1956 +3,2896 @@
   {
    "type": "BLK_CLK_BUF",
    "enum": 568,
-   "status": "derived",
-   "edges": 3757,
-   "edges_ok": 3757,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 43,
-    "edges_ok": 0
-   },
-   "names": 3680,
-   "unique_cands": 7,
-   "hdr_offset": 25190,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    568
+   ],
+   "debug_name": "BLK_CLK_BUF",
+   "hdr_offset": 96915,
+   "source": "ddb_stingray4_hdr.ddb body offset 96915 (record of element BLK_CLK_BUF); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "BLK_CLK_LIM",
    "enum": 665,
-   "status": "consistent-few-edges",
-   "edges": 77,
-   "edges_ok": 77,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 43,
-    "edges_ok": 0
-   },
-   "names": 77,
-   "unique_cands": 7,
-   "hdr_offset": 26874,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    665
+   ],
+   "debug_name": "BLK_CLK_LIM",
+   "hdr_offset": 97356,
+   "source": "ddb_stingray4_hdr.ddb body offset 97356 (record of element BLK_CLK_LIM); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "BLOCK_INPUT_MUX",
-   "enum": null,
-   "status": "unmapped",
-   "edges": 0,
-   "edges_ok": 0,
-   "unique_pct": null,
-   "runner_up": null,
-   "names": 253,
-   "unique_cands": 2,
-   "hdr_offset": 26176,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "enum": 540,
+   "status": "vendor",
+   "candidates": [
+    540
+   ],
+   "debug_name": "LEIM",
+   "hdr_offset": 83234,
+   "source": "ddb_stingray4_hdr.ddb body offset 83234 (record of element LEIM); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "C16",
    "enum": 281,
-   "status": "derived",
-   "edges": 7247,
-   "edges_ok": 7247,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 275,
-    "edges_ok": 83
-   },
-   "names": 2770,
-   "unique_cands": 3,
-   "hdr_offset": 23689,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    281
+   ],
+   "debug_name": "V16",
+   "hdr_offset": 61377,
+   "source": "ddb_stingray4_hdr.ddb body offset 61377 (record of element V16); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "C4",
    "enum": 275,
-   "status": "derived",
-   "edges": 85166,
-   "edges_ok": 85166,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 45,
-    "edges_ok": 495
-   },
-   "names": 42943,
-   "unique_cands": 3,
-   "hdr_offset": 28530,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    275
+   ],
+   "debug_name": "V4",
+   "hdr_offset": 60945,
+   "source": "ddb_stingray4_hdr.ddb body offset 60945 (record of element V4); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "CLKBUF_IN",
    "enum": 521,
-   "status": "consistent-few-edges",
-   "edges": 18,
-   "edges_ok": 18,
-   "unique_pct": 100.0,
-   "runner_up": null,
-   "names": 18,
-   "unique_cands": 1,
-   "hdr_offset": 25944,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    521
+   ],
+   "debug_name": "CLKBUF_IN",
+   "hdr_offset": 70208,
+   "source": "ddb_stingray4_hdr.ddb body offset 70208 (record of element CLKBUF_IN); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "CLKBUF_OUT",
    "enum": 523,
-   "status": "consistent-few-edges",
-   "edges": 18,
-   "edges_ok": 18,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 521,
-    "edges_ok": 0
-   },
-   "names": 18,
-   "unique_cands": 2,
-   "hdr_offset": 23816,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    523
+   ],
+   "debug_name": "CLKBUF_OUT",
+   "hdr_offset": 71058,
+   "source": "ddb_stingray4_hdr.ddb body offset 71058 (record of element CLKBUF_OUT); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "CLK_BUFFER",
    "enum": 295,
-   "status": "consistent-few-edges",
-   "edges": 23,
-   "edges_ok": 23,
-   "unique_pct": 100.0,
-   "runner_up": null,
-   "names": 12,
-   "unique_cands": 1,
-   "hdr_offset": 26738,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    295
+   ],
+   "debug_name": "CLK_BUFFER",
+   "hdr_offset": 65242,
+   "source": "ddb_stingray4_hdr.ddb body offset 65242 (record of element CLK_BUFFER); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "GEN_CORE_BUF",
    "enum": 541,
-   "status": "consistent-few-edges",
-   "edges": 100,
-   "edges_ok": 100,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 528,
-    "edges_ok": 11
-   },
-   "names": 11,
-   "unique_cands": 6,
-   "hdr_offset": 24260,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    541
+   ],
+   "debug_name": "GEN_CORE_BUF",
+   "hdr_offset": 101438,
+   "source": "ddb_stingray4_hdr.ddb body offset 101438 (record of element GEN_CORE_BUF); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "GLOBAL_CLK_H",
    "enum": 298,
-   "status": "consistent-few-edges",
-   "edges": 90,
-   "edges_ok": 90,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 268,
-    "edges_ok": 0
-   },
-   "names": 18,
-   "unique_cands": 4,
-   "hdr_offset": 24512,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    298
+   ],
+   "debug_name": "GLOBAL_CLK_H",
+   "hdr_offset": 62208,
+   "source": "ddb_stingray4_hdr.ddb body offset 62208 (record of element GLOBAL_CLK_H); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "GLOBAL_CLK_V",
    "enum": 299,
-   "status": "derived",
-   "edges": 1287,
-   "edges_ok": 1287,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 667,
-    "edges_ok": 0
-   },
-   "names": 72,
-   "unique_cands": 2,
-   "hdr_offset": 24715,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    299
+   ],
+   "debug_name": "GLOBAL_CLK_V",
+   "hdr_offset": 62655,
+   "source": "ddb_stingray4_hdr.ddb body offset 62655 (record of element GLOBAL_CLK_V); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "IO_DATAIN",
    "enum": 307,
-   "status": "consistent-few-edges",
-   "edges": 437,
-   "edges_ok": 437,
-   "unique_pct": 100.0,
-   "runner_up": null,
-   "names": 312,
-   "unique_cands": 1,
-   "hdr_offset": 25927,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    307
+   ],
+   "debug_name": "IO_DATAIN",
+   "hdr_offset": 64808,
+   "source": "ddb_stingray4_hdr.ddb body offset 64808 (record of element IO_DATAIN); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "IO_RAW_DATAIN",
    "enum": 308,
-   "status": "consistent-few-edges",
-   "edges": 6,
-   "edges_ok": 6,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 307,
-    "edges_ok": 0
-   },
-   "names": 6,
-   "unique_cands": 2,
-   "hdr_offset": 27094,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    308
+   ],
+   "debug_name": "IO_RAWDATAIN",
+   "hdr_offset": 65720,
+   "source": "ddb_stingray4_hdr.ddb body offset 65720 (record of element IO_RAWDATAIN); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "LAB_CLK",
    "enum": 300,
-   "status": "derived",
-   "edges": 5157,
-   "edges_ok": 5157,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 268,
-    "edges_ok": 0
-   },
-   "names": 919,
-   "unique_cands": 6,
-   "hdr_offset": 28046,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    300
+   ],
+   "debug_name": "LAB_CLK",
+   "hdr_offset": 63552,
+   "source": "ddb_stingray4_hdr.ddb body offset 63552 (record of element LAB_CLK); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "LAB_CONTROL_MUX",
-   "enum": null,
-   "status": "unmapped",
-   "edges": 0,
-   "edges_ok": 0,
-   "unique_pct": null,
-   "runner_up": null,
-   "names": 555,
-   "unique_cands": 8,
-   "hdr_offset": 28579,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "enum": 364,
+   "status": "vendor",
+   "candidates": [
+    364
+   ],
+   "debug_name": "LAB_SEC_MUX",
+   "hdr_offset": 71531,
+   "source": "ddb_stingray4_hdr.ddb body offset 71531 (record of element LAB_SEC_MUX); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "LE_BUFFER",
    "enum": 45,
-   "status": "derived",
-   "edges": 29543,
-   "edges_ok": 29543,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 268,
-    "edges_ok": 690
-   },
-   "names": 21916,
-   "unique_cands": 3,
-   "hdr_offset": 24455,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    45
+   ],
+   "debug_name": "LE_BUFFER",
+   "hdr_offset": 57791,
+   "source": "ddb_stingray4_hdr.ddb body offset 57791 (record of element LE_BUFFER); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "LOCAL_INTERCONNECT",
    "enum": 282,
-   "status": "derived",
-   "edges": 62022,
-   "edges_ok": 62022,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 275,
-    "edges_ok": 386
-   },
-   "names": 49336,
-   "unique_cands": 1,
-   "hdr_offset": 27068,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    282
+   ],
+   "debug_name": "LAB_LINE",
+   "hdr_offset": 59581,
+   "source": "ddb_stingray4_hdr.ddb body offset 59581 (record of element LAB_LINE); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "LOCAL_LINE",
-   "enum": null,
-   "status": "unmapped",
-   "edges": 0,
-   "edges_ok": 0,
-   "unique_pct": null,
-   "runner_up": null,
-   "names": 11537,
-   "unique_cands": 5,
-   "hdr_offset": 28687,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "enum": 43,
+   "status": "vendor",
+   "candidates": [
+    43
+   ],
+   "debug_name": "LOCAL",
+   "hdr_offset": 59135,
+   "source": "ddb_stingray4_hdr.ddb body offset 59135 (record of element LOCAL); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "M4K_BUFFER",
    "enum": 284,
-   "status": "consistent-few-edges",
-   "edges": 16,
-   "edges_ok": 16,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 275,
-    "edges_ok": 1
-   },
-   "names": 16,
-   "unique_cands": 4,
-   "hdr_offset": 23798,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    284
+   ],
+   "debug_name": "MEDIUM_EAB_BUFFER",
+   "hdr_offset": 58692,
+   "source": "ddb_stingray4_hdr.ddb body offset 58692 (record of element MEDIUM_EAB_BUFFER); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "M4K_LEFT_CONTROL_INPUT",
-   "enum": null,
-   "status": "unmapped",
-   "edges": 0,
-   "edges_ok": 0,
-   "unique_pct": null,
-   "runner_up": null,
-   "names": 2,
-   "unique_cands": 5,
-   "hdr_offset": 23972,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "enum": 377,
+   "status": "vendor",
+   "candidates": [
+    377
+   ],
+   "debug_name": "MEAB_SEC_LEFT_INPUT",
+   "hdr_offset": 71978,
+   "source": "ddb_stingray4_hdr.ddb body offset 71978 (record of element MEAB_SEC_LEFT_INPUT); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "R24",
    "enum": 273,
-   "status": "derived",
-   "edges": 6550,
-   "edges_ok": 6550,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 268,
-    "edges_ok": 86
-   },
-   "names": 2218,
-   "unique_cands": 4,
-   "hdr_offset": 27394,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    273
+   ],
+   "debug_name": "H24",
+   "hdr_offset": 60515,
+   "source": "ddb_stingray4_hdr.ddb body offset 60515 (record of element H24); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "R4",
    "enum": 268,
-   "status": "derived",
-   "edges": 93487,
-   "edges_ok": 93487,
-   "unique_pct": 100.0,
-   "runner_up": {
-    "enum": 45,
-    "edges_ok": 449
-   },
-   "names": 50553,
-   "unique_cands": 2,
-   "hdr_offset": 25032,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    268
+   ],
+   "debug_name": "H4",
+   "hdr_offset": 60054,
+   "source": "ddb_stingray4_hdr.ddb body offset 60054 (record of element H4); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "SCLK_TO_ROWCLK_BUF",
    "enum": 667,
-   "status": "derived",
-   "edges": 2692,
-   "edges_ok": 2692,
-   "unique_pct": 100.0,
-   "runner_up": null,
-   "names": 1215,
-   "unique_cands": 1,
-   "hdr_offset": 25488,
-   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+   "status": "vendor",
+   "candidates": [
+    667
+   ],
+   "debug_name": "SCLK_TO_ROWCLK_BUF",
+   "hdr_offset": 63090,
+   "source": "ddb_stingray4_hdr.ddb body offset 63090 (record of element SCLK_TO_ROWCLK_BUF); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   }
  ],
  "hdr_names": [
   {
    "name": "Z coordinate",
    "offset": 23508,
-   "hdr_int": 2,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23508"
   },
   {
    "name": "X",
    "offset": 23528,
-   "hdr_int": -10,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23528"
   },
   {
    "name": "Y",
    "offset": 23537,
-   "hdr_int": 6,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23537"
   },
   {
    "name": "SUB_LOC",
    "offset": 23546,
-   "hdr_int": 14,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23546"
   },
   {
    "name": "Z",
    "offset": 23561,
-   "hdr_int": -2,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23561"
   },
   {
    "name": "I/O bank",
    "offset": 23570,
-   "hdr_int": 10,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23570"
   },
   {
    "name": "X coordinate",
    "offset": 23586,
-   "hdr_int": -18,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23586"
   },
   {
    "name": "INDEX",
    "offset": 23606,
-   "hdr_int": 10,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23606"
   },
   {
    "name": "IQ_PCSTX_OUT",
    "offset": 23623,
-   "hdr_int": 534,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23623"
   },
   {
    "name": "PLL_TESTCLEARLOCK",
    "offset": 23643,
-   "hdr_int": -230,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 23643"
   },
   {
    "name": "CLKDLY_CLKOUT",
    "offset": 23668,
-   "hdr_int": 66,
-   "source": "ddb_stingray4_hdr.ddb body offset 23668"
+   "enum": 547,
+   "candidates": [
+    547
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23668; enum 547 = libddb_dstr.so debug table index 547 (CLKDLY_CLKOUT), record at body offset 84900"
   },
   {
    "name": "C16",
    "offset": 23689,
-   "hdr_int": -218,
-   "source": "ddb_stingray4_hdr.ddb body offset 23689"
+   "enum": 281,
+   "candidates": [
+    281
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 23689; enum 281 = libddb_dstr.so debug table index 281 (V16), record at body offset 61335"
   },
   {
    "name": "CLKOUT",
    "offset": 23700,
-   "hdr_int": 358,
-   "source": "ddb_stingray4_hdr.ddb body offset 23700"
+   "enum": 57,
+   "candidates": [
+    57
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23700; enum 57 = libddb_dstr.so debug table index 57 (CLKOUT), record at body offset 99663"
   },
   {
    "name": "CLKPIN_TO_PLLCLKIN_MUX",
    "offset": 23714,
-   "hdr_int": -238,
-   "source": "ddb_stingray4_hdr.ddb body offset 23714"
+   "enum": 528,
+   "candidates": [
+    528
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23714; enum 528 = libddb_dstr.so debug table index 528 (CLKPIN_TO_PLLCLKIN_MUX), record at body offset 73702"
   },
   {
    "name": "CRC_ERROR",
    "offset": 23744,
-   "hdr_int": 210,
-   "source": "ddb_stingray4_hdr.ddb body offset 23744"
+   "enum": 408,
+   "candidates": [
+    408
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23744; enum 408 = libddb_dstr.so debug table index 408 (CRC_ERROR), record at body offset 96040"
   },
   {
    "name": "CRC_REGOUT_PIN",
    "offset": 23761,
-   "hdr_int": -2,
-   "source": "ddb_stingray4_hdr.ddb body offset 23761"
+   "enum": 409,
+   "candidates": [
+    409
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 23761; enum 409 = libddb_dstr.so debug table index 409 (CRC_REGOUT), record at body offset 95573"
   },
   {
    "name": "ASMI_OE",
    "offset": 23783,
-   "hdr_int": -18,
-   "source": "ddb_stingray4_hdr.ddb body offset 23783"
+   "enum": 479,
+   "candidates": [
+    479
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 23783; enum 479 = libddb_dstr.so debug table index 479 (SPI_OE), record at body offset 93542"
   },
   {
    "name": "M4K_BUFFER",
    "offset": 23798,
-   "hdr_int": -322,
-   "source": "ddb_stingray4_hdr.ddb body offset 23798"
+   "enum": 284,
+   "candidates": [
+    284
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 23798; enum 284 = libddb_dstr.so debug table index 284 (MEDIUM_EAB_BUFFER), record at body offset 58652"
   },
   {
    "name": "CLKBUF_OUT",
    "offset": 23816,
-   "hdr_int": 118,
-   "source": "ddb_stingray4_hdr.ddb body offset 23816"
+   "enum": 523,
+   "candidates": [
+    523
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23816; enum 523 = libddb_dstr.so debug table index 523 (CLKBUF_OUT), record at body offset 71058"
   },
   {
    "name": "DDIOOECELL",
    "offset": 23834,
-   "hdr_int": -126,
-   "source": "ddb_stingray4_hdr.ddb body offset 23834"
+   "enum": 616,
+   "candidates": [
+    616
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 23834; enum 616 = libddb_dstr.so debug table index 616 (MP_DDIO_OE), record at body offset 56723"
   },
   {
    "name": "PLL_SCANDATAOUT",
    "offset": 23852,
-   "hdr_int": 202,
-   "source": "ddb_stingray4_hdr.ddb body offset 23852"
+   "enum": 343,
+   "candidates": [
+    343
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23852; enum 343 = libddb_dstr.so debug table index 343 (PLL_SCANDATAOUT), record at body offset 78808"
   },
   {
    "name": "IQPCSRXOUT",
    "offset": 23875,
-   "hdr_int": 222,
+   "enum": 762,
+   "candidates": [
+    762
+   ],
+   "via": "debug",
    "source": "ddb_stingray4_hdr.ddb body offset 23875"
   },
   {
    "name": "PLL_BUFFER",
    "offset": 23893,
-   "hdr_int": -274,
-   "source": "ddb_stingray4_hdr.ddb body offset 23893"
+   "enum": 69,
+   "candidates": [
+    69
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 23893; enum 69 = libddb_dstr.so debug table index 69 (PLLBUF), record at body offset 72832"
   },
   {
    "name": "H4",
    "offset": 23911,
-   "hdr_int": -118,
-   "source": "ddb_stingray4_hdr.ddb body offset 23911"
+   "enum": 268,
+   "candidates": [
+    268
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23911; enum 268 = libddb_dstr.so debug table index 268 (H4), record at body offset 60015"
   },
   {
    "name": "HSSI_CMU",
    "offset": 23921,
-   "hdr_int": -74,
-   "source": "ddb_stingray4_hdr.ddb body offset 23921"
+   "enum": 595,
+   "candidates": [
+    595
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23921; enum 595 = libddb_dstr.so debug table index 595 (HSSI_CMU), record at body offset 45705"
   },
   {
    "name": "SPI_OE",
    "offset": 23937,
-   "hdr_int": 390,
-   "source": "ddb_stingray4_hdr.ddb body offset 23937"
+   "enum": 479,
+   "candidates": [
+    479
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 23937; enum 479 = libddb_dstr.so debug table index 479 (SPI_OE), record at body offset 93542"
   },
   {
    "name": "CRC_LDSRC_PIN",
    "offset": 23951,
-   "hdr_int": 18,
-   "source": "ddb_stingray4_hdr.ddb body offset 23951"
+   "enum": 407,
+   "candidates": [
+    407
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 23951; enum 407 = libddb_dstr.so debug table index 407 (CRC_LDSRC), record at body offset 95167"
   },
   {
    "name": "M4K_LEFT_CONTROL_INPUT",
    "offset": 23972,
-   "hdr_int": -214,
-   "source": "ddb_stingray4_hdr.ddb body offset 23972"
+   "enum": 377,
+   "candidates": [
+    377
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 23972; enum 377 = libddb_dstr.so debug table index 377 (MEAB_SEC_LEFT_INPUT), record at body offset 71934"
   },
   {
    "name": "HSSI_TX_PMA",
    "offset": 24002,
-   "hdr_int": -174,
-   "source": "ddb_stingray4_hdr.ddb body offset 24002"
+   "enum": 703,
+   "candidates": [
+    703
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24002; enum 703 = libddb_dstr.so debug table index 703 (HSSI_TX_PMA), record at body offset 47451"
   },
   {
    "name": "PLL_TESTCLRLOCK",
    "offset": 24021,
-   "hdr_int": 234,
+   "enum": 349,
+   "candidates": [
+    349
+   ],
+   "via": "debug",
    "source": "ddb_stingray4_hdr.ddb body offset 24021"
   },
   {
    "name": "CRC_REGOUT",
    "offset": 24044,
-   "hdr_int": 166,
-   "source": "ddb_stingray4_hdr.ddb body offset 24044"
+   "enum": 409,
+   "candidates": [
+    409
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24044; enum 409 = libddb_dstr.so debug table index 409 (CRC_REGOUT), record at body offset 95573"
   },
   {
    "name": "Oscillator block",
    "offset": 24062,
-   "hdr_int": -422,
-   "source": "ddb_stingray4_hdr.ddb body offset 24062"
+   "enum": 648,
+   "candidates": [
+    648
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 24062; enum 648 = libddb_dstr.so debug table index 648 (OSCILLATOR), record at body offset 43179"
   },
   {
    "name": "I/O bank",
    "offset": 24086,
-   "hdr_int": 518,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 24086"
   },
   {
    "name": "IO_RAWDATAIN",
    "offset": 24102,
-   "hdr_int": -370,
-   "source": "ddb_stingray4_hdr.ddb body offset 24102"
+   "enum": 308,
+   "candidates": [
+    308
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24102; enum 308 = libddb_dstr.so debug table index 308 (IO_RAWDATAIN), record at body offset 65677"
   },
   {
    "name": "MP_DDIO_OE",
    "offset": 24122,
-   "hdr_int": -74,
-   "source": "ddb_stingray4_hdr.ddb body offset 24122"
+   "enum": 616,
+   "candidates": [
+    616
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24122; enum 616 = libddb_dstr.so debug table index 616 (MP_DDIO_OE), record at body offset 56723"
   },
   {
    "name": "TERMINATION_CALIBRATIONDONE",
    "offset": 24140,
-   "hdr_int": 390,
-   "source": "ddb_stingray4_hdr.ddb body offset 24140"
+   "enum": 664,
+   "candidates": [
+    664
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24140; enum 664 = libddb_dstr.so debug table index 664 (TERMINATION_CALIBRATIONDONE), record at body offset 99185"
   },
   {
    "name": "HSSI_STRIP",
    "offset": 24175,
-   "hdr_int": -410,
-   "source": "ddb_stingray4_hdr.ddb body offset 24175"
+   "enum": 708,
+   "candidates": [
+    708
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24175; enum 708 = libddb_dstr.so debug table index 708 (HSSI_STRIP), record at body offset 49725"
   },
   {
    "name": "MAC_MULT",
    "offset": 24193,
-   "hdr_int": -74,
-   "source": "ddb_stingray4_hdr.ddb body offset 24193"
+   "enum": 287,
+   "candidates": [
+    287
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24193; enum 287 = libddb_dstr.so debug table index 287 (MAC_MULT), record at body offset 37996"
   },
   {
    "name": "INTERQUAD_REFCLK_OUT",
    "offset": 24209,
-   "hdr_int": 518,
-   "source": "ddb_stingray4_hdr.ddb body offset 24209"
+   "enum": 776,
+   "candidates": [
+    776
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 24209; enum 776 = libddb_dstr.so debug table index 776 (IQ_REFCLK_OUT), record at body offset 102340"
   },
   {
    "name": "Signal Splitter",
    "offset": 24237,
-   "hdr_int": -474,
-   "source": "ddb_stingray4_hdr.ddb body offset 24237"
+   "enum": 685,
+   "candidates": [
+    685
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 24237; enum 685 = libddb_dstr.so debug table index 685 (PSEUDO_DIFF_OUT), record at body offset 44179"
   },
   {
    "name": "GEN_CORE_BUF",
    "offset": 24260,
-   "hdr_int": 470,
-   "source": "ddb_stingray4_hdr.ddb body offset 24260"
+   "enum": 541,
+   "candidates": [
+    541
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24260; enum 541 = libddb_dstr.so debug table index 541 (GEN_CORE_BUF), record at body offset 101438"
   },
   {
    "name": "PLL_SCANCLK",
    "offset": 24280,
-   "hdr_int": -210,
-   "source": "ddb_stingray4_hdr.ddb body offset 24280"
+   "enum": 340,
+   "candidates": [
+    340
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24280; enum 340 = libddb_dstr.so debug table index 340 (PLL_SCANCLK), record at body offset 78396"
   },
   {
    "name": "PSEUDO_DIFF_OUT",
    "offset": 24299,
-   "hdr_int": -254,
-   "source": "ddb_stingray4_hdr.ddb body offset 24299"
+   "enum": 685,
+   "candidates": [
+    685
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24299; enum 685 = libddb_dstr.so debug table index 685 (PSEUDO_DIFF_OUT), record at body offset 44179"
   },
   {
    "name": "CLKDLY_DISABLECAL",
    "offset": 24322,
-   "hdr_int": 314,
-   "source": "ddb_stingray4_hdr.ddb body offset 24322"
+   "enum": 546,
+   "candidates": [
+    546
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24322; enum 546 = libddb_dstr.so debug table index 546 (CLKDLY_DISABLECAL), record at body offset 84473"
   },
   {
    "name": "CONTROLLER",
    "offset": 24347,
-   "hdr_int": -314,
-   "source": "ddb_stingray4_hdr.ddb body offset 24347"
+   "enum": 775,
+   "candidates": [
+    775
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24347; enum 775 = libddb_dstr.so debug table index 775 (CONTROLLER), record at body offset 43679"
   },
   {
    "name": "PLL_PHASEDONE",
    "offset": 24365,
-   "hdr_int": 274,
-   "source": "ddb_stingray4_hdr.ddb body offset 24365"
+   "enum": 356,
+   "candidates": [
+    356
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24365; enum 356 = libddb_dstr.so debug table index 356 (PLL_PHASEDONE), record at body offset 79707"
   },
   {
    "name": "MEAB_SEC_LEFT_INPUT",
    "offset": 24386,
-   "hdr_int": -70,
-   "source": "ddb_stingray4_hdr.ddb body offset 24386"
+   "enum": 377,
+   "candidates": [
+    377
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24386; enum 377 = libddb_dstr.so debug table index 377 (MEAB_SEC_LEFT_INPUT), record at body offset 71934"
   },
   {
    "name": "PLL_ACTIVECLK_PIN",
    "offset": 24413,
-   "hdr_int": 94,
-   "source": "ddb_stingray4_hdr.ddb body offset 24413"
+   "enum": 351,
+   "candidates": [
+    351
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 24413; enum 351 = libddb_dstr.so debug table index 351 (PLL_ACTIVECLK), record at body offset 81941"
   },
   {
    "name": "CRC_LDSRC",
    "offset": 24438,
-   "hdr_int": 126,
-   "source": "ddb_stingray4_hdr.ddb body offset 24438"
+   "enum": 407,
+   "candidates": [
+    407
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24438; enum 407 = libddb_dstr.so debug table index 407 (CRC_LDSRC), record at body offset 95167"
   },
   {
    "name": "LE_BUFFER",
    "offset": 24455,
-   "hdr_int": -346,
-   "source": "ddb_stingray4_hdr.ddb body offset 24455"
+   "enum": 45,
+   "candidates": [
+    45
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24455; enum 45 = libddb_dstr.so debug table index 45 (LE_BUFFER), record at body offset 57791"
   },
   {
    "name": "ASMIBLOCK",
    "offset": 24472,
-   "hdr_int": -82,
-   "source": "ddb_stingray4_hdr.ddb body offset 24472"
+   "enum": 399,
+   "candidates": [
+    399
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 24472; enum 399 = libddb_dstr.so debug table index 399 (RUBLOCK), record at body offset 41660"
   },
   {
    "name": "JTAG_UPDATEUSER",
    "offset": 24489,
-   "hdr_int": 394,
-   "source": "ddb_stingray4_hdr.ddb body offset 24489"
+   "enum": 372,
+   "candidates": [
+    372
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24489; enum 372 = libddb_dstr.so debug table index 372 (JTAG_UPDATEUSER), record at body offset 90979"
   },
   {
    "name": "GLOBAL_CLK_H",
    "offset": 24512,
-   "hdr_int": -266,
-   "source": "ddb_stingray4_hdr.ddb body offset 24512"
+   "enum": 298,
+   "candidates": [
+    298
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24512; enum 298 = libddb_dstr.so debug table index 298 (GLOBAL_CLK_H), record at body offset 62208"
   },
   {
    "name": "JTAG_CLKDRUSER",
    "offset": 24532,
-   "hdr_int": 266,
-   "source": "ddb_stingray4_hdr.ddb body offset 24532"
+   "enum": 371,
+   "candidates": [
+    371
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24532; enum 371 = libddb_dstr.so debug table index 371 (JTAG_CLKDRUSER), record at body offset 90530"
   },
   {
    "name": "LAB_LINE",
    "offset": 24554,
-   "hdr_int": -286,
-   "source": "ddb_stingray4_hdr.ddb body offset 24554"
+   "enum": 282,
+   "candidates": [
+    282
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24554; enum 282 = libddb_dstr.so debug table index 282 (LAB_LINE), record at body offset 59533"
   },
   {
    "name": "SPI_DCLKIN",
    "offset": 24570,
-   "hdr_int": 306,
-   "source": "ddb_stingray4_hdr.ddb body offset 24570"
+   "enum": 478,
+   "candidates": [
+    478
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24570; enum 478 = libddb_dstr.so debug table index 478 (SPI_DCLKIN), record at body offset 92332"
   },
   {
    "name": "IO_INPUT_BUFFER",
    "offset": 24588,
-   "hdr_int": -442,
+   "enum": 607,
+   "candidates": [
+    607
+   ],
+   "via": "debug",
    "source": "ddb_stingray4_hdr.ddb body offset 24588"
   },
   {
    "name": "GXB Receiver channel PCS",
    "offset": 24611,
-   "hdr_int": 78,
-   "source": "ddb_stingray4_hdr.ddb body offset 24611"
+   "enum": 700,
+   "candidates": [
+    700
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 24611; enum 700 = libddb_dstr.so debug table index 700 (HSSI_RX_PCS), record at body offset 46870"
   },
   {
    "name": "Embedded multiplier block",
    "offset": 24643,
-   "hdr_int": -54,
-   "source": "ddb_stingray4_hdr.ddb body offset 24643"
+   "enum": 287,
+   "candidates": [
+    287
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 24643; enum 287 = libddb_dstr.so debug table index 287 (MAC_MULT), record at body offset 37996"
   },
   {
    "name": "LE_COMB",
    "offset": 24676,
-   "hdr_int": -30,
-   "source": "ddb_stingray4_hdr.ddb body offset 24676"
+   "enum": 516,
+   "candidates": [
+    516
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24676; enum 516 = libddb_dstr.so debug table index 516 (LE_COMB), record at body offset 30240"
   },
   {
    "name": "CLKDLY_DELAYCTRL",
    "offset": 24691,
-   "hdr_int": 382,
-   "source": "ddb_stingray4_hdr.ddb body offset 24691"
+   "enum": 545,
+   "candidates": [
+    545
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24691; enum 545 = libddb_dstr.so debug table index 545 (CLKDLY_DELAYCTRL), record at body offset 84049"
   },
   {
    "name": "GLOBAL_CLK_V",
    "offset": 24715,
-   "hdr_int": -198,
-   "source": "ddb_stingray4_hdr.ddb body offset 24715"
+   "enum": 299,
+   "candidates": [
+    299
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24715; enum 299 = libddb_dstr.so debug table index 299 (GLOBAL_CLK_V), record at body offset 62655"
   },
   {
    "name": "IO_BANK",
    "offset": 24735,
-   "hdr_int": 402,
+   "enum": 250,
+   "candidates": [
+    250
+   ],
+   "via": "debug",
    "source": "ddb_stingray4_hdr.ddb body offset 24735"
   },
   {
    "name": "CLKDLYCAL_DISABLECAL",
    "offset": 24750,
-   "hdr_int": -170,
-   "source": "ddb_stingray4_hdr.ddb body offset 24750"
+   "enum": 552,
+   "candidates": [
+    552
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24750; enum 552 = libddb_dstr.so debug table index 552 (CLKDLYCAL_DISABLECAL), record at body offset 87038"
   },
   {
    "name": "SPI_DATAOUT",
    "offset": 24778,
-   "hdr_int": 66,
-   "source": "ddb_stingray4_hdr.ddb body offset 24778"
+   "enum": 480,
+   "candidates": [
+    480
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24778; enum 480 = libddb_dstr.so debug table index 480 (SPI_DATAOUT), record at body offset 93940"
   },
   {
    "name": "PLL_PFD_ENA_PIN",
    "offset": 24797,
-   "hdr_int": -150,
-   "source": "ddb_stingray4_hdr.ddb body offset 24797"
+   "enum": 355,
+   "candidates": [
+    355
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 24797; enum 355 = libddb_dstr.so debug table index 355 (PLL_PFD_ENA), record at body offset 77561"
   },
   {
    "name": "HSSI_RX_PCS",
    "offset": 24820,
-   "hdr_int": -230,
-   "source": "ddb_stingray4_hdr.ddb body offset 24820"
+   "enum": 700,
+   "candidates": [
+    700
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24820; enum 700 = libddb_dstr.so debug table index 700 (HSSI_RX_PCS), record at body offset 46870"
   },
   {
    "name": "FF",
    "offset": 24839,
-   "hdr_int": -82,
-   "source": "ddb_stingray4_hdr.ddb body offset 24839"
+   "enum": 604,
+   "candidates": [
+    604
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24839; enum 604 = libddb_dstr.so debug table index 604 (FF), record at body offset 31636"
   },
   {
    "name": "TERMINATION_COMPARATORPROBE",
    "offset": 24849,
-   "hdr_int": 514,
-   "source": "ddb_stingray4_hdr.ddb body offset 24849"
+   "enum": 566,
+   "candidates": [
+    566
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24849; enum 566 = libddb_dstr.so debug table index 566 (TERMINATION_COMPARATORPROBE), record at body offset 98707"
   },
   {
    "name": "PLL_TESTUPOUT",
    "offset": 24884,
-   "hdr_int": -206,
-   "source": "ddb_stingray4_hdr.ddb body offset 24884"
+   "enum": 347,
+   "candidates": [
+    347
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24884; enum 347 = libddb_dstr.so debug table index 347 (PLL_TESTUPOUT), record at body offset 76286"
   },
   {
    "name": "PLL_ENABLE_PIN",
    "offset": 24905,
-   "hdr_int": -14,
-   "source": "ddb_stingray4_hdr.ddb body offset 24905"
+   "enum": 61,
+   "candidates": [
+    61
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 24905; enum 61 = libddb_dstr.so debug table index 61 (PLLENABL), record at body offset 74610"
   },
   {
    "name": "IO_CEOUT_PIN",
    "offset": 24927,
-   "hdr_int": -66,
-   "source": "ddb_stingray4_hdr.ddb body offset 24927"
+   "enum": 312,
+   "candidates": [
+    312
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 24927; enum 312 = libddb_dstr.so debug table index 312 (IO_CCE_OUT), record at body offset 67363"
   },
   {
    "name": "CLK_TO_PLL_MUX",
    "offset": 24947,
-   "hdr_int": 58,
-   "source": "ddb_stingray4_hdr.ddb body offset 24947"
+   "enum": 527,
+   "candidates": [
+    527
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 24947; enum 527 = libddb_dstr.so debug table index 527 (CLK_TO_PLL_MUX), record at body offset 73284"
   },
   {
    "name": "TXPMA",
    "offset": 24969,
-   "hdr_int": -186,
-   "source": "ddb_stingray4_hdr.ddb body offset 24969"
+   "enum": 703,
+   "candidates": [
+    703
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 24969; enum 703 = libddb_dstr.so debug table index 703 (HSSI_TX_PMA), record at body offset 47451"
   },
   {
    "name": "PLL_SCANDATAOUT_PIN",
    "offset": 24982,
-   "hdr_int": 242,
-   "source": "ddb_stingray4_hdr.ddb body offset 24982"
+   "enum": 343,
+   "candidates": [
+    343
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 24982; enum 343 = libddb_dstr.so debug table index 343 (PLL_SCANDATAOUT), record at body offset 78808"
   },
   {
    "name": "PLL_FEEDBACK_IN",
    "offset": 25009,
-   "hdr_int": -26,
-   "source": "ddb_stingray4_hdr.ddb body offset 25009"
+   "enum": 336,
+   "candidates": [
+    336
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25009; enum 336 = libddb_dstr.so debug table index 336 (PLL_FEEDBACK_IN), record at body offset 75841"
   },
   {
    "name": "R4",
    "offset": 25032,
-   "hdr_int": -146,
-   "source": "ddb_stingray4_hdr.ddb body offset 25032"
+   "enum": 268,
+   "candidates": [
+    268
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25032; enum 268 = libddb_dstr.so debug table index 268 (H4), record at body offset 60015"
   },
   {
    "name": "R24_C16_INTERCONNECT_DRIVER",
    "offset": 25042,
-   "hdr_int": 18,
-   "source": "ddb_stingray4_hdr.ddb body offset 25042"
+   "enum": 518,
+   "candidates": [
+    518
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25042; enum 518 = libddb_dstr.so debug table index 518 (WIRE_MUX), record at body offset 61768"
   },
   {
    "name": "IO_CCLK",
    "offset": 25077,
-   "hdr_int": 50,
-   "source": "ddb_stingray4_hdr.ddb body offset 25077"
+   "enum": 311,
+   "candidates": [
+    311
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25077; enum 311 = libddb_dstr.so debug table index 311 (IO_CCLK), record at body offset 66964"
   },
   {
    "name": "JTAG_TCKUTAP",
    "offset": 25092,
-   "hdr_int": 210,
-   "source": "ddb_stingray4_hdr.ddb body offset 25092"
+   "enum": 368,
+   "candidates": [
+    368
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25092; enum 368 = libddb_dstr.so debug table index 368 (JTAG_TCKUTAP), record at body offset 89195"
   },
   {
    "name": "STRIP",
    "offset": 25112,
-   "hdr_int": -318,
-   "source": "ddb_stingray4_hdr.ddb body offset 25112"
+   "enum": 708,
+   "candidates": [
+    708
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 25112; enum 708 = libddb_dstr.so debug table index 708 (HSSI_STRIP), record at body offset 49725"
   },
   {
    "name": "INTERQUAD_TXRX_CLK",
    "offset": 25125,
-   "hdr_int": 438,
-   "source": "ddb_stingray4_hdr.ddb body offset 25125"
+   "enum": 709,
+   "candidates": [
+    709
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25125; enum 709 = libddb_dstr.so debug table index 709 (IQTXRX), record at body offset 101882"
   },
   {
    "name": "IO_PAD",
    "offset": 25151,
-   "hdr_int": -534,
-   "source": "ddb_stingray4_hdr.ddb body offset 25151"
+   "enum": 610,
+   "candidates": [
+    610
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25151; enum 610 = libddb_dstr.so debug table index 610 (IO_PAD), record at body offset 33005"
   },
   {
    "name": "JTAG_USR1USER_PIN",
    "offset": 25165,
-   "hdr_int": 446,
-   "source": "ddb_stingray4_hdr.ddb body offset 25165"
+   "enum": 374,
+   "candidates": [
+    374
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25165; enum 374 = libddb_dstr.so debug table index 374 (JTAG_USR1USER), record at body offset 91886"
   },
   {
    "name": "BLK_CLK_BUF",
    "offset": 25190,
-   "hdr_int": 50,
-   "source": "ddb_stingray4_hdr.ddb body offset 25190"
+   "enum": 568,
+   "candidates": [
+    568
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25190; enum 568 = libddb_dstr.so debug table index 568 (BLK_CLK_BUF), record at body offset 96915"
   },
   {
    "name": "HSSI_TX_PCS",
    "offset": 25209,
-   "hdr_int": -402,
-   "source": "ddb_stingray4_hdr.ddb body offset 25209"
+   "enum": 702,
+   "candidates": [
+    702
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25209; enum 702 = libddb_dstr.so debug table index 702 (HSSI_TX_PCS), record at body offset 48074"
   },
   {
    "name": "CLKBUF_SELECT",
    "offset": 25228,
-   "hdr_int": 162,
-   "source": "ddb_stingray4_hdr.ddb body offset 25228"
+   "enum": 522,
+   "candidates": [
+    522
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25228; enum 522 = libddb_dstr.so debug table index 522 (CLKBUF_SELECT), record at body offset 70643"
   },
   {
    "name": "Double Data Rate I/O output circuitry",
    "offset": 25249,
-   "hdr_int": -126,
-   "source": "ddb_stingray4_hdr.ddb body offset 25249"
+   "enum": 615,
+   "candidates": [
+    615
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 25249; enum 615 = libddb_dstr.so debug table index 615 (MP_DDIO_OUT), record at body offset 55667"
   },
   {
    "name": "PLL_CLKSWITCH",
    "offset": 25294,
-   "hdr_int": 170,
-   "source": "ddb_stingray4_hdr.ddb body offset 25294"
+   "enum": 337,
+   "candidates": [
+    337
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25294; enum 337 = libddb_dstr.so debug table index 337 (PLL_CLKSWITCH), record at body offset 75014"
   },
   {
    "name": "DDIOOE",
    "offset": 25315,
-   "hdr_int": -270,
-   "source": "ddb_stingray4_hdr.ddb body offset 25315"
+   "enum": 613,
+   "candidates": [
+    613
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25315; enum 613 = libddb_dstr.so debug table index 613 (DDIO_OE), record at body offset 36522"
   },
   {
    "name": "LOCAL",
    "offset": 25329,
-   "hdr_int": 126,
-   "source": "ddb_stingray4_hdr.ddb body offset 25329"
+   "enum": 43,
+   "candidates": [
+    43
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25329; enum 43 = libddb_dstr.so debug table index 43 (LOCAL), record at body offset 59090"
   },
   {
    "name": "PLL_SCANDONE",
    "offset": 25342,
-   "hdr_int": 190,
-   "source": "ddb_stingray4_hdr.ddb body offset 25342"
+   "enum": 346,
+   "candidates": [
+    346
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25342; enum 346 = libddb_dstr.so debug table index 346 (PLL_SCANDONE), record at body offset 79264"
   },
   {
    "name": "Edge",
    "offset": 25362,
-   "hdr_int": 250,
-   "source": "ddb_stingray4_hdr.ddb body offset 25362"
+   "enum": 515,
+   "candidates": [
+    515
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 25362; enum 515 = libddb_dstr.so debug table index 515 (EDGE), record at body offset 106747"
   },
   {
    "name": "JTAG_SHIFTUSER_PIN",
    "offset": 25374,
-   "hdr_int": -146,
-   "source": "ddb_stingray4_hdr.ddb body offset 25374"
+   "enum": 370,
+   "candidates": [
+    370
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25374; enum 370 = libddb_dstr.so debug table index 370 (JTAG_SHIFTUSER), record at body offset 90081"
   },
   {
    "name": "IO_ACLR_PIN",
    "offset": 25400,
-   "hdr_int": -202,
-   "source": "ddb_stingray4_hdr.ddb body offset 25400"
+   "enum": 315,
+   "candidates": [
+    315
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25400; enum 315 = libddb_dstr.so debug table index 315 (IO_CACLR), record at body offset 68172"
   },
   {
    "name": "TB_IO_CLK",
    "offset": 25419,
-   "hdr_int": -34,
-   "source": "ddb_stingray4_hdr.ddb body offset 25419"
+   "enum": 304,
+   "candidates": [
+    304
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25419; enum 304 = libddb_dstr.so debug table index 304 (TB_IO_CLK), record at body offset 64377"
   },
   {
    "name": "LAB",
    "offset": 25436,
-   "hdr_int": -82,
-   "source": "ddb_stingray4_hdr.ddb body offset 25436"
+   "enum": 227,
+   "candidates": [
+    227
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25436; enum 227 = libddb_dstr.so debug table index 227 (LAB), record at body offset 50229"
   },
   {
    "name": "CLKDLYCAL_CALCLKIN",
    "offset": 25447,
-   "hdr_int": 282,
-   "source": "ddb_stingray4_hdr.ddb body offset 25447"
+   "enum": 548,
+   "candidates": [
+    548
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25447; enum 548 = libddb_dstr.so debug table index 548 (CLKDLYCAL_CALCLKIN), record at body offset 85315"
   },
   {
    "name": "IO_IBUF",
    "offset": 25473,
-   "hdr_int": -378,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 25473"
   },
   {
    "name": "SCLK_TO_ROWCLK_BUF",
    "offset": 25488,
-   "hdr_int": 174,
-   "source": "ddb_stingray4_hdr.ddb body offset 25488"
+   "enum": 667,
+   "candidates": [
+    667
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25488; enum 667 = libddb_dstr.so debug table index 667 (SCLK_TO_ROWCLK_BUF), record at body offset 63090"
   },
   {
    "name": "IOOBUF",
    "offset": 25514,
-   "hdr_int": -166,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 25514"
   },
   {
    "name": "JTAG_RUNIDLEUSER",
    "offset": 25528,
-   "hdr_int": 434,
-   "source": "ddb_stingray4_hdr.ddb body offset 25528"
+   "enum": 373,
+   "candidates": [
+    373
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25528; enum 373 = libddb_dstr.so debug table index 373 (JTAG_RUNIDLEUSER), record at body offset 91431"
   },
   {
    "name": "IO_CACLR",
    "offset": 25552,
-   "hdr_int": -214,
-   "source": "ddb_stingray4_hdr.ddb body offset 25552"
+   "enum": 315,
+   "candidates": [
+    315
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25552; enum 315 = libddb_dstr.so debug table index 315 (IO_CACLR), record at body offset 68172"
   },
   {
    "name": "GXB Receiver channel PMA",
    "offset": 25568,
-   "hdr_int": -146,
-   "source": "ddb_stingray4_hdr.ddb body offset 25568"
+   "enum": 701,
+   "candidates": [
+    701
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 25568; enum 701 = libddb_dstr.so debug table index 701 (HSSI_RX_PMA), record at body offset 46253"
   },
   {
    "name": "HSSI_RX_PMA",
    "offset": 25600,
-   "hdr_int": 2,
-   "source": "ddb_stingray4_hdr.ddb body offset 25600"
+   "enum": 701,
+   "candidates": [
+    701
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25600; enum 701 = libddb_dstr.so debug table index 701 (HSSI_RX_PMA), record at body offset 46253"
   },
   {
    "name": "RU_REGOUT",
    "offset": 25619,
-   "hdr_int": 414,
-   "source": "ddb_stingray4_hdr.ddb body offset 25619"
+   "enum": 416,
+   "candidates": [
+    416
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25619; enum 416 = libddb_dstr.so debug table index 416 (RU_REGOUT), record at body offset 96478"
   },
   {
    "name": "IO_OUTPUT_BUFFER",
    "offset": 25636,
-   "hdr_int": -478,
+   "enum": 608,
+   "candidates": [
+    608
+   ],
+   "via": "debug",
    "source": "ddb_stingray4_hdr.ddb body offset 25636"
   },
   {
    "name": "DDIO_OE",
    "offset": 25660,
-   "hdr_int": 10,
-   "source": "ddb_stingray4_hdr.ddb body offset 25660"
+   "enum": 613,
+   "candidates": [
+    613
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25660; enum 613 = libddb_dstr.so debug table index 613 (DDIO_OE), record at body offset 36522"
   },
   {
    "name": "PLL_LOCKED",
    "offset": 25675,
-   "hdr_int": 294,
-   "source": "ddb_stingray4_hdr.ddb body offset 25675"
+   "enum": 353,
+   "candidates": [
+    353
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25675; enum 353 = libddb_dstr.so debug table index 353 (PLL_LOCKED), record at body offset 77120"
   },
   {
    "name": "OSCILLATOR_CLKOUT",
    "offset": 25693,
-   "hdr_int": 210,
-   "source": "ddb_stingray4_hdr.ddb body offset 25693"
+   "enum": 57,
+   "candidates": [
+    57
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 25693; enum 57 = libddb_dstr.so debug table index 57 (CLKOUT), record at body offset 99663"
   },
   {
    "name": "ASMI_DATAOUT",
    "offset": 25718,
-   "hdr_int": -50,
-   "source": "ddb_stingray4_hdr.ddb body offset 25718"
+   "enum": 480,
+   "candidates": [
+    480
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25718; enum 480 = libddb_dstr.so debug table index 480 (SPI_DATAOUT), record at body offset 93940"
   },
   {
    "name": "JTAG_TDOUTAP_PIN",
    "offset": 25738,
-   "hdr_int": -54,
-   "source": "ddb_stingray4_hdr.ddb body offset 25738"
+   "enum": 365,
+   "candidates": [
+    365
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25738; enum 365 = libddb_dstr.so debug table index 365 (JTAG_TDOUTAP), record at body offset 87910"
   },
   {
    "name": "IOIBUF",
    "offset": 25762,
-   "hdr_int": -402,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 25762"
   },
   {
    "name": "JTAG_TDIUTAP_PIN",
    "offset": 25776,
-   "hdr_int": 422,
-   "source": "ddb_stingray4_hdr.ddb body offset 25776"
+   "enum": 369,
+   "candidates": [
+    369
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25776; enum 369 = libddb_dstr.so debug table index 369 (JTAG_TDIUTAP), record at body offset 89638"
   },
   {
    "name": "LR_IO_CLK",
    "offset": 25800,
-   "hdr_int": -238,
-   "source": "ddb_stingray4_hdr.ddb body offset 25800"
+   "enum": 303,
+   "candidates": [
+    303
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25800; enum 303 = libddb_dstr.so debug table index 303 (LR_IO_CLK), record at body offset 63978"
   },
   {
    "name": "DDIO_OUT",
    "offset": 25817,
-   "hdr_int": -170,
-   "source": "ddb_stingray4_hdr.ddb body offset 25817"
+   "enum": 612,
+   "candidates": [
+    612
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25817; enum 612 = libddb_dstr.so debug table index 612 (DDIO_OUT), record at body offset 36063"
   },
   {
    "name": "QUAD",
    "offset": 25833,
-   "hdr_int": 86,
+   "enum": null,
+   "candidates": [
+    236,
+    403
+   ],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 25833"
   },
   {
    "name": "IO_OBUF",
    "offset": 25845,
-   "hdr_int": -86,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 25845"
   },
   {
    "name": "SB_DATA_OUT",
    "offset": 25860,
-   "hdr_int": 350,
-   "source": "ddb_stingray4_hdr.ddb body offset 25860"
+   "enum": 570,
+   "candidates": [
+    570
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25860; enum 570 = libddb_dstr.so debug table index 570 (SB_DATA_OUT), record at body offset 82393"
   },
   {
    "name": "PLLBUF",
    "offset": 25879,
-   "hdr_int": -86,
-   "source": "ddb_stingray4_hdr.ddb body offset 25879"
+   "enum": 69,
+   "candidates": [
+    69
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25879; enum 69 = libddb_dstr.so debug table index 69 (PLLBUF), record at body offset 72832"
   },
   {
    "name": "PLL_CLKBAD_PIN",
    "offset": 25893,
-   "hdr_int": 82,
-   "source": "ddb_stingray4_hdr.ddb body offset 25893"
+   "enum": 350,
+   "candidates": [
+    350
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25893; enum 350 = libddb_dstr.so debug table index 350 (PLL_CLKBAD), record at body offset 81500"
   },
   {
    "name": "JTAG",
    "offset": 25915,
-   "hdr_int": -306,
-   "source": "ddb_stingray4_hdr.ddb body offset 25915"
+   "enum": 27,
+   "candidates": [
+    27
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25915; enum 27 = libddb_dstr.so debug table index 27 (JTAG), record at body offset 41176"
   },
   {
    "name": "IO_DATAIN",
    "offset": 25927,
-   "hdr_int": 154,
-   "source": "ddb_stingray4_hdr.ddb body offset 25927"
+   "enum": 307,
+   "candidates": [
+    307
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25927; enum 307 = libddb_dstr.so debug table index 307 (IO_DATAIN), record at body offset 64808"
   },
   {
    "name": "CLKBUF_IN",
    "offset": 25944,
-   "hdr_int": 54,
-   "source": "ddb_stingray4_hdr.ddb body offset 25944"
+   "enum": 521,
+   "candidates": [
+    521
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25944; enum 521 = libddb_dstr.so debug table index 521 (CLKBUF_IN), record at body offset 70208"
   },
   {
    "name": "DQS_SNEAK",
    "offset": 25961,
-   "hdr_int": 286,
-   "source": "ddb_stingray4_hdr.ddb body offset 25961"
+   "enum": 659,
+   "candidates": [
+    659
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 25961; enum 659 = libddb_dstr.so debug table index 659 (DQS_SNEAK), record at body offset 101035"
   },
   {
    "name": "CRC_SHIFTNLD_PIN",
    "offset": 25978,
-   "hdr_int": -54,
-   "source": "ddb_stingray4_hdr.ddb body offset 25978"
+   "enum": 406,
+   "candidates": [
+    406
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 25978; enum 406 = libddb_dstr.so debug table index 406 (CRC_SHIFTNLD), record at body offset 94752"
   },
   {
    "name": "GXB Central control unit",
    "offset": 26002,
-   "hdr_int": -398,
-   "source": "ddb_stingray4_hdr.ddb body offset 26002"
+   "enum": 595,
+   "candidates": [
+    595
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 26002; enum 595 = libddb_dstr.so debug table index 595 (HSSI_CMU), record at body offset 45705"
   },
   {
    "name": "VREF group",
    "offset": 26034,
-   "hdr_int": 510,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 26034"
   },
   {
    "name": "MAC",
    "offset": 26052,
-   "hdr_int": -462,
-   "source": "ddb_stingray4_hdr.ddb body offset 26052"
+   "enum": 265,
+   "candidates": [
+    265
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26052; enum 265 = libddb_dstr.so debug table index 265 (MAC), record at body offset 54795"
   },
   {
    "name": "GXB Transmitter channel PCS",
    "offset": 26063,
-   "hdr_int": -26,
-   "source": "ddb_stingray4_hdr.ddb body offset 26063"
+   "enum": 702,
+   "candidates": [
+    702
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 26063; enum 702 = libddb_dstr.so debug table index 702 (HSSI_TX_PCS), record at body offset 48074"
   },
   {
    "name": "IO_SCLR_PIN",
    "offset": 26098,
-   "hdr_int": 142,
-   "source": "ddb_stingray4_hdr.ddb body offset 26098"
+   "enum": 316,
+   "candidates": [
+    316
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26098; enum 316 = libddb_dstr.so debug table index 316 (IO_CSCLR), record at body offset 68574"
   },
   {
    "name": "IO_CCE_IN",
    "offset": 26117,
-   "hdr_int": -6,
-   "source": "ddb_stingray4_hdr.ddb body offset 26117"
+   "enum": 313,
+   "candidates": [
+    313
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26117; enum 313 = libddb_dstr.so debug table index 313 (IO_CCE_IN), record at body offset 67769"
   },
   {
    "name": "CALIBRATIONBLOCK",
    "offset": 26134,
-   "hdr_int": -150,
-   "source": "ddb_stingray4_hdr.ddb body offset 26134"
+   "enum": 597,
+   "candidates": [
+    597
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26134; enum 597 = libddb_dstr.so debug table index 597 (HSSI_CALIBRATION_BLOCK), record at body offset 45161"
   },
   {
    "name": "IQPCSTXOUT",
    "offset": 26158,
-   "hdr_int": 482,
+   "enum": 761,
+   "candidates": [
+    761
+   ],
+   "via": "debug",
    "source": "ddb_stingray4_hdr.ddb body offset 26158"
   },
   {
    "name": "BLOCK_INPUT_MUX",
    "offset": 26176,
-   "hdr_int": -182,
-   "source": "ddb_stingray4_hdr.ddb body offset 26176"
+   "enum": 540,
+   "candidates": [
+    540
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26176; enum 540 = libddb_dstr.so debug table index 540 (LEIM), record at body offset 83206"
   },
   {
    "name": "TERMINATION_CTRLPROBE",
    "offset": 26199,
-   "hdr_int": 142,
-   "source": "ddb_stingray4_hdr.ddb body offset 26199"
+   "enum": 564,
+   "candidates": [
+    564
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26199; enum 564 = libddb_dstr.so debug table index 564 (TERMINATION_CTRLPROBE), record at body offset 98244"
   },
   {
    "name": "MEDIUM_EAB_BUFFER",
    "offset": 26228,
-   "hdr_int": -366,
-   "source": "ddb_stingray4_hdr.ddb body offset 26228"
+   "enum": 284,
+   "candidates": [
+    284
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26228; enum 284 = libddb_dstr.so debug table index 284 (MEDIUM_EAB_BUFFER), record at body offset 58652"
   },
   {
    "name": "CRCBLOCK",
    "offset": 26253,
-   "hdr_int": -86,
-   "source": "ddb_stingray4_hdr.ddb body offset 26253"
+   "enum": 398,
+   "candidates": [
+    398
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26253; enum 398 = libddb_dstr.so debug table index 398 (CRCBLOCK), record at body offset 42154"
   },
   {
    "name": "JTAG_CLKDRUSER_PIN",
    "offset": 26269,
-   "hdr_int": 386,
-   "source": "ddb_stingray4_hdr.ddb body offset 26269"
+   "enum": 371,
+   "candidates": [
+    371
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26269; enum 371 = libddb_dstr.so debug table index 371 (JTAG_CLKDRUSER), record at body offset 90530"
   },
   {
    "name": "IO_CLK_PIN",
    "offset": 26295,
-   "hdr_int": -218,
-   "source": "ddb_stingray4_hdr.ddb body offset 26295"
+   "enum": 311,
+   "candidates": [
+    311
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26295; enum 311 = libddb_dstr.so debug table index 311 (IO_CCLK), record at body offset 66964"
   },
   {
    "name": "PLLENABL",
    "offset": 26313,
-   "hdr_int": 74,
-   "source": "ddb_stingray4_hdr.ddb body offset 26313"
+   "enum": 61,
+   "candidates": [
+    61
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26313; enum 61 = libddb_dstr.so debug table index 61 (PLLENABL), record at body offset 74610"
   },
   {
    "name": "M9K",
    "offset": 26329,
-   "hdr_int": -170,
-   "source": "ddb_stingray4_hdr.ddb body offset 26329"
+   "enum": 263,
+   "candidates": [
+    263
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 26329; enum 263 = libddb_dstr.so debug table index 263 (MEDIUM_EAB), record at body offset 52636"
   },
   {
    "name": "V16",
    "offset": 26340,
-   "hdr_int": 50,
-   "source": "ddb_stingray4_hdr.ddb body offset 26340"
+   "enum": 281,
+   "candidates": [
+    281
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26340; enum 281 = libddb_dstr.so debug table index 281 (V16), record at body offset 61335"
   },
   {
    "name": "Controller block",
    "offset": 26351,
-   "hdr_int": -98,
-   "source": "ddb_stingray4_hdr.ddb body offset 26351"
+   "enum": 775,
+   "candidates": [
+    775
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 26351; enum 775 = libddb_dstr.so debug table index 775 (CONTROLLER), record at body offset 43679"
   },
   {
    "name": "IQ_REFCLK_OUT",
    "offset": 26375,
-   "hdr_int": 482,
-   "source": "ddb_stingray4_hdr.ddb body offset 26375"
+   "enum": 776,
+   "candidates": [
+    776
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26375; enum 776 = libddb_dstr.so debug table index 776 (IQ_REFCLK_OUT), record at body offset 102340"
   },
   {
    "name": "RUBLOCK",
    "offset": 26396,
-   "hdr_int": -494,
-   "source": "ddb_stingray4_hdr.ddb body offset 26396"
+   "enum": 399,
+   "candidates": [
+    399
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26396; enum 399 = libddb_dstr.so debug table index 399 (RUBLOCK), record at body offset 41660"
   },
   {
    "name": "IO",
    "offset": 26411,
-   "hdr_int": 66,
-   "source": "ddb_stingray4_hdr.ddb body offset 26411"
+   "enum": 163,
+   "candidates": [
+    163
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26411; enum 163 = libddb_dstr.so debug table index 163 (IO), record at body offset 51489"
   },
   {
    "name": "CRC_SHIFTNLD",
    "offset": 26421,
-   "hdr_int": 366,
-   "source": "ddb_stingray4_hdr.ddb body offset 26421"
+   "enum": 406,
+   "candidates": [
+    406
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26421; enum 406 = libddb_dstr.so debug table index 406 (CRC_SHIFTNLD), record at body offset 94752"
   },
   {
    "name": "CRC_CLOCK",
    "offset": 26441,
-   "hdr_int": -2,
-   "source": "ddb_stingray4_hdr.ddb body offset 26441"
+   "enum": 405,
+   "candidates": [
+    405
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26441; enum 405 = libddb_dstr.so debug table index 405 (CRC_CLOCK), record at body offset 94348"
   },
   {
    "name": "CONTROLLER_NCEOUT",
    "offset": 26458,
-   "hdr_int": 58,
-   "source": "ddb_stingray4_hdr.ddb body offset 26458"
+   "enum": 774,
+   "candidates": [
+    774
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26458; enum 774 = libddb_dstr.so debug table index 774 (CONTROLLER_NCEOUT), record at body offset 100576"
   },
   {
    "name": "CRC_ERROR_PIN",
    "offset": 26483,
-   "hdr_int": -38,
-   "source": "ddb_stingray4_hdr.ddb body offset 26483"
+   "enum": 408,
+   "candidates": [
+    408
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26483; enum 408 = libddb_dstr.so debug table index 408 (CRC_ERROR), record at body offset 96040"
   },
   {
    "name": "INTERQUAD_TXRX_PCSRX_OUT",
    "offset": 26504,
-   "hdr_int": 62,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 26504"
   },
   {
    "name": "INTERQUAD_TXRX_PCSTX_OUT",
    "offset": 26536,
-   "hdr_int": 6,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 26536"
   },
   {
    "name": "GXB Transmitter channel PMA",
    "offset": 26568,
-   "hdr_int": -462,
-   "source": "ddb_stingray4_hdr.ddb body offset 26568"
+   "enum": 703,
+   "candidates": [
+    703
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 26568; enum 703 = libddb_dstr.so debug table index 703 (HSSI_TX_PMA), record at body offset 47451"
   },
   {
    "name": "HSSI_GEN_OUT",
    "offset": 26603,
-   "hdr_int": 470,
-   "source": "ddb_stingray4_hdr.ddb body offset 26603"
+   "enum": 718,
+   "candidates": [
+    718
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26603; enum 718 = libddb_dstr.so debug table index 718 (HSSI_GEN_OUT), record at body offset 103792"
   },
   {
    "name": "TERMINATION",
    "offset": 26623,
-   "hdr_int": -498,
-   "source": "ddb_stingray4_hdr.ddb body offset 26623"
+   "enum": 556,
+   "candidates": [
+    556
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26623; enum 556 = libddb_dstr.so debug table index 556 (TERMINATION), record at body offset 42655"
   },
   {
    "name": "DQSPIN_TO_CLKDLY_MUX",
    "offset": 26642,
-   "hdr_int": 354,
-   "source": "ddb_stingray4_hdr.ddb body offset 26642"
+   "enum": 554,
+   "candidates": [
+    554
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26642; enum 554 = libddb_dstr.so debug table index 554 (DQSPIN_TO_CLKDLY_MUX), record at body offset 87474"
   },
   {
    "name": "JTAG_TDIUTAP",
    "offset": 26670,
-   "hdr_int": 22,
-   "source": "ddb_stingray4_hdr.ddb body offset 26670"
+   "enum": 369,
+   "candidates": [
+    369
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26670; enum 369 = libddb_dstr.so debug table index 369 (JTAG_TDIUTAP), record at body offset 89638"
   },
   {
    "name": "JTAG_TDOUSER",
    "offset": 26690,
-   "hdr_int": -10,
-   "source": "ddb_stingray4_hdr.ddb body offset 26690"
+   "enum": 366,
+   "candidates": [
+    366
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26690; enum 366 = libddb_dstr.so debug table index 366 (JTAG_TDOUSER), record at body offset 88341"
   },
   {
    "name": "ASMI_SDOIN",
    "offset": 26710,
-   "hdr_int": 46,
-   "source": "ddb_stingray4_hdr.ddb body offset 26710"
+   "enum": 477,
+   "candidates": [
+    477
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26710; enum 477 = libddb_dstr.so debug table index 477 (SPI_SDOIN), record at body offset 93140"
   },
   {
    "name": "V4",
    "offset": 26728,
-   "hdr_int": -298,
-   "source": "ddb_stingray4_hdr.ddb body offset 26728"
+   "enum": 275,
+   "candidates": [
+    275
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26728; enum 275 = libddb_dstr.so debug table index 275 (V4), record at body offset 60906"
   },
   {
    "name": "CLK_BUFFER",
    "offset": 26738,
-   "hdr_int": 42,
-   "source": "ddb_stingray4_hdr.ddb body offset 26738"
+   "enum": 295,
+   "candidates": [
+    295
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26738; enum 295 = libddb_dstr.so debug table index 295 (CLK_BUFFER), record at body offset 65242"
   },
   {
    "name": "PCI Express hard IP",
    "offset": 26756,
-   "hdr_int": -102,
-   "source": "ddb_stingray4_hdr.ddb body offset 26756"
+   "enum": 704,
+   "candidates": [
+    704
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 26756; enum 704 = libddb_dstr.so debug table index 704 (HSSI_PCIE_HIP), record at body offset 48661"
   },
   {
    "name": "DDIOOUTCELL",
    "offset": 26783,
-   "hdr_int": 30,
-   "source": "ddb_stingray4_hdr.ddb body offset 26783"
+   "enum": 615,
+   "candidates": [
+    615
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26783; enum 615 = libddb_dstr.so debug table index 615 (MP_DDIO_OUT), record at body offset 55667"
   },
   {
    "name": "PLL_ARESET_PIN",
    "offset": 26802,
-   "hdr_int": 174,
-   "source": "ddb_stingray4_hdr.ddb body offset 26802"
+   "enum": 338,
+   "candidates": [
+    338
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26802; enum 338 = libddb_dstr.so debug table index 338 (PLL_ARESET), record at body offset 75432"
   },
   {
    "name": "MAC_BUFFER",
    "offset": 26824,
-   "hdr_int": -158,
-   "source": "ddb_stingray4_hdr.ddb body offset 26824"
+   "enum": 286,
+   "candidates": [
+    286
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26824; enum 286 = libddb_dstr.so debug table index 286 (MAC_BUFFER), record at body offset 58220"
   },
   {
    "name": "IOPAD",
    "offset": 26842,
-   "hdr_int": -130,
-   "source": "ddb_stingray4_hdr.ddb body offset 26842"
+   "enum": 610,
+   "candidates": [
+    610
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26842; enum 610 = libddb_dstr.so debug table index 610 (IO_PAD), record at body offset 33005"
   },
   {
    "name": "LAB_SEC_MUX",
    "offset": 26855,
-   "hdr_int": 258,
-   "source": "ddb_stingray4_hdr.ddb body offset 26855"
+   "enum": 364,
+   "candidates": [
+    364
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26855; enum 364 = libddb_dstr.so debug table index 364 (LAB_SEC_MUX), record at body offset 71496"
   },
   {
    "name": "BLK_CLK_LIM",
    "offset": 26874,
-   "hdr_int": 242,
-   "source": "ddb_stingray4_hdr.ddb body offset 26874"
+   "enum": 665,
+   "candidates": [
+    665
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26874; enum 665 = libddb_dstr.so debug table index 665 (BLK_CLK_LIM), record at body offset 97356"
   },
   {
    "name": "CMU",
    "offset": 26893,
-   "hdr_int": -422,
-   "source": "ddb_stingray4_hdr.ddb body offset 26893"
+   "enum": 595,
+   "candidates": [
+    595
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26893; enum 595 = libddb_dstr.so debug table index 595 (HSSI_CMU), record at body offset 45705"
   },
   {
    "name": "Register cell",
    "offset": 26904,
-   "hdr_int": -74,
-   "source": "ddb_stingray4_hdr.ddb body offset 26904"
+   "enum": 604,
+   "candidates": [
+    604
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 26904; enum 604 = libddb_dstr.so debug table index 604 (FF), record at body offset 31636"
   },
   {
    "name": "TXPCS",
    "offset": 26925,
-   "hdr_int": 94,
-   "source": "ddb_stingray4_hdr.ddb body offset 26925"
+   "enum": 702,
+   "candidates": [
+    702
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 26925; enum 702 = libddb_dstr.so debug table index 702 (HSSI_TX_PCS), record at body offset 48074"
   },
   {
    "name": "IQ_PCSRX_OUT",
    "offset": 26938,
-   "hdr_int": 458,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 26938"
   },
   {
    "name": "MAC_OUT",
    "offset": 26958,
-   "hdr_int": -514,
-   "source": "ddb_stingray4_hdr.ddb body offset 26958"
+   "enum": 288,
+   "candidates": [
+    288
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26958; enum 288 = libddb_dstr.so debug table index 288 (MAC_OUT), record at body offset 38918"
   },
   {
    "name": "IO_CSCLR",
    "offset": 26973,
-   "hdr_int": 202,
-   "source": "ddb_stingray4_hdr.ddb body offset 26973"
+   "enum": 316,
+   "candidates": [
+    316
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26973; enum 316 = libddb_dstr.so debug table index 316 (IO_CSCLR), record at body offset 68574"
   },
   {
    "name": "MP_DDIO_OUT",
    "offset": 26989,
-   "hdr_int": -106,
-   "source": "ddb_stingray4_hdr.ddb body offset 26989"
+   "enum": 615,
+   "candidates": [
+    615
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 26989; enum 615 = libddb_dstr.so debug table index 615 (MP_DDIO_OUT), record at body offset 55667"
   },
   {
    "name": "IQTXRX",
    "offset": 27008,
-   "hdr_int": 418,
-   "source": "ddb_stingray4_hdr.ddb body offset 27008"
+   "enum": 709,
+   "candidates": [
+    709
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27008; enum 709 = libddb_dstr.so debug table index 709 (IQTXRX), record at body offset 101882"
   },
   {
    "name": "WIRE_MUX",
    "offset": 27022,
-   "hdr_int": -370,
-   "source": "ddb_stingray4_hdr.ddb body offset 27022"
+   "enum": 518,
+   "candidates": [
+    518
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27022; enum 518 = libddb_dstr.so debug table index 518 (WIRE_MUX), record at body offset 61768"
   },
   {
    "name": "HSSI_CALIBRATION_BLOCK",
    "offset": 27038,
-   "hdr_int": -94,
-   "source": "ddb_stingray4_hdr.ddb body offset 27038"
+   "enum": 597,
+   "candidates": [
+    597
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27038; enum 597 = libddb_dstr.so debug table index 597 (HSSI_CALIBRATION_BLOCK), record at body offset 45161"
   },
   {
    "name": "LOCAL_INTERCONNECT",
    "offset": 27068,
-   "hdr_int": 78,
-   "source": "ddb_stingray4_hdr.ddb body offset 27068"
+   "enum": 282,
+   "candidates": [
+    282
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27068; enum 282 = libddb_dstr.so debug table index 282 (LAB_LINE), record at body offset 59533"
   },
   {
    "name": "IO_RAW_DATAIN",
    "offset": 27094,
-   "hdr_int": 58,
-   "source": "ddb_stingray4_hdr.ddb body offset 27094"
+   "enum": 308,
+   "candidates": [
+    308
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27094; enum 308 = libddb_dstr.so debug table index 308 (IO_RAWDATAIN), record at body offset 65677"
   },
   {
    "name": "IO_CEIN_PIN",
    "offset": 27115,
-   "hdr_int": 22,
-   "source": "ddb_stingray4_hdr.ddb body offset 27115"
+   "enum": 313,
+   "candidates": [
+    313
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27115; enum 313 = libddb_dstr.so debug table index 313 (IO_CCE_IN), record at body offset 67769"
   },
   {
    "name": "CRC_CLOCK_PIN",
    "offset": 27134,
-   "hdr_int": 250,
-   "source": "ddb_stingray4_hdr.ddb body offset 27134"
+   "enum": 405,
+   "candidates": [
+    405
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27134; enum 405 = libddb_dstr.so debug table index 405 (CRC_CLOCK), record at body offset 94348"
   },
   {
    "name": "IO_CCE_OUT",
    "offset": 27155,
-   "hdr_int": -250,
-   "source": "ddb_stingray4_hdr.ddb body offset 27155"
+   "enum": 312,
+   "candidates": [
+    312
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27155; enum 312 = libddb_dstr.so debug table index 312 (IO_CCE_OUT), record at body offset 67363"
   },
   {
    "name": "Double Data Rate I/O output enable circuitry",
    "offset": 27173,
-   "hdr_int": -90,
-   "source": "ddb_stingray4_hdr.ddb body offset 27173"
+   "enum": 616,
+   "candidates": [
+    616
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 27173; enum 616 = libddb_dstr.so debug table index 616 (MP_DDIO_OE), record at body offset 56723"
   },
   {
    "name": "CLKDLY_CLKIN",
    "offset": 27225,
-   "hdr_int": 246,
-   "source": "ddb_stingray4_hdr.ddb body offset 27225"
+   "enum": 544,
+   "candidates": [
+    544
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27225; enum 544 = libddb_dstr.so debug table index 544 (CLKDLY_CLKIN), record at body offset 83637"
   },
   {
    "name": "CLKDLYCAL_DELAYCTRL",
    "offset": 27245,
-   "hdr_int": 26,
-   "source": "ddb_stingray4_hdr.ddb body offset 27245"
+   "enum": 550,
+   "candidates": [
+    550
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27245; enum 550 = libddb_dstr.so debug table index 550 (CLKDLYCAL_DELAYCTRL), record at body offset 86178"
   },
   {
    "name": "IO_OE_PIN",
    "offset": 27272,
-   "hdr_int": -182,
-   "source": "ddb_stingray4_hdr.ddb body offset 27272"
+   "enum": 310,
+   "candidates": [
+    310
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27272; enum 310 = libddb_dstr.so debug table index 310 (IO_COE), record at body offset 66568"
   },
   {
    "name": "DSP",
    "offset": 27289,
-   "hdr_int": -90,
-   "source": "ddb_stingray4_hdr.ddb body offset 27289"
+   "enum": 265,
+   "candidates": [
+    265
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27289; enum 265 = libddb_dstr.so debug table index 265 (MAC), record at body offset 54795"
   },
   {
    "name": "PLL_ACTIVECLK",
    "offset": 27300,
-   "hdr_int": 238,
-   "source": "ddb_stingray4_hdr.ddb body offset 27300"
+   "enum": 351,
+   "candidates": [
+    351
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27300; enum 351 = libddb_dstr.so debug table index 351 (PLL_ACTIVECLK), record at body offset 81941"
   },
   {
    "name": "IO_DATAOUT",
    "offset": 27321,
-   "hdr_int": -118,
-   "source": "ddb_stingray4_hdr.ddb body offset 27321"
+   "enum": 317,
+   "candidates": [
+    317
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27321; enum 317 = libddb_dstr.so debug table index 317 (IO_DATAOUT), record at body offset 68976"
   },
   {
    "name": "PLL_CLKSWITCH_PIN",
    "offset": 27339,
-   "hdr_int": 58,
-   "source": "ddb_stingray4_hdr.ddb body offset 27339"
+   "enum": 337,
+   "candidates": [
+    337
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27339; enum 337 = libddb_dstr.so debug table index 337 (PLL_CLKSWITCH), record at body offset 75014"
   },
   {
    "name": "RXPMA",
    "offset": 27364,
-   "hdr_int": -210,
-   "source": "ddb_stingray4_hdr.ddb body offset 27364"
+   "enum": 701,
+   "candidates": [
+    701
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27364; enum 701 = libddb_dstr.so debug table index 701 (HSSI_RX_PMA), record at body offset 46253"
   },
   {
    "name": "VREFGROUP",
    "offset": 27377,
-   "hdr_int": 506,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 27377"
   },
   {
    "name": "R24",
    "offset": 27394,
-   "hdr_int": -426,
-   "source": "ddb_stingray4_hdr.ddb body offset 27394"
+   "enum": 273,
+   "candidates": [
+    273
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27394; enum 273 = libddb_dstr.so debug table index 273 (H24), record at body offset 60473"
   },
   {
    "name": "RU_REGOUT_PIN",
    "offset": 27405,
-   "hdr_int": 338,
-   "source": "ddb_stingray4_hdr.ddb body offset 27405"
+   "enum": 416,
+   "candidates": [
+    416
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27405; enum 416 = libddb_dstr.so debug table index 416 (RU_REGOUT), record at body offset 96478"
   },
   {
    "name": "DDIOOUT",
    "offset": 27426,
-   "hdr_int": -474,
-   "source": "ddb_stingray4_hdr.ddb body offset 27426"
+   "enum": 612,
+   "candidates": [
+    612
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27426; enum 612 = libddb_dstr.so debug table index 612 (DDIO_OUT), record at body offset 36063"
   },
   {
    "name": "PLL_TESTDOWNOUT",
    "offset": 27441,
-   "hdr_int": 294,
-   "source": "ddb_stingray4_hdr.ddb body offset 27441"
+   "enum": 348,
+   "candidates": [
+    348
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27441; enum 348 = libddb_dstr.so debug table index 348 (PLL_TESTDOWNOUT), record at body offset 76700"
   },
   {
    "name": "SB_DATA_IN_PIN",
    "offset": 27464,
-   "hdr_int": 58,
-   "source": "ddb_stingray4_hdr.ddb body offset 27464"
+   "enum": 569,
+   "candidates": [
+    569
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27464; enum 569 = libddb_dstr.so debug table index 569 (SB_DATA_IN), record at body offset 82801"
   },
   {
    "name": "JTAG_TMSUTAP_PIN",
    "offset": 27486,
-   "hdr_int": 58,
-   "source": "ddb_stingray4_hdr.ddb body offset 27486"
+   "enum": 367,
+   "candidates": [
+    367
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27486; enum 367 = libddb_dstr.so debug table index 367 (JTAG_TMSUTAP), record at body offset 88752"
   },
   {
    "name": "CLKBUFBLOCK",
    "offset": 27510,
-   "hdr_int": -378,
-   "source": "ddb_stingray4_hdr.ddb body offset 27510"
+   "enum": 519,
+   "candidates": [
+    519
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27510; enum 519 = libddb_dstr.so debug table index 519 (CLKBUFBLOCK), record at body offset 40549"
   },
   {
    "name": "Comb. cell",
    "offset": 27529,
-   "hdr_int": -42,
-   "source": "ddb_stingray4_hdr.ddb body offset 27529"
+   "enum": 516,
+   "candidates": [
+    516
+   ],
+   "via": "field2",
+   "source": "ddb_stingray4_hdr.ddb body offset 27529; enum 516 = libddb_dstr.so debug table index 516 (LE_COMB), record at body offset 30240"
   },
   {
    "name": "HSSI_PCIE_HIP",
    "offset": 27547,
-   "hdr_int": 102,
-   "source": "ddb_stingray4_hdr.ddb body offset 27547"
+   "enum": 704,
+   "candidates": [
+    704
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27547; enum 704 = libddb_dstr.so debug table index 704 (HSSI_PCIE_HIP), record at body offset 48661"
   },
   {
    "name": "DSPMULT",
    "offset": 27568,
-   "hdr_int": -66,
-   "source": "ddb_stingray4_hdr.ddb body offset 27568"
+   "enum": 287,
+   "candidates": [
+    287
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27568; enum 287 = libddb_dstr.so debug table index 287 (MAC_MULT), record at body offset 37996"
   },
   {
    "name": "Clock control block",
    "offset": 27583,
-   "hdr_int": 14,
-   "source": "ddb_stingray4_hdr.ddb body offset 27583"
+   "enum": 519,
+   "candidates": [
+    519
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 27583; enum 519 = libddb_dstr.so debug table index 519 (CLKBUFBLOCK), record at body offset 40549"
   },
   {
    "name": "EDGE",
    "offset": 27610,
-   "hdr_int": 542,
-   "source": "ddb_stingray4_hdr.ddb body offset 27610"
+   "enum": 515,
+   "candidates": [
+    515
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27610; enum 515 = libddb_dstr.so debug table index 515 (EDGE), record at body offset 106747"
   },
   {
    "name": "CONTROLLER_USERMODE",
    "offset": 27622,
-   "hdr_int": -54,
-   "source": "ddb_stingray4_hdr.ddb body offset 27622"
+   "enum": 808,
+   "candidates": [
+    808
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27622; enum 808 = libddb_dstr.so debug table index 808 (CONTROLLER_USERMODE), record at body offset 100111"
   },
   {
    "name": "DEDICATED_BUF",
    "offset": 27649,
-   "hdr_int": -18,
-   "source": "ddb_stingray4_hdr.ddb body offset 27649"
+   "enum": 666,
+   "candidates": [
+    666
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27649; enum 666 = libddb_dstr.so debug table index 666 (DEDICATED_BUF), record at body offset 97797"
   },
   {
    "name": "DSPOUT",
    "offset": 27670,
-   "hdr_int": -470,
-   "source": "ddb_stingray4_hdr.ddb body offset 27670"
+   "enum": 288,
+   "candidates": [
+    288
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27670; enum 288 = libddb_dstr.so debug table index 288 (MAC_OUT), record at body offset 38918"
   },
   {
    "name": "REFCLKINPULSE",
    "offset": 27684,
-   "hdr_int": 538,
-   "source": "ddb_stingray4_hdr.ddb body offset 27684"
+   "enum": 843,
+   "candidates": [
+    843
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27684; enum 843 = libddb_dstr.so debug table index 843 (REFCLKINPULSE), record at body offset 105134"
   },
   {
    "name": "IOBANK",
    "offset": 27705,
-   "hdr_int": 10,
+   "enum": null,
+   "candidates": [],
+   "via": null,
    "source": "ddb_stingray4_hdr.ddb body offset 27705"
   },
   {
    "name": "DSP_CONTROL_INPUT",
    "offset": 27719,
-   "hdr_int": -306,
-   "source": "ddb_stingray4_hdr.ddb body offset 27719"
+   "enum": 380,
+   "candidates": [
+    380
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27719; enum 380 = libddb_dstr.so debug table index 380 (MAC_SEC_INPUT), record at body offset 72388"
   },
   {
    "name": "EC",
    "offset": 27744,
-   "hdr_int": -242,
-   "source": "ddb_stingray4_hdr.ddb body offset 27744"
+   "enum": 25,
+   "candidates": [
+    25
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27744; enum 25 = libddb_dstr.so debug table index 25 (EC), record at body offset 36986"
   },
   {
    "name": "PSEUDODIFFOUT",
    "offset": 27754,
-   "hdr_int": 46,
-   "source": "ddb_stingray4_hdr.ddb body offset 27754"
+   "enum": 685,
+   "candidates": [
+    685
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27754; enum 685 = libddb_dstr.so debug table index 685 (PSEUDO_DIFF_OUT), record at body offset 44179"
   },
   {
    "name": "PLL_ARESET",
    "offset": 27775,
-   "hdr_int": 230,
-   "source": "ddb_stingray4_hdr.ddb body offset 27775"
+   "enum": 338,
+   "candidates": [
+    338
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27775; enum 338 = libddb_dstr.so debug table index 338 (PLL_ARESET), record at body offset 75432"
   },
   {
    "name": "CLKBUF_ENABLE",
    "offset": 27793,
-   "hdr_int": -50,
-   "source": "ddb_stingray4_hdr.ddb body offset 27793"
+   "enum": 520,
+   "candidates": [
+    520
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27793; enum 520 = libddb_dstr.so debug table index 520 (CLKBUF_ENABLE), record at body offset 69793"
   },
   {
    "name": "HSSI_QUAD",
    "offset": 27814,
-   "hdr_int": -142,
-   "source": "ddb_stingray4_hdr.ddb body offset 27814"
+   "enum": 403,
+   "candidates": [
+    403
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27814; enum 403 = libddb_dstr.so debug table index 403 (HSSI_QUAD), record at body offset 49183"
   },
   {
    "name": "PLL",
    "offset": 27831,
-   "hdr_int": -62,
-   "source": "ddb_stingray4_hdr.ddb body offset 27831"
+   "enum": 50,
+   "candidates": [
+    50
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27831; enum 50 = libddb_dstr.so debug table index 50 (PLL), record at body offset 39789"
   },
   {
    "name": "JTAG_TMSUTAP",
    "offset": 27842,
-   "hdr_int": 386,
-   "source": "ddb_stingray4_hdr.ddb body offset 27842"
+   "enum": 367,
+   "candidates": [
+    367
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27842; enum 367 = libddb_dstr.so debug table index 367 (JTAG_TMSUTAP), record at body offset 88752"
   },
   {
    "name": "PLL_LOCKED_PIN",
    "offset": 27862,
-   "hdr_int": -106,
-   "source": "ddb_stingray4_hdr.ddb body offset 27862"
+   "enum": 353,
+   "candidates": [
+    353
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27862; enum 353 = libddb_dstr.so debug table index 353 (PLL_LOCKED), record at body offset 77120"
   },
   {
    "name": "LCCOMB",
    "offset": 27884,
-   "hdr_int": -314,
-   "source": "ddb_stingray4_hdr.ddb body offset 27884"
+   "enum": 516,
+   "candidates": [
+    516
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27884; enum 516 = libddb_dstr.so debug table index 516 (LE_COMB), record at body offset 30240"
   },
   {
    "name": "H24",
    "offset": 27898,
-   "hdr_int": 162,
-   "source": "ddb_stingray4_hdr.ddb body offset 27898"
+   "enum": 273,
+   "candidates": [
+    273
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27898; enum 273 = libddb_dstr.so debug table index 273 (H24), record at body offset 60473"
   },
   {
    "name": "PLL_PFD_ENA",
    "offset": 27909,
-   "hdr_int": 162,
-   "source": "ddb_stingray4_hdr.ddb body offset 27909"
+   "enum": 355,
+   "candidates": [
+    355
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27909; enum 355 = libddb_dstr.so debug table index 355 (PLL_PFD_ENA), record at body offset 77561"
   },
   {
    "name": "IO_RAWDATAOUT",
    "offset": 27928,
-   "hdr_int": -106,
-   "source": "ddb_stingray4_hdr.ddb body offset 27928"
+   "enum": 309,
+   "candidates": [
+    309
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27928; enum 309 = libddb_dstr.so debug table index 309 (IO_RAWDATAOUT), record at body offset 66121"
   },
   {
    "name": "CLKCTRL",
    "offset": 27949,
-   "hdr_int": -166,
-   "source": "ddb_stingray4_hdr.ddb body offset 27949"
+   "enum": 519,
+   "candidates": [
+    519
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27949; enum 519 = libddb_dstr.so debug table index 519 (CLKBUFBLOCK), record at body offset 40549"
   },
   {
    "name": "PLL_FBOUT",
    "offset": 27964,
-   "hdr_int": 310,
-   "source": "ddb_stingray4_hdr.ddb body offset 27964"
+   "enum": 359,
+   "candidates": [
+    359
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27964; enum 359 = libddb_dstr.so debug table index 359 (PLL_FBOUT), record at body offset 81066"
   },
   {
    "name": "IOC",
    "offset": 27981,
-   "hdr_int": -234,
-   "source": "ddb_stingray4_hdr.ddb body offset 27981"
+   "enum": 163,
+   "candidates": [
+    163
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 27981; enum 163 = libddb_dstr.so debug table index 163 (IO), record at body offset 51489"
   },
   {
    "name": "CLKDLYCAL_DATACLKIN",
    "offset": 27992,
-   "hdr_int": 282,
-   "source": "ddb_stingray4_hdr.ddb body offset 27992"
+   "enum": 549,
+   "candidates": [
+    549
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 27992; enum 549 = libddb_dstr.so debug table index 549 (CLKDLYCAL_DATACLKIN), record at body offset 85745"
   },
   {
    "name": "JTAG_UPDATEUSER_PIN",
    "offset": 28019,
-   "hdr_int": 50,
-   "source": "ddb_stingray4_hdr.ddb body offset 28019"
+   "enum": 372,
+   "candidates": [
+    372
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28019; enum 372 = libddb_dstr.so debug table index 372 (JTAG_UPDATEUSER), record at body offset 90979"
   },
   {
    "name": "LAB_CLK",
    "offset": 28046,
-   "hdr_int": -254,
-   "source": "ddb_stingray4_hdr.ddb body offset 28046"
+   "enum": 300,
+   "candidates": [
+    300
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28046; enum 300 = libddb_dstr.so debug table index 300 (LAB_CLK), record at body offset 63552"
   },
   {
    "name": "JTAG_SHIFTUSER",
    "offset": 28061,
-   "hdr_int": 250,
-   "source": "ddb_stingray4_hdr.ddb body offset 28061"
+   "enum": 370,
+   "candidates": [
+    370
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28061; enum 370 = libddb_dstr.so debug table index 370 (JTAG_SHIFTUSER), record at body offset 90081"
   },
   {
    "name": "Calibration block",
    "offset": 28083,
-   "hdr_int": -358,
-   "source": "ddb_stingray4_hdr.ddb body offset 28083"
+   "enum": 597,
+   "candidates": [
+    597
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 28083; enum 597 = libddb_dstr.so debug table index 597 (HSSI_CALIBRATION_BLOCK), record at body offset 45161"
   },
   {
    "name": "JTAG_TCKUTAP_PIN",
    "offset": 28108,
-   "hdr_int": 354,
-   "source": "ddb_stingray4_hdr.ddb body offset 28108"
+   "enum": 368,
+   "candidates": [
+    368
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28108; enum 368 = libddb_dstr.so debug table index 368 (JTAG_TCKUTAP), record at body offset 89195"
   },
   {
    "name": "IO_COE",
    "offset": 28132,
-   "hdr_int": -210,
-   "source": "ddb_stingray4_hdr.ddb body offset 28132"
+   "enum": 310,
+   "candidates": [
+    310
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28132; enum 310 = libddb_dstr.so debug table index 310 (IO_COE), record at body offset 66568"
   },
   {
    "name": "PLL_CLKBAD",
    "offset": 28146,
-   "hdr_int": 142,
-   "source": "ddb_stingray4_hdr.ddb body offset 28146"
+   "enum": 350,
+   "candidates": [
+    350
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28146; enum 350 = libddb_dstr.so debug table index 350 (PLL_CLKBAD), record at body offset 81500"
   },
   {
    "name": "FASTREFCLKIN",
    "offset": 28164,
-   "hdr_int": 214,
-   "source": "ddb_stingray4_hdr.ddb body offset 28164"
+   "enum": 842,
+   "candidates": [
+    842
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28164; enum 842 = libddb_dstr.so debug table index 842 (FASTREFCLKIN), record at body offset 104690"
   },
   {
    "name": "MAC_SEC_INPUT",
    "offset": 28184,
-   "hdr_int": -294,
-   "source": "ddb_stingray4_hdr.ddb body offset 28184"
+   "enum": 380,
+   "candidates": [
+    380
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28184; enum 380 = libddb_dstr.so debug table index 380 (MAC_SEC_INPUT), record at body offset 72388"
   },
   {
    "name": "DSP block",
    "offset": 28205,
-   "hdr_int": -146,
-   "source": "ddb_stingray4_hdr.ddb body offset 28205"
+   "enum": 265,
+   "candidates": [
+    265
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 28205; enum 265 = libddb_dstr.so debug table index 265 (MAC), record at body offset 54795"
   },
   {
    "name": "PLL_CLKIN",
    "offset": 28222,
-   "hdr_int": 166,
-   "source": "ddb_stingray4_hdr.ddb body offset 28222"
+   "enum": 335,
+   "candidates": [
+    335
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28222; enum 335 = libddb_dstr.so debug table index 335 (PLL_CLKIN), record at body offset 74176"
   },
   {
    "name": "IO_FEEDBACK_OUT",
    "offset": 28239,
-   "hdr_int": -42,
-   "source": "ddb_stingray4_hdr.ddb body offset 28239"
+   "enum": 318,
+   "candidates": [
+    318
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28239; enum 318 = libddb_dstr.so debug table index 318 (IO_FEEDBACK_OUT), record at body offset 69381"
   },
   {
    "name": "SPI_SDOIN",
    "offset": 28262,
-   "hdr_int": 222,
-   "source": "ddb_stingray4_hdr.ddb body offset 28262"
+   "enum": 477,
+   "candidates": [
+    477
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28262; enum 477 = libddb_dstr.so debug table index 477 (SPI_SDOIN), record at body offset 93140"
   },
   {
    "name": "SPI_SCEIN",
    "offset": 28279,
-   "hdr_int": -2,
-   "source": "ddb_stingray4_hdr.ddb body offset 28279"
+   "enum": 476,
+   "candidates": [
+    476
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28279; enum 476 = libddb_dstr.so debug table index 476 (SPI_SCEIN), record at body offset 92738"
   },
   {
    "name": "JTAG_TDOUSER_PIN",
    "offset": 28296,
-   "hdr_int": -38,
-   "source": "ddb_stingray4_hdr.ddb body offset 28296"
+   "enum": 366,
+   "candidates": [
+    366
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28296; enum 366 = libddb_dstr.so debug table index 366 (JTAG_TDOUSER), record at body offset 88341"
   },
   {
    "name": "IO_RAW_DATAOUT",
    "offset": 28320,
-   "hdr_int": -206,
-   "source": "ddb_stingray4_hdr.ddb body offset 28320"
+   "enum": 309,
+   "candidates": [
+    309
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28320; enum 309 = libddb_dstr.so debug table index 309 (IO_RAWDATAOUT), record at body offset 66121"
   },
   {
    "name": "Impedance control block",
    "offset": 28342,
-   "hdr_int": -150,
-   "source": "ddb_stingray4_hdr.ddb body offset 28342"
+   "enum": 556,
+   "candidates": [
+    556
+   ],
+   "via": "field1",
+   "source": "ddb_stingray4_hdr.ddb body offset 28342; enum 556 = libddb_dstr.so debug table index 556 (TERMINATION), record at body offset 42655"
   },
   {
    "name": "SB_DATA_IN",
    "offset": 28373,
-   "hdr_int": 310,
-   "source": "ddb_stingray4_hdr.ddb body offset 28373"
+   "enum": 569,
+   "candidates": [
+    569
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28373; enum 569 = libddb_dstr.so debug table index 569 (SB_DATA_IN), record at body offset 82801"
   },
   {
    "name": "REFCLKIN",
    "offset": 28391,
-   "hdr_int": 198,
-   "source": "ddb_stingray4_hdr.ddb body offset 28391"
+   "enum": 841,
+   "candidates": [
+    841
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28391; enum 841 = libddb_dstr.so debug table index 841 (REFCLKIN), record at body offset 104258"
   },
   {
    "name": "PLLREFCLKMUX",
    "offset": 28407,
-   "hdr_int": 14,
-   "source": "ddb_stingray4_hdr.ddb body offset 28407"
+   "enum": 1003,
+   "candidates": [
+    1003
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28407; enum 1003 = libddb_dstr.so debug table index 1003 (PLLREFCLKMUX), record at body offset 105581"
   },
   {
    "name": "DSP_BUFFER",
    "offset": 28427,
-   "hdr_int": -434,
-   "source": "ddb_stingray4_hdr.ddb body offset 28427"
+   "enum": 286,
+   "candidates": [
+    286
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28427; enum 286 = libddb_dstr.so debug table index 286 (MAC_BUFFER), record at body offset 58220"
   },
   {
    "name": "PLL_VCOOVERRANGE",
    "offset": 28445,
-   "hdr_int": 206,
-   "source": "ddb_stingray4_hdr.ddb body offset 28445"
+   "enum": 357,
+   "candidates": [
+    357
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28445; enum 357 = libddb_dstr.so debug table index 357 (PLL_VCOOVERRANGE), record at body offset 80153"
   },
   {
    "name": "VREF_GROUP",
    "offset": 28469,
-   "hdr_int": 246,
+   "enum": 529,
+   "candidates": [
+    529
+   ],
+   "via": "debug",
    "source": "ddb_stingray4_hdr.ddb body offset 28469"
   },
   {
    "name": "PCIEHIP",
    "offset": 28487,
-   "hdr_int": -486,
-   "source": "ddb_stingray4_hdr.ddb body offset 28487"
+   "enum": 704,
+   "candidates": [
+    704
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28487; enum 704 = libddb_dstr.so debug table index 704 (HSSI_PCIE_HIP), record at body offset 48661"
   },
   {
    "name": "JTAG_RUNIDLEUSER_PIN",
    "offset": 28502,
-   "hdr_int": 350,
-   "source": "ddb_stingray4_hdr.ddb body offset 28502"
+   "enum": 373,
+   "candidates": [
+    373
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28502; enum 373 = libddb_dstr.so debug table index 373 (JTAG_RUNIDLEUSER), record at body offset 91431"
   },
   {
    "name": "C4",
    "offset": 28530,
-   "hdr_int": -282,
-   "source": "ddb_stingray4_hdr.ddb body offset 28530"
+   "enum": 275,
+   "candidates": [
+    275
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28530; enum 275 = libddb_dstr.so debug table index 275 (V4), record at body offset 60906"
   },
   {
    "name": "ASMI_DCLKIN",
    "offset": 28540,
-   "hdr_int": 294,
-   "source": "ddb_stingray4_hdr.ddb body offset 28540"
+   "enum": 478,
+   "candidates": [
+    478
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28540; enum 478 = libddb_dstr.so debug table index 478 (SPI_DCLKIN), record at body offset 92332"
   },
   {
    "name": "JTAG_TDOUTAP",
    "offset": 28559,
-   "hdr_int": -38,
-   "source": "ddb_stingray4_hdr.ddb body offset 28559"
+   "enum": 365,
+   "candidates": [
+    365
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28559; enum 365 = libddb_dstr.so debug table index 365 (JTAG_TDOUTAP), record at body offset 87910"
   },
   {
    "name": "LAB_CONTROL_MUX",
    "offset": 28579,
-   "hdr_int": -150,
-   "source": "ddb_stingray4_hdr.ddb body offset 28579"
+   "enum": 364,
+   "candidates": [
+    364
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28579; enum 364 = libddb_dstr.so debug table index 364 (LAB_SEC_MUX), record at body offset 71496"
   },
   {
    "name": "PLL_SCANCLK_PIN",
    "offset": 28602,
-   "hdr_int": 66,
-   "source": "ddb_stingray4_hdr.ddb body offset 28602"
+   "enum": 340,
+   "candidates": [
+    340
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28602; enum 340 = libddb_dstr.so debug table index 340 (PLL_SCANCLK), record at body offset 78396"
   },
   {
    "name": "SB_DATA_OUT_PIN",
    "offset": 28625,
-   "hdr_int": 38,
-   "source": "ddb_stingray4_hdr.ddb body offset 28625"
+   "enum": 570,
+   "candidates": [
+    570
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28625; enum 570 = libddb_dstr.so debug table index 570 (SB_DATA_OUT), record at body offset 82393"
   },
   {
    "name": "JTAG_USR1USER",
    "offset": 28648,
-   "hdr_int": 90,
-   "source": "ddb_stingray4_hdr.ddb body offset 28648"
+   "enum": 374,
+   "candidates": [
+    374
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28648; enum 374 = libddb_dstr.so debug table index 374 (JTAG_USR1USER), record at body offset 91886"
   },
   {
    "name": "MEDIUM_EAB",
    "offset": 28669,
-   "hdr_int": -330,
-   "source": "ddb_stingray4_hdr.ddb body offset 28669"
+   "enum": 263,
+   "candidates": [
+    263
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28669; enum 263 = libddb_dstr.so debug table index 263 (MEDIUM_EAB), record at body offset 52636"
   },
   {
    "name": "LOCAL_LINE",
    "offset": 28687,
-   "hdr_int": 30,
-   "source": "ddb_stingray4_hdr.ddb body offset 28687"
+   "enum": 43,
+   "candidates": [
+    43
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28687; enum 43 = libddb_dstr.so debug table index 43 (LOCAL), record at body offset 59090"
   },
   {
    "name": "CLKDLYCAL_CALDATA",
    "offset": 28705,
-   "hdr_int": 258,
-   "source": "ddb_stingray4_hdr.ddb body offset 28705"
+   "enum": 551,
+   "candidates": [
+    551
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28705; enum 551 = libddb_dstr.so debug table index 551 (CLKDLYCAL_CALDATA), record at body offset 86611"
   },
   {
    "name": "LEIM",
    "offset": 28730,
-   "hdr_int": -30,
-   "source": "ddb_stingray4_hdr.ddb body offset 28730"
+   "enum": 540,
+   "candidates": [
+    540
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28730; enum 540 = libddb_dstr.so debug table index 540 (LEIM), record at body offset 83206"
   },
   {
    "name": "ASMI_SCEIN",
    "offset": 28742,
-   "hdr_int": 90,
-   "source": "ddb_stingray4_hdr.ddb body offset 28742"
+   "enum": 476,
+   "candidates": [
+    476
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28742; enum 476 = libddb_dstr.so debug table index 476 (SPI_SCEIN), record at body offset 92738"
   },
   {
    "name": "PLL_VCOUNDERRANGE",
    "offset": 28760,
-   "hdr_int": -110,
-   "source": "ddb_stingray4_hdr.ddb body offset 28760"
+   "enum": 358,
+   "candidates": [
+    358
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28760; enum 358 = libddb_dstr.so debug table index 358 (PLL_VCOUNDERRANGE), record at body offset 80608"
   },
   {
    "name": "RXPCS",
    "offset": 28785,
-   "hdr_int": -258,
-   "source": "ddb_stingray4_hdr.ddb body offset 28785"
+   "enum": 700,
+   "candidates": [
+    700
+   ],
+   "via": "rcf_name",
+   "source": "ddb_stingray4_hdr.ddb body offset 28785; enum 700 = libddb_dstr.so debug table index 700 (HSSI_RX_PCS), record at body offset 46870"
   },
   {
    "name": "OSCILLATOR",
    "offset": 28798,
-   "hdr_int": -22,
-   "source": "ddb_stingray4_hdr.ddb body offset 28798"
+   "enum": 648,
+   "candidates": [
+    648
+   ],
+   "via": "field0",
+   "source": "ddb_stingray4_hdr.ddb body offset 28798; enum 648 = libddb_dstr.so debug table index 648 (OSCILLATOR), record at body offset 43179"
   }
  ]
 }

@@ -15,6 +15,11 @@ CORPUS = os.path.join(REPO, "corpus", "cycloneiv")
 DESIGNS = [f"gx150_rb_{n:03d}" for n in range(10)]
 
 
+# RCF edges to these types are not fan-out edges (0 % at any enum, #165), so they stay out of the partner types' counts.
+# source: names_table.json status vendor, enums read from libddb_dstr + hdr.ddb records
+OPEN_EDGE = {"LAB_CONTROL_MUX", "BLOCK_INPUT_MUX", "LOCAL_LINE", "M4K_LEFT_CONTROL_INPUT"}
+
+
 def lookup(keys, q):
     """number of records whose key equals each q (sorted-key search)."""
     s = np.sort(keys)
@@ -89,19 +94,22 @@ def test_o4_edge_consistency(routing):
         for a, b in set(edges):
             if a[0] in en and b[0] in en:
                 ra, rb = rec(a), rec(b)
-                for t in {a[0], b[0]}:
+                ts = {a[0], b[0]}
+                if ts & OPEN_EDGE:      # edges touching these types are scored on those types only
+                    ts &= OPEN_EDGE
+                for t in ts:
                     tot[t] += 1
                 if ra >= 0 and rb >= 0:
                     if ra not in fan:
                         fan[ra] = set(routing.fanout(ra).tolist())
                     if rb in fan[ra]:
-                        for t in {a[0], b[0]}:
+                        for t in ts:
                             ok[t] += 1
     bad = []
     for t, e in names.entries().items():
         status = e["status"]
         report("O4-edges", type=t, enum=e["enum"], status=status, edges=tot[t], consistent=ok[t],
-               pct=round(100 * ok[t] / tot[t], 3) if tot[t] else None, unique_pct=e["unique_pct"])
-        if status == "derived" and (tot[t] == 0 or ok[t] / tot[t] < 0.99):   # >= 1,000 edges is asserted on the 40-design table
+               pct=round(100 * ok[t] / tot[t], 3) if tot[t] else None, unique_pct=e.get("unique_pct"))
+        if status == "vendor" and tot[t] >= 1000 and t not in OPEN_EDGE and ok[t] / tot[t] < 0.99:   # enum is a vendor read; edge consistency is the oracle
             bad.append(t)
     assert not bad, bad

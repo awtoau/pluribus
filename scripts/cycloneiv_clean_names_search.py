@@ -5,7 +5,7 @@ Prediction: every RCF type resolves to one enum E with >= 99 % of its names uniq
 and >= 99 % of its parent -> child tree edges inside the parent's ddb fan-out; runner-up enum < 50 %.
 Refutation: any type with < 99 % at the best enum, or a runner-up within 5 points, is reported as not derived.
 Inputs: corpus routing.rcf files (our own build outputs) and tmp/ddb/stingray4_rt_fanout.npz.  No seed table.
-Output: tmp/logs/cycloneiv_clean_names_search.json (consumed by cycloneiv_clean_names_table.py).
+Output: tmp/logs/cycloneiv_clean_names_search.json (comparison oracle only for cycloneiv_clean_names_vendor.py).
 """
 import collections
 import json
