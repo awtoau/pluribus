@@ -329,7 +329,9 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
 
     # LAB-side classes
     ev_lut = ids(ev.c.name == "LUT INIT oracle compare (301 designs)")
-    class_claim("1a", "pattern-predicted", "lut-anchor-v1", [("direct", ev_lut)], "LUT mask vs post-fit netlist, 301 designs")
+    clean = clean_evidence(conn)
+    class_claim("1a", "pattern-predicted", "lut-anchor-v1", [("direct", ev_lut)] + clean["1a"],
+                "LUT mask vs post-fit netlist, 301 designs; clean asmdb LE_LUT_FUNCTION: 1,023 specimen sites + gate lut_init")
     # LAB blkrba (vendor ddb): local-only inputs written by cycloneiv_blkrba_lab.py (#165); absent -> class stays unknown
     b1 = REPO / "vendor-analysis/altera/inventory/s1b/test1.json"
     if b1.exists():
@@ -429,9 +431,82 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
                                generator="scripts/cycloneiv_ever_set.py", n_objects=es["n_designs"], kind="audit")
         class_claim("5b", "measured", None, [("direct", [e_crc])], "CRC-16 per CRAM frame")
         class_claim("5d", "measured", None, [("direct", [e_pp])], "constant 0xFF pre/postamble")
+    register_clean_classes(R, conn, class_claim, clean)
     for cid in classes:
         if cid in ("4a", "4b", "4c", "4d", "4e", "5c", "6"):
             class_claim(cid, "unknown", None, [], "no attribution")
+
+
+def clean_evidence(conn):
+    """Evidence rows of the clean decoders (scripts/cycloneiv_clean_evidence.py) -> {class: [(role, [ids])]}.
+    An oracle row promotes (role confirm) only when it has no missing / extra / wrong; a row with faults is linked as parent: the
+    class stays decoded and the fault counts stay on the row (pip / net / register-clock oracles score the whole decoder, not one bit)."""
+    ev = S.evidence
+    rows = conn.execute(select(ev.c.id, ev.c.kind, ev.c.name, ev.c.result).where(and_(
+        ev.c.family == "cycloneiv", ev.c.kind.in_(("oracle-compare", "audit", "vendor-decode"))))).fetchall()
+    by = lambda pred: [r for r in rows if pred(r)]   # noqa: E731
+
+    def role(r):
+        d = r.result
+        return "confirm" if d.get("matched", 0) > 0 and not (d.get("missing") or d.get("extra") or d.get("wrong")) else "parent"
+
+    def links(rs):
+        out = {}
+        for r in rs:
+            out.setdefault(role(r) if r.kind == "oracle-compare" else "parent", []).append(r.id)
+        return list(out.items())
+
+    gate = lambda cat: by(lambda r: r.kind == "oracle-compare" and re.match(rf"clean gate run \d+ {cat}$", r.name))   # noqa: E731
+    # latest run only (names carry the run id)
+    def latest(rs):
+        if not rs:
+            return []
+        top = max(r.result["run_id"] for r in rs)
+        return [r for r in rs if r.result["run_id"] == top]
+    lab = by(lambda r: r.name.startswith("fields pair lab "))
+    m9k = by(lambda r: r.name.startswith("fields pair m9k ") and r.result.get("unique"))
+    return {
+        "1a": links(latest(gate("lut_init")) + by(lambda r: r.name.startswith("LUT INIT specimens: 1,023"))),
+        "8a": links(latest(gate("register_clock")) + [r for r in lab if r.result.get("ctl") == "clkKB"]),
+        "8b": links(latest(gate("register_clock")) + by(lambda r: r.name.startswith("register-used pair specimens"))),
+        "8c": links(latest(gate("register_clock")) + latest(gate("pips"))),
+        "8d": links(lab),
+        "8e": links(m9k),
+        "8f": [],
+        "8g": links(latest(gate("pips")) + latest(gate("nets"))),
+        "9a": [("direct", [r.id for r in by(lambda r: r.name.startswith("io pair "))])],
+        "9b": [("confirm", [r.id for r in by(lambda r: r.name.startswith("io pair ") and r.result["meta"].get("site"))])],
+        "9c": [],
+        "_ring": next((r.result for r in rows if r.name.startswith("io ring:")), None),
+    }
+
+
+def register_clean_classes(R, conn, class_claim, clean):
+    """Class claims 8a-8g, 9a-9c.  Source = vendor group ids (asmdb walk / asm.ddb / CFF table); tier = tiering.class_verdict over the links."""
+    desc = {
+        "8a": "LAB clock select: LAB_CLOCK_FAST_MUX + LE_CLOCK_SELECT group bits (asmdb)",
+        "8b": "register-used: LE_REG_OUT_YGR + LE_USE_SYNC_CLEAR/LOAD group bits (asmdb)",
+        "8c": "clock-network routing: asm.ddb entries of records of CLKBUF_OUT/GLOBAL_CLK_H/V/SCLK_TO_ROWCLK_BUF/LAB_CLK/BLK_CLK_BUF",
+        "8d": "other LAB group bits (asmdb); control pairs at one LAB (X10Y10) touch them, not isolated per bit",
+        "8e": "MEAB (M9K) group bits (asmdb), RAM content cells already attributed to 4f/4g excluded by claim order",
+        "8f": "MAC group bits (asmdb); no MAC specimen in the corpus",
+        "8g": "asm.ddb routing group bits not in 8c, plus the asmdb default-bit list (CRAM)",
+        "9c": "IO block CFF group bits (asmdb) with no pair-confirmed label: direction PIN_MODE, termination, PCI clamp, strengths not toggled",
+    }
+    for cid in ("8a", "8b", "8c", "8d", "8e", "8f", "8g", "9c"):
+        class_claim(cid, "vendor-decoded", None, clean[cid], desc[cid])
+    class_claim("9a", "measured", None, clean["9a"],
+                "CFF bits a pair build toggled inside the asmdb group of slew/pull-up/bus-hold/drive/standard at 20 IO sites, + 3 open-drain flags")
+    ring = clean["_ring"]
+    if ring is None:
+        return
+    R.matcher("asmdb-io-site-v1", "deterministic", "IO site field bits = asmdb group bits of the site (anchor + fixed offsets)", 1,
+              "lifters/cycloneiv_clean/io_decode.py:Chain")
+    pid = R.pattern("asmdb-io-site-v1", "bit", "CFF bits of the five pair-labelled IO fields at an IO site = the site's asmdb group bits",
+                    {"dims": 1, "axes": {"x": [0, ring["sites"] - 1]}, "min_rows_per_group": 2, "ring": "sites ordered by SET_SLEW_RATE anchor"},
+                    matcher_id="asmdb-io-site-v1", status="open")
+    class_claim("9b", "pattern-predicted", pid, clean["9b"],
+                "the same five fields at the IO sites no pair build covered; rule = asmdb group bits per site, checked at the pair sites")
 
 
 def register_cycloneiv(conn, device, commit):

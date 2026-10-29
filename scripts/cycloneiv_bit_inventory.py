@@ -3,11 +3,13 @@
 
 Every cell of the (frame, v) plane (+ header frame) is attributed to ONE class, first match wins:
   1 cell config (LUT INIT / LE bits)   3 raw-diff specimen bits
+  8 vendor asmdb / asm.ddb group bits (clean address engine, #165 / #169)   9 IO CFF / CRAM group bits
   4 hard-IP / IO regions by geometry   5 stream overhead   6 unclassified
-Class 2 (asm.ddb routing attribution, 2a/2b) is removed: it rode on the retired coordinate model (#165);
-its cells fall to the next matching class. Routing returns with the clean address engine (P1).
+Class 2 (asm.ddb routing attribution via the coordinate model, 2a/2b) is retired (#165). Classes 1a and 8-9 come from
+scripts/cycloneiv_clean_classes.py (vendor group bits, no fitted constant); their tiers are COMPUTED by provenance/tiering.py from the
+evidence rows linked in scripts/claims_register.py.
 Reports die-wide TOTAL bits per class (A) and the SET bits of an image per class (B).
-No new decoder: geometry and the specimen tables are used as they are.
+The image path comes from --image or the PLURIBUS_DJI_IMAGE environment variable (never written into a tracked file).
 
   python3.15t scripts/cycloneiv_bit_inventory.py --image <path.bin|.rbf> --record
 --record appends one line to docs/coverage-history.jsonl (the coverage-over-time ledger); use it every run.
@@ -17,6 +19,7 @@ import argparse
 import collections
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -52,7 +55,7 @@ COL_LO = 19          # column band starts at FX-19 (specimen bits reach FX-19); 
 ROW_PHASE0 = 68      # tile row band of y = [VY-68, VY+1] (70 v): approximate binning, see doc
 
 CLASSES = [  # id, name, evidence tier
-    ("1a", "LUT INIT (16 bits x 16 LE x 9360 LAB)", "verified"),
+    ("1a", "LUT INIT (asmdb LE_LUT_FUNCTION: 16 bits x 16 LE x 9360 LAB)", "verified"),
     ("1b", "LE-used bit", "partial"),
     ("1c", "LAB clock-polarity bit", "partial"),
     ("1d-a", "LAB blkrba named REG/OUT/IN bits (vendor name only; table in vendor-analysis, not committed)", "decoded"),
@@ -61,11 +64,21 @@ CLASSES = [  # id, name, evidence tier
     ("1d-d", "LAB blkrba other control names at constant 22 (position only)", "decoded"),
     ("3", "LOCAL_LINE specimen bits at the 4 specimen LABs (measured)", "specimen"),
     ("3t", "LOCAL_LINE specimen bits translated to all other LABs", "predicted"),
+    ("9a", "IO CFF bits a pair build toggled inside the field's asmdb group (pair-confirmed)", "measured"),
+    ("9b", "IO CFF slew/pull-up/bus-hold/drive/standard group bits at the sites no pair covered", "predicted"),
+    ("9c", "IO CFF group bits with no pair-confirmed label (direction, termination, ...)", "decoded"),
     ("4a", "periphery frames 1..36 (IO ring, clocks, PLL, misc)", "unknown"),
     ("4f", "M9K data cells at sites with an exact offset check", "verified"),
     ("4g", "M9K data cells at the other sites (per-site offset rule)", "sampled"),
     ("4h", "M9K control cells (knob pairs) at the sites where measured", "measured"),
     ("4i", "M9K control cells at the other sites (offset rule)", "predicted"),
+    ("8a", "LAB clock select groups (LAB_CLOCK_FAST_MUX, LE_CLOCK_SELECT)", "decoded"),
+    ("8b", "register-used groups (LE_REG_OUT_YGR, LE_USE_SYNC_CLEAR/LOAD)", "decoded"),
+    ("8c", "clock-network routing bits (asm.ddb records of the clock element types)", "decoded"),
+    ("8d", "other LAB group bits (asmdb)", "decoded"),
+    ("8e", "MEAB (M9K) group bits (asmdb)", "decoded"),
+    ("8f", "MAC group bits (asmdb)", "decoded"),
+    ("8g", "asm.ddb routing group bits (rest) + asmdb default-bit list", "decoded"),
     ("4b", "M9K columns (8): cells outside the data tables and the control cells found", "unknown"),
     ("4c", "multiplier columns (4)", "unknown"),
     ("4d", "IOL / IOR columns (+ 4 frames before col 0)", "unknown"),
@@ -223,7 +236,17 @@ def load_verdicts():
 
 
 BASIS = {  # class -> (what backs it, sample n / misses)
-    "1a": ("LUT mask vs Quartus post-fit netlist (oracle compare)", "301 designs, 5,354,496 bits / 0 miss"),
+    "1a": ("asmdb LE_LUT_FUNCTION bits vs Quartus post-fit lut_mask (oracle compare); 1,023 LE sites over all 104 columns x 90 rows; gate lut_init", "16,368 cells + 301 designs / 0 miss, 0 extra, 0 wrong"),
+    "8a": ("vendor asmdb groups; gate register_clock scores the clock path (misses/extras on the row), not the bit", "decoded: no per-bit oracle"),
+    "8b": ("vendor asmdb groups; register-used pair specimens at 5 LABs; gate register_clock", "decoded: pairs not isolated per bit"),
+    "8c": ("asm.ddb entries of clock-element records; gate register_clock + pips score the whole decoder", "decoded: no per-group oracle"),
+    "8d": ("vendor asmdb LAB groups; 40 control pair diffs at X10Y10 touch them, not isolated per bit", "decoded: 1 LAB"),
+    "8e": ("vendor asmdb MEAB groups; 64 unique-instance pair diffs at 3 M9K sites", "decoded: pairs not isolated per bit"),
+    "8f": ("vendor asmdb MAC groups; no MAC specimen in the corpus", "none"),
+    "8g": ("asm.ddb group bits + default-bit list; gate pips/nets are per-edge totals, no per-group attribution", "decoded: gate faults on the row"),
+    "9a": ("CFF bits toggled by a pair build inside the asmdb group of the field (20 sites) + 3 open-drain flags", "103 pair rows / 0 wrong"),
+    "9b": ("same five fields at the other IO sites by the asmdb site rule; pair-checked at 20 of 456 sites, ring end rank 0 not among them", "20 scopes, below the bar (extremes)"),
+    "9c": ("vendor asmdb IO groups with no pair-confirmed label", "none"),
     "1b": ("pattern-predicted rule from LE positions; 14 misses on one design, claim status suspect", "1,018 LEs / 14 miss"),
     "1c": ("statistical fit over clock lines + one isolated cell (pattern-predicted, open)", "5,442 lines / fit Jaccard 0.85"),
     "1d-c": ("blkrba control cells at constant 22, prediction-first at held-out LABs (claims_register 1d-c)", "5 scopes incl. corners"),
@@ -289,9 +312,11 @@ def record(out, hdr_ver, hdr_known, hdr_unk, commit=None, ts=None, source="live"
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--image", required=True)
+    ap.add_argument("--image", default=os.environ.get("PLURIBUS_DJI_IMAGE"), help="rbf/bin image (default: $PLURIBUS_DJI_IMAGE)")
     ap.add_argument("--record", action="store_true", help="append one line to docs/coverage-history.jsonl (run after every checklist item)")
     a = ap.parse_args()
+    if not a.image:
+        raise SystemExit("no image: pass --image or set PLURIBUS_DJI_IMAGE")
     (REPO / "tmp/logs").mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler(REPO / "tmp/logs/cycloneiv_bit_inventory.log", "w")])
@@ -326,7 +351,13 @@ def run(a):
     # ---- 1: cell config -------------------------------------------------------------------
     f0, v0, sg = le_grid(g, tiles)
     lut = np.concatenate([((f0 + df) * NV + v0 + sg * dv).ravel() for df, dv in DK])
-    n1a = inv.claim(lut, "1a")
+    import cycloneiv_clean_classes as ccl
+    vmap = cc.vmap_for(F, tuple(g.lane_bytes), tuple(map(tuple, g.lane_swaps)))
+    assert len(vmap) == NV
+    csets, cmeta = ccl.build(NV, vmap)
+    log.info("1a: clean asmdb LUT set %d cells; legacy DK set %d; in both %d", len(csets["1a"]), len(np.unique(lut)),
+             len(np.intersect1d(csets["1a"], np.unique(lut))))
+    n1a = inv.claim(csets["1a"], "1a")
     leu = ((f0 - 8) * NV + v0 - sg).ravel()
     inv.claim(leu, "1b")
     fx = np.array([g.FX[int(x)] for x in tiles[:, 0]], np.int64)
@@ -404,6 +435,8 @@ def run(a):
         kind[f] = "per" if 1 <= f < nper else "hdr" if f == 0 else (g.kind[int(inv.colx[f])] if inv.colx[f] in g.kind else "IOL")
     ff = lambda k: np.flatnonzero(kind == k)
     cell = lambda fr, vlo, vhi: (fr[:, None] * NV + np.arange(vlo, vhi)[None, :]).ravel()
+    for k in ("9a", "9b", "9c"):      # IO CFF / CRAM group bits: before the periphery region class
+        inv.claim(csets[k], k)
     inv.claim(cell(ff("per"), 0, NV), "4a")
     m9k_ver, m9k_evi, m9k_sites = m9k_data_cells(g, nfr)
     inv.claim(m9k_ver, "4f")
@@ -411,6 +444,8 @@ def run(a):
     c_meas, c_pred = m9k_control_cells(g, nfr)
     inv.claim(c_meas, "4h")
     inv.claim(c_pred, "4i")
+    for k in ("8a", "8b", "8c", "8d", "8e", "8f", "8g"):    # vendor group bits: after the exact M9K classes, before the region classes
+        inv.claim(csets[k], k)
     log.info("M9K data: %d sites, verified-check x9 %d / x1-only %d / rule-only %d; cells verified %d, predicted %d", len(m9k_sites),
              sum(v == "x9" for v in m9k_sites.values()), sum(v == "x1" for v in m9k_sites.values()),
              sum(v is None for v in m9k_sites.values()), len(m9k_ver), len(m9k_evi))
@@ -542,12 +577,19 @@ def run(a):
     P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items())
       + f"; of which unknown projected unused (never set in {ever_n} designs) {tot_proj} = {100 * tot_proj / die_bits:.2f}%")
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
-    sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["1d-a"] + S["1d-b"] + S["1d-c"] + S["1d-d"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
-    P("    verified-class set bits %d (%.1f%%), other-evidence %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
+    ids_ = [r_["id"] for r_ in rows if r_["id"] not in ("5a", "5d")]
+    sv = sum(S[k] for k in ids_ if LEDGER_TIER.get(k) in ("verified", "measured") and k not in UNKNOWN_CLASSES)
+    se = sum(S[k] for k in ids_ if LEDGER_TIER.get(k) not in ("verified", "measured", "unknown") and k not in UNKNOWN_CLASSES)
+    P("    exact-class (verified + measured) set bits %d (%.1f%%), other-tier classes %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
       sv, 100 * sv / set_all, se, 100 * se / set_all, set_all - sv - se - S["5a"] - T["5d"],
       100 * (set_all - sv - se - S["5a"] - T["5d"]) / set_all)
-    P("    in 1a %d, 1b %d, 1c %d, 1d-a %d, 1d-b %d, 1d-c %d, 1d-d %d, 3 %d, 3t %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["1d-a"], S["1d-b"], S["1d-c"], S["1d-d"], S["3"], S["3t"],
-      sum(S[k] for k in ("4a", "4b", "4c", "4d", "4e")), S["5b"], S["5c"], S["6"])
+    P("    image set bits per class: " + ", ".join(f"{k} {S[k]}" for k in S))
+    kinds_ = np.array([kind[f] for f in range(nfr)], object)
+    new_by_kind = {}
+    for k in ("1a", "8a", "8b", "8c", "8d", "8e", "8f", "8g", "9a", "9b", "9c"):
+        cnt = np.bincount(np.nonzero((inv.cls == CID[k]))[0] // NV, minlength=nfr)
+        new_by_kind[k] = {kk: int(cnt[kinds_ == kk].sum()) for kk in sorted(set(kinds_.tolist())) if cnt[kinds_ == kk].sum()}
+        P("    class %s cells by column kind: %s", k, new_by_kind[k])
     P("specimen: %d cells per LAB, roles %s; new cells %s; overlap with earlier classes %s; image set bits in the translated universe %d",
       len(universe), dict(role), spec_new, spec_overlap, spec_set_all)
     P("specimen full 4-bit matches in image: %d (LAB, pair) over %d LABs with >=1; (LAB, sink) match-count hist 0/1/2/3+ srcs %s",

@@ -1,6 +1,8 @@
 claim_id	evidence_id	role
 ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareLUT INIT oracle compare (301 designs)docs/cycloneiv-bitstream.md	direct
+ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareLUT INIT specimens: 1,023 sites, 16,368 cells, exact per site (asmdb LE_LUT_FUNCTION)scripts/cycloneiv_clean_lut_specimens.py	confirm
 ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareblkrba LUT cells vs LUT-mask law and .vo read-backscripts/cycloneiv_blkrba_lab.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareclean gate run 21 lut_initscripts/cycloneiv_clean_gate.py	confirm
 ref:cycloneivEP4CGX150bitCLASS:1b8c52afd02b6c7051	ref:cycloneivEP4CGX150auditle-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)docs/cycloneiv-bit-inventory.md	conflict
 ref:cycloneivEP4CGX150bitCLASS:1c5c3175034fe6ee70	ref:cycloneivEP4CGX150specimen-pairbh_10b86d5dc5_e85ffa53aabit_hunter:B:clk	parent
 ref:cycloneivEP4CGX150bitCLASS:1c5c3175034fe6ee70	ref:cycloneivEP4CGX150specimen-pairbh_17ffbb27a4_be087a70ddbit_hunter:B:clk	parent
@@ -2260,6 +2262,347 @@ ref:cycloneivEP4CGX150bitCLASS:4idd0918d16d813577	ref:cycloneivEP4CGX150sp
 ref:cycloneivEP4CGX150bitCLASS:4idd0918d16d813577	ref:cycloneivEP4CGX150specimen-pairgxm9k_w_x7_y60_n0_rdw_oldtmp/cycloneiv_m9k_mode216d_x7_y60_n0.json	confirm
 ref:cycloneivEP4CGX150bitCLASS:5b8113a5d577bd603e	ref:cycloneivEP4CGX150oracle-compareframe CRC-16 chain: every CRAM frame of every held GX150 bitstreamscripts/cycloneiv_ever_set.py	direct
 ref:cycloneivEP4CGX150bitCLASS:5d77000e3c04750b8e	ref:cycloneivEP4CGX150auditpreamble/postamble 0xFF fill: every held GX150 bitstreamscripts/cycloneiv_ever_set.py	direct
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_00clkKB vs gxct_a_pos_b00 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_01clkKB vs gxct_a_pos_b01 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_02clkKB vs gxct_a_pos_b02 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_03clkKB vs gxct_a_pos_b03 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_04clkKB vs gxct_a_pos_b04 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_05clkKB vs gxct_a_pos_b05 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_06clkKB vs gxct_a_pos_b06 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_07clkKB vs gxct_a_pos_b07 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8a057caa35241d3eef	ref:cycloneivEP4CGX150oracle-compareclean gate run 21 register_clockscripts/cycloneiv_clean_gate.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8b2f59b497c4b3ba4c	ref:cycloneivEP4CGX150auditregister-used pair specimens: LE state table over the specimen LABsscripts/cycloneiv_clean_reg_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8b2f59b497c4b3ba4c	ref:cycloneivEP4CGX150oracle-compareclean gate run 21 register_clockscripts/cycloneiv_clean_gate.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8c8c1042599f571bd9	ref:cycloneivEP4CGX150oracle-compareclean gate run 21 pipsscripts/cycloneiv_clean_gate.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8c8c1042599f571bd9	ref:cycloneivEP4CGX150oracle-compareclean gate run 21 register_clockscripts/cycloneiv_clean_gate.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_00aclr vs gxct_a_pos_b00 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_00clkKB vs gxct_a_pos_b00 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_00ena vs gxct_a_pos_b00 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_00sclr vs gxct_a_pos_b00 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_00sload vs gxct_a_pos_b00 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_01aclr vs gxct_a_pos_b01 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_01clkKB vs gxct_a_pos_b01 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_01ena vs gxct_a_pos_b01 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_01sclr vs gxct_a_pos_b01 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_01sload vs gxct_a_pos_b01 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_02aclr vs gxct_a_pos_b02 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_02clkKB vs gxct_a_pos_b02 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_02ena vs gxct_a_pos_b02 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_02sclr vs gxct_a_pos_b02 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_02sload vs gxct_a_pos_b02 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_03aclr vs gxct_a_pos_b03 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_03clkKB vs gxct_a_pos_b03 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_03ena vs gxct_a_pos_b03 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_03sclr vs gxct_a_pos_b03 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_03sload vs gxct_a_pos_b03 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_04aclr vs gxct_a_pos_b04 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_04clkKB vs gxct_a_pos_b04 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_04ena vs gxct_a_pos_b04 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_04sclr vs gxct_a_pos_b04 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_04sload vs gxct_a_pos_b04 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_05aclr vs gxct_a_pos_b05 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_05clkKB vs gxct_a_pos_b05 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_05ena vs gxct_a_pos_b05 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_05sclr vs gxct_a_pos_b05 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_05sload vs gxct_a_pos_b05 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_06aclr vs gxct_a_pos_b06 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_06clkKB vs gxct_a_pos_b06 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_06ena vs gxct_a_pos_b06 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_06sclr vs gxct_a_pos_b06 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_06sload vs gxct_a_pos_b06 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_07aclr vs gxct_a_pos_b07 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_07clkKB vs gxct_a_pos_b07 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_07ena vs gxct_a_pos_b07 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_07sclr vs gxct_a_pos_b07 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8d99a487d82aed7ca9	ref:cycloneivEP4CGX150auditfields pair lab gxct_a_pos_07sload vs gxct_a_pos_b07 X10Y10scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h16_w0b0 vs gxm9k_h16_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h16_w0b1 vs gxm9k_h16_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h16_w0b2 vs gxm9k_h16_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h16_w0b4 vs gxm9k_h16_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h18_w0b0 vs gxm9k_h18_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h18_w0b1 vs gxm9k_h18_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h18_w0b2 vs gxm9k_h18_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h18_w0b4 vs gxm9k_h18_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h1_w0b0 vs gxm9k_h1_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h1_w1b0 vs gxm9k_h1_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h2_w0b0 vs gxm9k_h2_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h2_w0b1 vs gxm9k_h2_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h2_w1b0 vs gxm9k_h2_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h2_w1b1 vs gxm9k_h2_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h32_w0b0 vs gxm9k_h32_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h32_w0b1 vs gxm9k_h32_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h32_w0b2 vs gxm9k_h32_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h32_w0b4 vs gxm9k_h32_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w0b0 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w0b1 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w0b16 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w0b2 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w0b32 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w0b35 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w0b4 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w0b8 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w1b0 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w1b1 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w1b16 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w1b2 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w1b32 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w1b35 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w1b4 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h36_w1b8 vs gxm9k_h36_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h4_w0b0 vs gxm9k_h4_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h4_w0b1 vs gxm9k_h4_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h4_w0b2 vs gxm9k_h4_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h4_w0b3 vs gxm9k_h4_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h8_w0b0 vs gxm9k_h8_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h8_w0b1 vs gxm9k_h8_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h8_w0b2 vs gxm9k_h8_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h8_w0b4 vs gxm9k_h8_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h9_w0b0 vs gxm9k_h9_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h9_w0b1 vs gxm9k_h9_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h9_w0b2 vs gxm9k_h9_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_h9_w0b4 vs gxm9k_h9_base X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_b_outreg_a vs gxm9k_m_base_b X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_b_outreg_b vs gxm9k_m_base_b X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_b_rdw_old vs gxm9k_m_base_b X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_cke_in_bypass vs gxm9k_m_base_s X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_d_addrreg_b_c1 vs gxm9k_m_base_d X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_d_outreg_b vs gxm9k_m_base_d X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_outreg_a vs gxm9k_m_base_s X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_rdw_dontcare vs gxm9k_m_base_s X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_rdw_old vs gxm9k_m_base_s X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_m_rom vs gxm9k_m_base_s X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_addrclr vs gxm9k_w_base_o X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_cke_core_ena0 vs gxm9k_w_base_o X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_cke_core_none vs gxm9k_w_base_o X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_cke_in_ena0 vs gxm9k_w_base_o X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_cke_in_none vs gxm9k_w_base_o X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_cke_out_ena0 vs gxm9k_w_base_o X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_null_seed vs gxm9k_w_base_s X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_rdw_old vs gxm9k_w_base_o X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_wrclk vs gxm9k_w_base_o X23Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_addrclr vs gxm9k_w_x65_y40_n0_base_o X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_cke_core_ena0 vs gxm9k_w_x65_y40_n0_base_o X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_cke_core_none vs gxm9k_w_x65_y40_n0_base_o X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_cke_in_ena0 vs gxm9k_w_x65_y40_n0_base_o X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_cke_in_none vs gxm9k_w_x65_y40_n0_base_o X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_cke_out_ena0 vs gxm9k_w_x65_y40_n0_base_o X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_null_seed vs gxm9k_w_x65_y40_n0_base_s X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_rdw_old vs gxm9k_w_x65_y40_n0_base_o X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x65_y40_n0_wrclk vs gxm9k_w_x65_y40_n0_base_o X65Y40scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_addrclr vs gxm9k_w_x7_y60_n0_base_o X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_cke_core_ena0 vs gxm9k_w_x7_y60_n0_base_o X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_cke_core_none vs gxm9k_w_x7_y60_n0_base_o X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_cke_in_ena0 vs gxm9k_w_x7_y60_n0_base_o X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_cke_in_none vs gxm9k_w_x7_y60_n0_base_o X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_cke_out_ena0 vs gxm9k_w_x7_y60_n0_base_o X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_null_seed vs gxm9k_w_x7_y60_n0_base_s X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_rdw_old vs gxm9k_w_x7_y60_n0_base_o X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8e7ed482d198221c03	ref:cycloneivEP4CGX150auditfields pair m9k gxm9k_w_x7_y60_n0_wrclk vs gxm9k_w_x7_y60_n0_base_o X7Y60scripts/cycloneiv_clean_fields_pairs.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8g56f2adb764b5cb58	ref:cycloneivEP4CGX150oracle-compareclean gate run 21 netsscripts/cycloneiv_clean_gate.py	parent
+ref:cycloneivEP4CGX150bitCLASS:8g56f2adb764b5cb58	ref:cycloneivEP4CGX150oracle-compareclean gate run 21 pipsscripts/cycloneiv_clean_gate.py	parent
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold A23scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold A4scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AA21scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AD24scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AD25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AD30scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AD6scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AE8scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AF7scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AH15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold AH19scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold C16scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold C27scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold C29scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold D20scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold D3scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold F15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold F26scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold M25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair bus-hold V28scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive A23scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive A4scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AA21scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AD24scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AD25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AD30scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AD6scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AE8scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AF7scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AH15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive AH19scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive C16scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive C27scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive C29scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive D20scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive D3scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive F15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive F26scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive M25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair drive V28scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair open-drain A23scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair open-drain AD25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair open-drain C29scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up A23scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up A4scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AA21scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AD24scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AD25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AD30scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AD6scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AE8scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AF7scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AH15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up AH19scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up C16scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up C27scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up C29scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up D20scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up D3scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up F15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up F26scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up M25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair pull-up V28scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew A23scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew A4scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AA21scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AD24scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AD25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AD30scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AD6scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AE8scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AF7scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AH15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew AH19scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew C16scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew C27scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew C29scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew D20scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew D3scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew F15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew F26scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew M25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair slew V28scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard A23scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard A4scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AA21scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AD24scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AD25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AD30scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AD6scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AE8scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AF7scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AH15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard AH19scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard C16scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard C27scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard C29scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard D20scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard D3scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard F15scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard F26scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard M25scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9ab40d96d50de46ea6	ref:cycloneivEP4CGX150auditio pair standard V28scripts/cycloneiv_clean_io_pairs.py	direct
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold A23scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold A4scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AA21scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AD24scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AD25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AD30scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AD6scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AE8scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AF7scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AH15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold AH19scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold C16scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold C27scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold C29scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold D20scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold D3scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold F15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold F26scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold M25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair bus-hold V28scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive A23scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive A4scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AA21scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AD24scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AD25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AD30scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AD6scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AE8scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AF7scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AH15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive AH19scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive C16scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive C27scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive C29scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive D20scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive D3scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive F15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive F26scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive M25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair drive V28scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up A23scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up A4scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AA21scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AD24scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AD25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AD30scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AD6scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AE8scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AF7scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AH15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up AH19scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up C16scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up C27scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up C29scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up D20scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up D3scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up F15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up F26scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up M25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair pull-up V28scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew A23scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew A4scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AA21scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AD24scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AD25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AD30scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AD6scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AE8scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AF7scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AH15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew AH19scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew C16scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew C27scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew C29scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew D20scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew D3scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew F15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew F26scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew M25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair slew V28scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard A23scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard A4scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AA21scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AD24scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AD25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AD30scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AD6scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AE8scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AF7scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AH15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard AH19scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard C16scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard C27scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard C29scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard D20scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard D3scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard F15scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard F26scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard M25scripts/cycloneiv_clean_io_pairs.py	confirm
+ref:cycloneivEP4CGX150bitCLASS:9b7002a3e7aeff162c	ref:cycloneivEP4CGX150auditio pair standard V28scripts/cycloneiv_clean_io_pairs.py	confirm
 ref:cycloneivEP4CGX150bitLAB:clock-polaritycc7f646e66c3ed71	ref:cycloneivEP4CGX150specimen-pairbh_10b86d5dc5_e85ffa53aabit_hunter:B:clk	parent
 ref:cycloneivEP4CGX150bitLAB:clock-polaritycc7f646e66c3ed71	ref:cycloneivEP4CGX150specimen-pairbh_17ffbb27a4_be087a70ddbit_hunter:B:clk	parent
 ref:cycloneivEP4CGX150bitLAB:clock-polaritycc7f646e66c3ed71	ref:cycloneivEP4CGX150specimen-pairbh_22a69aaad4_811ca8e2f3bit_hunter:B:clk	parent
