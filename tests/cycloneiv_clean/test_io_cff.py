@@ -148,3 +148,18 @@ def test_asmdb_main_stream():
     assert len(s["block_types"]) == 8 and sum(s["m_arch_group_list"].values()) == 6087
     assert s["m_hc_wires"] == 0 and s["end"] < len(b)
     assert sp["CFF"] > 0 and sp["OPTION"] > 0                  # default bits exist in both peripheral spaces
+
+
+def test_asmdb_class_binding():
+    from lifters.cycloneiv_clean import sofio
+    try:
+        path = os.path.normpath(os.path.join(sofio.quartus_bin(), "..", "common", "devinfo", "cycloneivgx", IO.ASMDB_NAME))
+        types = {i: (name, cnt) for i, _sz, cnt, name in IO.ddb_types(path)}
+        s = IO.asmdb_main_stream(IO.asmdb_body(path))
+    except sofio.VendorMissing as e:
+        pytest.skip(str(e))
+    bound = {name: (s["m_arch_group_list"].get(i, 0), cnt) for i, (name, cnt) in types.items() if i in s["m_arch_group_list"]}
+    report("io_asmdb_class_binding", bound=bound, block_info=types[2])
+    assert types[2] == ("ASMDB_BLOCK_INFO", 8) and len(s["block_types"]) == 8
+    assert bound["ASMDB_ARCH_GROUP_CALC"] == (277, 277)                  # tag >> 2 -> type table class
+    assert all(m <= c for m, c in bound.values())                        # main-stream pointers <= objects of the class

@@ -195,3 +195,27 @@ def asmdb_main_stream(b):
         o += 4 + 4 * n
     out["end"] = o
     return out
+
+
+def ddb_types(path):
+    """Type table of a devinfo .ddb (trailer after the body): [(class_id, sizeof, count, name)].
+
+    Layout from docs/cyclonev-ddb-format.md: u16 n, per type u16 id, u32 sizeof, u32 crc, u32 count, u32 version,
+    u32 namelen (incl. NUL), name.  A pointer tag's class id (tag >> 2) indexes this table.
+    """
+    import struct
+    import sys
+    import zlib
+    sys.path.insert(0, os.path.join(P.REPO, "scripts"))
+    import cyclonev_ddb_decode as dd
+    hdr = dd.read_header(path)
+    raw = open(path, "rb").read()[hdr.body_end:]
+    t = zlib.decompressobj().decompress(raw)
+    n = struct.unpack_from("<H", t, 0)[0]
+    o, out = 2, []
+    for _ in range(n):
+        i, sz, _crc, cnt, _ver, nl = struct.unpack_from("<HIIIII", t, o)
+        o += 22
+        out.append((i, sz, cnt, t[o:o + nl - 1].decode("latin1")))
+        o += nl - 1
+    return out

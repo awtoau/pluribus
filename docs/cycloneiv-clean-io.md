@@ -76,3 +76,10 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 ## Drive / slew / pull
 
 - Not reached: `process_atom` paths for drive strength and slew have not been located; only the pin-mode and standard-class paths are decompiled.
+
+## Class binding and pool formats (2026-10-30)
+
+- Pointer tag class id = tag >> 2 = row of the `.ddb` trailer type table (`io.ddb_types`): asmdb 1 DIE, 2 BLOCK_INFO (8), 5 ARCH_GROUP_CALC (277), 6 STD (4,996), 7 DUMB (1,032), 8 STLMAP (7), 10 DEFAULT_MUX_SETTING (597), 11 DEFAULT_BIT_CALC (8), 13 LABELED_SIMPLE_MUX (4), 14..24 mux classes; main stream references 277 / 4,893 / 913 / 4 of them (the rest are in local lists).
+- `vector<unsigned>` on disk: u32 count, then `count` i32 deltas (running sum, first delta against the previous vector of that field). Body offset 38,044 = a 149,760-element vector of repeating 0..15 (LE bit offsets), ends at 0x9b8a0, followed by the BLOCK_INFO `m_export_port_to_bit_map` entry (`le_comb_abs_to_loc` -> 149,760).
+- `map<DATA_TYPE, vector<uint>*>`: u32 count, per entry i32 key + pointer tag; contents deferred. Pool interleaving of BLOCK_INFO objects and their vectors is not resolved: CFF instance vectors still undecoded.
+- DEV_PIN (libddb_dev `operator<<`, static decompile): `m_id` i32 delta, bool vector (2 delta words), 25 i32 deltas (`m_int_data`), 5 strings (`m_string_data`: [0] ball name, [1] function), 7 delta vectors (`m_vec_int_data`), string-hash (count), 5 bool vectors, `m_pad_id_list` (count + deltas). Pool records of the pkg body are not homogeneous (a second, shorter record kind with 11 ints follows each pin); `m_pad_id_list` not yet read: 0 pins decided.
