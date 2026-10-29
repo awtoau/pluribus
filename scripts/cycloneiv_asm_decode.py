@@ -255,7 +255,7 @@ class Dec:
             self._flat_cache = c = (plane.shape, fl)
         return c[1]
 
-    def active(self, plane, method=None):
+    def active(self, plane, method=None, relax=None):
         """Groups selected by a design: predicted bits all set, every other bit of the block clear.
         -> (group ids, record ids, block ids).  Integer bincounts over the set entries only (no float
         weight copies of the 51 M-entry arrays); counts are cast to int32 (<= 16 per group) so the
@@ -263,6 +263,8 @@ class Dec:
         method: "dense" (default; bitmap gather + mark array) | "legacy" (searchsorted + np.unique);
         env PLURIBUS_ACTIVE.  Identical results (docs/perf-pass.md)."""
         method = method or os.environ.get("PLURIBUS_ACTIVE", "dense")
+        if relax is None:
+            relax = os.environ.get("PLURIBUS_RELAX_ACTIVE", "0") == "1"   # default OFF (#141 track 2)
         if method == "dense":
             s = np.flatnonzero(plane.dense()[self._flat(plane)])
         else:
@@ -272,9 +274,61 @@ class Dec:
         nset_pred = np.bincount(gid[sp], minlength=len(self.gsize)).astype(np.int32)
         uk = fastops.mark_unique(self.e_ukey[s], len(self.ukey_block)) if method == "dense" else fastops.unique(self.e_ukey[s])
         bset = np.bincount(self.ukey_block[uk], minlength=self.nblocks).astype(np.int32)
-        act = (self.npred > 0) & (nset_pred == self.npred) & (bset[self.block] == self.npred)
+        full = (self.npred > 0) & (nset_pred == self.npred)
+        act = full & (bset[self.block] == self.npred)
+        if relax:
+            act |= self._relaxed(s, full, act, uk, bset)
         gids = np.flatnonzero(act)
         return gids, self.grec[gids], self.block[gids]
+
+    def _relaxed(self, s, full, act, uk, bset):
+        """Extra groups for the relaxed rule (docs/cycloneiv-relax-active.md): a full-pred group in a block
+        with extra set bits fires iff it is NOT dominated (no other full group of the block has a strictly
+        larger pred set), it is the only maximal full group of its block, and every extra set bit of the
+        block is a pred bit of some group of the block.  Deterministic, no voting."""
+        block = np.asarray(self.block)
+        cand = full & ~act
+        cb = np.zeros(self.nblocks, bool)
+        cb[block[cand]] = True
+        if not cb.any():
+            return np.zeros(len(act), bool)
+        ek = np.asarray(self.e_ukey)
+        gid = np.asarray(self.gid)
+        pred = np.asarray(self.pred)
+        ng = len(self.gsize)
+        # fully-set groups of candidate blocks, their pred ukey sets
+        fg = np.flatnonzero(full & cb[block])
+        out = np.zeros(ng, bool)
+        gs, gz = np.asarray(self.gstart), np.asarray(self.gsize)
+        setu = np.zeros(len(self.ukey_block), bool)
+        setu[uk] = True
+        ub = np.asarray(self.ukey_block)
+        # per-block pred ukeys over ALL groups of the block, and per-block full groups
+        bl_full = {}
+        for g in fg.tolist():
+            bl_full.setdefault(int(block[g]), []).append(g)
+        allg = np.flatnonzero(cb[block])
+        bl_all = {}
+        for g in allg.tolist():
+            bl_all.setdefault(int(block[g]), []).append(g)
+        uset = {}
+        for u in uk[cb[ub[uk]]].tolist():
+            uset.setdefault(int(ub[u]), set()).add(u)
+        def pset(g):
+            e = slice(gs[g], gs[g] + gz[g])
+            return set(ek[e][pred[e]].tolist())
+        for b, fl in bl_full.items():
+            ps = {g: pset(g) for g in fl}
+            mx = [g for g in fl if not any(ps[g] < ps[h] for h in fl)]
+            if len(mx) != 1:
+                continue
+            g = mx[0]
+            allpred = set()
+            for h in bl_all[b]:
+                allpred |= pset(h)
+            if uset[b] <= allpred:
+                out[g] = True
+        return out
 
     def col_of(self, f):
         """Plane column x whose frame range holds frame f."""

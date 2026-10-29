@@ -185,8 +185,9 @@ class Phys:
     # -- per-design firing ---------------------------------------------------------------
     def active(self, name, plane=None):
         """Fired group ids of a design (select-only groups dropped), cached per design name."""
-        os.makedirs(os.path.join(WORK, "active"), exist_ok=True)
-        path = os.path.join(WORK, "active", f"{name}.npy") if name else None
+        sub = "active_relax" if os.environ.get("PLURIBUS_RELAX_ACTIVE", "0") == "1" else "active"   # cache keyed by rule
+        os.makedirs(os.path.join(WORK, sub), exist_ok=True)
+        path = os.path.join(WORK, sub, f"{name}.npy") if name else None
         if path and os.path.exists(path):
             return np.load(path)
         if plane is None:
