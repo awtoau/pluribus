@@ -152,10 +152,12 @@ def audit_unbuilt(conn, family):
 
 def record_specimen(conn, family, device, name, base, only_spec, only_base, meta, source_ref, generator,
                     commit, bits_per_frame, kind="specimen-pair", stable=None, tool_version=None,
-                    build_base=None, build_spec=None, sha256=None, allow_unbuilt=False):
+                    build_base=None, build_spec=None, sha256=None, allow_unbuilt=False, level=1):
     """One evidence row per specimen pair. Idempotent on (family, device, kind, name, source_ref).
     A NEW specimen-pair row of an ENFORCED_FAMILIES family without build_base AND build_spec dies
-    (recovery-process.md bookkeeping); allow_unbuilt is for legacy JSON migration only."""
+    (recovery-process.md bookkeeping); allow_unbuilt is for legacy JSON migration only.
+    level = evidence level of recovery-process.md "Single-bit confirmation" (1 set, 2 attributed, 3 isolated, 4 hardware);
+    stored in result["level"] (JSON, not a column: a column would drift-fail every existing family DB)."""
     tiers.check(kind, tiers.EVIDENCE_KINDS, "evidence kind")
     if (kind == "specimen-pair" and family in ENFORCED_FAMILIES and not allow_unbuilt
             and (build_base is None or build_spec is None)):
@@ -168,7 +170,7 @@ def record_specimen(conn, family, device, name, base, only_spec, only_base, meta
         S.evidence.c.name == name, S.evidence.c.source_ref == source_ref))).fetchone()
     if existing:
         return existing[0]
-    result = {"base": base, "meta": meta or {}, "n_spec": int(spec.size), "n_base": int(bas.size),
+    result = {"base": base, "level": int(level), "meta": meta or {}, "n_spec": int(spec.size), "n_base": int(bas.size),
               "bits_per_frame": bits_per_frame}
     return conn.execute(insert(S.evidence).values(
         kind=kind, family=family, device=device, name=name, source_ref=source_ref, sha256=sha256,

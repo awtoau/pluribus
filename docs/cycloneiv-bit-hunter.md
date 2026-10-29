@@ -11,7 +11,7 @@ Raw cram-plane diffs only (no decoder); threads via `build_pool` (lease + box ca
 - Quartus rejects a LUT mask that depends on an unconnected port: all unused ports are tied to the input pin (`ina`) or a knob constant.
 - Control: `AUTO_GLOBAL_CLOCK` / `AUTO_GLOBAL_REGISTER_CONTROLS` off, `SEED 1`; sload needs asdata.
 - Adaptive: pairs at distance 2-3 get in-between variants (one component, or one mask bit, moved toward the partner); budget 100.
-- Null controls run first and gate the batch: renamed design, other seed -> diff empty (0 cells, 5 pairs).
+- Null controls run first and gate the batch: renamed design (empty diff); other seed only under back-annotated routing, else its diff is the noise floor (0 cells, 5 pairs, back-annotated).
   - First attempt failed: free-fit base vs back-annotated base differ by 2 cells; fixed by the `boot` build. The pair stays in the table.
 - Evidence: `record` writes one row per (cell, knob) as `bit_hunter:<knob>` (spec = plane i, base = plane j, n_objects 1); meta has frame, v, tile, (df, dv).
 
@@ -21,6 +21,8 @@ python3.15t scripts/cycloneiv_bit_hunter.py batch1 --jobs 22   # nulls, then all
 python3.15t scripts/cycloneiv_bit_hunter.py batch2|batch3 --jobs 22
 python3.15t scripts/cycloneiv_bit_hunter.py adapt --budget 100 --depth 3
 python3.15t scripts/cycloneiv_bit_hunter.py replicate           # distance-1 pairs rebuilt at X58Y30
+python3.15t scripts/cycloneiv_bit_hunter.py round2a|round2b|round3|round4 --jobs 22   # INIT/clock pairs; LL + 2nd sink; control + LAB variants; clock/DN pairs at extra LABs
+python3.15t scripts/cycloneiv_bit_hunter.py law|analyse3        # INIT cell position law vs X10Y10; round-3/4 analysis (no builds)
 python3.15t scripts/cycloneiv_bit_hunter.py report|record       # summary.json / evidence rows
 ```
 
@@ -29,12 +31,13 @@ python3.15t scripts/cycloneiv_bit_hunter.py report|record       # summary.json /
 |---|---|
 | calibration: sink LUT-mask bit | 16 / 16 variants = exactly 1 cell |
 | calibration: source LUT-mask bit | 16 / 16 variants = exactly 1 cell |
-| single cells isolated at X10Y10 | 33 = 32 LUT-INIT (calibration) + 1 clock-polarity |
-| replicated at X58Y30 (same pairs rebuilt) | 24 / 33 land on the same (df, dv); 9 sink-INIT cells shift by (+-1..3) in (df, dv) |
+| calibration: clock polarity (`clk` / `~clk`) | 1 cell (known class 1c; counts 0 features in the ledger) |
+| new single cells at X10Y10 | 0; the 33 distance-1 pairs = 32 LUT-INIT + 1 clock-polarity, all calibration of known cells |
+| calibration replicated at X58Y30 (same pairs rebuilt) | 24 / 33 land on the same (df, dv); 9 sink-INIT cells shift by (+-1..3) in (df, dv) |
 | refused by fitter | FF power_up=high (needs an inverter in the same LE), 3 sload variants |
 | unreachable here | any control-net connection (ena, aclr, sclr, clk source): 20-100 cells each |
 
-Single cell with a stated role beyond LUT-INIT: `clk` vs `~clk` (same source LE, FF clocked directly or inverted) flips exactly one
+Calibration (known cell, not a new result): `clk` vs `~clk` (same source LE, FF clocked directly or inverted) flips exactly one
 cell, tile-relative (df -6, dv -30) = the LAB clock-polarity cell (inventory class 1c). Holds for source KA and KB.
 
 Hit rate per knob (exactly 1 cell vs base): LUT mask (sink) 16/48 (the rest are multi-bit masks), LUT mask (source) 16/16,
@@ -43,7 +46,7 @@ clock polarity 2/2; all others 0 (src LE 0/8, snk LE 0/14, port 0/1, tie 0/6, ff
 ## Named pairs, diff cell count (one-LE LAB, same back-annotated routing)
 | pair | cells |
 |---|---|
-| null: renamed, other seed | 0 |
+| null: renamed, other seed (back-annotated) | 0 |
 | free-fit base vs back-annotated base | 2 |
 | FF off / on (clk from same-LAB LUT) | 45 |
 | FF fed from LUT / from asdata+sload=1 | 0 (fitter emits identical bits) |

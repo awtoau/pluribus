@@ -2,6 +2,8 @@
 
 Flag: `PLURIBUS_RELAX_ACTIVE=1` (default OFF; per-design active cache is keyed by the flag). Script: `scripts/cycloneiv_relax_analysis.py`.
 
+Rejected as a method (gate-only decoder test, recovery-process.md Phase 3). The flag stays off until a specimen shows the new prediction.
+
 ## Prediction (stated before the run)
 - Extras of refused full-pred groups are pred bits of other groups of the same block feeding the same dest mux; refused group is the sole full group on its (block, dest).
 

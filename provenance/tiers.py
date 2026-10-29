@@ -1,6 +1,7 @@
 """Closed vocabulary + weakest-link rule (docs/provenance-and-feedback.md section 2).
 
 Tier is fixed at creation and never promoted; status moves. Anything outside these sets dies.
+Coverage names (verified, measured, sampled, pattern-predicted, decoded, statistical, ...): Glossary in the doc above.
 """
 import db
 

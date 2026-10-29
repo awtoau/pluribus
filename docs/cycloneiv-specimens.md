@@ -2,9 +2,10 @@
 
 What the minimal specimen designs are, what question each answers, and the sweep that counts as
 complete. Companion to [recovery-process.md](recovery-process.md) (the method) and #141 (the
-pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify).
+pivot). Raw-diff tools (the method): `scripts/cycloneiv_forced.py`, `scripts/cycloneiv_hop_specimens.py`.
+`scripts/cycloneiv_specimens.py` is LEGACY (decoder in the loop).
 
-## Anatomy of a specimen
+## Anatomy of a specimen (LEGACY: decoder-in-the-loop; superseded by the raw-diff tools above)
 
 - 1–2 cells (LUT→LUT or LUT→FF), ONE net under test, LOCATION-pinned sites.
 - Built as a **pair**: base design (no net) + specimen; the base subtracts the always-on config
@@ -20,7 +21,7 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
   used atoms only (no device-wide dump); node ids are atom indices, not routing.ddb record ids.
 - Answer format: exact (tile_class, block key) → output record / pin, provenance `specimen`, into
   `lifters/data/cycloneiv_ep4cgx150_phys_map.json`.
-- One question per build. A specimen whose answer is ambiguous is split into narrower specimens,
+- One feature per DIFF. A specimen whose answer is ambiguous is split into narrower specimens,
   never voted over.
 
 ## Sweep matrix (completion = every row covered)
@@ -71,7 +72,8 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
 
 ## Generalisation + verification
 
-- ≥2 positions per (kind × tile class) must agree before an answer generalises class-wide; any
+- Positions per (kind × tile class) before an answer generalises class-wide: N = 3 (1-D) / 5 (2-D)
+  plus both extremes, all agreeing (`provenance/tiering.py`); any
   disagreement ⇒ enumerate every position of that class (brute-force-first rule).  A single
   interior observation stays a per-tile entry (`wires_tile` / `lis_tile` in the phys map) until
   a second position confirms it.
@@ -105,8 +107,7 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
 
 ## Block checklists and order (Dan, 2026-10-29; ranking rule in recovery-process.md)
 
-Order: M9K → LAB core classes (LOCAL_LINE sink ports, control stripe, LE modes, LE_BUFFER) →
-LI/R4/C4 interior → multiplier → IO/periphery → edges/corners last. Edges are NOT first.
+Order: rank per recovery-process.md Priority order (what gates the lift: latest gate per-hop table, largest missing + wrong first). Within a gate-neutral class: big regular blocks first, edges after the interior they truncate.
 
 M9K checklist (one M9K, pinned site, one change per pair, raw diff; tick each):
 - [x] data: widths x1,x2,x4,x8,x9,x16,x18,x32,x36 at one site (M9K_X23_Y40_N0): full (word,bit) -> cell tables, 0 unattributed, held-out round trips exact (commit: see M9K hardware map below)
@@ -115,7 +116,7 @@ M9K checklist (one M9K, pinned site, one change per pair, raw diff; tick each):
 - [ ] ports: each address / data / byte-enable / write-enable pin routed (one pin, one far-end per build)
 - [x] column position: random-init x1 build at 9 other sites (all 8 M9K columns, rows 20/60 in column 23) + x9 at 2: the X23Y40 map plus one (frame,v) offset per site predicts the raw diff exactly, 11/11 (no fallback needed)
 
-Mark each box with the commit that verified it; unticked boxes appear in the inventory top-10.
+Mark each box with the commit that verified it; unticked boxes appear in the inventory unknown-regions table.
 
 LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58Y30 / X37Y60 / X100Y75; raw cram diff, evidence rows `cycloneiv_ctrl:<set>:<lab>`):
 - [x] clk, clkpin, ena, aclr, sclr, sload, asdata: 17 pairs x 4 labs built and diffed, 6 rebuilt (10%), 0 unstable (536a7b312)
@@ -155,7 +156,7 @@ LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58
 ## M9K control knobs, WYSIWYG pairs (#141)
 
 - `cycloneiv_ram_block` direct, ports legal for the mode only, one parameter per pair, x16 single-port, site X23Y40; replicated at X65Y40 and X7Y60 via the offset rule.
-- Null control: instance rename = 0 bits. A fitter seed change is NOT a null (about 755 bits move: placement/routing).
+- Null control: instance rename = 0 bits. A fitter seed change is a null only under back-annotated routing; otherwise its diff (about 755 bits: placement/routing) is the noise floor.
 - Isolated cells (frames 1103, 1108..1111; other band bits are routing and vary with the port set):
   - output register (`port_a_data_out_clock` none -> clock0): clears (1109,2819), (1110,2820).
   - read-during-write old_data: clears (1110,2819).
@@ -182,4 +183,4 @@ LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58
 - [x] same at X58Y30, X37Y60, X100Y75: seeded 10% samples, 48 / 48 each match X10Y10 under one (frame, v) offset (dv = 70 * dy)
 - [x] port-only change (`pswap`, 45 pairs): 2 cells off + 2 on, equals the difference of the two full-pair sets
 - [x] second sink on the same LL (`fan`, 45 pairs): diff = 2 cells, subset of the full pair; the other 2 cells (source) identical across sinks per source
-- [ ] strict single-cell isolation (0 / 305 cells so far), LE modes, LE_BUFFER groups, packing flags
+- [ ] single-cell isolation only for cells claimed to be single-bit flags (level 3; routing standard is level 2 attributed), LE modes, LE_BUFFER groups, packing flags

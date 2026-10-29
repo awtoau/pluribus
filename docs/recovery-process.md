@@ -6,7 +6,7 @@ already documented. This doc makes the method binding, not advisory.
 
 ## Principle: brute force first
 
-- The die is finite and the host is big (32 cores, 64 GB): enumerate, don't infer. Specimen
+- The die is finite and the host is big (limits: `scripts/heavy_guard.py` constants, `docs/memory-budget.md`): enumerate, don't infer. Specimen
   sweeps, offset searches, candidate pairings — run them exhaustively in parallel; the recovery
   is CPU+RAM work and should be quick.
 - Pattern generalisation (tile classes, mirrors, strides) is an optimisation only. Every
@@ -29,7 +29,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
 
 - Enumerate the sources, in order of strength:
   1. **Vendor device DB on disk** (Quartus .ddb, Diamond/Trellis DB, Gowin chipdb) — exact, complete
-  2. **Minimal-diff specimens** — 1–2 cells, one net, one question per build; vendor tool pins placement/routing; diff or single-path readback gives exact answers; tile regularity generalises
+  2. **Minimal-diff specimens** — 1–2 cells, one net, one feature per diff; vendor tool pins placement/routing; diff or single-path readback gives exact answers; tile regularity generalises
   3. **Open projects** — prjtrellis, mistral, apicula, X-Ray: both a source and a format Rosetta
 - **Exact labels or nothing.** A table entry is derived only from builds whose vendor output names the feature (RCF path, post-fit `.vo` parameter, MIF). Two derivations exist:
   - **(a) Pair diff:** two builds differing in ONE named feature.
@@ -61,7 +61,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
   The queryable index is the `corpus_builds` table (`schema.py`), rebuilt by
   `scripts/corpus_register.py --family <f>` (full rescan — derived index, rebuild is the
   migration); run it after every build batch. Check the DB before regenerating anything.
-- **Bookkeeping is enforced by code, not memory:** `claims_register` rejects a specimen-pair row without `build_base`/`build_spec`; `build_pool` runs `corpus_register` at batch end; a gate script exits non-zero if `record_gate_run` was not called; refused/failed builds are stored with a status (no silent loss).
+- **Bookkeeping is enforced by code, not memory:** `evidence_io.record_specimen` rejects a specimen-pair row without `build_base`/`build_spec`; `build_pool` stores refused/failed outcomes via `on_outcome` (`record_build_outcome`) but does NOT run `corpus_register` (run it after every batch, above); a gate exits 4 if `record_gate_run` was not called (`corpus.gate_exit_code`: enforced in `machxo2_gate.py` and the Cyclone IV tracer `cycloneiv_ddb_trace.py` only; ECP5 and Gowin gates do not record to `gate_runs` yet, #159); refused/failed builds are stored with a status (no silent loss).
 - Declare ONE fixed gate set in the issue; every number ever reported cites it. A changed set is
   a new baseline, stated as such.
 - Headline per the scoring-faults rules: matched / (matched + missing + extra + wrong). Missing
@@ -170,7 +170,7 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
   with the evidence, move to the next box or block; the inventory keeps it visible.
 - **Elimination is a tool, not a gate.** When a block's remaining unknown set bits are few, name
   them and attack them by elimination; do not hold other blocks back to reach that point.
-- Re-rank after every inventory run; the doc's top-10 table is the queue.
+- Re-rank after every gate run: the gate per-hop table is the queue; the inventory unknown-regions table ranks only gate-neutral classes.
 
 ## Single-bit confirmation (Dan, 2026-10-29)
 
@@ -193,9 +193,10 @@ Pairs prove a bit SET; the aim is to state what each single cell does. Evidence 
 ## Patterns and certainty (Dan, 2026-10-29)
 
 - **Every detected pattern is reported.** A rule found by inspection or fitting goes into the report and the DB as a `pattern-predicted` claim with its sample size and misses; it is never folded into measured counts.
+- **Tier names are the Glossary in `docs/provenance-and-feedback.md`** (verified, measured, sampled, pattern-predicted, decoded, statistical, suspect, refuted, unknown; "projected unused" is a triage sub-line of unknown, not a tier). Nothing here redefines them.
 - **The DB tags certainty per claim**, on a cell, a range or a class (`claims.tier`, `status`, `confirmations`, `refutations`, `scope_id`; statuses in `docs/provenance-and-feedback.md`). Reports and the coverage page group bits by these tags, never by one "evidence" bucket.
 - **Patterns are never locked.** A missed corner case flips the claim to `suspect` or `refuted` and the bits fall back to `predicted`/`unknown`. A pattern is preferred to enumeration only until a specimen contradicts it; on any miss, enumerate that scope.
-- **Coverage counts a pattern that has a reasonable hit rate on the test cases** (`verified-by-sampling`: confirmations at >= N distinct scopes, extremes included, zero refutations). It is shown as its own tier beside `measured`, never merged into it.
+- **Coverage counts a pattern that has confirmations at >= N distinct scopes (extremes included) and zero refutations** (`sampled` = verified-by-sampling; N and the rule: `provenance/tiering.py`). It is shown as its own tier beside `measured`, never merged into it.
 - **A real lift or reverse build that fails makes every pattern claim in its path suspect** until the failure is explained, whatever its coverage status. The gate decides; coverage only reports.
 - **Sampling plan for a grid or array of like tiles** (LAB array, M9K columns, IO ring):
   - Test the **four corners** of the region plus a **sample from the centre** (seeded, ~10 %, at least 3 tiles).

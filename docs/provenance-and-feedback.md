@@ -3,8 +3,9 @@
 Design for marking every recovered meaning (bit, mux input, wire driver, cell field) with HOW it was
 obtained, and for feeding contradictions back into everything that shares the same reasoning.
 Companion to [recovery-process.md](recovery-process.md) (method) and
-[cycloneiv-bit-inventory.md](cycloneiv-bit-inventory.md) (coverage metric). Issue #141. Proposal
-only: nothing here is applied to `schema.py` yet (section 6 says what to build first).
+[cycloneiv-bit-inventory.md](cycloneiv-bit-inventory.md) (coverage metric). Issue #141. Status: IMPLEMENTED
+(commit b5e1dea13 and after). The real DDL is `schema.py`; table-by-table reference is
+[provenance-schema.md](provenance-schema.md). Section 4 sketches are the original design, superseded by those two.
 
 Position under analysis (Dan, 2026-10-29): brute force is guaranteed; patterns predict because the
 die is a grid; every predicted or statistical meaning is MARKED so a wrong prediction leads back to
@@ -14,6 +15,24 @@ Verdict in one line: marking + feedback is right and overdue; "guaranteed" holds
 observable, single-variable, fitter-pinnable part of the question space, and on Cyclone IV the
 per-tile brute force is ~100+ days, so patterns are not an optimisation — they are what makes the
 method affordable, and the rolling audit is the price of using them.
+
+## Glossary (ONE definition; every other doc, script comment and the coverage page use these names)
+
+| name | key (ledger / page) | meaning | rule |
+|---|---|---|---|
+| verified | `verified` | compared claim-for-claim against a vendor oracle | `provenance/tiering.py` |
+| measured | `measured` | raw diff or observation at that cell or site | exact evidence rows, no pattern |
+| sampled (= verified-by-sampling) | `sampled` | a pattern confirmed at >= N distinct scopes (N = 3 for 1-D, 5 for 2-D, extremes of every axis included), zero refutations | `tiering.sampling_bar`; N and misses on the row; shown beside `measured`, never merged |
+| pattern-predicted | `predicted` | a rule fitted to measured parents and applied beyond them, below the sampling bar | revocable by one miss |
+| decoded (= decoded-untested) | `decoded` | read from the vendor decode; nothing tested at the cell | |
+| statistical | `statistical` | last-resort fit/vote where no exact route exists; unverified | its own tier, never merged into counts above; replaced when an exact source covers it |
+| suspect | `suspect` | a pattern or claim with a recorded miss or a conflict | revoked from verified tiers until audited |
+| refuted | `refuted` | contradicted by a specimen inside its scope | |
+| unknown | `unknown` | nothing attributes a meaning (the headline) | |
+| projected unused | `unknown_projected` | SUB-LINE of unknown: unknown cells set in none of the n held bitstreams | triage by frequency; not a claim, not a tier, never pattern-predicted, never subtracted from unknown |
+
+- Claim `tier` (how obtained: measured, vendor-decoded, eliminated, pattern-predicted, statistical, ...) and claim `status` (open, confirmed, verified-by-sampling, suspect, refuted, ...) are the DB vocabulary (section 2); the names above are the coverage tiers computed from them.
+- Evidence LEVEL (1 set, 2 attributed, 3 isolated, 4 hardware; recovery-process.md "Single-bit confirmation") is stored per specimen-pair row in `evidence.result["level"]` (JSON, not a column); counts are never mixed across levels.
 
 ## 1. Is brute force guaranteed?
 
@@ -132,8 +151,8 @@ Later hit (a bit finally exercised):
 
 ### Cost (build-bound)
 
-Measured 2026-10-28: 12–20 s per Quartus build at 20 parallel chains inside the 20 GB free-RAM rule
-(`build_pool`); call it ~3,500 pairs/hour. Host: 32 cores, 64 GB.
+Measured 2026-10-28: 12–20 s per Quartus build at 20 parallel chains inside the lease budget (`heavy_guard.LEASE_BUDGET_GB`, `MIN_AVAILABLE_GB`)
+(`build_pool`); call it ~3,500 pairs/hour. Host limits: `scripts/heavy_guard.py` constants (memory-budget.md).
 
 | question space | size | builds (pairs) | wall clock | tractable? |
 |---|---|---|---|---|
@@ -249,21 +268,21 @@ becomes `unknown(reason=conflict)` or gets its own measured claim). "Mostly hold
 - Every audit result is an evidence row like any other — confirmation or refutation feeds the loops above.
 - A pattern with zero audits in the last 2 inventory runs is shown in the inventory as `stale` (not demoted; visible).
 
-## 4. DB design (SQLAlchemy Core sketches; NOT applied)
+## 4. DB design (original sketches; IMPLEMENTED in `schema.py`, see provenance-schema.md)
 
-Five tables. SQLite default, PostgreSQL optional; lists as JSON per CLAUDE.md. Granularity is
+The sketch had five tables; the implemented schema has 21 (scopes, evidence_scopes, expectations, unknowns, audits, matchers, corpus/gate tables added). SQLite default, PostgreSQL optional; lists as JSON per CLAUDE.md. Granularity is
 pattern + scope, never per bit: per-bit expansion is computed (numpy, as the inventory already does).
 
 ```python
-# One row per measurement or decode event. Specimen pairs cite postfit_builds; vendor decodes cite
+# One row per measurement or decode event. Specimen pairs cite corpus_builds; vendor decodes cite
 # the decoder script + the DB file hash; oracle compares cite the design set.
 evidence = Table("evidence", metadata,
     Column("id",          Integer, primary_key=True, autoincrement=True),
     Column("kind",        Text, nullable=False),   # specimen-pair | vendor-decode | oracle-compare | audit | elimination | absence | image-hit
     Column("family",      Text, nullable=False),
     Column("device",      Text, nullable=False),
-    Column("build_base",  Integer, ForeignKey("postfit_builds.id")),    # NULL for vendor-decode
-    Column("build_spec",  Integer, ForeignKey("postfit_builds.id")),
+    Column("build_base",  Integer, ForeignKey("corpus_builds.id")),    # NULL for vendor-decode
+    Column("build_spec",  Integer, ForeignKey("corpus_builds.id")),
     Column("tool_version", Text),
     Column("stable",      Boolean),                 # rebuild gave identical bits (NULL = not rebuilt)
     Column("result",      JSON, nullable=False),    # raw diff [[frame, v], ...]; decoder digest; absence: {builds, forced:[{element, diag}], settings, corpus, static}
@@ -368,7 +387,7 @@ lift_provenance = Table("lift_provenance", metadata,
 
 ## 6. Adoption plan
 
-### First step (next ~2 hours)
+### First step (DONE, commit b5e1dea13; kept as the original plan)
 
 1. Add `evidence`, `claim_patterns`, `claims`, `claim_events` to `schema.py` (section 4; `lift_provenance` waits).
 2. `scripts/claims_register.py --family cycloneiv`: full rebuild (delete + reinsert) from today's artefacts:

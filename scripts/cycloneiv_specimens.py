@@ -1,6 +1,9 @@
 #!/usr/bin/env python3.15t
 """Cyclone IV GX specimen fuzzer: EXACT block -> output-wire entries from minimal designs (issue #141).
 
+LEGACY (decoder in the loop: matches diffs via Dec.active). Not the method: raw-diff tools are
+scripts/cycloneiv_forced.py and scripts/cycloneiv_hop_specimens.py (docs/recovery-process.md "Specimen rules").
+
 A specimen = 2 pinned LUTs, one net between them, built with Quartus (bitstream + post-fit RCF).
 Its base twin = same placement, l2 fed from the pin instead of l1 (no LUT->LUT net).  diff = fired
 (block, source-record) pairs of the specimen minus the base: always-on config groups and the
