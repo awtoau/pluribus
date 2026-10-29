@@ -149,3 +149,17 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
   - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 65,351 / 168,265 / 0 / 25,464
 - Fragmentation: (block, dest) units 1,616,526 -> 2,305,331; dest records with >1 block 186,723 -> 786,697 (v2: 4,103,695 / 964,872). Still far from baseline with F3 limited to LE_BUFFER sources.
 - Flag stays OFF. Per the coordinator, no further extension of the source-mirror model until the assembler address -> frame map (lane padding) is reconstructed.
+
+### v3: F1 relabel only (`PLURIBUS_COORD_V2=3`, 2026-10-29, gate_run 10 off / 11 on; `scripts/cycloneiv_coordv3_collapse.py`)
+- Model: band base of LAB column X = afx[115 - vx(X)]; old band placement everywhere else (no F3, no EXC4); blocks rebuilt by `prepare`.
+- (a) Prediction: the 88 double-offset asm frames collapse. HELD: sample seed 1, 400,000 entries via idx_rbf: asm frames with >1 sof-frame offset 88 -> 0 (all 88 still present and single-offset; none new). Usable entries 388,311 -> 348,548; asm frames in sample 1,555 -> 1,404 (151 frames now dropped by the band-offset rule 0..17).
+- (b) Prediction: no fault category rises, R4/C4/LI matched rise. Matched part HELD, no-rise part REFUTED. Off -> on, matched / missing / extra / wrong:
+  - LI: 10,199 / 133,630 / 0 / 4,304 -> 10,644 / 133,274 / 0 / 4,215
+  - R4: 902 / 148,831 / 0 / 4,085 -> 1,068 / 148,258 / 0 / 4,492
+  - C4: 13,012 / 118,305 / 0 / 1,964 -> 14,491 / 117,196 / 0 / 1,594
+  - C16, R24 unchanged
+  - ALL: 24,113 / 410,403 / 0 / 10,353 (5.420 %) -> 26,203 / 408,365 / 0 / 10,301 (5.890 %)
+  - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 69,285 / 158,284 / 0 / 31,511
+- Rises: R4 wrong +407, pins missing +887; pins matched -387.
+- Fragmentation near baseline: (block, dest) units 1,616,526 -> 1,610,801; dest records with >1 block 186,723 -> 191,143.
+- Flag stays OFF.

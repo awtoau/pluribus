@@ -40,8 +40,8 @@ FRAME_MIRROR = 17      # plane offset k within a LAB column <-> asm offset 17 - 
 ROW_MIRROR = 6344      # plane v <-> asm 6344 - v
 NAME = re.compile(r"^(H4|V4|H24|V16)(?:R(\d+)C(\d+)|_C(\d+)(UP|DN)_R|R(\d+)_(RT|LT)_C)(RT|LT|UP|DN)?\[(\d+)\]$")
 COORD_MODE = os.environ.get("PLURIBUS_COORD_V2", "0")       # coordinate model v2 (docs/cycloneiv-hop-override.md), default OFF
-COORD_V2 = COORD_MODE in ("1", "2")                          # 1: F3 for all records | 2: F3 for LE_BUFFER-sourced records only + EXC4
-COORD_TAG = {"1": "v2", "2": "v2b"}.get(COORD_MODE, "")
+COORD_V2 = COORD_MODE in ("1", "2", "3")                     # 1: F3 for all records | 2: F3 for LE_BUFFER-sourced records only + EXC4 | 3: F1 relabel only
+COORD_TAG = {"1": "v2", "2": "v2b", "3": "v3"}.get(COORD_MODE, "")
 # (source LAB column X, rel) -> frame shift, LE_BUFFER -> R4 groups; table of the 16 arcs that missed plain F3 (not a rule)
 EXC4 = {(27, 4): 4, (28, -1): -4, (29, -1): 4, (30, 4): -4, (85, 4): 4, (86, -1): -4, (87, -1): 4, (88, 4): -4}
 DEC = os.path.join(A.TMP, f"{DIE}_dec{COORD_TAG}")
@@ -207,7 +207,9 @@ def prepare():
         K, afx_v2 = coord_v2(g, afx, np.asarray(grec), gid, fa)
         pf, pv = asm_to_plane_afx(fa, pos // 6154, g, afx_v2)
         grec_a = np.asarray(grec)
-        if COORD_MODE == "2":
+        if COORD_MODE == "3":
+            ke = np.full(len(gid), -1, np.int64)                  # F1 relabel only: band placement everywhere
+        elif COORD_MODE == "2":
             zf = np.load(os.path.join(A.TMP, f"{DIE}_rt_fanout.npz"))
             K[(zf["enum"][zf["tpl"]] != 45)[:len(K)]] = -1
             import cycloneiv_ddb_blockmap as BM
