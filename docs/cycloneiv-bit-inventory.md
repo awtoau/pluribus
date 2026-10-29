@@ -12,7 +12,7 @@ Tool: `scripts/cycloneiv_bit_inventory.py --image <path> --record` (run with `--
 
 ## Tiers (what "known" means here)
 
-Names are the claim tiers/statuses of provenance-and-feedback.md; each inventory class carries exactly one, with its sample n / misses. Patterns are revocable (recovery-process.md "Patterns and certainty"): a miss moves a class to suspect/refuted and its bits out of the verified tiers.
+Names are the claim tiers/statuses of provenance-and-feedback.md; each inventory class carries exactly one, COMPUTED from its `CLASS:<id>` claim and linked evidence rows by `provenance/tiering.py:class_verdict` (rule, n and misses printed per class; `claims_register.py` links the evidence, the inventory reads the verdict). Nothing sets a tier by hand; `tests/test_tiering.py` shows a refuting row flipping a class. Where the classes land today: 1a, 5b verified; 3, 4f, 4h, 5d measured; 4g sampled (112 sites, extremes included); 1c (4 LABs), 3t (4 LABs), 4i (3 sites) predicted (< 5 scopes for a 2-D law); 2a, 2b decoded-untested; 1b suspect (conflict row). Patterns are revocable (recovery-process.md "Patterns and certainty"): a miss moves a class to suspect/refuted and its bits out of the verified tiers.
 
 - **verified** = oracle-verified: compared claim-for-claim against a vendor oracle (1a, 5b, header sync/CRC).
 - **measured** = raw diff or observation at that cell/site (3 at the 4 specimen LABs, 4f, constants).

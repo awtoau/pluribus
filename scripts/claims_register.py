@@ -20,12 +20,13 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
-from sqlalchemy import and_, delete, insert, select, update
+from sqlalchemy import and_, delete, insert, or_, select, update
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -264,6 +265,120 @@ def import_json_dir(conn, device, commit, json_dir):
     return migrated
 
 
+STATUS_OF = {"verified": "oracle-verified", "sampled": "verified-by-sampling", "suspect": "suspect", "refuted": "refuted",
+             "measured": "confirmed", "predicted": "open", "decoded": "open", "unknown": "open"}
+
+
+def register_class_claims(R, conn, device, geom, commit, lab_axes):
+    """CLASS:<id> claim per inventory class + evidence links (roles direct/parent/confirm/refute/conflict); the tier of each
+    class is then class_verdict() over those links.  Nothing here states a tier: only which evidence supports which class."""
+    from provenance import tiering
+    fam = "cycloneiv"
+    kinds = {int(k): v for k, v in geom["col_kind"].items()}
+    m9k_x = sorted(x for x, v in kinds.items() if v == "M9K")
+    m9k_axes = {"x": [m9k_x[0], m9k_x[-1]], "y": [1, geom["ymax"] - 1]}
+    led = _ledger_latest()
+    classes = [c["id"] for c in led["classes"]] if led else []
+    ev = S.evidence
+
+    def ids(*conds):
+        return [r[0] for r in conn.execute(select(ev.c.id).where(and_(ev.c.family == fam, *conds)))]
+
+    def fetch_derived(name):
+        r = conn.execute(select(ev.c.result).where(and_(ev.c.family == fam, ev.c.name == name))).fetchone()
+        return (r[0] or {}).get("file") if r else None
+
+    R.matcher("m9k-offset-v1", "deterministic", "M9K cell (frame,v) = reference-site cell + (FX[x]-FX[23], vpitch*(y-40))", 1,
+              "scripts/cycloneiv_m9k.py:site_offsets")
+    p_site = R.pattern("m9k-site-offset-v1", "cell-param", "M9K data cells at any site = reference-site cell + per-site (frame,v) offset",
+                       {"dims": 2, "axes": m9k_axes, "frame": "FX[x]-FX[23]", "v": "vpitch*(y-40)"}, matcher_id="m9k-offset-v1", status="open")
+    p_ctl = R.pattern("m9k-control-offset-v1", "cell-param", "M9K control cells at any site = reference-site cell + the same offset",
+                      {"dims": 2, "axes": m9k_axes}, matcher_id="m9k-offset-v1", status="open")
+    R.matcher("clock-polarity-v1", "deterministic", "LAB clock-polarity cell at (FX-6, vy-30)", 1, "scripts/cycloneiv_bit_hunter.py")
+    p_clk = R.pattern("clock-polarity-v1", "bit", "LAB clock-polarity cell at (FX-6, vy-30) of every LAB", {"dims": 2, "axes": lab_axes},
+                      matcher_id="clock-polarity-v1", status="open")
+
+    def class_claim(cid, tier, pattern=None, links=(), basis=""):
+        sid = R.scope("bit", "keys", {"keys": [f"CLASS:{cid}"]}, label=f"inventory class {cid}", n=1)
+        c = R.claim("bit", f"CLASS:{cid}", sid, {"class": cid}, tier, "open", pattern=pattern, cls=cid, n=1, basis=basis)
+        have = {(r[0], r[1]) for r in conn.execute(select(S.claim_evidence.c.evidence_id, S.claim_evidence.c.role)
+                                                    .where(S.claim_evidence.c.claim_id == c))}
+        for role, eids in links:
+            for e in dict.fromkeys(eids):
+                if (e, role) not in have:
+                    conn.execute(insert(S.claim_evidence).values(claim_id=c, evidence_id=e, role=role))
+        v = tiering.class_verdict(conn, fam, device, cid)
+        conn.execute(update(S.claims).where(S.claims.c.id == c).values(
+            status=STATUS_OF[v["tier"]], confirmations=v["n"], refutations=v["misses"], updated_at=now()))
+        log.info("class %-3s -> %-9s n=%-6d misses=%-3d %s", cid, v["tier"], v["n"], v["misses"], v["rule"])
+        return c
+
+    # LAB-side classes
+    ev_lut = ids(ev.c.name == "LUT INIT oracle compare (301 designs)")
+    class_claim("1a", "pattern-predicted", "lut-anchor-v1", [("direct", ev_lut)], "LUT mask vs post-fit netlist, 301 designs")
+    ev_miss = [E.record_decode(conn, fam, device, "le-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)",
+                               {"n_les": 1018, "misses": 14, "design": "one corpus design", "meta": {},
+                                "note": "figures from the earlier analysis (docs/cycloneiv-bit-inventory.md 1b); not recomputed in this run"},
+                               commit, "docs/cycloneiv-bit-inventory.md", generator="scripts/cycloneiv_bit_inventory.py",
+                               n_objects=14, kind="audit")]
+    class_claim("1b", "pattern-predicted", "le-used-v1", [("conflict", ev_miss)], "LE-used bit at (FX-8, vy-sign)")
+    ev_clk = ids(ev.c.kind == "specimen-pair", ev.c.source_ref == "bit_hunter:B:clk")
+    class_claim("1c", "pattern-predicted", "clock-polarity-v1", [("parent", ev_clk)], "clock-polarity cell isolated by bit-hunter pairs")
+    for k in ("2a", "2b"):
+        class_claim(k, "vendor-decoded", None, [], "vendor asm tables, placement via afx_map")
+    ll_files = {"cycloneiv_forced_lab.json": "parent", "cycloneiv_forced_lab_58x30.json": "confirm",
+                "cycloneiv_forced_lab_37x60.json": "confirm", "cycloneiv_forced_lab_100x75.json": "confirm"}
+    ll = {fn: ids(ev.c.kind == "specimen-pair", ev.c.source_ref.like("%/" + fn)) for fn in ll_files}
+    allrows = [e for L in ll.values() for e in L]
+    class_claim("3", "measured", None, [("direct", allrows)], "raw-diff specimens at the 4 specimen LABs")
+    class_claim("3t", "pattern-predicted", "ll-translate-v1", [(role, ll[fn]) for fn, role in ll_files.items()],
+                "LOCAL_LINE translation to every LAB")
+
+    # M9K classes
+    offs = fetch_derived("m9k-site-offsets") or {}
+    ctl = fetch_derived("m9k-control-cells") or {"cells_by_knob": {}, "sites": []}
+    rule = lambda x, y: [geom["FX"][str(x)] - geom["FX"]["23"], geom["vpitch"] * (y - 40)]   # noqa: E731
+    confirm, refute, direct = [], [], []
+    for r in conn.execute(select(ev.c.id, ev.c.name).where(and_(ev.c.family == fam, ev.c.kind == "specimen-pair",
+                                                                 ev.c.name.like("gxm9k_r%_x%_y%_n0_s%")))):
+        m = re.match(r"gxm9k_r(\d+)_x(\d+)_y(\d+)_n0_s\d+$", r[1])
+        if not m:
+            continue
+        w, x, y = int(m[1]), int(m[2]), int(m[3])
+        o = offs.get(f"x{x}_y{y}_x{w}")
+        if o is None:
+            continue
+        (confirm if (o.get("exact") and o.get("offset") == rule(x, y)) else refute).append(r[0])
+        if o.get("exact") and o.get("offset") == rule(x, y):
+            direct.append(r[0])
+    parents = ids(ev.c.kind == "specimen-pair", ev.c.name.like("gxm9k_hR%_s%"))
+    class_claim("4f", "measured", None, [("direct", direct + parents)], "M9K data cells at sites with an exact random-init diff")
+    class_claim("4g", "pattern-predicted", "m9k-site-offset-v1", [("parent", parents), ("confirm", confirm), ("refute", refute)],
+                "M9K data cells at the other sites by the offset rule")
+    knob_names = list(ctl["cells_by_knob"])
+    kref = ids(ev.c.kind == "specimen-pair", ev.c.name.in_([f"gxm9k_w_{k}" for k in knob_names]))
+    ksite = ids(ev.c.kind == "specimen-pair", or_(*[ev.c.name.like(f"gxm9k_w_x%_{k}") for k in knob_names])) if knob_names else []
+    class_claim("4h", "measured", None, [("direct", kref + ksite)], "M9K control cells (knob pairs) at the sites where measured")
+    class_claim("4i", "pattern-predicted", "m9k-control-offset-v1", [("parent", kref), ("confirm", ksite)],
+                "M9K control cells at the other sites by the offset rule")
+
+    # stream classes: evidence = every held GX150 bitstream decoding (CRC chain and pre/postamble are checked by the decompressor)
+    es = fetch_derived("ever-set-bitmap")
+    if es:
+        e_crc = E.record_decode(conn, fam, device, "frame CRC-16 chain: every CRAM frame of every held GX150 bitstream",
+                                {"designs": es["n_designs"], "oracle": "CRC-16 stored in each frame", "meta": {}}, commit,
+                                "scripts/cycloneiv_ever_set.py", generator="scripts/cycloneiv_ever_set.py", n_objects=es["n_designs"],
+                                kind="oracle-compare")
+        e_pp = E.record_decode(conn, fam, device, "preamble/postamble 0xFF fill: every held GX150 bitstream",
+                               {"designs": es["n_designs"], "meta": {}}, commit, "scripts/cycloneiv_ever_set.py",
+                               generator="scripts/cycloneiv_ever_set.py", n_objects=es["n_designs"], kind="audit")
+        class_claim("5b", "measured", None, [("direct", [e_crc])], "CRC-16 per CRAM frame")
+        class_claim("5d", "measured", None, [("direct", [e_pp])], "constant 0xFF pre/postamble")
+    for cid in classes:
+        if cid in ("4a", "4b", "4c", "4d", "4e", "5c", "6"):
+            class_claim(cid, "unknown", None, [], "no attribution")
+
+
 def register_cycloneiv(conn, device, commit):
     geom = _geom(device)
     sha_geom = hashlib.sha256((REPO / "lifters/data/cycloneiv_ep4cgx150_geom.json").read_bytes()).hexdigest()
@@ -271,6 +386,8 @@ def register_cycloneiv(conn, device, commit):
         family="cycloneiv", name=device, die="ep4cgx150", packages=None, die_bits=39425016, geometry=geom,
         source_ref=f"lifters/data/cycloneiv_ep4cgx150_geom.json sha256:{sha_geom[:12]}"))
     R = Reg(conn, "cycloneiv", device, commit, geom)
+    _labx = sorted(int(k) for k, v in geom["col_kind"].items() if v == "LAB")
+    LAB_AXES = {"x": [_labx[0], _labx[-1]], "y": [1, geom["ymax"] - 1]}
     conn.execute(update(S.address_spaces).where(and_(S.address_spaces.c.family == "cycloneiv",
                                                      S.address_spaces.c.space == "bit")).values(n_objects=39425016))
 
@@ -335,7 +452,7 @@ def register_cycloneiv(conn, device, commit):
         edge_cols = {"col_kind": "LAB", "x_in": adj, "count_only": True}
         universe = sorted({o for offs, _, _ in parent.values() for o in offs})
         pid = R.pattern("ll-translate-v1", "bit", "LOCAL_LINE sink-mux bits translate by (FX[x], vy0+vpitch*y) to every LAB",
-                        {"frame": "FX[x] + rel", "v": "vy0 + vpitch*y + rel", "dims": 2,
+                        {"frame": "FX[x] + rel", "v": "vy0 + vpitch*y + rel", "dims": 2, "axes": LAB_AXES,
                          "agreement": {f"X{x}Y{y}": n for (x, y), n in agree.items()}, "pairs": len(parent)},
                         matcher_id="tile-translate-v1",
                         scope_id=R.scope("bit", "tile-class", dict(interior, offsets=universe), label="interior LABs"),
@@ -524,11 +641,11 @@ def register_cycloneiv(conn, device, commit):
                                  generator="scripts/cycloneiv_lut_check.py", n_objects=5354496, kind="oracle-compare")
         R.matcher("lut-anchor-v1", "deterministic", "LUT INIT anchor law (DK offsets from LE anchor)", 1, "cycloneiv_le_locate:DK")
         R.matcher("afx-mirror-v1", "statistical", "asm column base from vote peaks (afx_map)", 1, "cycloneiv_asm_decode:afx_map")
-        p_lut = R.pattern("lut-anchor-v1", "bit", "LUT INIT bits at anchor + DK offsets, every LE of every LAB", {"dims": 2, "DK": "cycloneiv_le_locate.DK"},
+        p_lut = R.pattern("lut-anchor-v1", "bit", "LUT INIT bits at anchor + DK offsets, every LE of every LAB", {"dims": 2, "axes": LAB_AXES, "DK": "cycloneiv_le_locate.DK"},
                           matcher_id="lut-anchor-v1", status="oracle-verified")
         p_afx = R.pattern("afx-mirror-v1", "coord-map", "asm frame axis -> plane frame per column (vote peaks; 32 columns != FX)",
                           {"dims": 1, "moved_columns": 32}, matcher_id="afx-mirror-v1", status="open")
-        p_leu = R.pattern("le-used-v1", "bit", "LE-used bit at (FX-8, vy - sign)", {"dims": 2, "misses": "14/1018 on one design"},
+        p_leu = R.pattern("le-used-v1", "bit", "LE-used bit at (FX-8, vy - sign)", {"dims": 2, "axes": LAB_AXES, "misses": "14/1018 on one design"},
                           matcher_id="lut-anchor-v1", status="suspect")
         R.matcher("clock-polarity-fit-v1", "statistical", "greedy LAB clock-polarity fit (Jaccard 0.85)", 1, "cycloneiv_route_learn")
 
@@ -579,6 +696,10 @@ def register_cycloneiv(conn, device, commit):
 
 
 # ── Lattice (ECP5 / MachXO2) ────────────────────────────────────────────────
+
+    # ── class claims: one per inventory class; the coverage tier is COMPUTED from them (provenance/tiering.py) ──
+    register_class_claims(R, conn, device, geom, commit, LAB_AXES)
+
 
 def _tile_types(fam_dir):
     d = REPO / "device-db" / fam_dir / "tiledata"

@@ -196,8 +196,27 @@ LEDGER = REPO / "docs/coverage-history.jsonl"
 # the cell moves it back to unknown); shown beside unknown, never merged. Bitmap: scripts/cycloneiv_ever_set.py.
 TIER_KEYS = ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown", "projected")
 UNKNOWN_CLASSES = ("4a", "4b", "4c", "4d", "4e", "5c", "6")
-LEDGER_TIER = {"1a": "verified", "5b": "verified", "4f": "measured", "3": "measured", "5d": "measured",
-               "4g": "sampled", "4h": "measured", "4i": "predicted", "3t": "predicted", "1c": "predicted", "2a": "decoded", "2b": "decoded", "1b": "suspect"}
+LEDGER_TIER = {}     # class id -> tier; filled from the DB at run start by load_verdicts() (provenance/tiering.py), never hand-set
+VERDICT = {}
+
+
+def load_verdicts():
+    """Tier per class from the claims/evidence in the family DB: the rule in provenance/tiering.py."""
+    import db
+    from provenance import tiering
+    with db.engine().connect() as conn:
+        for cid in [c[0] for c in CLASSES] + ["5d"]:
+            v = tiering.class_verdict(conn, "cycloneiv", "EP4CGX150", cid)
+            VERDICT[cid] = v
+            LEDGER_TIER[cid] = v["tier"]
+    for cid, v in VERDICT.items():
+        if cid in BASIS:
+            BASIS[cid] = (BASIS[cid][0], f"n={v['n']} misses={v['misses']}; {v['rule']}")
+        else:
+            BASIS[cid] = ("", f"n={v['n']} misses={v['misses']}; {v['rule']}")
+        log.info("tier %-3s %-9s n=%-5d misses=%-3d %s", cid, v["tier"], v["n"], v["misses"], v["rule"])
+
+
 BASIS = {  # class -> (what backs it, sample n / misses)
     "1a": ("LUT mask vs Quartus post-fit netlist (oracle compare)", "301 designs, 5,354,496 bits / 0 miss"),
     "1b": ("pattern-predicted rule from LE positions; 14 misses on one design, claim status suspect", "1,018 LEs / 14 miss"),
@@ -276,6 +295,7 @@ def main():
 
 
 def run(a):
+    load_verdicts()
     import cycloneiv_corpus as cc
     import cycloneiv_decompress as cd
     import cycloneiv_geom as cg
@@ -534,7 +554,7 @@ def run(a):
     P("=== (A) die-wide TOTAL bits per class; die = %d bits (handbook 39,425,016) ===", die_bits)
     P("%-4s %-58s %-9s %12s %12s %7s", "id", "class", "tier", "total", "image set", "% die")
     for r in rows:
-        P("%-4s %-58s %-9s %12d %12d %6.2f%%", r["id"], r["name"], r["tier"], r["total"], r["set"], r["pct_die"])
+        P("%-4s %-58s %-9s %12d %12d %6.2f%%", r["id"], r["name"], LEDGER_TIER.get(r["id"], r["tier"]), r["total"], r["set"], r["pct_die"])
     P("2c   asm bits with no plane cell (outside partition): %d distinct, %d entries", len(dpos), n_drop)
     P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items()))
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
