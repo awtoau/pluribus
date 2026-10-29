@@ -156,3 +156,12 @@ libddb_dev	DEV_PIN	584	0x210	m_string_enum_is_valid	byte[16]	serializer field id
 libddb_dev	DEV_PIN	584	0x220	m_vec_int_enum_is_valid	byte[16]	serializer field id 0x150; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
 libddb_dev	DEV_PIN	584	0x230	m_string_hash_enum_is_valid	byte[16]	serializer field id 0x151; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
 libddb_dev	DEV_PIN	584	0x240	m_pad_id_list	long	serializer field id 0x152	serializer:dev_ser.c
+libdb_asmdb	ASMDB_MUX	32	0x8	m_mux_bits	byte[24]	vector<uint>; CFF/CRAM addresses of the mux bits	#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libdb_asmdb	ASMDB_LABELED_SIMPLE_MUX	40	0x20	m_name	pointer	std::string; names le_comb_abs_to_loc, le_comb_to_lab, row_abs2loc, row2mac	#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libdb_asmdb	ASMDB_MAPPED_SIMPLE_MUX	40	0x20	m_map_mux	pointer	ASMDB_MUX*	#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libdb_asmdb	ASMDB_MAPPED_ENCODED_MUX	40	0x20	m_map_mux	pointer	ASMDB_MUX*	#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libdb_asmdb	ASMDB_RAM_MUX	40	0x20	m_polarity_mux	pointer	ASMDB_MUX*	#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libdb_asmdb	ASMDB_DECISION_MUX	40	0x20	m_lower_setting	byte		#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libdb_asmdb	ASMDB_DECISION_MUX	40	0x21	m_upper_setting	byte		#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libdb_asmdb	ASMDB_ENCODED_BANK_MUX	40	0x20	m_mux_size	int		#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libdb_asmdb	ASMDB_ENCODED_BANK_MUX	40	0x24	m_bank_size	int		#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
