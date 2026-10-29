@@ -2,10 +2,12 @@
 """Cyclone IV GX150 configuration-bit inventory (read-only, issue #141).
 
 Every cell of the (frame, v) plane (+ header frame) is attributed to ONE class, first match wins:
-  1 cell config (LUT INIT / LE bits)   2 asm.ddb routing   3 raw-diff specimen bits
+  1 cell config (LUT INIT / LE bits)   3 raw-diff specimen bits
   4 hard-IP / IO regions by geometry   5 stream overhead   6 unclassified
+Class 2 (asm.ddb routing attribution, 2a/2b) is removed: it rode on the retired coordinate model (#165);
+its cells fall to the next matching class. Routing returns with the clean address engine (P1).
 Reports die-wide TOTAL bits per class (A) and the SET bits of an image per class (B).
-No new decoder: geometry, Dec.active and the specimen tables are used as they are.
+No new decoder: geometry and the specimen tables are used as they are.
 
   python3.15t scripts/cycloneiv_bit_inventory.py --image <path.bin|.rbf> --record
 --record appends one line to docs/coverage-history.jsonl (the coverage-over-time ledger); use it every run.
@@ -57,8 +59,6 @@ CLASSES = [  # id, name, evidence tier
     ("1d-b", "LAB blkrba named control bits RSCNT/RSMUX/ROWCLK at constant 15 (positions miss the measured control cells)", "refuted"),
     ("1d-c", "LAB blkrba control cells at constant 22 (clock polarity, ena 2, aclr 2, sclr 1)", "sampled"),
     ("1d-d", "LAB blkrba other control names at constant 22 (position only)", "decoded"),
-    ("2a", "asm routing: cells of groups FIRED in this image", "decoded"),
-    ("2b", "asm routing: cells in groups/blocks not fired in this image", "table-only"),
     ("3", "LOCAL_LINE specimen bits at the 4 specimen LABs (measured)", "specimen"),
     ("3t", "LOCAL_LINE specimen bits translated to all other LABs", "predicted"),
     ("4a", "periphery frames 1..36 (IO ring, clocks, PLL, misc)", "unknown"),
@@ -230,8 +230,6 @@ BASIS = {  # class -> (what backs it, sample n / misses)
     "1d-d": ("blkrba other control names at constant 22; no specimen isolates them; position only", "-"),
     "1d-b": ("blkrba control names at constant 15: positions miss every measured clock-polarity/ena/aclr/sclr cell; refuting rows, claim refuted", "8 measured cells / 0 on a name"),
     "1d-a": ("vendor ddb decode (blkrba) of per-LAB bit positions; position law validated on the 256 LUT cells (4,749,088 mask bits vs .vo, 0 wrong); non-LUT names carry no exact evidence", "300 designs, LUT cells only"),
-    "2a": ("decoded from vendor asm tables, (frame,v) map inferred; decoded-untested, not rule-verified", "held-out routing score 17.1% of pips"),
-    "2b": ("same vendor tables, groups not fired in the image; decoded-untested, not rule-verified", "none"),
     "3": ("raw-diff specimens at the 4 specimen LABs", "4 LABs x 240 pairs"),
     "3t": ("pattern ll-translate-v1 fitted at X10Y10, confirmed at 3 other LABs; below the 2-D bar (N=5); edge rows/columns outside scope", "4 LABs x 240 pairs / 0 miss"),
     "4f": ("measured: M9K data cells at sites with an exact random-init diff", "112 sites / 0 miss"),
@@ -308,7 +306,6 @@ def run(a):
     import cycloneiv_corpus as cc
     import cycloneiv_decompress as cd
     import cycloneiv_geom as cg
-    import cycloneiv_asm_decode as ad
     from cycloneiv_le_locate import DK
 
     g = cg.load(cg.die_of("EP4CGX150"))
@@ -343,36 +340,6 @@ def run(a):
     else:
         log.warning("1d: blkrba table not found (vendor-analysis, local only); class 1d stays empty")
     log.info("class 1 claimed: %s", {k: int((inv.cls == CID[k]).sum()) for k in ("1a", "1b", "1c", "1d-a", "1d-b", "1d-c", "1d-d")})
-
-    # ---- 2: asm routing -------------------------------------------------------------------
-    dec = ad.Dec()
-    gids, _grec, blk = dec.active(plane)
-    log.info("fired groups %d, distinct blocks %d of %d", len(gids), len(set(blk.tolist())), dec.nblocks)
-    fg = np.zeros(len(dec.gsize), bool)
-    fg[gids] = True
-    pf, pvv, gid = np.asarray(dec.pf), np.asarray(dec.pv), np.asarray(dec.gid)
-    pos = np.load(REPO / "tmp/ddb/stingray4_asm_pos.npy", mmap_mode="r")
-    assert len(pos) == len(pf), (len(pos), len(pf))
-    asm_any = np.zeros(nfr * NV, bool)
-    fired = np.zeros(nfr * NV, bool)
-    dropped_pos, n_drop, CH = [], 0, 5_000_000
-    for s in range(0, len(pf), CH):
-        p, q = pf[s:s + CH].astype(np.int64), pvv[s:s + CH].astype(np.int64)
-        ok = (p >= 0) & (p < nfr) & (q >= 0) & (q < NV)
-        flat = p[ok] * NV + q[ok]
-        asm_any[flat] = True
-        fired[flat[fg[gid[s:s + CH]][ok]]] = True
-        n_drop += int((~ok).sum())
-        if (~ok).any():
-            dropped_pos.append(np.unique(np.asarray(pos[s:s + CH])[~ok]))
-    dpos = np.unique(np.concatenate(dropped_pos)) if dropped_pos else np.zeros(0, np.int64)
-    log.info("asm entries %d; placed cells %d (fired %d); entries with no plane cell %d (%d distinct asm bits)",
-             len(pf), int(asm_any.sum()), int(fired.sum()), n_drop, len(dpos))
-    inv.claim(np.flatnonzero(fired), "2a")
-    inv.claim(np.flatnonzero(asm_any & ~fired), "2b")
-    afx = json.load(open(REPO / "tmp/ddb/stingray4_dec_afx.json"))
-    moved = sorted(int(x) for x, b in afx.items() if int(x) in g.FX and b != g.FX[int(x)])
-    del pf, pvv, gid
 
     # ---- 3: specimens ---------------------------------------------------------------------
     pats, rel = [], None
@@ -548,12 +515,9 @@ def run(a):
     ph_tot = np.bincount(phase[lab_core], weights=six[labf][:, lab_core].sum(0), minlength=g.vpitch)
     six_off = {o: int(six[labf[off[labf] == o]][:, lab_core].sum()) for o in range(35)}
     n_ll = len(tiles)
-    moved_lab = [x for x in moved if g.kind[x] == "LAB"]
     out = dict(image_set_bits_in_plane=int(len(keys)), header_set=hdr_set, crc_set=crc_set, die_bits=die_bits,
                set_total=set_all, rows=rows, ever_set_n=ever_n, unknown_projected=tot_proj, **tot_t,
-               fired_groups=int(len(gids)), blocks=int(dec.nblocks),
-               asm_entries=int(len(dec.gsize)), asm_entries_dropped=n_drop, asm_bits_unplaced=int(len(dpos)),
-               afx_moved_columns=moved, afx_moved_lab_columns=moved_lab, specimen_labs=pats, specimen_cells_per_lab=len(universe),
+               specimen_labs=pats, specimen_cells_per_lab=len(universe),
                specimen_roles=dict(role), specimen_overlap_prior=spec_overlap, specimen_universe_set_in_image=spec_set_all,
                specimen_full_matches=match_pairs, specimen_labs_with_match=int(labs_hit.sum()),
                specimen_sink_match_hist=[per_snk[i] for i in range(4)],
@@ -572,21 +536,18 @@ def run(a):
     P("%-4s %-58s %-9s %12s %12s %7s", "id", "class", "tier", "total", "image set", "% die")
     for r in rows:
         P("%-4s %-58s %-9s %12d %12d %6.2f%%", r["id"], r["name"], LEDGER_TIER.get(r["id"], r["tier"]), r["total"], r["set"], r["pct_die"])
-    P("2c   asm bits with no plane cell (outside partition): %d distinct, %d entries", len(dpos), n_drop)
     P("HEADLINE exact (verified + measured) %d = %.2f%%; rule verified by sampling (not exact per cell, not in headline) %d = %.2f%%",
       tot_t["verified"] + tot_t["measured"], 100 * (tot_t["verified"] + tot_t["measured"]) / die_bits,
       tot_t["sampled"], 100 * tot_t["sampled"] / die_bits)
     P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items())
       + f"; of which unknown projected unused (never set in {ever_n} designs) {tot_proj} = {100 * tot_proj / die_bits:.2f}%")
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
-    sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["1d-a"] + S["1d-b"] + S["1d-c"] + S["1d-d"] + S["2a"] + S["2b"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
+    sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["1d-a"] + S["1d-b"] + S["1d-c"] + S["1d-d"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
     P("    verified-class set bits %d (%.1f%%), other-evidence %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
       sv, 100 * sv / set_all, se, 100 * se / set_all, set_all - sv - se - S["5a"] - T["5d"],
       100 * (set_all - sv - se - S["5a"] - T["5d"]) / set_all)
-    P("    in 1a %d, 1b %d, 1c %d, 1d-a %d, 1d-b %d, 1d-c %d, 1d-d %d, 2a %d, 2b %d, 3 %d, 3t %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["1d-a"], S["1d-b"], S["1d-c"], S["1d-d"], S["2a"], S["2b"], S["3"], S["3t"],
+    P("    in 1a %d, 1b %d, 1c %d, 1d-a %d, 1d-b %d, 1d-c %d, 1d-d %d, 3 %d, 3t %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["1d-a"], S["1d-b"], S["1d-c"], S["1d-d"], S["3"], S["3t"],
       sum(S[k] for k in ("4a", "4b", "4c", "4d", "4e")), S["5b"], S["5c"], S["6"])
-    P("asm: groups fired %d, blocks %d; entries with no plane cell %d; columns whose asm base != FX: %d (LAB %d: %s)",
-      len(gids), dec.nblocks, n_drop, len(moved), len(moved_lab), moved_lab)
     P("specimen: %d cells per LAB, roles %s; new cells %s; overlap with earlier classes %s; image set bits in the translated universe %d",
       len(universe), dict(role), spec_new, spec_overlap, spec_set_all)
     P("specimen full 4-bit matches in image: %d (LAB, pair) over %d LABs with >=1; (LAB, sink) match-count hist 0/1/2/3+ srcs %s",
