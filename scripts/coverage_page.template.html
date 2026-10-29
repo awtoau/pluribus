@@ -26,7 +26,7 @@ h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
 .tile .v{font-family:var(--mono);font-size:30px;font-weight:500;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px}
 .tile .m{font-size:12px;color:var(--muted);font-family:var(--mono)}
 .sw{display:inline-block;width:12px;height:12px;border-radius:2px;flex:none}
-.ver{background:var(--ver)}.mea{background:var(--mea)}.sam{background:var(--sam)}.pre{background:var(--pre)}.dec{background:var(--dec)}.sus{background:var(--sus)}.ref{background:var(--ref)}.leg{background:var(--leg)}.pro{background:var(--pro)}.unk{background:var(--unk)}.mix{background:var(--mix)}
+.ver{background:var(--ver)}.mea{background:var(--mea)}.sam{background:var(--sam)}.pre{background:var(--pre)}.dec{background:var(--dec)}.sus{background:var(--sus)}.ref{background:var(--ref)}.leg{background:var(--leg)}.pro{background:var(--pro)}.subline{font-size:12px;color:var(--muted);margin:2px 0 0}.unk{background:var(--unk)}.mix{background:var(--mix)}
 section{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
@@ -117,11 +117,12 @@ const TIERS=[["ver","verified","oracle-verified: compared claim-for-claim agains
  ["dec","decoded-untested","read from the vendor decode; nothing tested at the cell"],
  ["sus","suspect","a pattern with a recorded miss or a conflict; revoked from the verified tiers until audited"],
  ["ref","refuted","contradicted by a specimen inside its scope"],
- ["unk","unknown, set in some design (live)","nothing attributes a meaning, and some held bitstream sets the cell"],
- ["pro","unknown, never set in n designs (projected unused)".replace("n designs",((DATA.ledger.filter(r=>r.ever_set_n).pop()||{}).ever_set_n||"n")+" designs"),"nothing attributes a meaning and no held bitstream sets the cell: pattern-predicted unused, revocable (one design that sets it moves it back to live unknown)"]];
+ ["unk","unknown","nothing attributes a meaning (the headline)"]];
+const PROJ_N=((DATA.ledger.filter(r=>r.ever_set_n).pop()||{}).ever_set_n)||"n";
 const FIELD={ver:"verified",mea:"measured",sam:"sampled",pre:"predicted",dec:"decoded",sus:"suspect",ref:"refuted",unk:"unknown",pro:"projected",leg:"evidence"};
-const K=["ver","mea","sam","pre","dec","sus","ref","unk","pro","leg"],KN={ver:"verified",mea:"measured",sam:"verified-by-sampling",pre:"pattern-predicted",dec:"decoded-untested",sus:"suspect",ref:"refuted",unk:"unknown, set in some design (live)",pro:"unknown, never set in "+((DATA.ledger.filter(r=>r.ever_set_n).pop()||{}).ever_set_n||"n")+" designs (projected unused)",leg:"evidence (older runs, unsplit)"};
-const val=(o,k)=>o[FIELD[k]]||0;
+const K=["ver","mea","sam","pre","dec","sus","ref","unk","leg"],KN={ver:"verified",mea:"measured",sam:"verified-by-sampling",pre:"pattern-predicted",dec:"decoded-untested",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence (older runs, unsplit)"};
+const proj=o=>o.unknown_projected!==undefined?o.unknown_projected:(o.projected||0);
+const val=(o,k)=>k==="unk"&&o.unknown_projected===undefined?(o.unknown||0)+(o.projected||0):(o[FIELD[k]]||0);   // older rows kept projected as a separate additive tier
 const ckey=c=>K.find(k=>val(c,k)===c.die_bits&&c.die_bits>0)||"unk";
 function tip(e,html){const t=$("tip");t.innerHTML=html;t.style.display="block";
   const w=t.offsetWidth,x=Math.min(e.clientX+12,innerWidth-w-8);t.style.left=Math.max(4,x)+"px";t.style.top=Math.min(e.clientY+14,innerHeight-t.offsetHeight-6)+"px"}
@@ -137,14 +138,14 @@ const date=s=>s.slice(0,16).replace("T"," ");
 const sumT=(r,t)=>{const o={die:0,img:0};K.forEach(k=>o[k]=0);r.classes.filter(c=>t.ids.includes(c.id)).forEach(c=>{o.die+=c.die_bits;K.forEach(k=>o[k]+=val(c,k));o.img+=c.image_set});return o};
 const src=r=>r.source==="live"?"live run":r.source;
 // legend
-$("tierlegend").innerHTML=TIERS.map(t=>`<span style="flex-basis:100%"><i class="sw ${t[0]}"></i><b>${t[1]}</b>: ${t[2]}</span>`).join("")+`<span><i class="sw mix"></i>Mixed (header set bits, unsplit)</span>`;
+$("tierlegend").innerHTML=TIERS.map(t=>`<span style="flex-basis:100%"><i class="sw ${t[0]}"></i><b>${t[1]}</b>: ${t[2]}</span>`).join("")+`<span><i class="sw mix"></i>Mixed (header set bits, unsplit)</span>`+`<span style="flex-basis:100%"><i class="sw pro"></i><b>of which projected unused</b>: unknown cells never set in any of ${PROJ_N} held bitstreams (pattern-predicted, revocable: one design that sets the cell removes it); a sub-line of unknown, not subtracted from it</span>`;
 // tiles
 const D=live.die_bits;
 const IS={};K.forEach(k=>IS[k]=0);let img=0,ih=0;
 live.classes.forEach(c=>{img+=c.image_set;if(c.id==="5a")ih+=c.image_set;else IS[ckey(c)]+=c.image_set});
 const meta=`${live.commit.slice(0,9)} · ${date(live.ts)}${live.dirty?" · tree dirty":""}`;
 $("tiles").innerHTML=[
- ...K.filter(k=>val(live,k)>0||k==="sus"||k==="ref").map(k=>["Die "+KN[k],k,pc(val(live,k),D),`${fmt(val(live,k))} bits`])
+ ...K.filter(k=>val(live,k)>0||k==="sus"||k==="ref").map(k=>["Die "+KN[k],k,pc(val(live,k),D),`${fmt(val(live,k))} bits`+(k==="unk"?`<br><i class="sw pro"></i> of which projected unused ${pc(proj(live),D)} (${fmt(proj(live))} bits, never set in ${PROJ_N} designs)`:"")])
 ].map(t=>`<div class="tile"><div class="k">${t[0]}</div><div class="v"><i class="sw ${t[1]}"></i>${t[2]}</div><div class="m">${t[3]}<br>${meta}</div></div>`).join("")+
 `<div class="tile"><div class="k">Image set bits (${fmt(img)})</div><div class="v" style="font-size:18px;flex-wrap:wrap">${K.filter(k=>IS[k]>0).map(k=>`<span><i class="sw ${k}"></i> ${pc(IS[k],img,1)}</span>`).join("")}<span><i class="sw mix"></i> ${pc(ih,img,1)}</span></div><div class="m">by tier, then header<br>${meta}</div></div>`;
 
@@ -181,9 +182,9 @@ function tipRow(r,s,segs){return `<b>${s.hash}</b> ${date(s.ts)} (${src(r)})<br>
   el(svg,"text",{x:cx,y:H-36,"text-anchor":"middle"},w.slice(0,13));
   el(svg,"text",{x:cx,y:H-24,"text-anchor":"middle"},w.slice(13));
   if(!byHash[s.hash])el(svg,"text",{x:cx,y:H-10,"text-anchor":"middle"},"no data")}});
- $("t1").innerHTML=`<tr><th class="l">Commit</th><th class="l">Date</th><th class="l">Subject</th><th class="l">Source</th>${K.map(k=>`<th>${KN[k]}</th>`).join("")}<th>Die bits</th></tr>`+
- S.map(s=>{const r=byHash[s.hash];if(!r)return `<tr><td class="mono">${s.hash}</td><td class="mono">${date(s.ts)}</td><td class="l">${s.subject}</td><td class="l" colspan="11">no data point: ${s.why_missing}</td></tr>`;
-  return `<tr><td class="mono">${s.hash}</td><td class="mono">${date(s.ts)}</td><td class="l">${s.subject}</td><td class="l">${src(r)}${r.dirty?" (tree dirty)":""}</td>${K.map(k=>val(r,k)).map(v=>`<td>${pc(v,r.die_bits)}<br>${fmt(v)}</td>`).join("")}<td>${fmt(r.die_bits)}</td></tr>`}).join("");
+ $("t1").innerHTML=`<tr><th class="l">Commit</th><th class="l">Date</th><th class="l">Subject</th><th class="l">Source</th>${K.map(k=>`<th>${KN[k]}</th>`).join("")}<th>of which unknown projected unused</th><th>Die bits</th></tr>`+
+ S.map(s=>{const r=byHash[s.hash];if(!r)return `<tr><td class="mono">${s.hash}</td><td class="mono">${date(s.ts)}</td><td class="l">${s.subject}</td><td class="l" colspan="12">no data point: ${s.why_missing}</td></tr>`;
+  return `<tr><td class="mono">${s.hash}</td><td class="mono">${date(s.ts)}</td><td class="l">${s.subject}</td><td class="l">${src(r)}${r.dirty?" (tree dirty)":""}</td>${K.map(k=>val(r,k)).concat([proj(r)]).map(v=>`<td>${pc(v,r.die_bits)}<br>${fmt(v)}</td>`).join("")}<td>${fmt(r.die_bits)}</td></tr>`}).join("");
 })();
 
 // ---- chart 2 panels
@@ -238,7 +239,7 @@ function hbars(svg,items,total,tierKeys,tipFn,pcOf){
  $("t4").innerHTML=`<tr><th class="l">Type</th><th>Set bits</th><th>% of image</th>${K.map(k=>`<th>${KN[k]}</th>`).join("")}<th>Header (mixed)</th></tr>`+items.map(it=>`<tr><td class="l">${it.n}${it.flag?" †":""}</td><td>${fmt(it.total)}</td><td>${pc(it.total,tot)}</td>${K.map(k=>`<td>${fmt(it.seg[k])}</td>`).join("")}<td>${fmt(it.seg.mix)}</td></tr>`).join("")+
   `<tr><th class="l">Total</th><th>${fmt(tot)}</th><th>100%</th>${K.map(k=>`<th>${fmt(IS[k])}</th>`).join("")}<th>${fmt(ih)}</th></tr><tr><td class="l" colspan="13">† decoded, untested. Measured includes the 728 constant pre/post bits.</td></tr>`;
 })();
-{ const rows=live.classes.map(c=>{const k=c.id==="5a"?"mixed":ckey(c);return `<tr><td class="mono">${c.id}</td><td class="l">${c.name}</td><td>${fmt(c.die_bits)}</td><td class="l">${K.filter(x=>val(c,x)>0).map(x=>`<i class="sw ${x}"></i> ${KN[x]}${val(c,x)<c.die_bits?" "+fmt(val(c,x)):""}`).join("<br>")}</td><td class="l">${c.basis||""}<br><span class="mono">DB claims: ${c.tiers?Object.entries(c.tiers).map(([a,b])=>a+" "+fmt(b)).join(", "):"none"}</span></td><td class="l">${c.sample||""}</td></tr>`}).join("");
+{ const rows=live.classes.map(c=>{const k=c.id==="5a"?"mixed":ckey(c);return `<tr><td class="mono">${c.id}</td><td class="l">${c.name}</td><td>${fmt(c.die_bits)}</td><td class="l">${K.filter(x=>val(c,x)>0).map(x=>`<i class="sw ${x}"></i> ${KN[x]}${val(c,x)<c.die_bits?" "+fmt(val(c,x)):""}${x==="unk"&&proj(c)?`<br><i class="sw pro"></i> of which projected unused ${fmt(proj(c))} (never set in ${PROJ_N} designs)`:""}`).join("<br>")}</td><td class="l">${c.basis||""}<br><span class="mono">DB claims: ${c.tiers?Object.entries(c.tiers).map(([a,b])=>a+" "+fmt(b)).join(", "):"none"}</span></td><td class="l">${c.sample||""}</td></tr>`}).join("");
  $("t5").innerHTML=`<tr><th>Class</th><th class="l">Name</th><th>Bits</th><th class="l">Tier</th><th class="l">What backs it</th><th class="l">Sample n / misses</th></tr>`+rows;
 }
 (function(){const P=DATA.progress;if(!P||!P.rows.length){$("t0").innerHTML="<tr><td>no progress rows yet</td></tr>";return}

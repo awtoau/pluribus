@@ -35,8 +35,8 @@ METRICS = {
     "unknowns": ("seriously-unknown rows", False),     "die_verified": ("die bits verified (oracle)", True), "die_measured": ("die bits measured", True),
     "die_sampled": ("die bits verified-by-sampling", True), "die_predicted": ("die bits pattern-predicted", None),
     "die_decoded": ("die bits decoded-untested", None), "die_suspect": ("die bits suspect", False),
-    "die_refuted": ("die bits refuted", False), "die_unknown": ("die bits unknown, set in some design (live)", False),
-    "die_projected": ("die bits unknown, never set in any held design (projected unused)", None),
+    "die_refuted": ("die bits refuted", False), "die_unknown": ("die bits unknown (headline)", False),
+    "die_projected": ("  of which projected unused (never set in any held design)", None),
 }
 
 
@@ -75,8 +75,14 @@ def measure():
     m["unknowns"] = c.execute("select count(*) from unknowns").fetchone()[0]
     rows = [json.loads(line) for line in open(COVER) if line.strip()]
     if rows:
-        for k in ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown", "projected"):
+        for k in ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown"):
             m["die_" + k] = rows[-1].get(k, 0)    # older ledger rows lack the split tiers: 0
+        last = rows[-1]
+        if "unknown_projected" in last:       # new format: unknown is the headline, projected a sub-line
+            m["die_projected"] = last["unknown_projected"]
+        else:                                 # rows 13:5x-14:2x had projected as a separate additive tier
+            m["die_unknown"] = last.get("unknown", 0) + last.get("projected", 0)
+            m["die_projected"] = last.get("projected", 0)
     return m
 
 

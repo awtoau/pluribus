@@ -192,9 +192,9 @@ LEDGER = REPO / "docs/coverage-history.jsonl"
 #   sampled    = verified-by-sampling (pattern, >= N scopes incl. extremes, 0 refutations) | predicted = pattern-predicted, below that bar
 #   decoded    = decoded-untested (vendor decode, nothing tested at the cell) | suspect / refuted = a pattern with a miss / contradicted
 # Patterns are revocable: a miss moves the class to suspect/refuted and its bits out of the verified tiers.
-# projected = unknown cells set in NONE of the held bitstreams (pattern-predicted unused, revocable: one design that sets
-# the cell moves it back to unknown); shown beside unknown, never merged. Bitmap: scripts/cycloneiv_ever_set.py.
-TIER_KEYS = ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown", "projected")
+# unknown_projected = the part of "unknown" whose cells are set in NONE of the held bitstreams (pattern-predicted unused,
+# revocable). It is a SUB-LINE of unknown, never subtracted from it. Bitmap: scripts/cycloneiv_ever_set.py.
+TIER_KEYS = ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown")
 UNKNOWN_CLASSES = ("4a", "4b", "4c", "4d", "4e", "5c", "6")
 LEDGER_TIER = {}     # class id -> tier; filled from the DB at run start by load_verdicts() (provenance/tiering.py), never hand-set
 VERDICT = {}
@@ -253,16 +253,16 @@ def record(out, hdr_ver, hdr_known, hdr_unk, commit=None, ts=None, source="live"
             tier = LEDGER_TIER.get(r["id"], "unknown")
             tv = {tier: t}
             if r["id"] in UNKNOWN_CLASSES:
-                tv = {"projected": r.get("projected", 0), "unknown": t - r.get("projected", 0)}
+                tv = {"unknown": t}
         assert sum(tv.values()) == t, r["id"]
         classes.append(dict(id=r["id"], name=r["name"], tier_label=r["tier"], die_bits=t,
-                            **{k: tv.get(k, 0) for k in TIER_KEYS}, image_set=r["set"],
+                            **{k: tv.get(k, 0) for k in TIER_KEYS}, unknown_projected=r.get("projected", 0), image_set=r["set"],
                             basis=BASIS.get(r["id"], ("", ""))[0], sample=BASIS.get(r["id"], ("", ""))[1]))
     commit = commit or git("rev-parse", "HEAD")
     if dirty is None:
         dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
     line = dict(ts=ts or datetime.datetime.now().astimezone().isoformat(timespec="seconds"), commit=commit,
-                subject=git("log", "-1", "--format=%s", commit), dirty=dirty, source=source, die_bits=out["die_bits"], **{k: out[k] for k in TIER_KEYS}, image_set_total=out["set_total"], ever_set_n=out.get("ever_set_n"), classes=classes)
+                subject=git("log", "-1", "--format=%s", commit), dirty=dirty, source=source, die_bits=out["die_bits"], **{k: out[k] for k in TIER_KEYS}, unknown_projected=out["unknown_projected"], image_set_total=out["set_total"], ever_set_n=out.get("ever_set_n"), classes=classes)
     assert sum(line[k] for k in TIER_KEYS) == line["die_bits"]
     # tier x status per class from the claims table (real rows only); also mirrored into coverage_ledger
     import evidence_io_bridge as eb
@@ -488,11 +488,12 @@ def run(a):
                                    f"(projected unused, pattern-predicted, revocable); the rest are set in some design (live unknown)",
                                    f"{ever_n:,} designs / 0 set the projected bits")
     tot_t = dict.fromkeys(TIER_KEYS, 0)
+    tot_proj = 0
     for r_ in rows:
         if r_["id"] == "5a":
             tot_t["verified"] += HDR_VER; tot_t["measured"] += HDR_KNOWN; tot_t["unknown"] += HDR_UNK
         elif r_["id"] in UNKNOWN_CLASSES:
-            tot_t["projected"] += r_.get("projected", 0); tot_t["unknown"] += r_["total"] - r_.get("projected", 0)
+            tot_proj += r_.get("projected", 0); tot_t["unknown"] += r_["total"]
         else:
             tot_t[LEDGER_TIER.get(r_["id"], "unknown")] += r_["total"]
     assert sum(tot_t.values()) == die_bits, tot_t
@@ -533,7 +534,7 @@ def run(a):
     n_ll = len(tiles)
     moved_lab = [x for x in moved if g.kind[x] == "LAB"]
     out = dict(image_set_bits_in_plane=int(len(keys)), header_set=hdr_set, crc_set=crc_set, die_bits=die_bits,
-               set_total=set_all, rows=rows, ever_set_n=ever_n, **tot_t,
+               set_total=set_all, rows=rows, ever_set_n=ever_n, unknown_projected=tot_proj, **tot_t,
                fired_groups=int(len(gids)), blocks=int(dec.nblocks),
                asm_entries=int(len(dec.gsize)), asm_entries_dropped=n_drop, asm_bits_unplaced=int(len(dpos)),
                afx_moved_columns=moved, afx_moved_lab_columns=moved_lab, specimen_labs=pats, specimen_cells_per_lab=len(universe),
@@ -556,7 +557,8 @@ def run(a):
     for r in rows:
         P("%-4s %-58s %-9s %12d %12d %6.2f%%", r["id"], r["name"], LEDGER_TIER.get(r["id"], r["tier"]), r["total"], r["set"], r["pct_die"])
     P("2c   asm bits with no plane cell (outside partition): %d distinct, %d entries", len(dpos), n_drop)
-    P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items()))
+    P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items())
+      + f"; of which unknown projected unused (never set in {ever_n} designs) {tot_proj} = {100 * tot_proj / die_bits:.2f}%")
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
     sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["2a"] + S["2b"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
     P("    verified-class set bits %d (%.1f%%), other-evidence %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
