@@ -33,7 +33,8 @@ BUCKETS = (("bit_hunter", "bit hunter"), ("lab_modes", "LAB ports/fan/pswap"), (
            ("evidence/cycloneiv/cycloneiv_forced", "forced routing"), ("hop_specimen", "forced routing"), ("sources/", "third-party images"))
 # yield floor, features per 100 builds, per bucket (None = no floor). Routing 10; isolation hunts 1 new cell.
 FLOOR = {"forced routing": 10, "bit hunter": 1}
-CALIB = re.compile(r"calib|control|null", re.I)
+# calibration/knob rows count 0 features: nulls, controls, LUT-INIT mask knobs (kmask/smask/*mask*), clock-polarity knob (bit_hunter:*:clk)
+CALIB = re.compile(r"calib|control|null|init|mask|:clk$", re.I)
 # metric key -> (label, higher is better)
 METRICS = {
     "single_cell_pairs": ("single-cell pairs (n_objects = 1)", True),
@@ -45,7 +46,7 @@ METRICS = {
     "claims_statistical": ("claims: statistical tier", False), "claims_suspect": ("claims: suspect or refuted", False), "expectations": ("expectations (predictions)", None),
     "unknowns": ("seriously-unknown rows", False),     "die_verified": ("die bits verified (oracle)", True), "die_measured": ("die bits measured", True),
     "die_sampled": ("die bits verified-by-sampling", True), "die_predicted": ("die bits pattern-predicted", None),
-    "die_decoded": ("die bits decoded-untested", None), "die_suspect": ("die bits suspect", False),
+    "die_statistical": ("die bits statistical (own tier)", None), "die_decoded": ("die bits decoded-untested", None), "die_suspect": ("die bits suspect", False),
     "die_refuted": ("die bits refuted", False), "die_unknown": ("die bits unknown (headline)", False),
     "die_projected": ("  of which projected unused (never set in any held design)", None),
 }
@@ -120,14 +121,9 @@ def measure():
     m["unknowns"] = c.execute("select count(*) from unknowns").fetchone()[0]
     rows = [json.loads(line) for line in open(COVER) if line.strip()]
     if rows:
-        for k in ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown"):
+        for k in ("verified", "measured", "sampled", "predicted", "statistical", "decoded", "suspect", "refuted", "unknown"):
             m["die_" + k] = rows[-1].get(k, 0)    # older ledger rows lack the split tiers: 0
-        last = rows[-1]
-        if "unknown_projected" in last:       # new format: unknown is the headline, projected a sub-line
-            m["die_projected"] = last["unknown_projected"]
-        else:                                 # rows 13:5x-14:2x had projected as a separate additive tier
-            m["die_unknown"] = last.get("unknown", 0) + last.get("projected", 0)
-            m["die_projected"] = last.get("projected", 0)
+        m["die_projected"] = rows[-1].get("unknown_projected", 0)    # triage sub-line of unknown, never a tier
     return m
 
 

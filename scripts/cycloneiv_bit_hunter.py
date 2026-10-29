@@ -892,6 +892,7 @@ def report(record=False):
 def record_pairs(cells, D, par, g):
     """One evidence row per (distinct cell, knob): spec = plane a, base = plane b; plane-level diff, n_objects 1."""
     from provenance import evidence_io as E
+    from provenance import corpus as CO
     import db
     done = 0
     with db.engine().begin() as conn:
@@ -908,7 +909,8 @@ def record_pairs(cells, D, par, g):
                 meta = {"group": "bit_hunter", "knob": kn, "frame": fr, "v": v, "tile": [x, y], "df": df, "dv": dv,
                         "params_spec": par[a], "params_base": par[b], "plane_level": True}
                 E.record_specimen(conn, "cycloneiv", lm.EV_DEVICE, f"bh_{a[5:]}_{b[5:]}", b, on, off, meta,
-                                  f"bit_hunter:{kn}", GENERATOR, E.git_head(REPO), NV, tool_version="25.1")
+                                  f"bit_hunter:{kn}", GENERATOR, E.git_head(REPO), NV, tool_version="25.1",
+                                  build_base=CO.build_id(conn, "cycloneiv", b), build_spec=CO.build_id(conn, "cycloneiv", a))
                 done += 1
     log.info("recorded %d evidence rows", done)
 

@@ -355,8 +355,10 @@ def diff(sets, labs):
                 meta = {"set": s, "id": p["id"], "lab": lab, "xy": list(LABS[lab]), "base_name": bn}
                 with eng.begin() as conn:
                     E.ensure_family(conn, FAMILY)
+                    from provenance import corpus as CO
                     E.record_specimen(conn, FAMILY, DEV, f"ctrl_{lab}_{s}_{p['id']}", bn, on, off, meta,
-                                      f"cycloneiv_ctrl:{s}:{lab}", "scripts/cycloneiv_ctrl.py", commit, NV)
+                                      f"cycloneiv_ctrl:{s}:{lab}", "scripts/cycloneiv_ctrl.py", commit, NV,
+                                      build_base=CO.build_id(conn, FAMILY, bn), build_spec=CO.build_id(conn, FAMILY, sn))
                 log.info("%s/%s@%s: only-spec %d only-base %d  %s", s, p["id"], lab, len(on), len(off),
                          [(b // NV, b % NV) for b in on][:12])
     log.info("diff: recorded")

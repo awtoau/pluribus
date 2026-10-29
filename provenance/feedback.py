@@ -8,6 +8,7 @@ from sqlalchemy import and_, insert, select, update
 
 import db
 import schema as S
+from provenance import tiering as tiers_rule
 from provenance import tiers
 
 
@@ -112,19 +113,35 @@ def refute(conn, claim_id, evidence_id, commit):
     return out
 
 
+def _scope_xy(definition):
+    """(x, y) of a tile-kind scope definition, else None."""
+    d = definition if isinstance(definition, dict) else {}
+    if "x" in d and "y" in d and not isinstance(d["x"], (list, tuple)):
+        return int(d["x"]), int(d["y"])
+    return None
+
+
 def _graduate(conn, pattern_id, commit):
+    """Graduate by provenance/tiering.sampling_bar (single rule): N distinct tile scopes, extremes, 2-D needs axes."""
     p = _pattern(conn, pattern_id)
-    scopes = {r[0] for r in conn.execute(select(S.claim_events.c.detail).where(and_(
-        S.claim_events.c.pattern_id == pattern_id, S.claim_events.c.event == "confirmed")))
-        for r in [(str((r[0] or {}).get("scope_id")),)]}
-    need = tiers.SAMPLING_N.get(int((p["law"] or {}).get("dims", 1)), 3)
-    if p["status"] in ("open", "confirmed") and p["refutations"] == 0 and len(scopes) >= need:
+    if p["status"] not in ("open", "confirmed") or p["refutations"]:
+        return
+    sids = {(r[0] or {}).get("scope_id") for r in conn.execute(select(S.claim_events.c.detail).where(and_(
+        S.claim_events.c.pattern_id == pattern_id, S.claim_events.c.event == "confirmed")))} - {None}
+    pos = set()
+    for sid in sids:
+        d = conn.execute(select(S.scopes.c.definition).where(S.scopes.c.id == sid)).scalar()
+        xy = _scope_xy(d)
+        if xy is not None:
+            pos.add(xy)
+    ok, need, dims, why = tiers_rule.sampling_bar(p["law"], pos)
+    if ok:
         _set_pattern(conn, pattern_id, status="verified-by-sampling")
         for r in conn.execute(select(S.claims.c.id).where(and_(S.claims.c.pattern_id == pattern_id,
                                                                 S.claims.c.status.in_(("open", "confirmed"))))):
             _set_claim(conn, r[0], status="verified-by-sampling")
         event(conn, "confirmed", commit, pattern_id=pattern_id, detail={"graduated": "verified-by-sampling",
-                                                                        "scopes": len(scopes)})
+                                                                        "scopes": len(pos)})
 
 
 def confirm(conn, claim_id, evidence_id, commit):

@@ -7,7 +7,8 @@ Rule (docs/provenance-and-feedback.md "Status", docs/recovery-process.md "Patter
   measured   no pattern: exact evidence rows (specimen-pair / roundtrip / audit) back the claim directly
   sampled    pattern-predicted claim confirmed at >= N distinct scopes (N = 3 for a 1-D law, 5 for 2-D), the extremes
              of every axis included, zero refutations/conflicts   (verified-by-sampling; never 'measured')
-  predicted  pattern-predicted claim below that bar, or a statistical claim
+  predicted  pattern-predicted claim below that bar
+  statistical  last-resort statistical claim ('statistical, unverified'): its own tier, never merged into predicted
   decoded    vendor-decoded claim with no exact evidence (decoded-untested)
   unknown    nothing
 Class claim = the claim with subject_key 'CLASS:<id>' and inventory_class <id>; evidence links in claim_evidence with
@@ -19,9 +20,10 @@ import re
 from sqlalchemy import select
 
 import schema as S
+from provenance import tiers
 
 EXACT_KINDS = ("specimen-pair", "oracle-compare", "roundtrip", "audit")
-TIERS_OUT = ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown")
+TIERS_OUT = ("verified", "measured", "sampled", "predicted", "statistical", "decoded", "suspect", "refuted", "unknown")
 
 
 def scope_of(result, name, source_ref):
@@ -40,6 +42,30 @@ def scope_of(result, name, source_ref):
     if (name or "").startswith("gxm9k_"):
         return 23, 40          # M9K specimens without a site tag sit at the reference site M9K_X23_Y40
     return None
+
+
+def sampling_bar(law, scopes):
+    """THE sampling rule (single source; provenance/feedback.py graduates by it too).
+    -> (ok, need, dims, why).  scopes = set of (x, y) positions of distinct confirming scopes.
+    N = 3 (1-D) / 5 (2-D) distinct scopes, extremes of every declared axis included; a 2-D law with no axes never passes."""
+    law = law or {}
+    dims = int(law.get("dims", 2))
+    need = tiers.SAMPLING_N[1 if dims == 1 else 2]
+    axes = law.get("axes") or {}
+    if dims == 2 and not (axes.get("x") and axes.get("y")):
+        return False, need, dims, "2-D law declares no axes (extremes cannot be checked)"
+    miss = []
+    for ai, ax in enumerate(("x", "y")[:dims]):
+        lo_hi = axes.get(ax)
+        if not lo_hi:
+            continue
+        vals = {s[ai] for s in scopes}
+        miss += [f"{ax}={e}" for e in (lo_hi[0], lo_hi[1]) if e not in vals]
+    if len(scopes) < need:
+        return False, need, dims, f"{len(scopes)} distinct scopes < {need} ({dims}-D)"
+    if miss:
+        return False, need, dims, "extremes missing: " + ", ".join(miss)
+    return True, need, dims, ""
 
 
 def class_verdict(conn, family, device, cls):
@@ -75,25 +101,14 @@ def class_verdict(conn, family, device, cls):
             return dict(tier="measured", n=n_exact, misses=0, rule=f"{n_exact} exact evidence row(s), no pattern")
         if c["tier"] == "vendor-decoded":
             return dict(tier="decoded", n=n_exact, misses=0, rule="vendor decode, no exact evidence at the cells")
-        if c["tier"] in ("statistical", "pattern-predicted"):
-            return dict(tier="predicted", n=n_exact, misses=0, rule=f"{c['tier']} claim, no pattern bar met")
+        if c["tier"] == "statistical":
+            return dict(tier="statistical", n=n_exact, misses=0, rule="statistical claim (last resort), unverified")
+        if c["tier"] == "pattern-predicted":
+            return dict(tier="predicted", n=n_exact, misses=0, rule="pattern-predicted claim, no pattern bar met")
         return dict(tier="unknown", n=n_exact, misses=0, rule="nothing")
     scopes = {s for role in ("parent", "confirm") for k, s in exact(by_role.get(role, [])) if s is not None}
-    dims = int(pat.get("dims", 2))
-    need = 3 if dims == 1 else 5
-    axes = pat.get("axes") or {}
-    ext_ok, ext_miss = True, []
-    for ai, ax in enumerate(("x", "y")[:dims]):
-        lo_hi = axes.get(ax)
-        if not lo_hi:
-            continue
-        vals = {s[ai] for s in scopes}
-        for e in (lo_hi[0], lo_hi[1]):
-            if e not in vals:
-                ext_ok = False
-                ext_miss.append(f"{ax}={e}")
-    if len(scopes) >= need and ext_ok:
+    ok, need, dims, why = sampling_bar(pat, scopes)
+    if ok:
         return dict(tier="sampled", n=len(scopes), misses=0,
                     rule=f"pattern confirmed at {len(scopes)} distinct scopes >= {need} ({dims}-D), extremes included, 0 refutations")
-    why = f"{len(scopes)} distinct scopes < {need} ({dims}-D)" if len(scopes) < need else "extremes missing: " + ", ".join(ext_miss)
     return dict(tier="predicted", n=len(scopes), misses=0, rule=f"pattern below the sampling bar: {why}")

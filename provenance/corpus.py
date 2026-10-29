@@ -92,6 +92,30 @@ def gate_exit_code(run_id, script, log=None):
     return 0
 
 
+def build_id(conn, family, design, purpose=None):
+    """corpus_builds id of corpus/<family>/<design> (the dir name is the build id); registers it from design.toml if
+    absent (same row as scripts/corpus_register.py). Dies when the build dir has no design.toml: no row without a build."""
+    import datetime
+    import hashlib
+    import tomllib
+    from pathlib import Path
+    t = S.corpus_builds.c
+    r = conn.execute(select(t.id).where(t.design == design)).fetchone()
+    if r:
+        return r[0]
+    d = Path(__file__).resolve().parent.parent / "corpus" / family / design
+    if not (d / "design.toml").exists():
+        db.die(f"build {design!r}: no {d}/design.toml; cannot register a corpus_builds row")
+    spec = tomllib.loads((d / "design.toml").read_text())
+    shas = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted((d / "src").glob("*"))} if (d / "src").is_dir() else {}
+    return conn.execute(insert(S.corpus_builds).values(
+        design=design, family=family, device=spec.get("device", ""), top=spec.get("top", "top"),
+        toolchain=(spec.get("tool") or "quartus") + " " + spec.get("tool_version", ""), src_sha256=shas, qsf=spec.get("qsf", []),
+        purpose=purpose or spec.get("purpose"), exercises=spec.get("exercises", []),
+        built_at=datetime.datetime.now().astimezone(), out_dir=str(d.relative_to(d.parent.parent.parent)),
+        status="ok" if (d / "bitstream.rbf").exists() or (d / "routing.rcf").exists() else "fail:no-bitstream")).inserted_primary_key[0]
+
+
 def record_build_outcome(conn, family, device, design, status, reason, out_dir="", top="", toolchain=None):
     """Store a refused/failed build (corpus_builds.status = '<status>:<reason>'); no silent loss. Upserts on design.
     status in ok | failed | refused. Returns the corpus_builds id."""

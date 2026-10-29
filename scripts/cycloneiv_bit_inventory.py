@@ -190,11 +190,12 @@ LEDGER = REPO / "docs/coverage-history.jsonl"
 # Tier names follow docs/provenance-and-feedback.md (statuses) and docs/recovery-process.md "Patterns and certainty":
 #   verified   = oracle-verified (vendor post-fit compare) | measured = raw diff / observed at that cell or site
 #   sampled    = verified-by-sampling (pattern, >= N scopes incl. extremes, 0 refutations) | predicted = pattern-predicted, below that bar
+#   statistical = last-resort fit, unverified, its own tier | glossary: docs/provenance-and-feedback.md "Glossary"
 #   decoded    = decoded-untested (vendor decode, nothing tested at the cell) | suspect / refuted = a pattern with a miss / contradicted
 # Patterns are revocable: a miss moves the class to suspect/refuted and its bits out of the verified tiers.
-# unknown_projected = the part of "unknown" whose cells are set in NONE of the held bitstreams (pattern-predicted unused,
-# revocable). It is a SUB-LINE of unknown, never subtracted from it. Bitmap: scripts/cycloneiv_ever_set.py.
-TIER_KEYS = ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown")
+# unknown_projected = the part of "unknown" whose cells are set in NONE of the held bitstreams (triage frequency, not a
+# claim, never pattern-predicted). It is a SUB-LINE of unknown, never subtracted from it. Bitmap: scripts/cycloneiv_ever_set.py.
+TIER_KEYS = ("verified", "measured", "sampled", "predicted", "statistical", "decoded", "suspect", "refuted", "unknown")
 UNKNOWN_CLASSES = ("4a", "4b", "4c", "4d", "4e", "5c", "6")
 LEDGER_TIER = {}     # class id -> tier; filled from the DB at run start by load_verdicts() (provenance/tiering.py), never hand-set
 VERDICT = {}
@@ -485,7 +486,7 @@ def run(a):
             if r_["id"] in UNKNOWN_CLASSES:
                 r_["projected"] = int(((inv.cls == CID[r_["id"]]) & ~seen).sum())
                 BASIS[r_["id"]] = (f"geometry-located region, no decoder; {r_['projected']:,} of its bits are set in none of {ever_n:,} held designs "
-                                   f"(projected unused, pattern-predicted, revocable); the rest are set in some design (live unknown)",
+                                   f"(triage sub-line, projected unused, not a claim); the rest are set in some design (live unknown)",
                                    f"{ever_n:,} designs / 0 set the projected bits")
     tot_t = dict.fromkeys(TIER_KEYS, 0)
     tot_proj = 0

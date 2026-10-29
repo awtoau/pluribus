@@ -89,3 +89,47 @@ def test_conflict_makes_suspect_and_exact_rows_make_measured(conn):
     _claim(conn, "D", "vendor-decoded")
     assert tiering.class_verdict(conn, FAM, DEV, "D")["tier"] == "decoded"
     assert tiering.class_verdict(conn, FAM, DEV, "none")["tier"] == "unknown"
+
+
+def test_sampling_bar_single_rule():
+    from provenance import tiering
+    two_d = {"dims": 2, "axes": {"x": [1, 9], "y": [1, 9]}}
+    pts = {(1, 1), (9, 9), (5, 5), (3, 7), (2, 2)}
+    assert tiering.sampling_bar(two_d, pts)[0]
+    assert not tiering.sampling_bar(two_d, pts - {(2, 2)})[0]                 # 4 < 5
+    assert not tiering.sampling_bar(two_d, {(2, 2), (3, 3), (4, 4), (5, 5), (6, 6)})[0]   # extremes missing
+    ok, need, dims, why = tiering.sampling_bar({"dims": 2}, pts)              # 2-D without axes never passes
+    assert not ok and dims == 2 and "no axes" in why
+    assert not tiering.sampling_bar({}, pts)[0]                               # default dims is 2 (as class_verdict)
+    assert tiering.sampling_bar({"dims": 1}, {(1, 1), (2, 1), (3, 1)})[0]
+
+
+def test_feedback_graduates_by_tiering_rule(conn):
+    import schema as S
+    from provenance import feedback as F, scopes as SC
+    law = {"dims": 2}                                                          # no axes -> must NOT graduate
+    conn.execute(insert(S.claim_patterns).values(id="pg", family=FAM, device=DEV, space="bit", description="t", law=law,
+                                                 status="open", created_commit="t"))
+    for i in range(6):
+        d = {"x": i, "y": i, "offsets": [[0, 0]]}
+        sid = conn.execute(insert(S.scopes).values(family=FAM, device=DEV, space="bit", kind="tile", definition=d,
+                                                   scope_key=SC.canonical("bit", "tile", d), n_objects=1)).inserted_primary_key[0]
+        F.event(conn, "confirmed", "t", pattern_id="pg", detail={"scope_id": sid})
+    F._graduate(conn, "pg", "t")
+    assert F._pattern(conn, "pg")["status"] == "open"
+    conn.execute(S.claim_patterns.update().where(S.claim_patterns.c.id == "pg").values(law={"dims": 2, "axes": {"x": [0, 5], "y": [0, 5]}}))
+    F._graduate(conn, "pg", "t")
+    assert F._pattern(conn, "pg")["status"] == "verified-by-sampling"
+
+
+def test_statistical_is_its_own_tier(conn):
+    from provenance import tiering
+    _claim(conn, "ST", "statistical")
+    assert tiering.class_verdict(conn, FAM, DEV, "ST")["tier"] == "statistical"
+    assert "statistical" in tiering.TIERS_OUT
+
+
+def test_build_id_registers_from_design_toml(conn):
+    from provenance import corpus
+    a = corpus.build_id(conn, FAM, "gxbh_0000ceb869")
+    assert a == corpus.build_id(conn, FAM, "gxbh_0000ceb869")        # idempotent on the dir name

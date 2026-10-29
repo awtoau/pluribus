@@ -5,15 +5,15 @@
 /* Layout: headline tiles, then four chart sections, each with its exact-number table beneath. */
 :root{
   --bg:#f6f7f9; --panel:#ffffff; --fg:#14171c; --muted:#4f5663; --line:#d9dde3; --grid:#e8ebef;
-  --ver:#2a78d6; --mea:#1f9d8f; --sam:#5aa832; --pre:#8a94a6; --dec:#eda100; --sus:#d64545; --ref:#8b1e1e; --leg:#c9b27a; --pro:#f3cadb; --unk:#e87ba4; --mix:#6250d6;
+  --ver:#2a78d6; --mea:#1f9d8f; --sam:#5aa832; --pre:#8a94a6; --sta:#b58ad6; --dec:#eda100; --sus:#d64545; --ref:#8b1e1e; --leg:#c9b27a; --pro:#f3cadb; --unk:#e87ba4; --mix:#6250d6;
   --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#101215; --panel:#181b20; --fg:#eceef1; --muted:#aab0ba; --line:#2d323a; --grid:#242830;
-  --ver:#3987e5; --mea:#37b8a8; --sam:#7bc653; --pre:#9aa3b3; --dec:#c98500; --sus:#ea6a6a; --ref:#b04040; --leg:#a8935c; --pro:#8a4a62; --unk:#d55181; --mix:#9085e9; color-scheme:dark}}
+  --ver:#3987e5; --mea:#37b8a8; --sam:#7bc653; --pre:#9aa3b3; --sta:#9a74c0; --dec:#c98500; --sus:#ea6a6a; --ref:#b04040; --leg:#a8935c; --pro:#8a4a62; --unk:#d55181; --mix:#9085e9; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#101215; --panel:#181b20; --fg:#eceef1; --muted:#aab0ba; --line:#2d323a; --grid:#242830;
-  --ver:#3987e5; --mea:#37b8a8; --sam:#7bc653; --pre:#9aa3b3; --dec:#c98500; --sus:#ea6a6a; --ref:#b04040; --leg:#a8935c; --pro:#8a4a62; --unk:#d55181; --mix:#9085e9; color-scheme:dark}
+  --ver:#3987e5; --mea:#37b8a8; --sam:#7bc653; --pre:#9aa3b3; --sta:#9a74c0; --dec:#c98500; --sus:#ea6a6a; --ref:#b04040; --leg:#a8935c; --pro:#8a4a62; --unk:#d55181; --mix:#9085e9; color-scheme:dark}
 body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;
   padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 main{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
@@ -26,7 +26,7 @@ h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
 .tile .v{font-family:var(--mono);font-size:30px;font-weight:500;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px}
 .tile .m{font-size:12px;color:var(--muted);font-family:var(--mono)}
 .sw{display:inline-block;width:12px;height:12px;border-radius:2px;flex:none}
-.ver{background:var(--ver)}.mea{background:var(--mea)}.sam{background:var(--sam)}.pre{background:var(--pre)}.dec{background:var(--dec)}.sus{background:var(--sus)}.ref{background:var(--ref)}.leg{background:var(--leg)}.pro{background:var(--pro)}.subline{font-size:12px;color:var(--muted);margin:2px 0 0}.unk{background:var(--unk)}.mix{background:var(--mix)}
+.ver{background:var(--ver)}.mea{background:var(--mea)}.sam{background:var(--sam)}.pre{background:var(--pre)}.sta{background:var(--sta)}.dec{background:var(--dec)}.sus{background:var(--sus)}.ref{background:var(--ref)}.leg{background:var(--leg)}.pro{background:var(--pro)}.subline{font-size:12px;color:var(--muted);margin:2px 0 0}.unk{background:var(--unk)}.mix{background:var(--mix)}
 section{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
@@ -114,15 +114,16 @@ const TIERS=[["ver","verified","oracle-verified: compared claim-for-claim agains
  ["mea","measured","raw diff or observation at that cell or site"],
  ["sam","verified-by-sampling","a pattern with confirmations at >= N distinct scopes incl. extremes and zero refutations (docs/recovery-process.md); stated sample n and misses on the class row"],
  ["pre","pattern-predicted","a rule fitted to measured parents, applied beyond them, below the sampling bar"],
+ ["sta","statistical","last-resort fit, unverified: its own tier, never merged into pattern-predicted or measured"],
  ["dec","decoded-untested","read from the vendor decode; nothing tested at the cell"],
  ["sus","suspect","a pattern with a recorded miss or a conflict; revoked from the verified tiers until audited"],
  ["ref","refuted","contradicted by a specimen inside its scope"],
  ["unk","unknown","nothing attributes a meaning (the headline)"]];
 const PROJ_N=((DATA.ledger.filter(r=>r.ever_set_n).pop()||{}).ever_set_n)||"n";
-const FIELD={ver:"verified",mea:"measured",sam:"sampled",pre:"predicted",dec:"decoded",sus:"suspect",ref:"refuted",unk:"unknown",pro:"projected",leg:"evidence"};
-const K=["ver","mea","sam","pre","dec","sus","ref","unk","leg"],KN={ver:"verified",mea:"measured",sam:"verified-by-sampling",pre:"pattern-predicted",dec:"decoded-untested",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence (older runs, unsplit)"};
-const proj=o=>o.unknown_projected!==undefined?o.unknown_projected:(o.projected||0);
-const val=(o,k)=>k==="unk"&&o.unknown_projected===undefined?(o.unknown||0)+(o.projected||0):(o[FIELD[k]]||0);   // older rows kept projected as a separate additive tier
+const FIELD={ver:"verified",mea:"measured",sam:"sampled",pre:"predicted",sta:"statistical",dec:"decoded",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence"};
+const K=["ver","mea","sam","pre","sta","dec","sus","ref","unk","leg"],KN={ver:"verified",mea:"measured",sam:"verified-by-sampling",pre:"pattern-predicted",sta:"statistical",dec:"decoded-untested",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence (older runs, unsplit)"};
+const proj=o=>o.unknown_projected||0;     // triage sub-line of unknown, never a tier
+const val=(o,k)=>o[FIELD[k]]||0;
 const ckey=c=>K.find(k=>val(c,k)===c.die_bits&&c.die_bits>0)||"unk";
 function tip(e,html){const t=$("tip");t.innerHTML=html;t.style.display="block";
   const w=t.offsetWidth,x=Math.min(e.clientX+12,innerWidth-w-8);t.style.left=Math.max(4,x)+"px";t.style.top=Math.min(e.clientY+14,innerHeight-t.offsetHeight-6)+"px"}
@@ -138,7 +139,7 @@ const date=s=>s.slice(0,16).replace("T"," ");
 const sumT=(r,t)=>{const o={die:0,img:0};K.forEach(k=>o[k]=0);r.classes.filter(c=>t.ids.includes(c.id)).forEach(c=>{o.die+=c.die_bits;K.forEach(k=>o[k]+=val(c,k));o.img+=c.image_set});return o};
 const src=r=>r.source==="live"?"live run":r.source;
 // legend
-$("tierlegend").innerHTML=TIERS.map(t=>`<span style="flex-basis:100%"><i class="sw ${t[0]}"></i><b>${t[1]}</b>: ${t[2]}</span>`).join("")+`<span><i class="sw mix"></i>Mixed (header set bits, unsplit)</span>`+`<span style="flex-basis:100%"><i class="sw pro"></i><b>of which projected unused</b>: unknown cells never set in any of ${PROJ_N} held bitstreams (pattern-predicted, revocable: one design that sets the cell removes it); a sub-line of unknown, not subtracted from it</span>`;
+$("tierlegend").innerHTML=TIERS.map(t=>`<span style="flex-basis:100%"><i class="sw ${t[0]}"></i><b>${t[1]}</b>: ${t[2]}</span>`).join("")+`<span><i class="sw mix"></i>Mixed (header set bits, unsplit)</span>`+`<span style="flex-basis:100%"><i class="sw pro"></i><b>of which projected unused</b>: unknown cells never set in any of ${PROJ_N} held bitstreams (triage by frequency, not a claim, not pattern-predicted; one design that sets the cell removes it); a sub-line of unknown, not subtracted from it</span>`;
 // tiles
 const D=live.die_bits;
 const IS={};K.forEach(k=>IS[k]=0);let img=0,ih=0;

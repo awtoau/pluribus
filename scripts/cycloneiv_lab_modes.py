@@ -253,8 +253,10 @@ def build_diff_record(pr, idx, record=True):
     if record:
         with db.engine().begin() as conn:
             E.ensure_family(conn, "cycloneiv")
+            from provenance import corpus as CO
             E.record_specimen(conn, "cycloneiv", EV_DEVICE, name, f"{name}_b", on, off, meta, SRC_REF + meta["group"],
-                              GENERATOR, E.git_head(REPO), nv, tool_version="25.1")
+                              GENERATOR, E.git_head(REPO), nv, tool_version="25.1",
+                              build_base=CO.build_id(conn, "cycloneiv", f"{name}_b"), build_spec=CO.build_id(conn, "cycloneiv", f"{name}_s"))
     log.info("%s: on %d off %d hop %s honoured %s", name, len(on), len(off), hop, honoured)
     return {**meta, "on": on, "off": off}
 
