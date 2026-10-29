@@ -107,7 +107,8 @@ def plane_v_to_jk(pv):
 
 def address_to_plane(addr, tables=None):
     """Raw asm address -> (r, j, k): the address is the sof data bit index (A4), then A5.
-    Validated: routing arcs (O2) and, with the LAB LUT formula's in-column sign negated, all LUT cells (O1, #165)."""
+    Validated: routing arcs (O2) and the LAB LUT formula as read (hi + dx) * 6154 + lo + dy, no sign flip, no constant,
+    on 1,023 Quartus-built LUT specimens = 16,368 cells (O1, #165)."""
     return sof_to_rbf(addr, tables)
 
 
