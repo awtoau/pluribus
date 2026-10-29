@@ -57,7 +57,9 @@ CLASSES = [  # id, name, evidence tier
     ("2b", "asm routing: cells in groups/blocks not fired in this image", "table-only"),
     ("3", "LOCAL_LINE specimen bits (LAB-translated)", "specimen"),
     ("4a", "periphery frames 1..36 (IO ring, clocks, PLL, misc)", "unknown"),
-    ("4b", "M9K columns (8) incl. content", "unknown"),
+    ("4f", "M9K data cells at sites with an exact offset check", "verified"),
+    ("4g", "M9K data cells, site offset rule-predicted (not checked)", "evidence"),
+    ("4b", "M9K columns (8): cells outside the data tables (mode/control/other)", "unknown"),
     ("4c", "multiplier columns (4)", "unknown"),
     ("4d", "IOL / IOR columns (+ 4 frames before col 0)", "unknown"),
     ("4e", "IO row tiles (y=0, y=91) of LAB columns", "unknown"),
@@ -122,12 +124,48 @@ def le_grid(g, tiles):
     return f, v, np.broadcast_to(sg, f.shape)
 
 
+def m9k_data_cells(g, nfr):
+    """(verified flat cells, rule-predicted flat cells) of the M9K data tables over all 720 sites.
+    Base tables x9 (9216 cells) and x1 (8192) at X23Y40 + per-site (FX[x]-FX[23], vpitch*(y-40)); a site is
+    verified only where a recorded random-init check matched exactly AND its offset equals the rule."""
+    import sqlite3
+    import dbtools
+    conn = sqlite3.connect(f"file:{dbtools.family_db('cycloneiv')}?mode=ro", uri=True)
+    get = lambda n: json.loads(conn.execute("select result from evidence where family='cycloneiv' and kind='derived-table' "
+                                            "and name=?", (n,)).fetchone()[0])["file"]
+    try:
+        c9 = np.array(list(get("cycloneiv_m9k_hmap9.json")["cells"].values()), np.int64)
+        c1 = np.array(list(get("cycloneiv_m9k_hmap1.json")["cells"].values()), np.int64)
+        offs = get("m9k-site-offsets")
+    finally:
+        conn.close()
+    f1 = set(map(tuple, c1.tolist()))
+    is1 = np.array([tuple(c) in f1 for c in c9.tolist()])
+    cols = sorted(x for x in g.kind if g.kind[x] == "M9K")
+    ver, evi = [], []
+    ok_sites = {}
+    for x in cols:
+        for y in range(1, g.ymax):
+            rule = (g.FX[x] - g.FX[23], g.vpitch * (y - 40))
+            k = f"x{x}_y{y}"
+            ok9 = (x, y) == (23, 40) or (offs.get(k + "_x9", {}).get("exact") and offs[k + "_x9"]["offset"] == list(rule))
+            ok1 = ok9 or (offs.get(k + "_x1", {}).get("exact") and offs[k + "_x1"]["offset"] == list(rule))
+            flat = (c9[:, 0] + rule[0]) * NV + c9[:, 1] + rule[1]
+            inb = (c9[:, 0] + rule[0] >= 0) & (c9[:, 0] + rule[0] < nfr) & (c9[:, 1] + rule[1] >= 0) & (c9[:, 1] + rule[1] < LANE_V)
+            assert inb.all(), (x, y)
+            v_mask = np.full(len(c9), ok9) | (ok1 & is1)
+            ver.append(flat[v_mask])
+            evi.append(flat[~v_mask])
+            ok_sites[(x, y)] = "x9" if ok9 else "x1" if ok1 else None
+    return np.concatenate(ver), np.concatenate(evi), ok_sites
+
+
 LEDGER = REPO / "docs/coverage-history.jsonl"
 # Fallback tier label per class when the DB holds no claims (verified = vendor-oracle compare, evidence =
 # mapping without per-bit oracle, unknown = nothing; 5a split by the header counts). With claims present the
 # ledger line carries the tier x status breakdown read from the claims table (provenance-schema.md).
 LEDGER_TIER = {"1a": "verified", "5b": "verified", "1b": "evidence", "1c": "evidence", "2a": "evidence",
-               "2b": "evidence", "3": "evidence", "5d": "evidence"}
+               "2b": "evidence", "3": "evidence", "5d": "evidence", "4f": "verified", "4g": "evidence"}
 
 
 def git(*args):
@@ -310,6 +348,12 @@ def run(a):
     ff = lambda k: np.flatnonzero(kind == k)
     cell = lambda fr, vlo, vhi: (fr[:, None] * NV + np.arange(vlo, vhi)[None, :]).ravel()
     inv.claim(cell(ff("per"), 0, NV), "4a")
+    m9k_ver, m9k_evi, m9k_sites = m9k_data_cells(g, nfr)
+    inv.claim(m9k_ver, "4f")
+    inv.claim(m9k_evi, "4g")
+    log.info("M9K data: %d sites, verified-check x9 %d / x1-only %d / rule-only %d; cells verified %d, predicted %d", len(m9k_sites),
+             sum(v == "x9" for v in m9k_sites.values()), sum(v == "x1" for v in m9k_sites.values()),
+             sum(v is None for v in m9k_sites.values()), len(m9k_ver), len(m9k_evi))
     inv.claim(cell(ff("M9K"), 0, LANE_V), "4b")
     inv.claim(cell(ff("MUL"), 0, LANE_V), "4c")
     inv.claim(np.concatenate([cell(ff("IOL"), 0, LANE_V), cell(ff("IOR"), 0, LANE_V)]), "4d")
@@ -350,8 +394,8 @@ def run(a):
     # header frame split (docs/cycloneiv-bitstream.md "Format"): sync+CRC16 verified 24; flag/length/family/variant 41
     # known; lanes 5-7 constant 1 (120) and 0xFF fill (6024) constant; option bits 159 unknown
     HDR_VER, HDR_KNOWN, HDR_UNK = 24, 41 + 120 + 6024, 159
-    ver = T["1a"] + T["5b"] + HDR_VER
-    ev = T["1b"] + T["1c"] + T["2a"] + T["2b"] + T["3"] + HDR_KNOWN + T["5d"]
+    ver = T["1a"] + T["5b"] + T["4f"] + HDR_VER
+    ev = T["1b"] + T["1c"] + T["2a"] + T["2b"] + T["3"] + T["4g"] + HDR_KNOWN + T["5d"]
     unk = die_bits - ver - ev
     # ---- unknown regions: one partition of classes 4a-4e, 5c, 6 ------------------------------
     unknown_ids = [CID[k] for k in ("4a", "4b", "4c", "4d", "4e", "5c", "6")]
@@ -412,7 +456,7 @@ def run(a):
     P("verified (oracle compare) %d = %.2f%%; other evidence (partial/decoded/table-only/specimen/constant) %d = %.2f%%; unknown %d = %.2f%%",
       ver, 100 * ver / die_bits, ev, 100 * ev / die_bits, unk, 100 * unk / die_bits)
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
-    sv, se = S["1a"] + S["5b"], S["1b"] + S["1c"] + S["2a"] + S["2b"] + S["3"]
+    sv, se = S["1a"] + S["5b"] + S["4f"], S["1b"] + S["1c"] + S["2a"] + S["2b"] + S["3"] + S["4g"]
     P("    verified-class set bits %d (%.1f%%), other-evidence %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
       sv, 100 * sv / set_all, se, 100 * se / set_all, set_all - sv - se - S["5a"] - T["5d"],
       100 * (set_all - sv - se - S["5a"] - T["5d"]) / set_all)

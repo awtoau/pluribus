@@ -389,7 +389,7 @@ def register_cycloneiv(conn, device, commit):
                         for r in ev_by_file.get(g, {}).values()]
             sid = R.scope("cell-param", "cells", {"flat": sorted(flat)}, label=f"{site['name']} hardware (word,bit) x{w}")
             cid = R.claim("cell-param", f"M9K:hw:w{w}", sid,
-                          {"site": site, "map": d, "index": "word*W+bit"}, "measured", "confirmed", evidence=ev_ids, cls="4b",
+                          {"site": site, "map": d, "index": "word*W+bit"}, "measured", "confirmed", evidence=ev_ids, cls="4f",
                           basis=f"binary-coded logical init, every cell located, 0 unattributed; {len(confirms)} held-out/probe builds",
                           confirmations=len(confirms))
             for e in confirms:
@@ -403,7 +403,7 @@ def register_cycloneiv(conn, device, commit):
         sid = R.scope("cell-param", "cells", {"flat": sorted(flat)}, label=f"{site['name']} init x{w}")
         cid = R.claim("cell-param", f"M9K:init:w{w}", sid,
                       {"site": site, "map": d, "index": "mem_init linear index (generator), not hardware (word,bit)"},
-                      "measured", "confirmed", evidence=ev_ids, cls="4b",
+                      "measured", "confirmed", evidence=ev_ids, cls="4f",
                       basis=f"binary-coded init specimens, every cell located, 0 unattributed; {len(confirms)} round-trip confirmations",
                       confirmations=len(confirms))
         for e in confirms:
@@ -422,8 +422,8 @@ def register_cycloneiv(conn, device, commit):
                          "fit_hits": hits, "fit_total": len(cells), "site_anchor": site}, matcher_id="affine-v1",
                         parents=ev_ids, status="open")
         parent_4b = None
-        if led4b := _ledger_class("4b"):
-            parent_4b = R.scope("bit", "formula", {"matcher": "inventory", "inventory_class": "4b", "n_objects": led4b["die_bits"] - 9216},
+        if led4b := (_ledger_class("4g") or _ledger_class("4b")):
+            parent_4b = R.scope("bit", "formula", {"matcher": "inventory", "inventory_class": "4b", "n_objects": led4b["die_bits"]},
                                 label=led4b["name"])
         sid = R.scope("cell-param", "formula", {"matcher": "affine-v1", "law": "m9k-init-x1-law-v1",
                                                 "sites": "every other M9K site (per-site frame/v anchor unknown)",

@@ -29,6 +29,9 @@ log = logging.getLogger("cycloneiv_m9k")
 CORPUS = REPO / "corpus" / "cycloneiv"
 DEVICE = "EP4CGX150DF31C7"
 SITE = "M9K_X23_Y40_N0"
+COLS = (7, 23, 36, 52, 65, 81, 94, 110)
+ROWS = (1, 2, 3, 10, 20, 30, 40, 50, 60, 70, 80, 88, 89, 90)
+SITES2 = [f"M9K_X{x}_Y{y}_N0" for x in COLS for y in ROWS if f"M9K_X{x}_Y{y}_N0" != SITE]   # x9 random check at each
 SITES9 = ["M9K_X7_Y40_N0", "M9K_X65_Y40_N0"]   # also get an x9 build
 # one site per M9K column at y=40, plus two more rows in column 23
 SITES = [f"M9K_X{x}_Y40_N0" for x in (7, 36, 52, 65, 81, 94, 110)] + ["M9K_X23_Y20_N0", "M9K_X23_Y60_N0"]
@@ -393,6 +396,7 @@ def register():
                 n += 1
             elif E.import_json_file(conn, str(pth), "cycloneiv", "EP4CGX150", 6368, commit, gen, str(REPO)) is not None:
                 n += 1
+        conn.execute(S.evidence.delete().where(S.evidence.c.name.in_(["m9k-hw-laws", "m9k-site-offsets"])))   # recomputed rows
         so = site_offsets()
         E.record_decode(conn, "cycloneiv", "EP4CGX150", "m9k-site-offsets", {"file": so}, commit, "scripts/cycloneiv_m9k.py site_offsets",
                         generator=gen, kind="derived-table", n_objects=len(so))
@@ -458,8 +462,8 @@ def group_key(pr, setname, tag):
     w = kb["width"]
     site = kb.get("site", SITE)
     st = "" if site == SITE else "_" + site.replace("M9K_", "").lower()
-    if setname in ("rand", "bincode", "data", "p0", "mode", "sites"):
-        kind = "rand" if setname == "sites" else setname
+    if setname in ("rand", "bincode", "data", "p0", "mode", "sites", "sites2"):
+        kind = "rand" if setname in ("sites", "sites2") else setname
     else:
         kind = "hwbin" if re.search(r"_k\d+$", sp) else "hwrand" if "R" in sp.split("_")[1] else "hwprobe"
     fname = f"cycloneiv_m9k_{kind}{w}{tag if not kb.get('hw') else 'h'}{st}.json"
@@ -537,6 +541,8 @@ def main():
                  + hw_pairs(w, hw_probe_items(w), a.site, tag)]
     elif a.set == "mode":
         pairs = mode_pairs(a.site)
+    elif a.set == "sites2":
+        pairs = [x for site in SITES2 for x in rand_pairs(9, 1, site)]
     elif a.set == "sites":
         pairs = [x for site in SITES for w in ((1, 9) if site in SITES9 else (1,)) for x in rand_pairs(w, 1, site)]
     elif a.set == "hwbin":

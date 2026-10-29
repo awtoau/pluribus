@@ -1,0 +1,8 @@
+top = "top"
+purpose = "random half-filled init seed 1 (base)"
+exercises = ["m9k"]
+qsf = ["set_location_assignment M9K_X94_Y70_N0 -to ram", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
+device = "EP4CGX150DF31C7"
+tool = "quartus"
+tool_version = "25.1"
+built = "2026-10-29"
