@@ -34,7 +34,7 @@ def _lock_path():
 
 
 LOCK_PATH = _lock_path()
-MIN_AVAILABLE_GB = float(os.environ.get("PLURIBUS_MIN_AVAILABLE_GB", "12"))
+MIN_AVAILABLE_GB = float(os.environ.get("PLURIBUS_MIN_AVAILABLE_GB", "6"))
 HELD_ENV = "PLURIBUS_HEAVY_HELD"  # set while the lock is held; inherited by child stages
 POLL_S = 5
 LOG_S = 30
@@ -108,7 +108,7 @@ def workers_for(job, cap, base_gb=0.0):
 
 
 SCOPE_ENV = "PLURIBUS_SCOPE"  # set once the batch runs in its own capped cgroup scope
-BATCH_MAX_GB = float(os.environ.get("PLURIBUS_BATCH_MAX_GB", "46"))
+BATCH_MAX_GB = float(os.environ.get("PLURIBUS_BATCH_MAX_GB", "56"))
 
 # Memory leases: a counting semaphore in GB across every process on the box, so concurrent jobs
 # (agents, sweeps, analyses) share the budget instead of each assuming it owns the machine.
@@ -136,6 +136,7 @@ def lease_ledger():
     import json
     try:
         with open(LEASE_PATH) as fh:
+            fcntl.flock(fh, fcntl.LOCK_SH)  # writers truncate+write under LOCK_EX; unlocked read saw partial JSON
             raw = fh.read()
         data = json.loads(raw) if raw.strip() else {}
     except FileNotFoundError:

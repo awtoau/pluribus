@@ -188,6 +188,12 @@ Pairs prove a bit SET; the aim is to state what each single cell does. Evidence 
 - **Patterns are never locked.** A missed corner case flips the claim to `suspect` or `refuted` and the bits fall back to `predicted`/`unknown`. A pattern is preferred to enumeration only until a specimen contradicts it; on any miss, enumerate that scope.
 - **Coverage counts a pattern that has a reasonable hit rate on the test cases** (`verified-by-sampling`: confirmations at >= N distinct scopes, extremes included, zero refutations). It is shown as its own tier beside `measured`, never merged into it.
 - **A real lift or reverse build that fails makes every pattern claim in its path suspect** until the failure is explained, whatever its coverage status. The gate decides; coverage only reports.
+- **Sampling plan for a grid or array of like tiles** (LAB array, M9K columns, IO ring):
+  - Test the **four corners** of the region plus a **sample from the centre** (seeded, ~10 %, at least 3 tiles).
+  - Corners and edges are their own class: never pooled with the interior; a rule extends to an edge only if an edge specimen agrees. The edge sample is the corners plus a few points along each side, not every edge tile.
+  - If the grid is broken into areas (different tile types, column kinds, row bands, hard-IP islands), apply the same plan **per area**: its four corners + a centre sample.
+  - All sampled tiles agree -> the rule is `verified-by-sampling` for that area, with n and misses on the row. One miss -> enumerate that area (not the whole die).
+  - Record the sample plan (which tiles, seed) with the claim so it can be re-run.
 - Not required: testing every site/cell. A rule that passed the sampling standard stands; stated sample size and miss count are the evidence.
 
 ## Case study: Cyclone IV (#141)
