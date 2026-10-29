@@ -53,10 +53,11 @@ SPACES = {
     "port-map": "<block>:<port> -> wire",
     "net-attr": "<net>:<attr>",
 }
-# Derived tables, wiped every run. NOT evidence / evidence_scopes / scopes (evidence is primary; scopes are
-# keyed canonically and reused).
-DERIVED_TABLES = (S.coverage_ledger, S.gate_results, S.gate_runs, S.done_criteria, S.corpus_members,
-                  S.lift_provenance, S.audits, S.unknowns, S.expectations, S.claim_conflicts,
+# DERIVED (regenerable from source/evidence): wiped every run.
+# RECORDS, never wiped: evidence, evidence_scopes, scopes, corpus_builds, and the run records
+# gate_runs / gate_results / done_criteria (a vendor-oracle run is not derivable from code) plus
+# corpus_members (gate_results FK; ensure_member is idempotent, so ids stay stable).
+DERIVED_TABLES = (S.coverage_ledger, S.lift_provenance, S.audits, S.unknowns, S.expectations, S.claim_conflicts,
                   S.claim_events, S.claim_evidence, S.claims, S.pattern_evidence, S.claim_patterns,
                   S.matchers, S.address_spaces, S.devices)
 EV_DIR = REPO / "evidence" / "cycloneiv"

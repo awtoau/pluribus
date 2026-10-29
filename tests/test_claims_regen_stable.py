@@ -55,3 +55,19 @@ def test_regeneration_keeps_class_verdict(conn):
         assert conn.execute(select(CR.S.claims.c.id)).fetchone() is None
         _register(conn, eids)
         assert tiering.class_verdict(conn, FAM, DEV, "S") == before
+
+
+def test_regeneration_keeps_gate_runs(conn):
+    """A gate run is a vendor-oracle record: the claims rebuild must never wipe it."""
+    import claims_register as CR
+    from provenance import corpus as C
+    C.ensure_member(conn, FAM, "m1", "oracle-build", "t", device=DEV)
+    rid = C.record_gate_run(conn, FAM, "synthetic", "t",
+                            {"m1": {"pips": {"matched": 3, "missing": 2, "extra": 0, "wrong": 1}}},
+                            params={"flag": "off"})
+    for _ in range(2):
+        CR.wipe(conn, FAM)
+        C.ensure_member(conn, FAM, "m1", "oracle-build", "t", device=DEV)
+    assert conn.execute(select(CR.S.gate_runs.c.id)).scalars().all() == [rid]
+    r = conn.execute(select(CR.S.gate_results)).fetchall()
+    assert len(r) == 1 and (r[0].matched, r[0].missing, r[0].wrong) == (3, 2, 1)
