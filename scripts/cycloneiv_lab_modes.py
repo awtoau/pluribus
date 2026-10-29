@@ -82,6 +82,20 @@ def port_pair(lab, src, snk, port, ll=None):
             q, rcf_for(lab, ll, port), meta)
 
 
+def legal_ports():
+    """{src: [ports]} the pprobe forced as asked (honoured) at X10Y10; the rest were rerouted by the fitter."""
+    import json
+    import sqlite3
+    import dbtools
+    c = sqlite3.connect(f"file:{dbtools.family_db('cycloneiv')}?mode=ro", uri=True)
+    out = {}
+    for (r,) in c.execute("SELECT result FROM evidence WHERE source_ref='lab_modes:ports'"):
+        m = json.loads(r)["meta"]
+        if m.get("forced_honoured") and m["lab"] == [10, 10]:
+            out.setdefault(m["src"], set()).add(m["port"])
+    return out
+
+
 def group_pairs(group):
     if group == "pprobe":     # legality: every (LL I, port) once, sink fixed at N2 (N4 for source N2)
         lab = LABS[0]
@@ -89,7 +103,8 @@ def group_pairs(group):
     if group.startswith("ports"):   # portsX10Y10 etc: all src x snk x port at one LAB (src != snk)
         m = re.fullmatch(r"ports(\d+)x(\d+)", group)
         lab = (int(m.group(1)), int(m.group(2)))
-        return [port_pair(lab, s, k, p) for s in range(0, 32, 2) for k in range(0, 32, 2) if s != k for p in "ABCD"]
+        lp = legal_ports()
+        return [port_pair(lab, s, k, p) for s in range(0, 32, 2) for k in range(0, 32, 2) if s != k for p in sorted(lp[s])]
     sys.exit(f"unknown group {group}")
 
 
@@ -180,9 +195,40 @@ def run(group, jobs, todo_only=True):
     return res
 
 
+def rows(group_ref="lab_modes:ports"):
+    """{name: (meta, on flat list, off flat list)} from the evidence rows of one source_ref."""
+    import evidence_io_bridge as B
+    return B.specimen_table("cycloneiv", EV_DEVICE, group_ref) or {}
+
+
+def compare(labs, nv=6368):
+    """Each LAB's ports grid vs X10Y10 in (frame, v): best single (dframe, dv) offset, then pairs equal up to it."""
+    import collections
+    t = rows()
+    fv = lambda bs: sorted(divmod(b, nv) for b in bs)   # noqa: E731
+    ref = {(m["src"], m["snk"], m["port"]): m for m in t.values() if m["lab"] == [10, 10]}
+    for lab in labs:
+        cur = {(m["src"], m["snk"], m["port"]): m for m in t.values() if m["lab"] == list(lab)}
+        offs = collections.Counter()
+        for k, m in cur.items():
+            r = ref.get(k)
+            if r and len(r["on"]) == len(m["on"]):
+                for (f1, v1), (f0, v0) in zip(fv(m["on"]), fv(r["on"])):
+                    offs[(f1 - f0, v1 - v0)] += 1
+        if not offs:
+            log.info("LAB %s: no overlapping pairs", lab)
+            continue
+        (df, dv), cnt = offs.most_common(1)[0]
+        same = [k for k, m in cur.items() if k in ref and fv(m["on"]) == [(a + df, b + dv) for a, b in fv(ref[k]["on"])] and not m["off"]]
+        bad = [k for k in cur if k not in same]
+        log.info("LAB %s vs X10Y10: offset (dframe %d, dv %d) %d votes; %d / %d pairs match", lab, df, dv, cnt, len(same), len(cur))
+        for k in sorted(bad)[:20]:
+            log.info("  NOMATCH %s: %s vs %s", k, fv(cur[k]["on"]), fv(ref[k]["on"]) if k in ref else None)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("gen", "run", "show"))
+    ap.add_argument("cmd", choices=("gen", "run", "show", "compare"))
     ap.add_argument("group")
     ap.add_argument("--jobs", type=int, default=0)
     a = ap.parse_args()
@@ -195,6 +241,8 @@ def main():
     if a.cmd == "gen":
         for p in group_pairs(a.group):
             write_pair(p)
+    elif a.cmd == "compare":
+        compare([tuple(int(v) for v in x.split("x")) for x in a.group.split(",")])
     elif a.cmd == "run":
         run(a.group, a.jobs)
 
