@@ -53,6 +53,7 @@ CLASSES = [  # id, name, evidence tier
     ("1a", "LUT INIT (16 bits x 16 LE x 9360 LAB)", "verified"),
     ("1b", "LE-used bit", "partial"),
     ("1c", "LAB clock-polarity bit", "partial"),
+    ("1d", "LAB blkrba named non-LUT bits (vendor name only; table in vendor-analysis, not committed)", "decoded"),
     ("2a", "asm routing: cells of groups FIRED in this image", "decoded"),
     ("2b", "asm routing: cells in groups/blocks not fired in this image", "table-only"),
     ("3", "LOCAL_LINE specimen bits at the 4 specimen LABs (measured)", "specimen"),
@@ -222,6 +223,7 @@ BASIS = {  # class -> (what backs it, sample n / misses)
     "1a": ("LUT mask vs Quartus post-fit netlist (oracle compare)", "301 designs, 5,354,496 bits / 0 miss"),
     "1b": ("pattern-predicted rule from LE positions; 14 misses on one design, claim status suspect", "1,018 LEs / 14 miss"),
     "1c": ("statistical fit over clock lines + one isolated cell (pattern-predicted, open)", "5,442 lines / fit Jaccard 0.85"),
+    "1d": ("vendor ddb decode (blkrba) of per-LAB bit positions; position law validated on the 256 LUT cells (4,749,088 mask bits vs .vo, 0 wrong); non-LUT names carry no exact evidence", "300 designs, LUT cells only"),
     "2a": ("decoded from vendor asm tables, (frame,v) map inferred; decoded-untested, not rule-verified", "held-out routing score 17.1% of pips"),
     "2b": ("same vendor tables, groups not fired in the image; decoded-untested, not rule-verified", "none"),
     "3": ("raw-diff specimens at the 4 specimen LABs", "4 LABs x 240 pairs"),
@@ -327,7 +329,13 @@ def run(a):
     fx = np.array([g.FX[int(x)] for x in tiles[:, 0]], np.int64)
     vy = g.vy0 + g.vpitch * tiles[:, 1]
     inv.claim((fx - 6) * NV + vy - 30, "1c")
-    log.info("class 1 claimed: %s", {k: int((inv.cls == CID[k]).sum()) for k in ("1a", "1b", "1c")})
+    import cycloneiv_blkrba_lab as bl
+    nl = bl.nonlut_positions()
+    if nl:   # (dx, dy) per tile: frame = FX + dy - 15, v = vy0 + 70*Y + 2 - dx  (TEST 1, #165)
+        inv.claim(np.concatenate([(fx + dy - 15) * NV + vy + 2 - dx for dx, dy in nl]), "1d")
+    else:
+        log.warning("1d: blkrba table not found (vendor-analysis, local only); class 1d stays empty")
+    log.info("class 1 claimed: %s", {k: int((inv.cls == CID[k]).sum()) for k in ("1a", "1b", "1c", "1d")})
 
     # ---- 2: asm routing -------------------------------------------------------------------
     dec = ad.Dec()
@@ -564,11 +572,11 @@ def run(a):
     P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items())
       + f"; of which unknown projected unused (never set in {ever_n} designs) {tot_proj} = {100 * tot_proj / die_bits:.2f}%")
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
-    sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["2a"] + S["2b"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
+    sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["1d"] + S["2a"] + S["2b"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
     P("    verified-class set bits %d (%.1f%%), other-evidence %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
       sv, 100 * sv / set_all, se, 100 * se / set_all, set_all - sv - se - S["5a"] - T["5d"],
       100 * (set_all - sv - se - S["5a"] - T["5d"]) / set_all)
-    P("    in 1a %d, 1b %d, 1c %d, 2a %d, 2b %d, 3 %d, 3t %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["2a"], S["2b"], S["3"], S["3t"],
+    P("    in 1a %d, 1b %d, 1c %d, 1d %d, 2a %d, 2b %d, 3 %d, 3t %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["1d"], S["2a"], S["2b"], S["3"], S["3t"],
       sum(S[k] for k in ("4a", "4b", "4c", "4d", "4e")), S["5b"], S["5c"], S["6"])
     P("asm: groups fired %d, blocks %d; entries with no plane cell %d; columns whose asm base != FX: %d (LAB %d: %s)",
       len(gids), dec.nblocks, n_drop, len(moved), len(moved_lab), moved_lab)

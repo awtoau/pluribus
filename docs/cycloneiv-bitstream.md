@@ -273,7 +273,7 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
   - lane 0 = `00 73|74 xx yy ff`: byte 2..3 change per build (usercode / checksum); byte 1 = 0x74 on the F484 (CF23) builds and 0x73 on the F672 / F896 builds, so it follows package.
   - lanes 2..3 identical across all six builds.
   - A third-party compressed image has lane 1 = `c0 00 20 0d ff` (first byte differs: option bits; bytes 1..3 = `00 20 0d` as on GX150, GX110 has `00 a0 0d`), so it is the EP4CGX150 variant (full die), not GX110.
-- stingray4 hdr.ddb payload (107 KB): chip description database (device name "EP4CGX150", family, node-type names such as LE_BUFFER, LAB_LINE, C16, GLOBAL_CLK_H; file names `stingray4.ww19.asm.rba`, `stingray4_dirt.xml`). It carries no .rbf header fields.
+- stingray4 hdr.ddb payload (107 KB): chip description database (device name "EP4CGX150", family, node-type names such as LE_BUFFER, LAB_LINE, C16, GLOBAL_CLK_H; file names `stingray4.ww19.asm.rba`, `stingray4_dirt.xml`). It carries `frame_bits` (u32 0x18c8 = 6344 for stingray4, at body offset 0x54) and no other .rbf header field.
 - asm / icname decoded (2026-10-26, [cycloneiv-ddb-format.md](cycloneiv-ddb-format.md)): record = one routing wire (icname gives its vendor name), group = one input of a destination mux, entry = (CRAM bit, role): select bit, or one of the two shared second-level bits programmed iff `b1 == -1`. asm (frame, v) -> plane (FX + 17 - (frame - FX), 6344 - v). Parse ends at EOF; the earlier `u32 c` / `(delta, mask)` reading was the same stream misframed by 4 bytes.
   - Decoder `scripts/cycloneiv_asm_decode.py` (prepare / learn / score) + `scripts/cycloneiv_asm_tables.py`; tables `lifters/data/cycloneiv_ep4cgx150_asm_names.json` (block -> RCF destination per tile class, RCF source aliases, LE_BUFFER record bases).
   - The RCF names a wire by its driver column / row, so one asm record has several RCF names; scoring uses the learnt alias sets (see the format doc). routing.ddb (fan-in map) still undecoded.
@@ -355,6 +355,13 @@ Net-level routing experiments (one race-free held-out design, LE-input traces vs
 - Cause of the ambiguity: sink groups in row phase 0 learn 5 mux bits where phases 1..3 learn 10, so 9 of 24 LE-input sources share one pattern.
 - FF control pins read as unreadable (`zero pattern` / `unknown pattern`) are set to their idle constant in `lift_ff` (`des.assumed_idle`): gate 3.94% vs 4.02% without, no gain.
 - Gate with decoded routing, 8 odd race-free designs: matched 307 / (307 + missing 6,593 + extra 21 + wrong 873) = 3.94%.
+
+## blkrba: per-LAB bit positions (vendor ddb, 2026-10-29, #165)
+
+- `cycloneivgx/ddb_stingray_blkrba.ddb`, type `DPOW_BLOCK_RBA_INFO_BODY`: 443 named bits, each (dx, dy) with dx 0..69, dy 4..34; 256 LUT, 64 REG, 48 OUT, 32 IN, 16 RSCNT, 9 RSMUX, 18 ROWCLK. The name list is not committed (local `vendor-analysis/`).
+- Position law: `frame = FX[X] + dy - 15`, `v = vy0 + 70*Y + 2 - dx` (dx is v, dy is frame; the (dx = frame) reading is refuted: 0.4-1.6 % of cells match). `scripts/cycloneiv_blkrba_lab.py`.
+- LUT bits: 2,396,160 / 2,396,160 cells equal the LUT-mask law in all 9,360 LABs (cell sets and labels, no permutation); read at those cells in 300 gx150 designs, 4,749,088 mask bits match the post-fit `.vo`, 0 wrong. Sampled LAB classes (`cycloneiv_blkrba_sample.py`): interior, edge, columns next to M9K / MUL, corners (1,90) and (116,1) in the corpus; (1,1) and (116,90) via the bit-hunter INIT cells.
+- Non-LUT names: the LE-used cell (class 1b) is RBCTL_OUT1 of its LE in 16 / 16 LEs, but the bit is set in only 95.2 % of used LEs (284,326 / 298,792). Clock polarity, ena / aclr / sclr port cells and the FF pin-select cells carry no name. 55 of the 305 measured LOCAL_LINE specimen cells per LAB (class 3) carry REG / OUT names. Meaning of the non-LUT names is open; class 1d (decoded, position only).
 
 ## Gaps
 

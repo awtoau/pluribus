@@ -59,6 +59,13 @@ def lut_table(names):
     return t
 
 
+def nonlut_positions(path=DEFAULT_CSV):
+    """[(dx, dy)] of every named non-LUT bit; [] when the local (gitignored) table is absent."""
+    if not Path(path).exists():
+        return []
+    return [xy for n, xy in load_csv(path).items() if not LUT.match(n)]
+
+
 def law_cells(geom, tiles):
     """oracle (frame, v) arrays [tile, le, k] from the LUT-mask law."""
     n = len(tiles)
@@ -140,6 +147,8 @@ def main():
     bad_lek = [(le, k, int(per_lek[le, k])) for le in range(16) for k in range(16) if per_lek[le, k] != len(tiles)]
     per_tile = ok.reshape(len(tiles), -1).sum(1)
     bad_tiles = [(tiles[i], int(per_tile[i])) for i in range(len(tiles)) if per_tile[i] != 256]
+    res = dict(lab_tiles=len(tiles), cells=int(ok.size), cells_matched=int(ok.sum()), labels_off=len(bad_lek),
+               labs_off=len(bad_tiles), consts=list(c))
     log.info("TEST1a H2: (LE,k) labels not exact in every LAB: %d; LABs with any off cell: %d", len(bad_lek), len(bad_tiles))
     if bad_lek:
         log.info("  off labels (le,k,labs_ok): %s", bad_lek[:20])
@@ -197,6 +206,9 @@ def main():
         for name, c in ex.map(one, ds):
             tot.update(c)
     m, w = tot["bits_ok"], tot["bits_bad"]
+    res.update(designs=len(ds), lut_cells=tot["cells"], lut_cells_exact=tot["cells_exact"], bits_matched=m, bits_wrong=w)
+    (REPO / "vendor-analysis/altera/inventory/s1b").mkdir(exist_ok=True)
+    (REPO / "vendor-analysis/altera/inventory/s1b/test1.json").write_text(json.dumps(res, indent=1))
     log.info("TEST1b %d designs: LUT cells %d (exact %d); mask bits at blkrba positions vs .vo: matched %d / (matched + wrong %d) = %.4f%%",
              len(ds), tot["cells"], tot["cells_exact"], m, w, 100 * m / max(m + w, 1))
     return 0

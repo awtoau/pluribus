@@ -330,6 +330,25 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
     # LAB-side classes
     ev_lut = ids(ev.c.name == "LUT INIT oracle compare (301 designs)")
     class_claim("1a", "pattern-predicted", "lut-anchor-v1", [("direct", ev_lut)], "LUT mask vs post-fit netlist, 301 designs")
+    # LAB blkrba (vendor ddb): local-only inputs written by cycloneiv_blkrba_lab.py (#165); absent -> class stays unknown
+    b1 = REPO / "vendor-analysis/altera/inventory/s1b/test1.json"
+    if b1.exists():
+        t1 = json.loads(b1.read_text())
+        ev_map = E.record_decode(conn, fam, device, "blkrba LAB bit-position table (vendor ddb decode)",
+                                 {"entries": 443, "lut_bits": 256, "non_lut_bits": 187, "tile_dx": 70, "tile_dy": 35,
+                                  "law": "frame = FX[X] + dy - 15; v = vy0 + 70*Y + 2 - dx", "meta": {}},
+                                 commit, "vendor-analysis/altera/inventory/s1", generator="scripts/cycloneiv_blkrba_lab.py",
+                                 n_objects=443, kind="derived-table")
+        ev_bl = E.record_decode(conn, fam, device, "blkrba LUT cells vs LUT-mask law and .vo read-back",
+                                {"lab_tiles": t1["lab_tiles"], "cells": t1["cells"], "matched": t1["cells_matched"],
+                                 "designs": t1["designs"], "bits_matched": t1["bits_matched"], "bits_wrong": t1["bits_wrong"],
+                                 "oracle": "Quartus post-fit .vo lut_mask", "meta": {}},
+                                commit, "scripts/cycloneiv_blkrba_lab.py", generator="scripts/cycloneiv_blkrba_lab.py",
+                                n_objects=t1["bits_matched"], kind="oracle-compare")
+        c1a = conn.execute(select(S.claims.c.id).where(S.claims.c.subject_key == "CLASS:1a")).scalar()
+        conn.execute(insert(S.claim_evidence).values(claim_id=c1a, evidence_id=ev_bl, role="confirm"))
+        class_claim("1d", "vendor-decoded", None, [("parent", [ev_map])],
+                    f"vendor ddb decode validated on LUT INIT cells n={t1['bits_matched']:,} bits; non-LUT names have no exact evidence")
     ev_miss = [E.record_decode(conn, fam, device, "le-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)",
                                {"n_les": 1018, "misses": 14, "design": "one corpus design", "meta": {},
                                 "note": "figures from the earlier analysis (docs/cycloneiv-bit-inventory.md 1b); not recomputed in this run"},
@@ -735,6 +754,9 @@ def register_cycloneiv(conn, device, commit):
                 cls="1b", basis="14/1,018 misses on one design = unacted refutations")
         R.claim("bit", "LAB:clock-polarity", cls_scope("1c", cls["1c"]["name"]), {"fit": "greedy"}, "statistical", "open", cls="1c",
                 basis="Jaccard 0.85 over 5,442 clock lines")
+        if "1d" in cls:   # present once a ledger line with the blkrba class has been recorded (inventory --record)
+            R.claim("bit", "LAB:blkrba:non-lut", cls_scope("1d", cls["1d"]["name"]), {"source": "blkrba.ddb", "law": "frame = FX + dy - 15; v = vy0 + 70*Y + 2 - dx"},
+                    "vendor-decoded", "open", cls="1d", basis="vendor ddb positions; law validated on the LUT cells only")
         afx_claim = R.claim("coord-map", "asm->plane:columns", R.scope("coord-map", "keys", {"keys": [f"asm->plane:x{x}" for x in range(118)]}, n=118),
                             {"source": "afx_map"}, "statistical", "open", pattern=p_afx, cls="2a", basis="vote peaks; 32 columns differ from FX")
         for k in ("2a", "2b"):
