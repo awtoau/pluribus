@@ -135,11 +135,32 @@ def _sha256_file(path):
     return h.hexdigest()
 
 
+ENFORCED_FAMILIES = ("cycloneiv",)
+
+
+def audit_unbuilt(conn, family):
+    """{source_ref bucket: (rows lacking build_base/build_spec, total specimen-pair rows)}; old violators, no backfill."""
+    out = {}
+    q = select(S.evidence.c.source_ref, S.evidence.c.generator, S.evidence.c.build_base, S.evidence.c.build_spec).where(
+        and_(S.evidence.c.family == family, S.evidence.c.kind == "specimen-pair"))
+    for ref, gen, base, spec in conn.execute(q):
+        b = out.setdefault(f"{gen or '?'} :: {ref.split(':')[0] if ':' in ref else os.path.dirname(ref)}", [0, 0])
+        b[1] += 1
+        b[0] += base is None or spec is None
+    return {k: tuple(v) for k, v in sorted(out.items())}
+
+
 def record_specimen(conn, family, device, name, base, only_spec, only_base, meta, source_ref, generator,
                     commit, bits_per_frame, kind="specimen-pair", stable=None, tool_version=None,
-                    build_base=None, build_spec=None, sha256=None):
-    """One evidence row per specimen pair. Idempotent on (family, device, kind, name, source_ref)."""
+                    build_base=None, build_spec=None, sha256=None, allow_unbuilt=False):
+    """One evidence row per specimen pair. Idempotent on (family, device, kind, name, source_ref).
+    A NEW specimen-pair row of an ENFORCED_FAMILIES family without build_base AND build_spec dies
+    (recovery-process.md bookkeeping); allow_unbuilt is for legacy JSON migration only."""
     tiers.check(kind, tiers.EVIDENCE_KINDS, "evidence kind")
+    if (kind == "specimen-pair" and family in ENFORCED_FAMILIES and not allow_unbuilt
+            and (build_base is None or build_spec is None)):
+        db.die(f"specimen-pair {name!r} ({source_ref}) needs build_base AND build_spec (corpus_builds ids); "
+               f"got base={build_base} spec={build_spec}")
     spec = to_flat(only_spec, bits_per_frame)
     bas = to_flat(only_base, bits_per_frame)
     existing = conn.execute(select(S.evidence.c.id).where(and_(
@@ -204,7 +225,7 @@ def import_json_file(conn, path, family, device, bits_per_frame, commit, generat
     sha = _sha256_file(path)
     for name, p in pairs.items():
         record_specimen(conn, family, device, name, p["base"], p["only_spec"], p["only_base"], p["meta"],
-                        rel, generator, commit, bits_per_frame, sha256=sha)
+                        rel, generator, commit, bits_per_frame, sha256=sha, allow_unbuilt=True)
     back = pairs_from_db(conn, family, device, rel)
     return len(pairs), canonical_hash(pairs), canonical_hash(back)
 

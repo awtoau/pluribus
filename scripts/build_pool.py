@@ -41,7 +41,15 @@ def mem_available_gb():
     raise RuntimeError("MemAvailable missing from /proc/meminfo")
 
 
-def map_adaptive(fn, items, per_job_gb=1.2, reserve_gb=10.0, max_workers=None, disk_floor_gb=10.0):
+class BuildOutcome:
+    """Return from a job fn (or it raises) so a refused/failed build is stored, not dropped: status failed|refused + reason."""
+    def __init__(self, status, reason, value=None):
+        self.status, self.reason, self.value = status, reason, value
+
+
+def map_adaptive(fn, items, per_job_gb=1.2, reserve_gb=10.0, max_workers=None, disk_floor_gb=10.0, on_outcome=None):
+    """on_outcome(item, BuildOutcome) is called for every failed/refused job (fn raised or returned a BuildOutcome);
+    with it set, exceptions no longer abort the pool and the item's result is the BuildOutcome. Without it: unchanged."""
     items = list(items)
     max_workers = max_workers or max(1, (os.cpu_count() or 8) - 2)
     cv = threading.Condition()
@@ -74,7 +82,16 @@ def map_adaptive(fn, items, per_job_gb=1.2, reserve_gb=10.0, max_workers=None, d
         admit()
         try:
             with heavy_guard.lease(per_job_gb, "build_pool", log, max_same_name=MAX_BUILD_JOBS):
-                return fn(item)
+                if on_outcome is None:
+                    return fn(item)
+                try:
+                    r = fn(item)
+                except Exception as e:  # noqa: BLE001 - recorded as a failed build with the reason
+                    r = BuildOutcome("failed", f"{type(e).__name__}: {e}")
+                if isinstance(r, BuildOutcome):
+                    log.error("build %s %s: %s", r.status, item, r.reason)
+                    on_outcome(item, r)
+                return r
         finally:
             with cv:
                 state["inflight"] -= 1

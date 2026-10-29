@@ -83,6 +83,34 @@ def record_gate_run(conn, family, script, commit, results, code_stamp=None, para
     return run_id
 
 
+def gate_exit_code(run_id, script, log=None):
+    """Gate scripts: `sys.exit(gate_exit_code(run_id, __file__))`. A run that never called record_gate_run (run_id None) exits 4."""
+    if run_id is None:
+        msg = f"{script}: record_gate_run was not called; gate result NOT recorded (exit 4)"
+        (log.error if log else print)(msg)
+        return 4
+    return 0
+
+
+def record_build_outcome(conn, family, device, design, status, reason, out_dir="", top="", toolchain=None):
+    """Store a refused/failed build (corpus_builds.status = '<status>:<reason>'); no silent loss. Upserts on design.
+    status in ok | failed | refused. Returns the corpus_builds id."""
+    import datetime
+    if status not in ("ok", "failed", "refused"):
+        db.die(f"build status {status!r} not in ok|failed|refused")
+    if status != "ok" and not reason:
+        db.die(f"{status} build {design!r} needs a reason")
+    st = "ok" if status == "ok" else f"{status}:{reason}"
+    t = S.corpus_builds.c
+    r = conn.execute(select(t.id).where(t.design == design)).fetchone()
+    if r:
+        conn.execute(update(S.corpus_builds).where(t.id == r[0]).values(status=st))
+        return r[0]
+    return conn.execute(insert(S.corpus_builds).values(
+        design=design, family=family, device=device, top=top, toolchain=toolchain, src_sha256={}, qsf={},
+        out_dir=out_dir, status=st, built_at=datetime.datetime.now().astimezone())).inserted_primary_key[0]
+
+
 def _mark_met(conn, family, run_id, commit):
     conn.execute(update(S.done_criteria).where(S.done_criteria.c.family == family).values(
         state="met", met_run=run_id, met_commit=commit, updated_at=feedback.now()))

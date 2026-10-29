@@ -141,11 +141,15 @@ def main():
             return 1
         shutil.copy(os.path.join(REPO, out, "_compare_summary.json"), os.path.join(od, n + ".json"))
     show(a.tag)
+    run_id = None
     try:
-        print(f"provenance gate_run {record(a.tag)}")
-    except SystemExit as e:   # stale/missing provenance DB must not lose a finished gate; results stay in tmp/ocmp/<tag>
+        run_id = record(a.tag)
+        print(f"provenance gate_run {run_id}")
+    except SystemExit as e:   # results stay in tmp/ocmp/<tag>; the exit code still flags the missing record
         print(f"provenance NOT recorded ({e}); fix the DB, then: claims_register.py --family machxo2")
-    return 0
+    sys.path.insert(0, REPO)
+    from provenance import corpus as C
+    return C.gate_exit_code(run_id, "scripts/machxo2_gate.py")
 
 
 if __name__ == "__main__":

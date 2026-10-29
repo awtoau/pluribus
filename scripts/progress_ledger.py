@@ -5,8 +5,16 @@
 Data: databases/cycloneiv/gx150.db (evidence, claims, expectations, unknowns) + last row of docs/coverage-history.jsonl.
 Why: die coverage only moves when cells are counted; specimen pairs, single cells and tables move first.
 Log tmp/logs/progress_ledger.log.
+
+YIELD (recovery-process.md "Yield rule") per bucket, over evidence rows created since the previous ledger row:
+  builds   = distinct build_base/build_spec ids on those specimen-pair rows; rows with none count 2 builds per pair
+  features = distinct claims with status != open newly linked via claim_evidence: linked to a new row and to NO
+             older row (re-measuring a verified/measured cell counts 0)
+  calibration rows count 0 features and 0 builds: name/source_ref/generator contains calib, control or null
+  yield    = features / builds * 100; FLOOR[bucket] is the minimum, below it the log line and the page say BELOW FLOOR
 """
 import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -22,7 +30,10 @@ LOG = REPO / "tmp/logs/progress_ledger.log"
 # evidence source_ref prefix -> bucket
 BUCKETS = (("bit_hunter", "bit hunter"), ("lab_modes", "LAB ports/fan/pswap"), ("cycloneiv_ctrl", "control lines"),
            ("cycloneiv_m9k", "M9K"), ("evidence/cycloneiv/cycloneiv_m9k", "M9K"), ("tmp/cycloneiv_m9k", "M9K"),
-           ("evidence/cycloneiv/cycloneiv_forced", "forced routing"), ("sources/", "third-party images"))
+           ("evidence/cycloneiv/cycloneiv_forced", "forced routing"), ("hop_specimen", "forced routing"), ("sources/", "third-party images"))
+# yield floor, features per 100 builds, per bucket (None = no floor). Routing 10; isolation hunts 1 new cell.
+FLOOR = {"forced routing": 10, "bit hunter": 1}
+CALIB = re.compile(r"calib|control|null", re.I)
 # metric key -> (label, higher is better)
 METRICS = {
     "single_cell_pairs": ("single-cell pairs (n_objects = 1)", True),
@@ -53,6 +64,40 @@ def bucket(ref):
         if (ref or "").startswith(pre):
             return name
     return "other"
+
+
+def compute_yield(c, prev_ts):
+    """{bucket: dict(builds, features, yield, floor, below)} for evidence created after prev_ts (ISO str); {} if no prev_ts."""
+    if not prev_ts:
+        return {}
+    cut = datetime.fromisoformat(prev_ts).astimezone().replace(tzinfo=None).isoformat(sep=" ")
+    builds, feats = {}, {}
+    new = {}
+    for eid, kind, ref, name, gen, bb, bs in c.execute(
+            "select id, kind, source_ref, name, generator, build_base, build_spec from evidence where created_at > ?", (cut,)):
+        if CALIB.search(f"{name} {ref} {gen or ''}"):
+            continue
+        b = bucket(ref)
+        new[eid] = b
+        if kind == "specimen-pair":
+            ids = {("b", x) for x in (bb, bs) if x is not None} or {("p", eid, 0), ("p", eid, 1)}
+            builds.setdefault(b, set()).update(ids)
+    old = {r[0] for r in c.execute("select ce.claim_id from claim_evidence ce join evidence e on e.id = ce.evidence_id "
+                                   "where e.created_at <= ?", (cut,))}
+    seen = set()
+    for cid, eid in c.execute("select ce.claim_id, ce.evidence_id from claim_evidence ce join claims cl on cl.id = ce.claim_id "
+                              "where cl.status != 'open'"):
+        if eid in new and cid not in old and cid not in seen:
+            seen.add(cid)
+            feats[new[eid]] = feats.get(new[eid], 0) + 1
+    out = {}
+    for b in sorted(set(builds) | set(feats)):
+        n = len(builds.get(b, ()))
+        f = feats.get(b, 0)
+        y = 100.0 * f / n if n else None
+        fl = FLOOR.get(b)
+        out[b] = dict(builds=n, features=f, yield_=y, floor=fl, below=bool(fl is not None and y is not None and y < fl))
+    return out
 
 
 def measure():
@@ -129,7 +174,9 @@ def main():
             f.writelines(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
         log(f"backfilled {len(new)} hourly rows")
         return
-    row = dict(ts=datetime.now().astimezone().isoformat(timespec="seconds"), commit=commit(), m=measure())
+    yld = compute_yield(sqlite3.connect(DB), rows[-1]["ts"] if rows else None)
+    row = dict(ts=datetime.now().astimezone().isoformat(timespec="seconds"), commit=commit(), m=measure(),
+               **{"yield": {b: {k.rstrip("_"): v for k, v in d.items()} for b, d in yld.items()}})
     if "--no-record" not in sys.argv:
         with open(LEDGER, "a") as f:
             f.write(json.dumps(row, separators=(",", ":")) + "\n")
@@ -138,6 +185,10 @@ def main():
     for k, (label, _) in METRICS.items():
         d = row["m"][k] - (prev["m"].get(k, row["m"][k]) if prev else row["m"][k])
         log(f"{label:45s} {row['m'][k]:>12,} {d:+,}")
+    for b, d in yld.items():
+        y = "n/a" if d["yield_"] is None else f"{d['yield_']:.2f}"
+        log(f"YIELD {b:28s} {d['features']:>5} features / {d['builds']:>5} builds = {y} per 100 vs floor "
+                 f"{d['floor'] if d['floor'] is not None else '-'}{'  BELOW FLOOR' if d['below'] else ''}")
     subprocess.run([sys.executable, str(REPO / "scripts/coverage_page_build.py"), str(OUT)], check=True)
     log(f"wrote {OUT.relative_to(REPO)}")
 

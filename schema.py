@@ -819,7 +819,7 @@ corpus_builds = Table("corpus_builds", metadata,
     Column("built_at",    DateTime(timezone=True)),
     Column("out_dir",     Text,    nullable=False),               # repo-relative
     Column("lift_label",  Text),                                  # bitstreams.label of our lift
-    Column("status",      Text,    nullable=False),               # "ok" | "fail:<step>"
+    Column("status",      Text,    nullable=False),               # "ok" | "fail:<step>" | "failed:<reason>" | "refused:<reason>" (corpus.record_build_outcome)
 )
 
 # Placed atoms from the post-fit netlist.  Top-level ports are type "pin"

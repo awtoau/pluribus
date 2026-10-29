@@ -267,6 +267,7 @@ def score(names):
     unattr = collections.Counter()
     li_x = collections.Counter()
     fired_stats = collections.Counter()
+    dres = {}   # per-design ddb pin results -> record_gate_run
     t0 = time.time()
     for di, name in enumerate(names):
         d = cc.load(name)
@@ -286,6 +287,8 @@ def score(names):
                 got, w = tr.trace(key, x, y)
                 bucket, detail = PT.score_pin(exp, got, w)
                 res[which][pt][bucket] += 1
+                if which == "ddb":
+                    dres.setdefault(name, {}).setdefault(pt, collections.Counter())[bucket] += 1
                 if bucket in ("missing", "wrong", "terminal"):
                     why[which][pt][f"{bucket}: {detail}"] += 1
         # per-hop (chain from every used LI) + LI extra
@@ -344,6 +347,23 @@ def score(names):
     log.info("  ambiguous hops (>1 candidate in window; not scored): %s", dict(hamb))
     log.info("  fired wire units not on any resolved path (upper bound on extra: includes pad/clock-driven nets and unreached hops): %s", dict(unattr))
     log.info("  extra detail %s; fired %s", dict(li_x), dict(fired_stats))
+    return dres
+
+
+def record(dres):
+    """ddb tracer per-design pin results -> gate_runs (members: cycloneiv_declare_gate.py). Returns run id."""
+    os.environ.setdefault("PLURIBUS_SQLITE_PATH", os.path.join(REPO, "databases", "cycloneiv", "gx150.db"))
+    sys.path.insert(0, REPO)
+    import db
+    import schema
+    from provenance import corpus as C
+    from provenance import evidence_io as E
+    results = {n: {pt: {k: c[k] for k in ("matched", "missing", "extra", "wrong")} for pt, c in pts.items()}
+               for n, pts in dres.items()}
+    schema.init()
+    with db.engine().begin() as conn:
+        return C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_ddb_trace.py", E.git_head(REPO), results,
+                                 params={"tracer": "ddb"})
 
 
 def main():
@@ -352,18 +372,30 @@ def main():
     ap.add_argument("--designs", default="gx150_rb*")
     ap.add_argument("--split", default="odd")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--no-record", action="store_true", help="diagnostic run: skip record_gate_run and the exit-4 check")
     a = ap.parse_args()
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=[
         logging.StreamHandler(), logging.FileHandler(os.path.join(REPO, "tmp", "logs", "cycloneiv_ddb_trace.log"))])
     if a.cmd == "export":
         export()
-        return
+        return 0
     names = [n for n in cc.designs(a.designs) if rl.split_of(n, a.split)]
     if a.limit:
         names = names[:a.limit]
-    score(names)
+    dres = score(names)
+    if a.no_record:
+        return 0
+    sys.path.insert(0, REPO)
+    from provenance import corpus as C
+    run_id = None
+    try:
+        run_id = record(dres)
+        log.info("gate_run %s recorded", run_id)
+    except SystemExit as e:
+        log.error("gate NOT recorded: %s", e)
+    return C.gate_exit_code(run_id, "scripts/cycloneiv_ddb_trace.py", log)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

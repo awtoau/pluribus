@@ -861,9 +861,17 @@ def main():
     ap.add_argument("--device", default=None)
     ap.add_argument("--import-json", default=None, metavar="DIR", help="one-shot: migrate legacy evidence JSONs into evidence rows")
     ap.add_argument("--verify-json", action="store_true", help="round-trip check of every JSON in --import-json DIR")
+    ap.add_argument("--audit", action="store_true", help="list specimen-pair rows lacking build_base/build_spec per source bucket; no writes")
     a = ap.parse_args()
     commit = git_head()
     S.init()
+    if a.audit:
+        with db.engine().connect() as conn:
+            res = E.audit_unbuilt(conn, a.family)
+        for k, (bad, tot) in res.items():
+            log.info("unbuilt %-70s %6d / %6d", k, bad, tot)
+        log.info("unbuilt total %d / %d", sum(v[0] for v in res.values()), sum(v[1] for v in res.values()))
+        return
     with db.engine().begin() as conn:
         check_single_family(conn, a.family)
         wipe(conn, a.family)

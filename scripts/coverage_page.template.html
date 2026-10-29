@@ -244,10 +244,13 @@ function hbars(svg,items,total,tierKeys,tipFn,pcOf){
 }
 (function(){const P=DATA.progress;if(!P||!P.rows.length){$("t0").innerHTML="<tr><td>no progress rows yet</td></tr>";return}
  const R=P.rows,last=R[R.length-1],prev=R.length>1?R[R.length-2]:null,first=R[0];
- $("t0").innerHTML=`<tr><th class="l">Metric</th><th>Now</th><th>Change vs previous row</th><th>First row</th></tr>`+P.metrics.map(m=>{
+ const yc=k=>{const d=last.yield&&k.startsWith("pairs_")?last.yield[k.slice(6)]:null;if(!d)return "–";
+  const y=d.yield==null?"n/a":d.yield.toFixed(2),f=d.floor==null?"no floor":d.floor;
+  return `${y} / ${f} (${fmt(d.features)} feat, ${fmt(d.builds)} builds)`+(d.below?` <b style="color:#c0392b">BELOW FLOOR</b>`:"")};
+ $("t0").innerHTML=`<tr><th class="l">Metric</th><th>Now</th><th>Change vs previous row</th><th>First row</th><th>Yield / floor</th></tr>`+P.metrics.map(m=>{
   const n=last.m[m.k]||0,d=prev&&prev.m[m.k]!=null?n-prev.m[m.k]:0;
-  return `<tr><td class="l">${m.label}</td><td>${fmt(n)}</td><td>${d?(d>0?"+":"")+fmt(d):"0"}</td><td>${first.m[m.k]==null?"–":fmt(first.m[m.k])}</td></tr>`}).join("")+
-  `<tr><td class="l" colspan="4">Last row ${last.ts.slice(0,16)}, commit ${last.commit}; ${R.length} rows.</td></tr>`;
+  return `<tr><td class="l">${m.label}</td><td>${fmt(n)}</td><td>${d?(d>0?"+":"")+fmt(d):"0"}</td><td>${first.m[m.k]==null?"–":fmt(first.m[m.k])}</td><td>${yc(m.k)}</td></tr>`}).join("")+
+  `<tr><td class="l" colspan="5">Last row ${last.ts.slice(0,16)}, commit ${last.commit}; ${R.length} rows.</td></tr>`;
 })();
 })();
 </script>
