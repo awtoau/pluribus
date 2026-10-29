@@ -83,3 +83,20 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 - `vector<unsigned>` on disk: u32 count, then `count` i32 deltas (running sum, first delta against the previous vector of that field). Body offset 38,044 = a 149,760-element vector of repeating 0..15 (LE bit offsets), ends at 0x9b8a0, followed by the BLOCK_INFO `m_export_port_to_bit_map` entry (`le_comb_abs_to_loc` -> 149,760).
 - `map<DATA_TYPE, vector<uint>*>`: u32 count, per entry i32 key + pointer tag; contents deferred. Pool interleaving of BLOCK_INFO objects and their vectors is not resolved: CFF instance vectors still undecoded.
 - DEV_PIN (libddb_dev `operator<<`, static decompile): `m_id` i32 delta, bool vector (2 delta words), 25 i32 deltas (`m_int_data`), 5 strings (`m_string_data`: [0] ball name, [1] function), 7 delta vectors (`m_vec_int_data`), string-hash (count), 5 bool vectors, `m_pad_id_list` (count + deltas). Pool records of the pkg body are not homogeneous (a second, shorter record kind with 11 ints follows each pin); `m_pad_id_list` not yet read: 0 pins decided.
+
+## Ghidra pass (2026-10-30, #168; workflow: docs/ghidra-workflow.md)
+
+- Pool order: libdb_pdb `PDB_SEGMENT_READER::xfr_ptr` / `finish_reading_all`.
+  - Tag u32: 0 null; bit0 = u16 adjust + u16 class idx follow; bit1 = back-reference (id delta); else new object of class `tag >> 2`.
+  - New objects append to the declared pointer type's list; pending types sit on a LIFO stack; the popped type's objects are read in creation order, nested new types are handled before earlier ones.
+  - Dirt ddb (`scripts/cycloneiv_clean_dirt.py`): one global FIFO of tags reproduces 11/11 dirt files byte-exactly (stingray4 1,642 nodes = 532 + 613 + 497 from the type table).
+  - asmdb: the pool after the main stream starts with the last-queued static type, ASMDB_LABELED_SIMPLE_MUX (4 objects): the 149,760-element vector is its `m_mux_bits` (LE bit offsets), `le_comb_abs_to_loc` its label.
+  - Deltas (`xfr_int_delta`) are against the same field of the previous object in the pool, not a running sum inside one object.
+- Enum names read from libdb_asmdb tables (`ASMDB_TRANSLATOR::m_asmdb_*_debug_string_table`):
+  - Block types in the IV asmdb: 5 HIO, 6 VIO (the IO blocks), 18 LAB, 39 MEAB, 41 MAC, 60 DEDICATED_CLOCK, 61 DEDICATED_NEGATIVE_CLOCK, 227 HSSI_STRIP.
+  - Arch group `m_type` -> name over 4,664 groups: 84 IO_PIN_MODE, 161 IO_SET_DRIVE_STRENGTH_YGR, 165 IO_USE_BUS_HOLD, 178 IO_USE_PULL_UP, 180 IO_USE_SLOW_SLEW, 182 IO_USE_OPEN_DRAIN, 188..190 IO_OCT_*, 229..231 MIO_SET_*SLEW_RATE, 247/248 MIO_SET_PULLDOWN/PULLUP_STRENGTH, 249 MIO_SET_DRIVE_STRENGTH, 254 MIO_SELECT_IOST_DIRT, 305/306 MIO_USE_BUS_HOLD / MIO_USE_PULL_UP, 506 MIO_PIN_MODE.
+- Drive / slew / pull `process_atom` paths (libcomp_asm):
+  - Pull-up, bus-hold, slow-slew, open-drain = one boolean mux each (`mux_select(group, resolve_io_index_for_block(), bool)`); sources: cut_io_util vtbl +0x88 / +0x78, atom vtbl +0xe58, atom bit 0x16.
+  - Drive strength value = dirt tree lookup `IO / IO_SET_DRIVE_STRENGTH_YGR / IO_STANDARD / CURRENT_STRENGTH / VIO_PAD|HIO_PAD / SETTINGS`; the stingray dirt ddb files carry no IO subtree (only 12 MIO arch-group entries), so the table is not in these dirt files.
+- pkg ddb: type table is DEV_PKG_INFO_BODY (1), DEV_PIN (896), std::string: no second record kind; the root holds vector<DEV_PIN*> then hash<string, DEV_PKG_NET*>. The 11-int run is part of the DEV_PIN field stream (not decoded). `ASM_IO_PIN_MODEL_YGR` takes (CDB_CHIP_DB_ENTRY, DEV_DIE_INFO, DEV_PAD_INFO): pad data comes from the pad ddb.
+- Still open: group objects (classes 5..8) and mux pools are not walked, so group -> CFF bit vectors and instance bases remain 0; IO fields 0/5.

@@ -1,0 +1,6 @@
+# lib	vaddr	name	type	size	source	comment
+libdb_asmdb	ec320	ASMDB_TRANSLATOR::m_asmdb_arch_group_type_debug_string_table	pointer[4664]	0x91c0	#168 c5	char*[4664]: ASMDB_ARCH_GROUP_TYPE enum (arch group m_type) -> name, e.g. 161 IO_SET_DRIVE_STRENGTH_YGR, 165 IO_USE_BUS_HOLD, 178 IO_USE_PULL_UP, 180 IO_USE_SLOW_SLEW. Read via .rela.dyn RELATIVE addends.
+libdb_asmdb	f54e0	ASMDB_TRANSLATOR::m_asmdb_arch_group_type_user_string_table	pointer[4664]	0x91c0	#168 c5	user-facing names for the same enum
+libdb_asmdb	fe6a0	ASMDB_TRANSLATOR::m_asmdb_arch_group_block_type_debug_string_table	pointer[543]	0x10f8	#168 c5	ASMDB_ARCH_GROUP_BLOCK_TYPE enum -> name: 5 HIO, 6 VIO, 18 LAB, 39 MEAB, 41 MAC, 60 DEDICATED_CLOCK, 61 DEDICATED_NEGATIVE_CLOCK, 227 HSSI_STRIP (the 8 IV block types)
+libdb_asmdb	eb020	ASMDB_TRANSLATOR::m_asmdb_dirt_type_debug_string_table	pointer[304]	0x980	#168 c5	dirt node type enum -> name (ROOT 2, INDEX_CACHE 23, ARCH_GROUPS 30, IO 153, ...)
+libddb_dstr	477980	DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table	pointer[2716]	0x54e0	scripts/cycloneiv_clean_names_vendor.py	char*[2716], index = DEV_ELEMENT_ENUM

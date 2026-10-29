@@ -1,0 +1,7 @@
+# lib	vaddr	kind	text	source
+libcomp_asm	183e34	plate	Externals used by IO setting classes: cut_io_util (object, vtbl +0x78 bus-hold, +0x88 pull-up query), dirt (ASMDB_DIRT root), ASM_MODEL::s_io_index.	#168 c4
+libcomp_asm	19101c	bookmark	IO direction mux (7 values)	#168 c1
+libcomp_asm	192a02	bookmark	drive strength table = dirt tree lookup	#168 c4
+libdb_pdb	ec50	bookmark	pool order rule (LIFO of static types, FIFO objects)	#168 c5
+libdb_pdb	df50	bookmark	pointer tag format	#168 c5
+libdb_asmdb	ec320	bookmark	group-type enum names	#168 c5

@@ -1,0 +1,28 @@
+# lib	vaddr	name	signature	source	comment
+libcomp_asm	19101c	ASM_IO_PIN_MODE::process_atom		#168 c1, docs/cycloneiv-clean-io.md	Pin direction = one arch-group mux, 7 values: 0 in, 1 out, 2 out+OE, 3 open-drain, 4 od+OE, 5 registered OE, 6 registered-OE od. Selected via ASM_ARCH_GROUP::mux_select(group, io_index, value). Group type name: IO_PIN_MODE (asmdb group-type enum 84).
+libcomp_asm	190e70	ASM_IO_PIN_MODE::handle_ygr_dual_pin_iost		#168 c1, docs/cycloneiv-clean-io.md	IO standard as mux 0/1: standard class 0x37.. / 0x47.. / 0x48.. plus atom bit 4.
+libcomp_asm	182656	ASM_IO_PIN_MODEL::process_atom		#168 c1	Per-pin model entry; resolves pin index for the arch groups.
+libcomp_asm	190456	ASM_IO_PIN_MODEL::init_pin_modes_from_chip		#168 c1	Builds per-pin mode table from CDB_CHIP_DB_ENTRY (pad info from ddb pad file).
+libcomp_asm	199bbe	ASM_IO_PIN_MODEL::construct_gid_to_pin_index_map		#168 c1	gid -> pin index map; uses dirt index cache type 0x17 (INDEX_CACHE).
+libcomp_asm	19a474	ASM_IO_PIN_MODEL_YGR::ASM_IO_PIN_MODEL_YGR		#168 c4	Pin model ctor takes (CDB_CHIP_DB_ENTRY, DEV_DIE_INFO, DEV_PAD_INFO): pad -> pin data comes from the pad ddb (DEV_PAD_INFO), not from the pkg file.
+libcomp_asm	2b3795	asm_convert_db_to_asm_iost		#168 c1, docs/cycloneiv-clean-io.md	DEV_IO_STANDARD_ENUM -> asm IOST class 0..12.
+libcomp_asm	183e34	ASM_IO_USE_BUS_HOLD::process_atom		#168 c4 (ghidra decompile)	Boolean mux in group IO_USE_BUS_HOLD (asmdb group-type enum 165): mux_select(group, resolve_io_index_for_block(), cut_io_util->vtbl+0x78(atom)). Index -1 = no pin.
+libcomp_asm	183f16	ASM_IO_USE_PULL_UP::process_atom		#168 c4 (ghidra decompile)	Boolean mux in group IO_USE_PULL_UP (enum 178): value = cut_io_util->vtbl+0x88(atom).
+libcomp_asm	183f82	ASM_IO_USE_SLOW_SLEW::process_atom		#168 c4 (ghidra decompile)	Boolean mux in group IO_USE_SLOW_SLEW (enum 180): value = atom vtbl+0xe58.
+libcomp_asm	1840a8	ASM_IO_USE_OPEN_DRAIN::process_atom		#168 c4 (ghidra decompile)	Boolean mux in group IO_USE_OPEN_DRAIN (enum 182): value = asm_test_atom_bit(atom, 0x16); index from ASM_MODEL::s_io_index.
+libcomp_asm	192f74	ASM_IO_SET_DRIVE_STRENGTH_YGR::process_atom		#168 c4 (ghidra decompile)	Drive strength: value from get_settings(io_standard, current_strength, vio/hio pad, ..) then mux_select; group IO_SET_DRIVE_STRENGTH_YGR (enum 161). Other families: _TORNADO 162, _ARMSTRONG 163, _TSUNAMI 164.
+libcomp_asm	192a02	ASM_IO_SET_DRIVE_STRENGTH_YGR::get_settings		#168 c4 (ghidra decompile)	Walks the global dirt tree: IO -> IO_SET_DRIVE_STRENGTH_YGR -> IO_STANDARD(str) -> CURRENT_STRENGTH(str) -> VIO_PAD|HIO_PAD -> SETTINGS (int = mux value). Dirt type ids: IO 0x99, group 0x69, IO_STANDARD 0x19, CURRENT_STRENGTH 0xa8, VIO_PAD 0xa5, HIO_PAD 0xa6, SETTINGS 0x18. Cyclone IV stingray dirt ddb has no IO subtree.
+libcomp_asm	191c12	ASM_IO_SELECT_IOST_DIRT::get_settings		#168 c4	IO standard setting lookup in the dirt tree by DEV_IO_STANDARD_ENUM.
+libcomp_asmcc	1a240	ASM_BITFIELD::silent_set_bits		#165, docs/cycloneiv-clean-io.md	Address-space tags: CRAM bit31 clear; CFF 101 top; UNVM 1001; OPTION 10001; DPRIO 100001; literals 11; DB_ILLEGAL_* = 0xfffffffa..e. See io.ADDRESS_SPACES.
+libcomp_asmcc	2891c	ASM_ARCH_GROUP::resolve_io_index_for_block		#168 c4	Returns the IO index of the current atom's pin for this group's block type; 0xffffffff = none.
+libcomp_asmcc	28526	ASM_ARCH_GROUP::mux_select		#168 c1	mux_select(group, io_or_instance_index, value, streams): writes the mux setting bits for one group instance into the ASMDB setting streams.
+libdb_asmdb	9d8f0	ASMDB_DIE::operator<<		#168 c2	Field order and offsets are in structs.tsv (ASMDB_DIE). Root object of asmdb ddb: tag 4 then main stream; object pools follow (see libdb_pdb PDB_SEGMENT_READER::finish_reading_all).
+libdb_asmdb	9dbbc	ASMDB_BLOCK_INFO::operator<<		#168 c2	Layout in structs.tsv (ASMDB_BLOCK_INFO, 0xc0 bytes per ddb type table).
+libdb_asmdb	94c16	asmdb_get_debug_string		#168 c5	Block-type enum -> name via ASMDB_TRANSLATOR::m_asmdb_arch_group_block_type_debug_string_table.
+libdb_pdb	df50	PDB_SEGMENT_READER::xfr_ptr		#168 c5 (ghidra decompile)	Pointer tag u32: 0 null; bit0 set = u16 adjust + u16 class idx follow; bit1 set = back-reference, id = (tag>>2) + last id of that static type; bit1 clear = NEW object of class tag>>2, appended to the static type's object list, type queued for finish_reading_all.
+libdb_pdb	ec50	PDB_SEGMENT_READER::finish_reading_all		#168 c5 (ghidra decompile)	Pool order: stack (LIFO) of static pointer types with pending objects; pop head, read ALL its pending objects in creation order (each by its dynamic class), nested new types are pushed and handled before earlier-queued ones. Dirt ddb: single global FIFO reproduces all 1642 nodes exactly.
+libdb_pdb	d3e0	PDB_SEGMENT_READER::xfr_int_delta		#168 c5	Value = stream i32 + same field of the reference object (previous object of the pool / previous element), not a running sum within one object.
+libdb_pdb	17990	PDB_SEGMENT_READER::xfr_stl_ptr		#168 c5	STL container of pointers (serializer slot +0x28).
+libdb_pdb	e930	PDB_SEGMENT_READER::xfr_new		#168 c5	Allocate/register object; vtable slot index 0x28.
+libddb_dev	15e930	DEV_PIN::operator<<		#168 c3, docs/cycloneiv-clean-io.md	Fields: m_id +0, m_bool_data +8, m_int_data +0x18 (25 i32), m_string_data +0xe8 ([0] ball name, [1] function), m_vec_int_data +0x190, string hash, 5 enum-is-valid bool vectors +0x1f0.., m_pad_id_list +0x240 (last).
+libddb_dev	16aac0	DEV_PKG_INFO_BODY::operator<<		#168 c5	Root of pkg ddb: vector<DEV_PIN*> (count + one ptr tag each) then hash<string, DEV_PKG_NET*>; type table has only DEV_PKG_INFO_BODY (1), DEV_PIN (896), std::string, so there is no second record kind.

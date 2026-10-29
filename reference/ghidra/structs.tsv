@@ -1,0 +1,158 @@
+# lib	struct	size	offset	field	type	comment	source
+libdb_asmdb	ASMDB_ARCH_GROUP_BASE	24	0x8	m_group_index	int	serializer field id 0x6e	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_BASE	24	0xc	m_type	int	serializer field id 0x6f	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_BASE	24	0x10	m_group_block_type	int	serializer field id 0x70	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CALC	96	0x0	ASMDB_ARCH_GROUP_BASE	byte[24]	serializer field id 0x226	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CALC	96	0x18	m_mux_path_list	byte[24]	serializer field id 0x227; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CALC	96	0x30	m_mux_data_list	byte[24]	serializer field id 0x228; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CALC	96	0x48	m_block_info	byte[8]	serializer field id 0x229	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CALC	96	0x50	m_group_index_map	byte[8]	serializer field id 0x22a	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CALC	96	0x58	m_offset_index_map	long	serializer field id 0x22b	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x0	ASMDB_ARCH_GROUP_BASE	byte[24]	serializer field id 0x2a3	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x18	m_param_master	byte[8]	serializer field id 0x2a4	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x20	m_block_ag	byte[8]	serializer field id 0x2a5	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x28	m_block_signal_ag	byte[8]	serializer field id 0x2a6	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x30	m_fpga_ag	byte[8]	serializer field id 0x2a7	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x38	m_fullchip_block_info	byte[8]	serializer field id 0x2a8	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x40	m_block_index_map	byte[8]	serializer field id 0x2a9	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x48	m_group_index_map	byte[8]	serializer field id 0x2aa	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_CERBERUS	88	0x50	m_group_index_set	long	serializer field id 0x2ab	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ARCH_GROUP_DUMB	32	0x0	m_arch_value	byte[24]	serializer field id 0x219	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_DUMB	32	0x18	m_bits	long	serializer field id 0x21a; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_STD	56	0x0	ASMDB_ARCH_GROUP_BASE	byte[24]	serializer field id 0x20a	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_STD	56	0x18	m_mux_path_list	byte[24]	serializer field id 0x20b; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_ARCH_GROUP_STD	56	0x30	m_mux_data_list	long	serializer field id 0x20c; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_AVALON_ADDRESS	16	0x0	address_space_name	pointer	serializer field id 0x61; C++ std::string	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_AVALON_ADDRESS	16	0x8	linearized_bit_address	int	serializer field id 0x62	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x0	m_bcm_address_space_encoding	pointer	serializer field id 0xa8; C++ std::string	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x8	m_block_version_string	pointer	serializer field id 0xa9; C++ std::string	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x10	m_icd_block_name	pointer	serializer field id 0xaa; C++ std::string	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x18	m_block_lists	byte[48]	serializer field id 0xab; C++ std::map	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x48	m_block_type	int	serializer field id 0xac	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x4c	m_num_ram_cols	int	serializer field id 0xad	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x50	m_simple_block_lists	byte[48]	serializer field id 0xae; C++ std::map	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x80	m_export_port_to_bit_map	byte[8]	serializer field id 0xaf	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x88	m_block_bit_to_avalon_bit_map	byte[8]	serializer field id 0xb0	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x90	m_avalon_name_to_size_map	long	serializer field id 0xb1; C++ std::map	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DEFAULT_BIT_CALC	24	0x0	m_arch_value	byte	serializer field id 0xd5	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DEFAULT_BIT_CALC	24	0xc	m_bit	int	serializer field id 0xd6	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DEFAULT_BIT_CALC	24	0x10	m_block_info	long	serializer field id 0xd7	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DEFAULT_MUX_SETTING	24	0x0	ASMDB_DEFAULT_GROUP	byte[8]	serializer field id 0xc6	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DEFAULT_MUX_SETTING	24	0x8	m_arch_group	byte[8]	serializer field id 0x0	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DEFAULT_MUX_SETTING	24	0x10	m_mux_setting	int	serializer field id 0x0	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DIE	608	0x0	m_arch_value	byte	serializer field id 0x7c	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x4	m_num_bits	int	serializer field id 0x7d	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x8	m_num_cff_bits	int	serializer field id 0x7e	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0xc	m_num_unvm_bits	int	serializer field id 0x7f	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x10	m_num_option_reg_bits	int	serializer field id 0x80	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x18	m_summary_block_rba_version_string	pointer	serializer field id 0x81; C++ std::string	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x20	m_mcf_sch_version_string	pointer	serializer field id 0x82; C++ std::string	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x28	m_rba_version_string	pointer	serializer field id 0x83; C++ std::string	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x30	m_bvp_version_string	pointer	serializer field id 0x84; C++ std::string	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x38	m_block_info_map	byte[48]	serializer field id 0x85; C++ std::map	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x68	m_arch_group_list	byte[24]	serializer field id 0x86; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x80	m_default_group_list	byte[80]	serializer field id 0x87; C++ std::deque	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0xd0	m_default_bit_list	byte[80]	serializer field id 0x88; C++ std::deque	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x120	m_forced_bit_list	byte[80]	serializer field id 0x89; C++ std::deque	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x170	m_labeled_simple_mux_list	byte[80]	serializer field id 0x8a; C++ std::deque	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x1c0	m_local_default_group_list	byte[80]	serializer field id 0x8b; C++ std::deque	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x210	m_local_arch_group_list	byte[24]	serializer field id 0x8c; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x228	m_hc_base_nodes	byte[24]	serializer field id 0x8d; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x240	m_hc_fringe_nodes	byte[24]	serializer field id 0x8e; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIE	608	0x258	m_hc_wires	long	serializer field id 0x8f; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIRT	16	0x0	m_has_dirt_type	byte	serializer field id 0x9c	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIRT	16	0x8	m_index	int	serializer field id 0x9b	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIRT_INNER	24	0x0	ASMDB_DIRT	byte[16]	serializer field id 0x27c	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIRT_INNER	24	0x10	m_children	long	serializer field id 0x27d; C++ std::vector	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_DIRT_INTEGER	24	0x0	ASMDB_DIRT	byte[16]	serializer field id 0x289	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DIRT_INTEGER	24	0x10	m_data	long	serializer field id 0x28a; C++ std::vector	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DIRT_STRING	24	0x0	ASMDB_DIRT	byte[16]	serializer field id 0x296	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_DIRT_STRING	24	0x10	m_data	long	serializer field id 0x297; C++ std::vector	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ENCODED_BANK_MUX	40	0x0	ASMDB_MUX	byte[32]	serializer field id 0x115	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ENCODED_BANK_MUX	40	0x20	m_mux_size	int	serializer field id 0x116	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ENCODED_BANK_MUX	40	0x24	m_bank_size	int	serializer field id 0x117	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x0	dest_c_number	pointer	serializer field id 0x4c; C++ std::string	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x8	dest_uid	int	serializer field id 0x4d	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0xc	dest_porttype	int	serializer field id 0x4e	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x10	dest_portname	pointer	serializer field id 0x4f; C++ std::string	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x18	dest_portindex	ushort	serializer field id 0x50	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x20	source_c_number	pointer	serializer field id 0x51; C++ std::string	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x28	source_uid	int	serializer field id 0x52	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x2c	source_porttype	int	serializer field id 0x53	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x30	source_portname	pointer	serializer field id 0x54; C++ std::string	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_HC_WIRE_DATA	64	0x38	source_portindex	ushort	serializer field id 0x55	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_LABELED_SIMPLE_MUX	40	0x0	ASMDB_SIMPLE_MUX	byte[32]	serializer field id 0x1cf	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_LABELED_SIMPLE_MUX	40	0x20	m_name	pointer	serializer field id 0x1d0; C++ std::string	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_MAPPED_ENCODED_MUX	40	0x0	ASMDB_ENCODED_MUX	byte[32]	serializer field id 0x13b	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_MAPPED_ENCODED_MUX	40	0x20	m_map_mux	long	serializer field id 0x13c	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_MAPPED_SIMPLE_MUX	40	0x0	ASMDB_SIMPLE_MUX	byte[32]	serializer field id 0x148	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_MAPPED_SIMPLE_MUX	40	0x20	m_map_mux	long	serializer field id 0x149	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_MUX_DATA	24	0x0	arch_value	byte	serializer field id 0x21	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_MUX_DATA	24	0x8	aux_mux	byte[8]	serializer field id 0x22	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_MUX_DATA	24	0x10	next_mux_selection	long	serializer field id 0x23	serializer:asmdb_ser.c
+libdb_asmdb	ASMDB_MUX_STL_DATA	32	0x0	arch_value	byte	serializer field id 0x2f	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_MUX_STL_DATA	32	0x8	aux_map	byte[8]	serializer field id 0x30	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_MUX_STL_DATA	32	0x10	next_mux_selection	byte[8]	serializer field id 0x31	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_MUX_STL_DATA	32	0x18	mask_map	long	serializer field id 0x32	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_BASE	48	0x0	m_is_generic_atom_parameter	byte	serializer field id 0x0	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_BASE	48	0x8	m_group_index	int	serializer field id 0x2b7	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_BASE	48	0xc	m_type	int	serializer field id 0x2b8	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_BASE	48	0x10	m_block_type	int	serializer field id 0x2b9	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_BASE	48	0x18	m_param_key_names	byte[16]	serializer field id 0x2ba	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_BASE	48	0x28	m_dyn_enum_type_name	pointer	serializer field id 0x0; C++ std::string	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_BITVEC	56	0x0	ASMDB_PARAM_MASTER_BASE	byte[48]	serializer field id 0x2c8	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_BITVEC	56	0x30	m_size	int	serializer field id 0x2c9	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_ENUM	56	0x0	ASMDB_PARAM_MASTER_BASE	byte[48]	serializer field id 0x2d5	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_PARAM_MASTER_ENUM	56	0x30	m_enum_map	long	serializer field id 0x2d6	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_RAM_MUX	40	0x0	ASMDB_MUX	byte[32]	serializer field id 0x16f	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_RAM_MUX	40	0x20	m_polarity_mux	long	serializer field id 0x170	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_SIMPLE_BANK_MUX	40	0x0	ASMDB_MUX	byte[32]	serializer field id 0x12d	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_SIMPLE_BANK_MUX	40	0x20	m_mux_size	int	serializer field id 0x12e	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_SIMPLE_BANK_MUX	40	0x24	m_bank_size	int	serializer field id 0x12f	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_TABLE_ENCODED_MUX	48	0x0	ASMDB_ENCODED_MUX	byte[32]	serializer field id 0x18a	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_TABLE_ENCODED_MUX	48	0x20	m_table_mux	byte[8]	serializer field id 0x18b	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_TABLE_ENCODED_MUX	48	0x28	m_index_size_mux	long	serializer field id 0x18c	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ZEROED_ENCODED_MUX	48	0x0	ASMDB_MAPPED_ENCODED_MUX	byte[40]	serializer field id 0x155	serializer:asmdb_decomp.c
+libdb_asmdb	ASMDB_ZEROED_ENCODED_MUX	48	0x28	m_offset	int	serializer field id 0x156	serializer:asmdb_decomp.c
+libddb_dev	DEV_PAD_BODY	968	0x0	m_io_standards	byte[8]	serializer field id 0xe2	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x8	m_default_pad_body	byte[8]	serializer field id 0xd5	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x10	m_bool_data	byte[16]	serializer field id 0xd6; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x20	m_int_data	byte[224]	serializer field id 0xd7	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x100	m_string_data	byte[448]	serializer field id 0xd8	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x2c0	m_2d_int_data	byte[96]	serializer field id 0xd9; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x320	m_double_data	byte[40]	serializer field id 0xdb; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x348	m_bool_enum_is_valid	byte[16]	serializer field id 0xdc; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x358	m_int_enum_is_valid	byte[16]	serializer field id 0xdd; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x368	m_string_enum_is_valid	byte[16]	serializer field id 0xde; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x378	m_2d_int_enum_is_valid	byte[16]	serializer field id 0xdf; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x388	m_string_hash_enum_is_valid	byte[16]	serializer field id 0xe0; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x398	m_double_enum_is_valid	byte[40]	serializer field id 0xe1; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_BODY	968	0x3c0	m_io_standards_by_enum	long	serializer field id 0xe3	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x0	m_io_rules	byte[24]	serializer field id 0x0	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x18	m_default_pad_body	byte[16]	serializer field id 0xb4	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x28	m_bool_data	byte[16]	serializer field id 0xb6; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x38	m_int_data	byte[112]	serializer field id 0xb7	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0xa8	m_string_data	byte[200]	serializer field id 0xb8	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x170	m_vec_int_data	byte[96]	serializer field id 0xba	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x1d0	m_2d_int_data	byte[336]	serializer field id 0xbb	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x320	m_bool_enum_is_valid	byte[16]	serializer field id 0xbc; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x330	m_int_enum_is_valid	byte[16]	serializer field id 0xbd; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x340	m_string_enum_is_valid	byte[16]	serializer field id 0xbe; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x350	m_vec_string_enum_is_valid	byte[16]	serializer field id 0xbf; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x360	m_vec_int_enum_is_valid	byte[16]	serializer field id 0xc0; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x370	m_2d_int_enum_is_valid	byte[20]	serializer field id 0xc1; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x384	m_ids_by_global_id	byte[24]	serializer field id 0xc2	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x39c	m_ids_by_string	byte[48]	serializer field id 0xc3	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x3cc	m_io_standards_by_string	byte[20]	serializer field id 0xc5	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x3e0	m_default_io_standards_by_enum	byte[1008]	serializer field id 0xc6	serializer:dev_ser.c
+libddb_dev	DEV_PAD_INFO_BODY	2008	0x7d0	m_io_standard_enums	long	serializer field id 0x0	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x0	m_id	int	serializer field id 0x147	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x8	m_bool_data	byte[16]	serializer field id 0x148; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x18	m_int_data	byte[208]	serializer field id 0x149	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0xe8	m_string_data	byte[168]	serializer field id 0x14a; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x190	m_vec_int_data	byte[96]	serializer field id 0x14b; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x1f0	m_bool_enum_is_valid	byte[32]	serializer field id 0x14d; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x210	m_string_enum_is_valid	byte[16]	serializer field id 0x14f; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x220	m_vec_int_enum_is_valid	byte[16]	serializer field id 0x150; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x230	m_string_hash_enum_is_valid	byte[16]	serializer field id 0x151; C++ QTL_BOOL_VECTOR	serializer:dev_ser.c
+libddb_dev	DEV_PIN	584	0x240	m_pad_id_list	long	serializer field id 0x152	serializer:dev_ser.c
