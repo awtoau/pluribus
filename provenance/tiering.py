@@ -81,7 +81,7 @@ def class_verdict(conn, family, device, cls):
                         .where(S.claim_evidence.c.claim_id == c["id"])).fetchall()
     by_role = {}
     for role, kind, name, ref, result in rows:
-        by_role.setdefault(role, []).append((kind, scope_of(result, name, ref)))
+        by_role.setdefault(role, []).append((kind, scope_of(result, name, ref), ((result or {}).get("meta") or {}).get("group_key")))
     miss_r, miss_c = len(by_role.get("refute", [])), len(by_role.get("conflict", []))
     exact = lambda L: [x for x in L if x[0] in EXACT_KINDS]   # noqa: E731
     n_exact = sum(len(exact(by_role.get(r, []))) for r in ("direct", "parent", "confirm"))
@@ -90,7 +90,7 @@ def class_verdict(conn, family, device, cls):
     if miss_c:
         return dict(tier="suspect", n=n_exact, misses=miss_c,
                     rule=f"{miss_c} conflicting exact row(s) (sibling refuted / sources disagree) -> suspect")
-    if any(k == "oracle-compare" for k, _ in by_role.get("confirm", []) + by_role.get("direct", [])):
+    if any(x[0] == "oracle-compare" for x in by_role.get("confirm", []) + by_role.get("direct", [])):
         return dict(tier="verified", n=n_exact, misses=0, rule="exact oracle-compare row confirms the class claim")
     pat = None
     if c["pattern_id"]:
@@ -106,9 +106,21 @@ def class_verdict(conn, family, device, cls):
         if c["tier"] == "pattern-predicted":
             return dict(tier="predicted", n=n_exact, misses=0, rule="pattern-predicted claim, no pattern bar met")
         return dict(tier="unknown", n=n_exact, misses=0, rule="nothing")
-    scopes = {s for role in ("parent", "confirm") for k, s in exact(by_role.get(role, [])) if s is not None}
+    rows_ = [x for role in ("parent", "confirm") for x in exact(by_role.get(role, []))]
+    if pat.get("min_rows_per_group"):
+        # 'constant per group' law: a single-row group is not constancy evidence; it counts toward no scope
+        per = {}
+        for _k, _s, g in rows_:
+            per[g] = per.get(g, 0) + 1
+        rows_ = [x for x in rows_ if x[2] is not None and per[x[2]] >= int(pat["min_rows_per_group"])]
+        groups = len({x[2] for x in rows_})
+    else:
+        groups = None
+    scopes = {s for k, s, _g in rows_ if s is not None}
     ok, need, dims, why = sampling_bar(pat, scopes)
     if ok:
         return dict(tier="sampled", n=len(scopes), misses=0,
-                    rule=f"pattern confirmed at {len(scopes)} distinct scopes >= {need} ({dims}-D), extremes included, 0 refutations")
-    return dict(tier="predicted", n=len(scopes), misses=0, rule=f"pattern below the sampling bar: {why}")
+                    rule=f"pattern confirmed at {len(scopes)} distinct scopes >= {need} ({dims}-D), extremes included, 0 refutations"
+                    + (f"; {groups} groups with >= {pat['min_rows_per_group']} rows" if groups is not None else ""))
+    return dict(tier="predicted", n=len(scopes), misses=0, rule=f"pattern below the sampling bar: {why}"
+                + (f" ({groups} groups with >= {pat['min_rows_per_group']} rows)" if groups is not None else ""))

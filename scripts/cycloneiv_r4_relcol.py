@@ -290,6 +290,8 @@ def cmd_colrecord(a):
     """Evidence rows (source_ref r4_col:R4) for the per-column prediction P3: per (dest X, rel) the first resolved row (by Y, I)
     is the parent, every later resolved row is a confirm row (consistent = same (dx, df)) or a refute row.  Singletons: consistent None."""
     import db
+    import schema as S
+    from sqlalchemy import select, update
     from provenance import evidence_io as E
     seen = {}
     for r in load_rows():
@@ -315,11 +317,14 @@ def cmd_colrecord(a):
                     continue
                 bid = H.register_build(conn, bnm, "r4 column base")
                 sid = H.register_build(conn, nme, "r4 column forced single path")
-                meta = {"group": "r4_col", "tile": r["tile"], "I": r["I"], "lb": r["lb"], "rel": rel, "col_ctx": ctx_of(g, X),
+                meta = {"group": "r4_col", "tile": r["tile"], "I": r["I"], "lb": r["lb"], "rel": rel, "group_key": f"X{X}/rel{rel}", "col_ctx": ctx_of(g, X),
                         "role": "parent" if j == 0 else "confirm", "observed": val(r), "pred": par,
                         "consistent": (val(r) == par) if len(rs) > 1 else None, "plane_level": True, "evidence_level": "set"}
-                E.record_specimen(conn, "cycloneiv", "EP4CGX150", nme, bnm, r["on"], r["off"], meta, "r4_col:R4",
-                                  "scripts/cycloneiv_r4_relcol.py", commit, H.NV, tool_version="25.1", build_base=bid, build_spec=sid)
+                eid = E.record_specimen(conn, "cycloneiv", "EP4CGX150", nme, bnm, r["on"], r["off"], meta, "r4_col:R4",
+                                        "scripts/cycloneiv_r4_relcol.py", commit, H.NV, tool_version="25.1", build_base=bid, build_spec=sid)
+                old = conn.execute(select(S.evidence.c.result).where(S.evidence.c.id == eid)).scalar()
+                if old.get("meta", {}).get("group_key") != meta["group_key"]:      # row written before group_key existed
+                    conn.execute(update(S.evidence).where(S.evidence.c.id == eid).values(result=dict(old, meta=dict(old["meta"], group_key=meta["group_key"]))))
                 n += 1
     log.info("recorded %d per-column evidence rows", n)
 

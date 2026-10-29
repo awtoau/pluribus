@@ -445,7 +445,8 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
         R.matcher("r4-percol-v1", "deterministic", "R4 (dx, df) constant per (destination column, source relative column)", 1,
                   "scripts/cycloneiv_r4_relcol.py")
         R.pattern("r4-percol-v1", "bit", "LB -> R4 record dx and group shift df constant per destination column and source relative column",
-                  {"dims": 2, "axes": {"x": [15, 89], "y": [6, 77]}, "scope": "forceable core; corners/sides not forceable"},
+                  {"dims": 2, "axes": {"x": [15, 89], "y": [6, 77]}, "min_rows_per_group": 2,
+                   "scope": "forceable core; corners/sides not forceable"},
                   matcher_id="r4-percol-v1", status="open")
         class_claim("2h-col", "pattern-predicted", "r4-percol-v1",
                     [("parent", parents), ("confirm", [e for e, m in col if m["role"] == "confirm" and m["consistent"]]),

@@ -40,10 +40,12 @@ def _claim(c, cid, tier, law=None):
         updated_at=datetime.datetime.now().astimezone())).inserted_primary_key[0]
 
 
-def _link(c, claim, role, name, kind="specimen-pair", tile=None):
+def _link(c, claim, role, name, kind="specimen-pair", tile=None, group=None):
     import schema as S
     from provenance import evidence_io as E
     res = {"meta": {"tile": list(tile)}} if tile else {}
+    if group is not None:
+        res["meta"]["group_key"] = group
     eid = E.record_decode(c, FAM, DEV, name, res, "t", "test", kind=kind)
     c.execute(insert(S.claim_evidence).values(claim_id=claim, evidence_id=eid, role=role))
 
@@ -133,3 +135,16 @@ def test_build_id_registers_from_design_toml(conn):
     from provenance import corpus
     a = corpus.build_id(conn, FAM, "gxbh_0000ceb869")
     assert a == corpus.build_id(conn, FAM, "gxbh_0000ceb869")        # idempotent on the dir name
+
+
+def test_constant_per_group_law_ignores_single_row_groups(conn):
+    from provenance import tiering
+    claim = _claim(conn, "G", "pattern-predicted", {"dims": 2, "axes": {"x": [1, 9], "y": [1, 9]}, "min_rows_per_group": 2})
+    for i, t in enumerate([(1, 1), (9, 9), (5, 5), (3, 7), (2, 2), (4, 4), (6, 6)]):   # 7 single-row groups
+        _link(conn, claim, "parent", f"s{i}", tile=t, group=f"g{i}")
+    v = tiering.class_verdict(conn, FAM, DEV, "G")
+    assert v["tier"] == "predicted" and v["n"] == 0                      # single rows are not constancy evidence
+    for i, t in enumerate([(1, 1), (9, 9), (5, 5), (3, 7), (2, 2)]):     # a second row in 5 groups
+        _link(conn, claim, "confirm", f"c{i}", tile=t, group=f"g{i}")
+    v = tiering.class_verdict(conn, FAM, DEV, "G")
+    assert v["tier"] == "sampled" and v["n"] == 5
