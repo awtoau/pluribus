@@ -136,6 +136,23 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
   Never slide back to decoder matching to keep going.
 - Agent briefs quote this section; they do not paraphrase it.
 
+### Specimen design (every family; Dan, 2026-10-29)
+
+- Applies to any bitstream: the vendor tool differs per family, the design rules do not. A method that
+  works on one family and not another is a tooling gap to record, not a reason to change the rules.
+- **Object = smallest that holds the feature:** one LE in an otherwise empty LAB, one pin, one port. No
+  functional designs, no far FFs, no extra routed nets.
+- **One knob per pair:** present/absent (enable, clear), polarity (active-high/low via one inverter),
+  position, constant tie. Nothing else differs.
+- **Same routing in both builds:** feed the base's post-fit routing back as a constraint (RCF
+  back-annotation or the family's equivalent) so the router uses the same area; only the new thing
+  routes freely.
+- **Control nets come from the same LAB/tile** and exist in both builds.
+- **Null controls first:** same design renamed, and a different fitter seed with all else pinned. The diff
+  must be empty; if not, nothing else is trusted.
+- **A noisy diff means the object was too big:** shrink it (diffs mixing routing bits of the added
+  connection with the feature bits, as in the first control-line sets) rather than add statistics.
+
 ### Priority order (binding; Dan, 2026-10-29)
 
 - **Target = die coverage %, not one image.** Metric: % of the die's configuration bits with a
