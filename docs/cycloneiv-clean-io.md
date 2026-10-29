@@ -7,7 +7,7 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 
 - IV has a separate programming block for peripheral config: the CFF region. It is not PRAM by name, but the same shape as Cyclone V PRAM.
 - IO pin config (the IOE settings) is CFF, not ordinary asm.ddb CRAM. The routing to/from IO pads (IO_DATAIN etc.) is CRAM.
-- Status: where the bits are is decoded. Which bit is direction / standard / drive / slew / pull is NOT decoded (0 fields).
+- Status: where the bits are is decoded. Field offsets within an IO site's CFF block are now exact from pair builds (see "Pair builds"); site -> block base is NOT decoded.
 
 ## Evidence
 
@@ -121,3 +121,141 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 - Pin -> pad: 520 of 896 pins carry one pad id; raw `m_pad_id_list` deltas are 0, 1, 2, ... so the k-th pad-bearing pin links pad k. Oracle (postfit.vo `Location: PIN_` x IOBUF site): 400 / 400 balls land on the pad whose site string equals the placed IOBUF (matched 400, wrong 0, missing 0).
 - IO site -> pad: HIO sites (block type 5) = the 131 Row I/O pads in pad order, VIO sites (type 6) = the Column I/O pads in pad order; 381 / 381 sites placed by the CFF signatures agree (0 wrong). The earlier 0 / 4 offset came from sorting by geometry; the pad order itself is the site order. VIO has 325 sites for 324 Column I/O pads, so one VIO site has no pad (not assigned).
 - Chain ball -> pad -> site -> CFF field bits: 455 IO pins carry a site; 392 of the 400 oracle balls reach the field table (the other 8 are not Row / Column I/O pads).
+
+## Pair builds (2026-10-30, #168 option c): exact CFF labels per IO setting
+
+- Script `scripts/cycloneiv_clean_io_pairs.py` (black box: quartus_map/fit/asm/cpf); tests `tests/cycloneiv_clean/test_io_pairs.py`; local table `databases/cycloneiv/io_pairs.json` (read via `io.io_pairs()`); log `tmp/logs/cycloneiv_clean_io_pairs.log`.
+- Method: per sampled site, a 5-port design (pin under test `p`; aux pins `a c e y` in a fixed other bank, identical in every build). Pair = base build + the same build with ONE QSF instance assignment on `p` (value replaced or added). Every build names `IO_STANDARD "2.5 V"` (a drive / slew assignment alone is a fitter error).
+- Direction cannot be an assignment: direction pairs differ in the Verilog of `p` only (in / out / tri-state / bidir), assignments identical.
+- Diffs: sof tag 21 (CFF bit index = sof bit index), tag 18 (option register), tag 17 (CRAM, counted); rbf frames 0..36 cross-checked through `io.Cff`.
+- Sampling (recovery-process.md): per IO bank the 2 farthest-apart pins + 2 seeded interior pins (seed 168), 6 banks (3..8) = 24 sites; sides: bottom (banks 3, 4), right (5, 6), top (7, 8); no user IO bank on the left. Sites come from the corpus pin table (463 pins with a known IOBUF site).
+- Builds: 1,200 planned (50 per site); 1,020 built, 180 refused by the fitter (recorded, not retried): 168 output / bidir builds on the 4 input-only sample pins, 4 `1.2 V` on bank 3, 4 weak pull-up and 4 bus-hold on input-only pins. Step times worst of the pilot: map 20.8 s, fit 24.9 s, asm 9.9 s, cpf 2.6 s (12 jobs).
+
+### Results (sites built / tried; pattern = offsets from the site anchor below)
+
+- sampled sites 24 (per bank: 2 ends + 2 seeded interior), output-capable 20, input-only 4 (fitter refuses every output / bidir build there)
+- pair rows: 972 built, 180 refused or absent; sof-vs-rbf: every sof CFF diff bit also in the rbf diff in 955 / 972 rows
+
+| setting | value | base kind | sites built / tried | CFF bits per site | sites with the modal pattern | option bits | CRAM cells (min..max) |
+|---|---|---|---|---|---|---|---|
+| bus-hold | ON | bidir | 20 / 24 | 1 | 20 / 20 | 0 | 0..0 |
+| bus-hold | ON | in | 20 / 24 | 1 | 20 / 20 | 0 | 0..0 |
+| bus-hold | ON | out | 20 / 24 | 1 | 20 / 20 | 0 | 0..0 |
+| direction | in->bidir | in | 20 / 24 | 9 | 20 / 20 | 0 | 68..212 |
+| direction | in->out | in | 20 / 24 | 10 | 20 / 20 | 0 | 88..182 |
+| direction | in->tri | in | 20 / 24 | 9 | 20 / 20 | 0 | 79..191 |
+| direction | out->tri | out | 20 / 24 | 1 | 20 / 20 | 0 | 53..238 |
+| direction | tri->bidir | tri | 20 / 24 | 0 | 20 / 20 | 0 | 26..201 |
+| drive | 16MA | bidir | 20 / 24 | 6 | 20 / 20 | 0 | 0..0 |
+| drive | 4MA | bidir | 20 / 24 | 5 | 20 / 20 | 0 | 0..0 |
+| drive | 12MA | out | 20 / 24 | 7 | 20 / 20 | 0 | 0..0 |
+| drive | 16MA | out | 20 / 24 | 6 | 20 / 20 | 0 | 0..0 |
+| drive | 4MA | out | 20 / 24 | 5 | 20 / 20 | 0 | 0..0 |
+| drive | 8MA | out | 20 / 24 | 7 | 20 / 20 | 0 | 0..0 |
+| drive | MAXIMUM CURRENT | out | 20 / 24 | 6 | 20 / 20 | 0 | 0..0 |
+| drive | MINIMUM CURRENT | out | 20 / 24 | 5 | 20 / 20 | 0 | 0..0 |
+| open-drain | ON | bidir | 20 / 24 | 0 | 20 / 20 | 0 | 0..0 |
+| open-drain | ON | out | 20 / 24 | 0 | 20 / 20 | 0 | 0..0 |
+| open-drain | ON | regoe | 20 / 24 | 0 | 20 / 20 | 0 | 0..0 |
+| open-drain | ON | tri | 20 / 24 | 0 | 20 / 20 | 0 | 0..0 |
+| pull-up | ON | bidir | 20 / 24 | 1 | 20 / 20 | 0 | 0..0 |
+| pull-up | ON | in | 20 / 24 | 1 | 20 / 20 | 0 | 0..0 |
+| pull-up | ON | out | 20 / 24 | 1 | 20 / 20 | 0 | 0..0 |
+| registered-input | ON | regin | 24 / 24 | 0 | 20 / 20 | 0 | 0..140 |
+| registered-oe | ON | regoe | 20 / 24 | 0 | 20 / 20 | 0 | 120..186 |
+| registered-output | ON | regout | 20 / 24 | 0 | 20 / 20 | 0 | 135..262 |
+| slew | 0 | bidir | 20 / 24 | 1 | 20 / 20 | 0 | 0..0 |
+| slew | 0 | out | 20 / 24 | 1 | 20 / 20 | 0 | 0..0 |
+| slew | 1 | out | 20 / 24 | 2 | 20 / 20 | 0 | 0..0 |
+| slew | 2 | out | 20 / 24 | 0 | 20 / 20 | 0 | 0..0 |
+| standard | 3.3-V LVTTL | bidir | 20 / 24 | 8..16 | 16 / 20 | 0 | 0..0 |
+| standard | 1.8 V | in | 24 / 24 | 2..12 | 16 / 20 | 0 | 0..0 |
+| standard | 3.3-V LVTTL | in | 24 / 24 | 0..8 | 16 / 20 | 0 | 0..0 |
+| standard | SSTL-2 Class I | in | 24 / 24 | 4 | 2 / 20 | 0 | 0..0 |
+| standard | 1.2 V | out | 16 / 24 | 9 | 16 / 16 | 0 | 0..0 |
+| standard | 1.5 V | out | 20 / 24 | 9..21 | 16 / 20 | 0 | 0..0 |
+| standard | 1.5-V HSTL Class I | out | 20 / 24 | 9..21 | 16 / 20 | 0 | 0..0 |
+| standard | 1.8 V | out | 20 / 24 | 4..14 | 16 / 20 | 0 | 0..0 |
+| standard | 1.8-V HSTL Class I | out | 20 / 24 | 4..14 | 16 / 20 | 0 | 0..0 |
+| standard | 3.0-V LVCMOS | out | 20 / 24 | 7..14 | 16 / 20 | 0 | 0..0 |
+| standard | 3.0-V LVTTL | out | 20 / 24 | 7..14 | 16 / 20 | 0 | 0..0 |
+| standard | 3.0-V PCI | out | 20 / 24 | 8..15 | 16 / 20 | 0 | 0..0 |
+| standard | 3.3-V LVCMOS | out | 20 / 24 | 5..13 | 16 / 20 | 0 | 0..0 |
+| standard | 3.3-V LVTTL | out | 20 / 24 | 8..16 | 16 / 20 | 0 | 0..0 |
+| standard | SSTL-18 Class I | out | 20 / 24 | 4..14 | 16 / 20 | 0 | 0..0 |
+| standard | SSTL-2 Class I | out | 20 / 24 | 0 | 20 / 20 | 0 | 0..0 |
+| termination | SERIES 25 OHM WITHOUT CALIBRATION | out | 20 / 24 | 7 | 20 / 20 | 0 | 0..0 |
+| termination | SERIES 50 OHM WITHOUT CALIBRATION | out | 20 / 24 | 0 | 20 / 20 | 0 | 0..0 |
+
+Modal CFF bit offsets from the site anchor (min bit of the site's location signature), per setting:
+
+- bus-hold ON (bidir): [10]
+- bus-hold ON (in): [10]
+- bus-hold ON (out): [10]
+- direction in->bidir (in): [0, 15, 18, 19, 20, 24, 27, 28, 29]
+- direction in->out (in): [0, 12, 15, 18, 19, 20, 24, 27, 28, 29]
+- direction in->tri (in): [0, 15, 18, 19, 20, 24, 27, 28, 29]
+- direction out->tri (out): [12]
+- drive 16MA (bidir): [14, 15, 16, 25, 26, 27]
+- drive 4MA (bidir): [15, 16, 19, 24, 26]
+- drive 12MA (out): [14, 15, 18, 19, 26, 28, 29]
+- drive 16MA (out): [14, 15, 16, 25, 26, 27]
+- drive 4MA (out): [15, 16, 19, 24, 26]
+- drive 8MA (out): [17, 18, 20, 24, 25, 26, 28]
+- drive MAXIMUM CURRENT (out): [14, 15, 16, 25, 26, 27]
+- drive MINIMUM CURRENT (out): [15, 16, 19, 24, 26]
+- pull-up ON (bidir): [11]
+- pull-up ON (in): [11]
+- pull-up ON (out): [11]
+- slew 0 (bidir): [0]
+- slew 0 (out): [0]
+- slew 1 (out): [0, 1]
+- standard 3.3-V LVTTL (bidir): [15, 16, 19, 20, 21, 24, 26, 29]
+- standard 1.8 V (in): [8, 12]
+- standard SSTL-2 Class I (in): [-468, 5, 9, 12]
+- standard 1.2 V (out): [8, 14, 18, 23, 24, 25, 26, 28, 29]
+- standard 1.5 V (out): [8, 14, 15, 20, 23, 24, 27, 28, 29]
+- standard 1.5-V HSTL Class I (out): [8, 14, 15, 20, 23, 24, 27, 28, 29]
+- standard 1.8 V (out): [8, 16, 25, 27]
+- standard 1.8-V HSTL Class I (out): [8, 16, 25, 27]
+- standard 3.0-V LVCMOS (out): [18, 21, 24, 25, 26, 27, 28]
+- standard 3.0-V LVTTL (out): [18, 21, 24, 25, 26, 27, 28]
+- standard 3.0-V PCI (out): [12, 16, 17, 20, 21, 23, 28, 29]
+- standard 3.3-V LVCMOS (out): [15, 17, 21, 24, 29]
+- standard 3.3-V LVTTL (out): [15, 16, 19, 20, 21, 24, 26, 29]
+- standard SSTL-18 Class I (out): [8, 16, 25, 27]
+- termination SERIES 25 OHM WITHOUT CALIBRATION (out): [14, 15, 17, 23, 24, 26, 28]
+
+- standards (out kind) with distinct anchored CFF diffs: 8 of 12 tried
+  - ['SSTL-2 Class I']: 0 bits
+  - ['1.5 V', '1.5-V HSTL Class I']: 9 bits
+  - ['1.2 V']: 9 bits
+  - ['1.8 V', '1.8-V HSTL Class I', 'SSTL-18 Class I']: 4 bits
+  - ['3.0-V PCI']: 8 bits
+  - ['3.3-V LVTTL']: 8 bits
+  - ['3.3-V LVCMOS']: 5 bits
+  - ['3.0-V LVCMOS', '3.0-V LVTTL']: 7 bits
+
+### Findings
+
+- **Site anchor.** Location pairs (`out` base at site S vs the first site of the same aux group) give an 11-bit site signature at all 20 output-capable sites, same shape everywhere: offsets `[0, 8, 9, 15, 18, 19, 20, 24, 27, 28, 29]` from the lowest bit. Every field offset in the table is relative to that bit and identical at all banks 4..8 sites; so each IO field is a fixed offset in a per-site CFF block, and what is missing is only site -> anchor.
+- **Anchors run monotonically around the ring**: top (x ascending), right (y descending), bottom (x descending) give strictly increasing anchors 493 .. 17,755 at 20 / 20 sites (the pair-derived anchors are in `io_pairs.json`, `location`). Stride is not constant (pad spacing differs), so no formula is claimed.
+- **Fields with CFF bits (all built sites agree, option register 0 bits everywhere):** standard (4..21 bits, 8 distinct diffs among 12 standards), drive (4 mA / min = 5 bits, 8 mA = 7, 12 mA = 7, 16 mA / max = 6), slew (0 = 1 bit, 1 = 2 bits, 2 = base), weak pull-up (1 bit, offset 11), bus-hold (1 bit, offset 10), 25 ohm series termination (7 bits), direction (in -> out 10 bits, in -> tri-state / bidir 9, out -> tri-state 1 bit at offset 12).
+- **Settings with NO CFF effect in these builds:** open-drain (all 4 kinds; build bit-identical in CRAM and CFF, so the assignment may not apply to the netlist; unresolved = missing), registered output / OE / input (change CRAM only: 120..262 cells at output-capable sites), 50 ohm series termination, SSTL-2 Class I (same bits as `2.5 V`), tri-state -> bidir (CFF 0, CRAM only).
+- Drive: `4MA` = `MINIMUM CURRENT`, `16MA` = `MAXIMUM CURRENT`; explicit `12MA` and `8MA` both differ from the unassigned default (which the pin report prints as "Default"), so default drive of `2.5 V` is neither.
+- Bank 3 (4 of 4 sites): the standard field appears twice, own block plus a second 8-bit block at a site-specific offset (offsets -468 .. +2,734 from the anchor); banks 4..8 (16 sites) have one block only. Not chased.
+- Double-group bits: sof bits 4521 and 6952 (multiplicity 8 in `cff2rbf`) change in the sof but not in their first rbf group (17 rows); the value of those two sits in the second group. This contradicts the E6 note "only the first group is the value" for IO fields.
+- rbf-only cells (bit 3072 in 112 rows, 23,966 / 14,514 / 14,520 / 22,980 in others) change without a sof CFF change: not IO fields (no site relation), listed in `rbf_extra`.
+
+### Against prior expectation (ambiguous = missing)
+
+| Expectation | matched | missing | extra | wrong |
+|---|---|---|---|---|
+| Corpus IOOBUF 9-bit signature, sites with a corpus oracle (6 of 20 sites, 54 bits) | 54 | 0 | 12 (offsets 8, 9 at every such site) | 0 |
+| Direction mux, 7 values (`io.PIN_MODE_MUX`): CFF-distinct states observed | 3 (input, output, output + OE) | 4 (open-drain x2, registered OE x2) | 0 | 0 |
+| Standard classes 0..12 (`asm_convert_db_to_asm_iost`): distinct diffs among 12 standards + base | 8 distinct diffs | 5 classes not separated by the standards tried | 0 | 0 |
+| IO fields with an exact label (direction, standard, drive, slew, pull-up, bus-hold, termination, open-drain, registered in / out / OE) | 7 | 4 (open-drain, 3 registered) | 0 | 0 |
+
+- Comparison only: the 7-value mux and the class table were not used to choose or interpret builds. Mux value labels (0..6) are not assigned to builds beyond the three distinct states.
+- Counts: 11 setting classes + pin location tried; 48 (setting, value, base kind) pair groups, 36 with CFF bits at every built site, 11 with none, 1 mixed (`3.3-V LVTTL` on `in`: input-only sites differ); 972 pair rows built (24 sites), 4,052 CFF bit differences at the 20 output-capable sites.
+- Still open: site -> anchor (pad -> pin), open-drain effect, registered-field location in CRAM, bank-3 second block, drive 12 mA vs default.

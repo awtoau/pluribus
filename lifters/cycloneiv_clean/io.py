@@ -219,3 +219,20 @@ def ddb_types(path):
         out.append((i, sz, cnt, t[o:o + nl - 1].decode("latin1")))
         o += nl - 1
     return out
+
+
+# source: scripts/cycloneiv_clean_io_pairs.py analyse (pair ids = `base` / `spec` build ids per row); one assignment differs per pair
+PAIRS_PATH = os.path.join(P.REPO, "databases", "cycloneiv", "io_pairs.json")
+
+
+class PairsMissing(FileNotFoundError):
+    pass
+
+
+def io_pairs(path=PAIRS_PATH):
+    """Pair-diff table: {sample, rows[setting, value, pin, base, spec, cff, opt, cram, ...], location, location_vs_corpus}.
+    Each row's `cff` = CFF bit indices that differ between the base and spec build of that site (exact labels, pair diff only)."""
+    import json
+    if not os.path.exists(path):
+        raise PairsMissing(f"{path} missing; run scripts/cycloneiv_clean_io_pairs.py build + analyse")
+    return json.load(open(path))
