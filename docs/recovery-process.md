@@ -31,9 +31,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
   1. **Vendor device DB on disk** (Quartus .ddb, Diamond/Trellis DB, Gowin chipdb) — exact, complete
   2. **Minimal-diff specimens** — 1–2 cells, one net, one feature per diff; vendor tool pins placement/routing; diff or single-path readback gives exact answers; tile regularity generalises
   3. **Open projects** — prjtrellis, mistral, apicula, X-Ray: both a source and a format Rosetta
-- **Exact labels or nothing.** A table entry is derived only from builds whose vendor output names the feature (RCF path, post-fit `.vo` parameter, MIF). Two derivations exist:
-  - **(a) Pair diff:** two builds differing in ONE named feature.
-  - **(b) Labelled intersection:** over builds with complete labels for the tile, bits(f) = AND of planes with f, AND-NOT of the OR of planes without f, restricted to builds whose enclosing tile is otherwise identical. Every supporting build id is recorded; ONE contradicting build voids the entry (zero tolerance, never a vote). Must-be-clear cells are part of the entry.
+- **Exact labels or nothing.** A table entry is derived only from builds whose vendor output names the feature (RCF path, post-fit `.vo` parameter, MIF), by **pair diff**: two builds differing in ONE named feature. Every supporting build id is recorded; ONE contradicting build voids the entry (zero tolerance, never a vote). Must-be-clear cells are part of the entry.
 - **Banned as a decode path:** majority or weighted voting, agreement thresholds below 100 %, learnt or fitted maps as a source, labels produced by our own decoder (alias matching), entries without build ids. No learned-table scorer or comparator is kept in the repo (the Cyclone IV learner baseline was deleted 2026-10-29: it outscored the exact path on pins and invited its use). The change-detector allowance covers real-design LUT/FF/net counts only.
 - **Where statistics IS fine (not a table source):**
   - **Triage:** frequency of set bits across images/corpus to rank which unknown regions matter.
@@ -134,7 +132,7 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
   no tooling beyond gen/build/diff/store. A pattern is allowed only as a prediction that a
   brute-force specimen then verifies; on any miss, enumerate.
 - **Do not widen scope.** Do not retire code, rewire the lifter, or change the gate (#142 is a
-  separate, gated step). **One feature per DIFF, any number per DESIGN:** a pair changes one thing; a labelled design may carry many features, each solved separately by intersection (Phase 0). Progress is counted in answered features, never builds.
+  separate, gated step). **One feature per DIFF.** A pair changes one thing. Progress is counted in answered features, never builds.
 - **Stop and report** if the method cannot be applied (e.g. forcing impossible, diff unstable).
   Never slide back to decoder matching to keep going.
 - **Every agent brief states:** (1) the question as "decode X from Y"; (2) the prediction and what refutes it; (3) the oracle; (4) the build cap and yield floor ("Yield rule"); (5) the stop criterion and what is reported at stop; (6) the issue that owns the gap; (7) the ledger row that will show the result. A brief missing an item is returned.
