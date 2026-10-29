@@ -71,7 +71,7 @@ CLASSES = [  # id, name, evidence tier
 CID = {c[0]: i + 1 for i, c in enumerate(CLASSES)}
 
 
-def need_ram(gb=20):
+def need_ram(gb=6):
     for ln in open("/proc/meminfo"):
         if ln.startswith("MemAvailable:"):
             avail = int(ln.split()[1]) / 1e6
@@ -148,8 +148,8 @@ def m9k_data_cells(g, nfr):
         for y in range(1, g.ymax):
             rule = (g.FX[x] - g.FX[23], g.vpitch * (y - 40))
             k = f"x{x}_y{y}"
-            ok9 = (x, y) == (23, 40) or (offs.get(k + "_x9", {}).get("exact") and offs[k + "_x9"]["offset"] == list(rule))
-            ok1 = ok9 or (offs.get(k + "_x1", {}).get("exact") and offs[k + "_x1"]["offset"] == list(rule))
+            ok9 = bool((x, y) == (23, 40) or (offs.get(k + "_x9", {}).get("exact") and offs[k + "_x9"]["offset"] == list(rule)))
+            ok1 = bool(ok9 or (offs.get(k + "_x1", {}).get("exact") and offs[k + "_x1"]["offset"] == list(rule)))
             flat = (c9[:, 0] + rule[0]) * NV + c9[:, 1] + rule[1]
             inb = (c9[:, 0] + rule[0] >= 0) & (c9[:, 0] + rule[0] < nfr) & (c9[:, 1] + rule[1] >= 0) & (c9[:, 1] + rule[1] < LANE_V)
             assert inb.all(), (x, y)
@@ -219,7 +219,7 @@ def main():
     (REPO / "tmp/logs").mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler(REPO / "tmp/logs/cycloneiv_bit_inventory.log", "w")])
-    need_ram(20)
+    need_ram(6)
     import heavy_guard
     with heavy_guard.lease(heavy_guard.JOB_GB["cyc4_bit_inventory"], "cyc4_bit_inventory", log):
         run(a)
