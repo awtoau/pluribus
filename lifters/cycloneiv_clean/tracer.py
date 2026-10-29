@@ -317,3 +317,34 @@ class Io:
             if key in self.classes:
                 out[site] = frozenset(self.classes[key])
         return out
+
+
+HEADLINE_VARIANT = "lit_x"      # literal flag rule + flag-decoded exclusion bits; fixed before the first GT comparison (gate docstring)
+
+
+class Tracer:
+    """One design: rbf -> programmed edges (all four variants), nets (root record -> edge ids), LUT INIT cells, IO site classes."""
+
+    def __init__(self, workers=4):
+        self.st, self.lut, self.io, self.workers = Static(), Lut(), Io(), workers
+
+    def run(self, rbf):
+        bits = plane_bits(rbf)
+        fired = self.st.fire(bits, workers=self.workers)
+        g = Graph(self.st, fired[HEADLINE_VARIANT])
+        return dict(edges=fired, edge_src=self.st.esrc, edge_dst=self.st.edst, nets=tracer_nets(g),
+                    lut_cells=self.lut.cells(bits), io=self.io.classify(rbf))
+
+
+def main():
+    """python3.15t -m lifters.cycloneiv_clean.tracer <bitstream.rbf> <out.npz>: edges per variant, net roots, LUT cells (stdout: counts)."""
+    import sys
+    rbf, out = sys.argv[1], sys.argv[2]
+    r = Tracer().run(rbf)
+    srcdst = lambda ids: np.stack([r["edge_src"][ids], r["edge_dst"][ids]], axis=1)
+    np.savez_compressed(out, lut_cells=r["lut_cells"], **{f"edges_{k}": srcdst(v) for k, v in r["edges"].items()})
+    print({k: len(v) for k, v in r["edges"].items()}, "nets", len(r["nets"]), "io sites", len(r["io"]))
+
+
+if __name__ == "__main__":
+    main()
