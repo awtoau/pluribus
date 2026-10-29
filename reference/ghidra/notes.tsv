@@ -5,3 +5,7 @@ libcomp_asm	192a02	bookmark	drive strength table = dirt tree lookup	#168 c4
 libdb_pdb	ec50	bookmark	pool order rule (LIFO of static types, FIFO objects)	#168 c5
 libdb_pdb	df50	bookmark	pointer tag format	#168 c5
 libdb_asmdb	ec320	bookmark	group-type enum names	#168 c5
+libcomp_asm	19101c	eol	Open-drain = atom bit 0x16 (asm_test_atom_bit) selects mux 3 / 4 / 6 instead of 1 / 2 / 5. CFF: MIO_PIN_MODE bit 0 -> 1 (od vs out, 3 / 3 sites); QSF AUTO_OPEN_DRAIN_PINS only switches detection (constant-0 tri-state data), od vs od_off bit-identical	#168, docs/cycloneiv-clean-io.md
+libcomp_asm	191289	eol	direction branch: atom bit 4 input, 5 output, 6 bidir (test_bit). in / out / tri / bidir share the same CFF PIN_MODE bit; they differ in CFF SLEW / PULLUP / PULLDOWN strength + PCI_DIODE_CLAMP groups	#168, docs/cycloneiv-clean-io.md
+libdb_asmdb	ec320	eol	IO block groups: MIO_SELECT_IOST_DIRT 3 or 4 elements (4th = bit shared with a neighbouring pad or the bank VREF pad), element i = value bit i	#168, lifters/cycloneiv_clean/io_decode.py
+libdb_pdb	ec50	plate	vector<uint> first element = delta vs the previous vector of the same field; BLOCK_INFO m_block_lists restart at 0 per BLOCK_INFO (LAB instance cells equal the oracle-checked body run)	#169

@@ -259,3 +259,40 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 - Comparison only: the 7-value mux and the class table were not used to choose or interpret builds. Mux value labels (0..6) are not assigned to builds beyond the three distinct states.
 - Counts: 11 setting classes + pin location tried; 48 (setting, value, base kind) pair groups, 36 with CFF bits at every built site, 11 with none, 1 mixed (`3.3-V LVTTL` on `in`: input-only sites differ); 972 pair rows built (24 sites), 4,052 CFF bit differences at the 20 output-capable sites.
 - Still open: site -> anchor (pad -> pin), open-drain effect, registered-field location in CRAM, bank-3 second block, drive 12 mA vs default.
+
+## Cross-check A x B and decoded value table (2026-10-30, #168; code `lifters/cycloneiv_clean/io_decode.py`, test `tests/cycloneiv_clean/test_io_decode.py`)
+
+- A = asmdb group addresses per site (`asmdb_walk`, `pkgpad`); B = pair-diff bits of the 24 sampled sites (`io.io_pairs()`); absolute bits read from the same builds. Output: `databases/cycloneiv/io_decode.json` (local; `python3 -m lifters.cycloneiv_clean.io_decode`).
+- Scope: 20 output-capable sites. The 4 input-only sample pins (A15, AJ16, T29, V29) are dedicated-clock pads: not Row / Column I/O pads, no A site (blocks 60 / 61 not walked) = missing.
+
+### Per-field score (bit level, summed over 20 sites; `cross_check`)
+
+- matched = B diff bits inside the field's A group; missing = A group bits no tried value toggled; extra = B diff bits outside the group; wrong = 0 (every B-only bit is counted extra and classed).
+
+| Field (A group) | matched | missing | extra | extra class |
+|---|---|---|---|---|
+| slew (SET_SLEW_RATE) | 40 | 0 | 0 | |
+| pull-up (USE_PULL_UP) | 20 | 0 | 0 | |
+| bus-hold (USE_BUS_HOLD) | 20 | 0 | 0 | |
+| drive (SET_PULLUP + PULLDOWN_STRENGTH) | 260 | 80 | 0 | missing = strength bits not toggled by the 6 values tried |
+| standard (SELECT_IOST_DIRT) | 60 | 14 | 412 | 320 other groups of the same site (strengths, PCI clamp: defaults follow the standard), 92 IOST bits of another site (below) |
+| termination (TERMINATION_CONTROL_SELECT) | 0 | 20 | 140 | 140 strength bits; the select bit never changes |
+| direction (PIN_MODE) | 0 | 20 | 200 | 200 = slew / strength / PCI clamp bits; PIN_MODE CFF bit never changes |
+| open-drain (PIN_MODE) | 0 | 20 | 0 | assignment builds bit-identical |
+| registered in / out / OE | no CFF group in A | | | CRAM only (below) |
+
+- Site -> anchor: anchor = lowest CFF bit of the site's SET_SLEW_RATE group; equals the pair-derived location anchor at 20 / 20 sites. Every field offset = A address - anchor, so no separate anchor table is needed.
+- Value patterns (`values`, element i of the group's mux = value bit i): every primary entry has one pattern at every site of its group size (0 disagreeing). Examples: slew 0 / 1 / 2 = `00` / `10` / `01` (default 2); pull-up and bus-hold ON = `1`; drive `4MA` = `MINIMUM CURRENT`, `16MA` = `MAXIMUM CURRENT`, 4 / 8 / 12 / 16 mA each a distinct (pull-up 8 bit, pull-down 9 bit) pair; IOST 2.5 / 3.0 / 3.3 V = `000(0)`, 1.2 / 1.5 / 1.8 V and HSTL / SSTL-18 = `010(0)`, SSTL-2 input = `101(0)`.
+- Standards are told apart by IOST plus the strength / clamp groups the standard implies (3.3 V LVTTL and 2.5 V share IOST `000`); the table keeps all groups that differ from the base build.
+- Direction: in / out / tri / bidir share PIN_MODE CFF = 0. Input = USE_PCI_DIODE_CLAMP 1 (out: 0), output = slew `01` + non-zero strengths (in: slew `00`).
+
+### B oddities explained
+
+- Foreign standard bits (92): the extra IOST bit of a pin is an IOST bit of the VREF pad of its bank (`VREFB<bank>N<k>`), 20 / 20 sites; bank 3 additionally changes the strength groups of site 2 (`NCEO`, bank 3 config pad) = the "second 8-bit block" (it is the same absolute block for all 4 bank-3 sites, not site-specific). Which VREF pad serves which pin is not decoded from A (pad ddb carries no VREF group id found yet).
+- Double-group bits: sof bits 4521 (PULLUP_STRENGTH, 12 rows) and 6952 (USE_PCI_DIODE_CLAMP, 5 rows): first rbf cell group never changes, second group changes in every row. For these bits the value is the second group; the E6 note "first group is the value" holds for the 62 others only where tested (not IO-tested). The rbf-only cells in `rbf_extra` (3072, 14514, 14520, 22980, 23966) are also double-group bits.
+- Open-drain: `AUTO_OPEN_DRAIN_PINS` is a detection switch (default ON), not a forced mode; the decompile selects mux 3 / 4 / 6 from atom bit 0x16 (constant-0 tri-state data). New builds (`scripts/cycloneiv_clean_io_od.py`, 3 sites): `p = e ? 1'bz : 1'b0` differs from the plain output only in the MIO_PIN_MODE CFF bit (0 -> 1) at 3 / 3 sites; `od` vs `od` with the assignment OFF is bit-identical. So PIN_MODE CFF = open-drain flag; B's pair table missed it because the pair designs never had constant-0 data.
+- Registered fields (CRAM, sof tag 17 index = asm address, little-endian bits; groups hit with the same count at every site; `cram_fields`): input register = INREG_CLK_FAST_MUX 1, USE_CLR_INREG 1; output register = OUTREG_CLK_FAST_MUX 1, REG_FEEDS_PIN_OUT 2, SET_CE_TO_OUTREG_TIE_OFF 1, USE_CLR_OUTREG 1; OE register = OUTREG_CLK_FAST_MUX 1, OEREG_POWERS_UP_HIGH 1, SET_CE_TO_OEREG_TIE_OFF 1, USE_CLR_OEREG 1, PIN_MODE 1 (CRAM bit). Direction and open-drain builds hit no constant IO CRAM group.
+
+### Still open
+
+- VREF pad -> pin map (the foreign IOST bit), IOST value of a 3-element site's shared 4th bit, CRAM value patterns of the registered fields, 50 ohm termination and SSTL-2 output (no CFF change), the 4 dedicated-clock pads.
