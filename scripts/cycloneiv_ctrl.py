@@ -29,6 +29,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO))
+os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(Path(__file__).resolve().parent.parent / "databases" / "cycloneiv" / "gx150.db"))
 import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_fuzz as fz  # noqa: E402
 import toolchain  # noqa: E402
@@ -328,7 +329,6 @@ def prune(name, keep_full):
 
 
 def connect():
-    os.environ["PLURIBUS_SQLITE_PATH"] = str(DB_PATH)
     import db
     return db.engine()
 
@@ -390,32 +390,34 @@ def rows(sets, labs):
 
 
 def compare(sets):
+    """Per set and lab: best single (frame, v) offset by vote over all onset pairs vs lab a; reports
+    matched / (matched + missing + extra) over only-spec and only-base bits (no equal-count assumption)."""
     NVv = 6368
     fv = lambda bs: sorted((b // NVv, b % NVv) for b in bs)   # noqa: E731
     R = rows(sets, list(LABS))
     for s in sets:
         for lab in "bcd":
+            keys = sorted(k for k in R if k[0] == lab and k[1] == s and ("a",) + k[1:] in R)
             offs = collections.Counter()
-            keys = [k for k in R if k[0] == lab and k[1] == s and ("a",) + k[1:] in R]
             for k in keys:
-                a, b = fv(R[("a",) + k[1:]][0]), fv(R[k][0])
-                if a and len(a) == len(b):
-                    for (f1, v1), (f0, v0) in zip(b, a):
+                for (f0, v0) in fv(R[("a",) + k[1:]][0]):
+                    for (f1, v1) in fv(R[k][0]):
                         offs[(f1 - f0, v1 - v0)] += 1
             if not offs:
                 log.info("compare %s lab %s: no comparable pairs", s, lab)
                 continue
             (df, dv), cnt = offs.most_common(1)[0]
-            same = []
+            M = X = Y = 0
             for k in keys:
-                a, b = fv(R[("a",) + k[1:]][0]), fv(R[k][0])
-                if [(f + df, v + dv) for f, v in a] == b and R[k][1] == R[("a",) + k[1:]][1] == []:
-                    same.append(k)
-            log.info("compare %s lab %s vs a: offset (dframe %d, dv %d) %d votes; %d / %d pairs identical up to it",
-                     s, lab, df, dv, cnt, len(same), len(keys))
-            for k in keys:
-                if k not in same:
-                    log.info("  NOMATCH %s: %s vs a %s", k, fv(R[k][0]), fv(R[("a",) + k[1:]][0]))
+                for side in (0, 1):
+                    a = {(f + df, v + dv) for f, v in fv(R[("a",) + k[1:]][side])}
+                    b = set(fv(R[k][side]))
+                    M += len(a & b); X += len(a - b); Y += len(b - a)
+                    if a != b:
+                        log.info("  NOMATCH %s %s: missing %s extra %s", k, ("spec", "base")[side],
+                                 sorted(a - b)[:6], sorted(b - a)[:6])
+            log.info("compare %s lab %s vs a: offset (dframe %d, dv %d) %d votes; bits matched %d / (%d + %d missing + %d extra) = %.1f%%",
+                     s, lab, df, dv, cnt, M, M, X, Y, 100.0 * M / max(1, M + X + Y))
 
 
 def rebuild(sets, labs, frac, seed, jobs):
