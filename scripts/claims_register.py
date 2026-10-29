@@ -358,6 +358,17 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
                                  n_objects=8, kind="audit")
         class_claim("1d-b", "vendor-decoded", None, [("parent", [ev_map]), ("refute", [ev_ctl])],
                     "RSCNT/RSMUX/ROWCLK names at H2 positions: 0 of 8 measured control cells land on a name")
+        class_claim("1d-d", "vendor-decoded", None, [("parent", [ev_map])],
+                    "control-type names at constant 22 (frame = FX + dy - 22): 37 of 43 not isolated by any specimen; position only")
+    # 1d-c: control cells at constant 22 (clock polarity, ena 2, aclr 2, sclr 1), prediction-first at held-out LABs (#165)
+    R.matcher("blkrba-control-v1", "deterministic", "control cell at tile-relative (dy - 22, 2 - dx) of the vendor LAB table", 1,
+              "scripts/cycloneiv_blkrba_hold.py")
+    p_ctl22 = R.pattern("blkrba-control-v1", "bit", "named control cells at (FX + dy - 22, vy + 2 - dx) of every LAB (counter-type #0-2, mux-type #2-4)",
+                        {"dims": 2, "axes": lab_axes}, matcher_id="blkrba-control-v1", status="open")
+    ev_hold = ids(ev.c.kind == "specimen-pair", ev.c.source_ref.like("blkrba_hold:%"))
+    if ev_hold:
+        class_claim("1d-c", "pattern-predicted", "blkrba-control-v1", [("parent", ev_hold)],
+                    "6 control cells (clock polarity 1, ena 2, aclr 2, sclr 1) at constant 22, prediction-first at held-out LABs; supersedes 1d-b for these cells")
     ev_miss = [E.record_decode(conn, fam, device, "le-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)",
                                {"n_les": 1018, "misses": 14, "design": "one corpus design", "meta": {},
                                 "note": "figures from the earlier analysis (docs/cycloneiv-bit-inventory.md 1b); not recomputed in this run"},

@@ -153,7 +153,7 @@ def analyse(record, labs):
                 A, R = [], []
                 for key, in_a in bh.pair_cells(bh.tagged(nv), bh.tagged(nb)):
                     (A if in_a else R).append(key)
-                meta = {"group": "blkrba_hold", "knob": k, "lab": list(lab), "predicted": PRED[k], "plane_level": True}
+                meta = {"group": "blkrba_hold", "knob": k, "lab": list(lab), "tile": list(lab), "predicted": PRED[k], "plane_level": True}
                 E.record_specimen(conn, "cycloneiv", bh.lm.EV_DEVICE, f"hold_{lab[0]}x{lab[1]}_{k}", nb, A, R, meta,
                                   f"blkrba_hold:{k}", "scripts/cycloneiv_blkrba_hold.py", E.git_head(REPO), bh.NV,
                                   tool_version="25.1", level=3, build_base=CO.build_id(conn, "cycloneiv", nb),
