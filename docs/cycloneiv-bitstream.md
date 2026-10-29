@@ -266,7 +266,7 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 - Container: 0x73-byte header (u32 0x14, ..., "Version 25.1std.0 ...") then payload.
   - zlib kinds (icname, routing, asm, place, pad, timing, gid_database): a chain of zlib streams, NOT terminated; each ends with a sync-flush marker `00 00 ff ff` and the next starts with `78 01` (the "invalid stored block lengths" of a single inflate is that boundary). Split on `00 00 ff ff 78 01`, inflate each: 100% of the bytes decode.
   - xz kinds (hdr, part_info): one `fd 37 7a 58 5a 00` stream at 0x73 (Python `lzma`). `pcf` is zlib (`78 da` at 0x73), not xz.
-  - asmdb / asmdb_dirt: other layout, not decoded.
+  - asmdb: container as above, block-instance cells and LAB LUT bit addresses decoded ([cycloneiv-ddb-format.md](cycloneiv-ddb-format.md), #165); asmdb_dirt not decoded.
 - Which stingray is which (`device.db`, SQLite, names base64): STINGRAY1 = EP4CGX15, STINGRAY2 = GX30 (V1 = GX22), STINGRAY3 = GX75 (V1 GX50, V2 GX30A), STINGRAY4 = EP4CGX150 (149,760 LEs), STINGRAY4_V1 = EP4CGX110 (109,424 LEs). Same ddb files (`ddb_stingray4_*`) serve both.
 - Header bit meaning (settled): the option lanes of `quartus_cpf` .rbf output for 6 of our builds (`cycloneiv_header_probe.py`):
   - lane 1 = `f8 00 20 0d ff` on every EP4CGX150 build (DF31C7, CF23C8, DF27I7) and `f8 00 a0 0d ff` on every EP4CGX110 build (DF31C7, CF23C7, DF27C8). Lane 1 bit 23 = die variant (STINGRAY4 vs STINGRAY4_V1: full die vs fused-down 109,424-LE variant). It does not follow package, speed grade or temperature grade.

@@ -182,6 +182,23 @@ Field order from `DYGR_ROUTE_INFO_BODY::operator<<` (run `symdump` for the full 
 - The RCF type of a source is not always the wire's physical class: at LI muxes ~6 % of 2-bit codes that the asm attributes to an `H4` record are named `C4:...` by the RCF (and vice versa), consistently per tile class; `H24` records appear as RCF `C16` and `V16` as `R24`. These are driver-mux names, so the alias sets carry cross-type forms.
 - ~3 % of 3-groups carry `b0 = 0` on the select entry (first entry of the group); it is still the programmed select bit.
 
+## asmdb (settings database; partly decoded 2026-10-30, #165)
+
+Same container and stream layer as routing.ddb (type id << 2 = NEW pointer tag, content deferred to per-class pools; vectors = u32 count + delta ints, element 0 delta against the previous owner's element 0).  Body 5,350,270 B; 29 classes (die root, 8 block-info, ~6.3 k arch groups, ~37.6 k muxes).  Static decode only; reader is local (`vendor-analysis/`, gitignored).
+
+- Die head: total bits 39,040,976, 31,060 cff bits, 160 option bits; 8 block types; 6,087 + 225 group pointers (277 calc / 4,893 + 103 std / 913 + 119 dumb / 4 + 3 map classes); 2,518 + 35 forced-bit words; main stream ends at body offset 0x949c, then pools to EOF.
+- Address model (per block instance, "traditional" style): `addr = (q + hi) * 6154 + (r + lo)` for a block-local bit `q * 6154 + r`; `(hi << 16) | lo` is a per-instance u32 cell in a vector.
+  - Bits with top bits `11` are literal flags, `101` are offset by a second per-instance vector (not decoded).
+- Instance cells found: LAB 9,360 (104 columns x 90 rows), M9K 720 (8 x 90), MUL 360 (4 x 90).  Instance order = column rank right-to-left (same order as the LE_BUFFER records: record `149760 + 90 c + r` has its entries at frames `lo[c] .. +9`, v around `hi[r]`), rows = Y ascending.
+  - `hi[r] = 6252 - 70 r`; plane `v0 = vy0 + 70 Y` with `Y = r + 1`: `hi + v0 + 2 = 6344` for all 9,360 LABs.
+  - `lo[c] = FX[X] - 61` for all 104 LAB, 8 M9K and 4 MUL columns (X = column of rank c from the right).  Neighbour spacing 35, 60, 39 or 328 follows FX exactly: asm frames are laid out in plane column order, no column-specific AFX.
+- LUT INIT bits: the 16 LEs are 16 pure-vector muxes of 16 bits; local bit of `(LE, k)` = `dx * 6154 + dy + 3` with `(dx, dy)` = the blkrba `(x_cum, y_cum)` of `RBLUT{k}`, all 256 cells exact (blkrba order and shape reproduced, absolute value after the full pool chain).  One local table serves all 9,360 LABs.
+  - asm address = `(hi[r] + dx) * 6154 + lo[c] + dy + 3`; 2,396,160 addresses, all distinct.
+  - Against the LUT law (plane frame `FX + dy - 15`, `v = v0 + 2 - dx`): asm v == 6344 - plane v for 2,396,160 / 2,396,160; plane frame - asm frame = +43 for 2,396,160 / 2,396,160 (one offset, in-band order preserved, band order the same as the plane).
+  - The 8 LUT frames per column (asm offsets 11..18 from `lo`) lie in the 18-frame run (offsets 8..25) that asm.ddb leaves empty, 823 / 832 column-frames (the 9 exceptions sit in the two columns with cell lo 137 and 102).
+- Open: the ASM routing model above (`plane = FX + 17 - (asm - AFX)`, mirrored inside the band) disagrees with this in-band order; one of the two is wrong.  The 88 double-offset frames next to M9K / MUL are expected where two instances' local ranges overlap (not yet shown).  IO column cells, the second per-instance vector, calc-group to block association and the mux class pools other than the LAB LUT run are not decoded.
+- Dirt file (3 KB): 3 small classes (string / integer / inner), not decoded.
+
 ## Not decoded
 
 - routing.ddb (fan-in map that would name mux outputs directly), place / pad / timing.
