@@ -21,7 +21,7 @@ SFL / SFL-enhanced / PFL `.sof` files shipped in `quartus/common/devinfo/program
   - Before that, Lite had Cyclone V only and nothing EP4C could be fitted.
 - `quartus_cpf` needs no device package: it converts every Cyclone III/IV vendor `.sof` (70 `.sof`, 13 dies).
 - Install-side Cyclone IV data: only `programmer/ep4c*_pcf.ddb` and `ep3c*_pcf.ddb` (about 1 KB each).
-  - Each holds a zlib-packed type schema (`PGMIO_PCF_ENTRY`, `PGMIO_JTAG_CONSTANTS`, `PGMIO_ERAM_LOCATIONS`, ...) and a second zlib payload that does inflate (`ep4cgx150_pcf.ddb`: zlib at byte 117, up to the `00 00 ff ff` marker at 746; 3,160 bytes = 790 little-endian words, among them 2048, 262144, 6344 and 6506) [V 2026-10-29]. The words are not yet matched to fields.
+  - Each holds a zlib-packed type schema (`PGMIO_PCF_ENTRY`, `PGMIO_JTAG_CONSTANTS`, `PGMIO_ERAM_LOCATIONS`, ...) and a second zlib payload that does inflate (`ep4cgx150_pcf.ddb`: zlib header `78 da` at byte 115 (0x73); the stream is cut at the `00 00 ff ff` marker at 746 with no trailer, so use `zlib.decompressobj().decompress(data[115:746])`; 3,160 bytes = 790 little-endian words, among them 2048, 262144, 6344 and 6506) [V 2026-10-29]. The words are not yet matched to fields.
   - They are programmer constants; whether they carry the lane/padding table for the image-to-`.rbf` map is open (#165). They carry no fabric or routing data, unlike the Cyclone V device DB.
 
 ## Prior art
@@ -265,7 +265,7 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 
 - Container: 0x73-byte header (u32 0x14, ..., "Version 25.1std.0 ...") then payload.
   - zlib kinds (icname, routing, asm, place, pad, timing, gid_database): a chain of zlib streams, NOT terminated; each ends with a sync-flush marker `00 00 ff ff` and the next starts with `78 01` (the "invalid stored block lengths" of a single inflate is that boundary). Split on `00 00 ff ff 78 01`, inflate each: 100% of the bytes decode.
-  - xz kinds (hdr, part_info, pcf): one `fd 37 7a 58 5a 00` stream at 0x73 (Python `lzma`).
+  - xz kinds (hdr, part_info): one `fd 37 7a 58 5a 00` stream at 0x73 (Python `lzma`). `pcf` is zlib (`78 da` at 0x73), not xz.
   - asmdb / asmdb_dirt: other layout, not decoded.
 - Which stingray is which (`device.db`, SQLite, names base64): STINGRAY1 = EP4CGX15, STINGRAY2 = GX30 (V1 = GX22), STINGRAY3 = GX75 (V1 GX50, V2 GX30A), STINGRAY4 = EP4CGX150 (149,760 LEs), STINGRAY4_V1 = EP4CGX110 (109,424 LEs). Same ddb files (`ddb_stingray4_*`) serve both.
 - Header bit meaning (settled): the option lanes of `quartus_cpf` .rbf output for 6 of our builds (`cycloneiv_header_probe.py`):
