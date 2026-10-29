@@ -909,7 +909,7 @@ def record_pairs(cells, D, par, g):
                 meta = {"group": "bit_hunter", "knob": kn, "frame": fr, "v": v, "tile": [x, y], "df": df, "dv": dv,
                         "params_spec": par[a], "params_base": par[b], "plane_level": True}
                 E.record_specimen(conn, "cycloneiv", lm.EV_DEVICE, f"bh_{a[5:]}_{b[5:]}", b, on, off, meta,
-                                  f"bit_hunter:{kn}", GENERATOR, E.git_head(REPO), NV, tool_version="25.1",
+                                  f"bit_hunter:{kn}", GENERATOR, E.git_head(REPO), NV, tool_version="25.1", level=3,
                                   build_base=CO.build_id(conn, "cycloneiv", b), build_spec=CO.build_id(conn, "cycloneiv", a))
                 done += 1
     log.info("recorded %d evidence rows", done)

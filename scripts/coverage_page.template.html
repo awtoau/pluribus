@@ -112,16 +112,16 @@ const TYPES=[
  {k:"unc",n:"Unclassified LAB cells",ids:["6"]}];
 const TIERS=[["ver","verified","oracle-verified: compared claim-for-claim against a vendor oracle"],
  ["mea","measured","raw diff or observation at that cell or site"],
- ["sam","verified-by-sampling","a pattern with confirmations at >= N distinct scopes incl. extremes and zero refutations (docs/recovery-process.md); stated sample n and misses on the class row"],
+ ["sam","sampled (verified-by-sampling)","a pattern with confirmations at >= N distinct scopes incl. extremes and zero refutations (docs/recovery-process.md); stated sample n and misses on the class row"],
  ["pre","pattern-predicted","a rule fitted to measured parents, applied beyond them, below the sampling bar"],
  ["sta","statistical","last-resort fit, unverified: its own tier, never merged into pattern-predicted or measured"],
- ["dec","decoded-untested","read from the vendor decode; nothing tested at the cell"],
+ ["dec","decoded","read from the vendor decode; nothing tested at the cell"],
  ["sus","suspect","a pattern with a recorded miss or a conflict; revoked from the verified tiers until audited"],
  ["ref","refuted","contradicted by a specimen inside its scope"],
  ["unk","unknown","nothing attributes a meaning (the headline)"]];
 const PROJ_N=((DATA.ledger.filter(r=>r.ever_set_n).pop()||{}).ever_set_n)||"n";
 const FIELD={ver:"verified",mea:"measured",sam:"sampled",pre:"predicted",sta:"statistical",dec:"decoded",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence"};
-const K=["ver","mea","sam","pre","sta","dec","sus","ref","unk","leg"],KN={ver:"verified",mea:"measured",sam:"verified-by-sampling",pre:"pattern-predicted",sta:"statistical",dec:"decoded-untested",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence (older runs, unsplit)"};
+const K=["ver","mea","sam","pre","sta","dec","sus","ref","unk","leg"],KN={ver:"verified",mea:"measured",sam:"sampled",pre:"pattern-predicted",sta:"statistical",dec:"decoded",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence (older runs, unsplit)"};
 const proj=o=>o.unknown_projected||0;     // triage sub-line of unknown, never a tier
 const val=(o,k)=>o[FIELD[k]]||0;
 const ckey=c=>K.find(k=>val(c,k)===c.die_bits&&c.die_bits>0)||"unk";
