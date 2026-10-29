@@ -2,7 +2,7 @@
 
 What the minimal specimen designs are, what question each answers, and the sweep that counts as
 complete. Companion to [recovery-process.md](recovery-process.md) (the method) and #141 (the
-pivot). Raw-diff tools (the method): `scripts/cycloneiv_forced.py`, `scripts/cycloneiv_hop_specimens.py`.
+pivot). Raw-diff tools (the method): `scripts/cycloneiv_forced.py`.
 `scripts/cycloneiv_specimens.py` is LEGACY (decoder in the loop).
 
 ## Anatomy of a specimen (LEGACY: decoder-in-the-loop; superseded by the raw-diff tools above)

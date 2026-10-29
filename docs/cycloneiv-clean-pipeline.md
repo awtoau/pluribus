@@ -34,3 +34,15 @@ Rebuild of the placement/lift stack from vendor-derived facts only. The layered 
 2. P2 tracer: RCF name to element (A7), to group, to address, to rbf cells; score per `recovery-process.md` (ambiguous = missing).
 3. P3 gate: 76 designs, corrected scoring. Exit: no fault category above the current baseline.
 4. P4 retire the old coordinate code in one commit once P3 passes.
+
+## Retirement progress (move order; rollback = tag `pre-clean-cycloneiv`)
+
+- Step 1 done: `scripts/cycloneiv_common.py` (neutral helpers).
+- Step 3 done: banned blocks cut from mixed files.
+  - `cycloneiv_bit_inventory.py`: classes 2a / 2b removed.
+  - `claims_register.py`: 2h / 2h-fd / 2h-col, afx-mirror-v1, phys_map / li_map vote claims, vote-v1 removed.
+  - `rebuild_all`, `verify_all`, `profile_stages`, `geo_image_overlay`, `perf_pass_verify`, `pip_table`, `ddb_fanout`, `ddb_blockmap`, `declare_gate`, `mem_report` cut; `image_pass` routing / netlist sections removed.
+  - `lifted_sim_check` and `ddb_fanout gt|check` exit with "pending clean P2".
+  - Gate script name in `declare_gate` is a TODO for the clean P3 gate.
+- Step 4 done: r4 experiments, hop specimens, full/rec/src/sofframe tests, relax analysis, coordv2..v5 removed; summary in `docs/cycloneiv-retired-coordinate-model.md`.
+- Open: step 5 (`route_learn`, `route_decode`, `route_score`, `phys_trace`, `ddb_trace`, `asm_decode`, `asm_tables`, `li_map`, `specimens`, `lift_image`, `image_demand`, coordv6 / v7 files, `lifters/cycloneiv_lift.py` routing), step 6 (learned-map JSONs, derived tmp/ddb files, DB rows).

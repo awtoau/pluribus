@@ -19,7 +19,7 @@ Names are the Glossary of provenance-and-feedback.md (one definition; this list 
 - **sampled** (= verified-by-sampling) = a pattern confirmed at >= N distinct scopes incl. extremes, zero refutations (4g: 120 site checks, all 8 columns, 0 misses; 1c: 6 LABs).
 - **pattern-predicted** = a rule fitted to measured parents, below the sampling bar (3t: ll-translate-v1, 4 LABs confirmed, 2-D law needs 5).
 - **statistical** = last-resort fit/vote, unverified, its own tier (none today since 1c reached sampled).
-- **decoded** (= decoded-untested) = read from the vendor decode, nothing tested at the cell (2a, 2b).
+- **decoded** (= decoded-untested) = read from the vendor decode, nothing tested at the cell (1d-a, 1d-d).
 - **suspect / refuted** = a pattern with a recorded miss / contradicted by a specimen in scope (1b: 14 misses in 1,018 LEs).
 - **unknown** (the headline) = nothing attributes a meaning. Sub-line, not subtracted: **of which projected unused (never set in n designs)** = triage by frequency, NOT a claim and never pattern-predicted: none of the n held GX150 bitstreams (corpus builds + GX150 third-party images + specimens; `scripts/cycloneiv_ever_set.py`, bitmap `databases/cycloneiv/ever_set.npy`) sets the cell. One design that sets the cell removes it from the sub-line. Other-device images (EP4CE) have another plane and are not counted. Ledger field `unknown_projected`.
 - Ledger rows from before 2026-10-29 carry a single `evidence` bucket (unsplit); newer rows carry `verified, measured, sampled, predicted, statistical, decoded, suspect, refuted, unknown` (`statistical` absent = 0). Old rows are not migrated.
@@ -31,8 +31,7 @@ Names are the Glossary of provenance-and-feedback.md (one definition; this list 
 | 1a | LUT INIT (16 bits x 16 LE x 9360 LAB) | verified | 2,396,160 | 6.08 | 649,507 |
 | 1b | LE-used bit | suspect | 149,760 | 0.38 | 69,023 |
 | 1c | LAB clock-polarity bit | sampled | 9,360 | 0.02 | 174 |
-| 2a | asm routing: cells of groups FIRED in this image | decoded | 1,088,699 | 2.76 | 488,484 |
-| 2b | asm routing: cells in groups/blocks not fired in this image | decoded | 6,256,139 | 15.87 | 42,832 |
+| 2a, 2b | removed 2026-10-30 (#165): asm routing attribution rode on the retired coordinate model (`docs/cycloneiv-retired-coordinate-model.md`); cells fall to the next class; returns with the clean address engine | | | | |
 | 3 | LOCAL_LINE specimen bits at the 4 specimen LABs (measured) | measured | 1,156 | 0.00 | 36 |
 | 3t | LOCAL_LINE specimen bits translated to all other LABs | predicted | 2,601,554 | 6.60 | 175,915 |
 | 4a | periphery frames 1..36 (IO ring, clocks, PLL, misc) | unknown | 229,248 | 0.58 | 19,920 |
@@ -61,17 +60,14 @@ Names are the Glossary of provenance-and-feedback.md (one definition; this list 
 - 1b: "set for 95.8 % of LUT cells"; 14 of 1,018 LEs on one design missed. Partial.
   - Specimen cross-check: the 16 per-LAB "source-LE" bits of the LOCAL_LINE specimens coincide exactly with the 1b positions (149,760 / 149,760 cells). The bit flips when the LE output gets a fanout.
 - 1c: greedy fit, Jaccard 0.85 over 5,442 clock lines, plus isolated polarity cells (bit hunter, calibration) at 6 LABs: `sampled`.
-- 2a: asm.ddb tables are vendor data, but the (frame, v) map is inferred (per-column asm bases come from vote peaks; 83 % of learner patterns land in one group). Held-out routing score of the asm decode alone: 17.1 % of pips (docs/cycloneiv-bitstream.md). No per-bit oracle compare.
-  - Fired = predicted bits all set AND block exclusive: 352,405 groups of 17.3 M. 32 columns have an asm base != plane FX (20 are LAB columns: 6, 12, 13, 22, 28, 29, 35, 41, 42, 51, 64, 72, 73, 80, 86, 87, 93, 101, 102, 109).
-- 2b: same tables; this image does not fire them. Meaning of a cell exists on paper (which mux input), unverified.
-  - 42,832 image set bits sit in 2b cells: routing bits the decode cannot attribute (exclusivity or pseudo-group).
+- 2a / 2b: removed (see table); history lines in `docs/coverage-history.jsonl` keep them.
 - 3 / 3t: raw-diff specimens, 240 (src, snk) pairs each in LABs X10Y10, X58Y30, X37Y60, X100Y75 (3 = those LABs, measured; 3t = translated to all others, pattern-predicted).
   - Translation rule (frame = FX[x] + rel, v = 20 + 70 y + rel) reproduces the X10Y10 pattern in 240 / 240 pairs at each of the other 3 LABs (X37 is the column right after an M9K column).
   - Applied to all 9,360 LABs: edge rows y1 / y90 and edge-adjacent columns are NOT verified by a specimen.
   - 305 cells per LAB: 32 source-LE bits (2 per src LE; one is the 1b bit, the other sits at FX+2), 227 pair-unique bits (sink input-mux select for one src), 46 sink-shared bits (one sink, 8 src).
   - Meaning known at "bit set iff this hop is routed" level only. Ports covered: DATAC, DATAD.
   - Image full 4-bit matches: 19,240 (LAB, pair) in 3,658 LABs. Per (LAB, sink): 1 matching src 13,296, 2 srcs 2,972. This is a necessary-not-sufficient test (no exclusivity).
-  - 250,465 image set bits lie in the translated specimen cell universe (175,951 left in class 3 after 1b / 2a / 2b took theirs).
+  - 250,465 image set bits lie in the translated specimen cell universe (175,951 left in class 3 after 1b took theirs (measured with 2a / 2b present)).
 - 5b: CRC-16 recomputed per CRAM frame by `cycloneiv_decompress` (70 / 70 vendor pairs). Verified as a checksum, not a config meaning.
 - 5c is NOT padding: 1,915 set in the image (LAB 1,557, M9K 318, MUL 39). Lane-tail cells sit just above the y91 band; treat with the IO-row work.
 - 4a-4e: located by column/frame geometry only (`col_kind` + FX-19 band start + row band [VY-68, VY+1], approximate). No decoder. IO-pin signatures in `cycloneiv_io_bits.py` are statistical and not counted.
@@ -86,7 +82,7 @@ Names are the Glossary of provenance-and-feedback.md (one definition; this list 
 | 3 | LAB core control stripe, v phase 31..39 (258 / tile) | 2,410,896 | 6.1 | 104,298 | `cycloneiv_ctrl.py` pos / pos2 / idle sets (clk, ena, aclr, sclr, sload, asdata done) |
 | 4 | LAB core FX-7..FX+0 (230 / tile) | 2,155,692 | 5.5 | 0 | one LE, same lut_mask: normal vs arithmetic; then LE with FF vs without |
 | 5 | LAB core FX+1..FX+3 (159 / tile) | 1,491,673 | 3.8 | 205,599 | LE_BUFFER fan-out: LUT -> FF vs LUT -> LI, one group per pair |
-| 6 | LAB core FX+4..FX+13 (103 / tile) | 959,744 | 2.4 | 39,671 | forced C4 hop per pair, base = sink pin open (`cycloneiv_hop_specimens.py`) |
+| 6 | LAB core FX+4..FX+13 (103 / tile) | 959,744 | 2.4 | 39,671 | forced C4 hop per pair, base = sink pin open (script retired, tag `pre-clean-cycloneiv`) |
 | 7 | multiplier columns (4) | 620,960 | 1.6 | 22,433 | one 9x9 multiplier, LOCATION pinned: input register off vs on (one parameter) |
 | 8 | IOL / IOR columns | 331,000 | 0.8 | 618 | one pin in IOR column: unused vs LVTTL input; then one pin as output |
 | 9 | periphery frames 1..36 | 229,248 | 0.6 | 19,920 | one top-row IOIBUF: unused vs used (same pin), then I/O standard changed (one param) |
