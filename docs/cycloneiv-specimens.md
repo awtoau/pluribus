@@ -109,10 +109,10 @@ LI/R4/C4 interior → multiplier → IO/periphery → edges/corners last. Edges 
 
 M9K checklist (one M9K, pinned site, one change per pair, raw diff; tick each):
 - [x] data: widths x1,x2,x4,x8,x9,x16,x18,x32,x36 at one site (M9K_X23_Y40_N0): full (word,bit) -> cell tables, 0 unattributed, held-out round trips exact (commit: see M9K hardware map below)
-- [ ] mode: single-port / simple dual / true dual / ROM / FIFO; one change per pair
-- [ ] clocking: clock-enable, aclr, read-during-write, output register on/off, address register on/off
+- [~] mode (pairs run; see "M9K mode/control pairs"): single-port / simple dual / true dual / ROM / FIFO; one change per pair
+- [~] clocking (see "M9K mode/control pairs"): clock-enable, aclr, read-during-write, output register on/off, address register on/off
 - [ ] ports: each address / data / byte-enable / write-enable pin routed (one pin, one far-end per build)
-- [ ] column position: same pair at ≥3 M9K sites per column and in every M9K column (8) — confirm the single-offset rule
+- [x] column position: random-init x1 build at 9 other sites (all 8 M9K columns, rows 20/60 in column 23) + x9 at 2: the X23Y40 map plus one (frame,v) offset per site predicts the raw diff exactly, 11/11 (no fallback needed)
 
 Mark each box with the commit that verified it; unticked boxes appear in the inventory top-10.
 
@@ -137,6 +137,19 @@ LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58
   - x9 parity (fitted, `pattern_matchers.BitLinearLaw`, held-out 204/204): frame = 1111 + (w>>2); v = 2789 - 18*(w&1) - ((w>>1)&1).
 - The WYSIWYG ram_block primitive rejects port_a_data_width 32 and 36 (quartus_map error 14093); altsyncram is the route for those widths.
 - The (word,bit) map equals the mem_init-index map (index = word*W + bit) for x1..x18: no separate hardware permutation exists for them.
+
+## M9K site offsets (#141)
+
+- Per-site offset (frame, v) vs X23Y40: col 7 (-808, 0); 36 (717, 0); 52 (1525, 0); 65 (2238, 0); 81 (3046, 0); 94 (3763, 0); 110 (4571, 0); col 23 rows 20/60: (0, -1400) / (0, +1400) = 70 v per row.
+- Column steps alternate 808 / 713..717 frames; no site mismatched, so no site fell back to a binary-coded set.
+
+## M9K mode/control pairs (#141)
+
+- altsyncram, every legal port wired, one parameter changed per pair; raw diff in the M9K tile band; routing bits from a changed port set are not separable here.
+- Output register (all four cases: port A / B, single / simple dual / true dual): set (1103,2786); cleared, port A (1109,2819),(1110,2820); port B (1109,2767),(1110,2754).
+- Read-during-write OLD_DATA (port A): clears (1110,2819) only.
+- Zero cells differ (parameter has no cram effect in this flow): cke_out bypass, address/input-data/write-control aclr, power-up uninitialised, mixed-port RDW OLD_DATA, port-B clock-enable output bypass.
+- Port-set changes (ROM, simple dual, true dual, input clock-enable bypass, byte enable, output aclr, RDW DONT_CARE, address-register clock 1) move 20-60 bits in the tile band plus routing: not isolated; needs per-pin routing specimens (ports checklist).
 
 ## Cost
 

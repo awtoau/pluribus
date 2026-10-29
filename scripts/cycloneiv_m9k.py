@@ -29,6 +29,7 @@ log = logging.getLogger("cycloneiv_m9k")
 CORPUS = REPO / "corpus" / "cycloneiv"
 DEVICE = "EP4CGX150DF31C7"
 SITE = "M9K_X23_Y40_N0"
+SITES9 = ["M9K_X7_Y40_N0", "M9K_X65_Y40_N0"]   # also get an x9 build
 # one site per M9K column at y=40, plus two more rows in column 23
 SITES = [f"M9K_X{x}_Y40_N0" for x in (7, 36, 52, 65, 81, 94, 110)] + ["M9K_X23_Y20_N0", "M9K_X23_Y60_N0"]
 BITS = 2048          # bits per mem_init parameter; 5 per M9K (4096 data + parity 512 per 2 params, linear order)
@@ -98,7 +99,8 @@ MODE_BASE = {"operation_mode": "SINGLE_PORT", "width_a": 16, "widthad_a": 9, "nu
              "byteena_aclr_a": "NONE", "address_aclr_b": "NONE", "outdata_aclr_b": "NONE", "clock_enable_input_a": "NORMAL",
              "clock_enable_output_a": "NORMAL", "clock_enable_input_b": "NORMAL", "clock_enable_output_b": "NORMAL",
              "read_during_write_mode_port_a": "NEW_DATA_NO_NBE_READ", "read_during_write_mode_mixed_ports": "DONT_CARE",
-             "power_up_uninitialized": "FALSE", "byte_size": 8, "lpm_type": "altsyncram"}
+             "power_up_uninitialized": "FALSE", "byte_size": 8, "lpm_type": "altsyncram", "init_file": "../src/init.mif",
+             "indata_reg_b": "CLOCK0", "wrcontrol_wraddress_reg_b": "CLOCK0", "byteena_reg_b": "CLOCK0"}
 DUAL_BASE = dict(MODE_BASE, operation_mode="DUAL_PORT")
 BIDIR_BASE = dict(MODE_BASE, operation_mode="BIDIR_DUAL_PORT")
 # (specimen name, base mode dict, override)
@@ -135,18 +137,32 @@ def mode_design(prm, site=SITE):
     mode = p["operation_mode"]
     pl = ",\n    ".join(f".{k}({v if isinstance(v, int) else chr(34) + v + chr(34)})" for k, v in p.items())
     wa, wb = p["width_a"], p["width_b"]
-    ports = [".clock0(clk)", ".clock1(clk1)", ".clocken0(ce0)", ".clocken1(ce1)", ".aclr0(ac0)", ".address_a(aa)",
-             ".address_b(ab)", ".q_a(qa)", ".q_b(qb)"]
-    if mode != "ROM":
+    ports = [".clock0(clk)", ".clocken0(ce0)", ".address_a(aa)"]
+    out = {"qa": "0", "qb": "0"}
+    if mode in ("SINGLE_PORT", "BIDIR_DUAL_PORT"):
         ports += [".wren_a(wea)", ".data_a(da)"]
+    if mode in ("SINGLE_PORT", "ROM", "BIDIR_DUAL_PORT"):
+        ports += [".q_a(qa_w)"]
+        out["qa"] = "qa_w"
+    if mode == "DUAL_PORT":
+        ports += [".wren_a(wea)", ".data_a(da)"]
+    if mode in ("DUAL_PORT", "BIDIR_DUAL_PORT"):
+        ports += [".address_b(ab)", ".q_b(qb_w)"]
+        out["qb"] = "qb_w"
     if mode == "BIDIR_DUAL_PORT":
         ports += [".wren_b(web)", ".data_b(db)"]
+    if "CLOCK1" in p.values():
+        ports += [".clock1(clk1)"]
+    if "CLEAR0" in p.values():
+        ports += [".aclr0(ac0)"]
     if p["width_byteena_a"] > 1:
         ports += [".byteena_a(bea)"]
     v = (f"module top(input clk, input clk1, input ce0, input ce1, input ac0, input wea, input web, "
          f"input [{p['widthad_a'] - 1}:0] aa, input [{p['widthad_b'] - 1}:0] ab, input [{wa - 1}:0] da, "
          f"input [{wb - 1}:0] db, input [{max(p['width_byteena_a'], 1) - 1}:0] bea, "
          f"output [{wa - 1}:0] qa, output [{wb - 1}:0] qb);\n"
+         f"  wire [{wa - 1}:0] qa_w; wire [{wb - 1}:0] qb_w;\n"
+         f"  assign qa = {out['qa']}; assign qb = {out['qb']};\n"
          f"  altsyncram #(\n    {pl}\n  ) ram (\n    {', '.join(ports)});\nendmodule\n")
     return v, [f"set_location_assignment {site} -to ram"]
 
@@ -258,7 +274,8 @@ def rand_ones(width, seed):
 
 def rand_pairs(width, seed, site=SITE):
     kw = {"width": width, "depth": DEPTH[width], "site": site}
-    return [(f"gxm9k_b{width}_base", f"gxm9k_r{width}_s{seed}", dict(kw), dict(kw, ones=rand_ones(width, seed)),
+    st = "" if site == SITE else "_" + site.replace("M9K_", "").lower()
+    return [(f"gxm9k_b{width}{st}_base", f"gxm9k_r{width}{st}_s{seed}", dict(kw), dict(kw, ones=rand_ones(width, seed)),
              f"random half-filled init seed {seed}")]
 
 
@@ -376,8 +393,11 @@ def register():
                 n += 1
             elif E.import_json_file(conn, str(pth), "cycloneiv", "EP4CGX150", 6368, commit, gen, str(REPO)) is not None:
                 n += 1
+        so = site_offsets()
+        E.record_decode(conn, "cycloneiv", "EP4CGX150", "m9k-site-offsets", {"file": so}, commit, "scripts/cycloneiv_m9k.py site_offsets",
+                        generator=gen, kind="derived-table", n_objects=len(so))
         laws = fit_laws()
-        E.record_decode(conn, "cycloneiv", "EP4CGX150", "m9k-hw-laws", laws, commit, "scripts/cycloneiv_m9k.py fit_laws",
+        E.record_decode(conn, "cycloneiv", "EP4CGX150", "m9k-hw-laws", {"file": laws}, commit, "scripts/cycloneiv_m9k.py fit_laws",
                         generator=gen, kind="derived-table", n_objects=len(laws))
     log.info("registered %d files into %s; laws %s", n, dbtools.family_db("cycloneiv"), laws)
 
@@ -409,6 +429,29 @@ def stab(frac=0.1, seed=7):
     return same, len(pick)
 
 
+def site_offsets():
+    """Per site: predict the random-init diff from the X23Y40 map + ONE (frame,v) offset; log exact / mismatching sites."""
+    res = {}
+    for pth in sorted((REPO / "tmp").glob("cycloneiv_m9k_rand*d_x*.json")):
+        m = re.match(r"cycloneiv_m9k_rand(\d+)d_(x\d+_y\d+)_n\d+\.json", pth.name)
+        w, site = int(m[1]), m[2]
+        mp = REPO / "tmp" / f"cycloneiv_m9k_map{w}.json"
+        cells = {int(k): tuple(v) for k, v in json.loads(mp.read_text())["cells"].items()}
+        for sp, r in json.loads(pth.read_text()).items():
+            seed = int(sp.rsplit("_s", 1)[1])
+            pred = sorted(cells[c] for c in rand_ones(w, seed))
+            got = sorted(tuple(x) for x in r["only_spec"] if x[1] < 6344)
+            if not got or r["only_base"]:
+                res[f"{site}_x{w}"] = {"exact": False, "note": "empty diff or base-only bits", "n_got": len(got)}
+                continue
+            df, dv = got[0][0] - pred[0][0], got[0][1] - pred[0][1]
+            mine = set((f + df, v + dv) for f, v in pred)
+            res[f"{site}_x{w}"] = {"exact": mine == set(got), "offset": [df, dv], "n": len(got),
+                                   "missing": len(mine - set(got)), "extra": len(set(got) - mine)}
+            log.info("SITE %s x%d: %s", site, w, res[f"{site}_x{w}"])
+    return res
+
+
 def group_key(pr, setname, tag):
     """(json file, width, map file | None) a pair belongs to."""
     b, sp, kb = pr[0], pr[1], pr[2]
@@ -416,7 +459,7 @@ def group_key(pr, setname, tag):
     site = kb.get("site", SITE)
     st = "" if site == SITE else "_" + site.replace("M9K_", "").lower()
     if setname in ("rand", "bincode", "data", "p0", "mode", "sites"):
-        kind = "bincode" if setname == "sites" else setname
+        kind = "rand" if setname == "sites" else setname
     else:
         kind = "hwbin" if re.search(r"_k\d+$", sp) else "hwrand" if "R" in sp.split("_")[1] else "hwprobe"
     fname = f"cycloneiv_m9k_{kind}{w}{tag if not kb.get('hw') else 'h'}{st}.json"
@@ -459,7 +502,7 @@ def diff_group(pairs, out, width, mapname, keep):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["gen", "build", "diff", "register", "stab"])
+    ap.add_argument("cmd", choices=["gen", "build", "diff", "register", "stab", "offsets"])
     ap.add_argument("set", help="named set, or 'data'")
     ap.add_argument("--jobs", type=int, default=0, help="0 = pool default (cores-2)")
     ap.add_argument("--width", type=int, default=1)
@@ -472,6 +515,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_m9k.log"),
                                   logging.StreamHandler()])
+    if a.cmd == "offsets":
+        site_offsets()
+        return
     if a.cmd == "stab":
         stab()
         return
@@ -492,8 +538,7 @@ def main():
     elif a.set == "mode":
         pairs = mode_pairs(a.site)
     elif a.set == "sites":
-        pairs = [x for site in SITES for w in (1, 9) for x in bin_pairs(w, site)]
-        pairs = [(b, sp, kb, ks, pu) for b, sp, kb, ks, pu in pairs]
+        pairs = [x for site in SITES for w in ((1, 9) if site in SITES9 else (1,)) for x in rand_pairs(w, 1, site)]
     elif a.set == "hwbin":
         pairs = hw_bin_pairs(a.width, a.site, tag)
     elif a.set == "bincode":

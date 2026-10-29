@@ -382,6 +382,20 @@ def register_cycloneiv(conn, device, commit):
     for fn, d in maps.items():
         w = int(d["width"])
         cells = {int(k): v for k, v in d["cells"].items()}
+        if "_hmap" in fn:   # hardware (word,bit) -> cell table (altsyncram route), widths x1..x36
+            flat = [int(f) * NV + int(v) for f, v in cells.values()]
+            ev_ids = [r["id"] for r in ev_by_file.get(f"cycloneiv_m9k_hwbin{w}h.json", {}).values()]
+            confirms = [r["id"] for g in (f"cycloneiv_m9k_hwrand{w}h.json", f"cycloneiv_m9k_hwprobe{w}h.json")
+                        for r in ev_by_file.get(g, {}).values()]
+            sid = R.scope("cell-param", "cells", {"flat": sorted(flat)}, label=f"{site['name']} hardware (word,bit) x{w}")
+            cid = R.claim("cell-param", f"M9K:hw:w{w}", sid,
+                          {"site": site, "map": d, "index": "word*W+bit"}, "measured", "confirmed", evidence=ev_ids, cls="4b",
+                          basis=f"binary-coded logical init, every cell located, 0 unattributed; {len(confirms)} held-out/probe builds",
+                          confirmations=len(confirms))
+            for e in confirms:
+                conn.execute(insert(S.claim_evidence).values(claim_id=cid, evidence_id=e, role="confirm"))
+                F.event(conn, "confirmed", commit, claim_id=cid, evidence_id=e, detail={"scope_id": sid})
+            continue
         flat = [int(f) * NV + int(v) for f, v in cells.values()]
         ev_ids = [r["id"] for r in ev_by_file.get(f"cycloneiv_m9k_bincode{w}d.json", {}).values()]
         confirms = [r["id"] for g in (f"cycloneiv_m9k_rand{w}d.json", "cycloneiv_m9k_data1d.json" if w == 1 else "")
@@ -415,18 +429,17 @@ def register_cycloneiv(conn, device, commit):
                                                 "sites": "every other M9K site (per-site frame/v anchor unknown)",
                                                 "n_objects": other_sites * len(cells)}, label="other M9K sites x1 init", parent=parent_4b)
         R.expect("cell-param", "M9K:init:w1", sid, "affine-v1", {"law": "m9k-init-x1-law-v1", "relative_to_site_anchor": True},
-                 pattern=pid, confidence=hits / len(cells), basis=f"law reproduces {hits}/{len(cells)} cells at the one measured site; no second site yet",
+                 pattern=pid, confidence=hits / len(cells), basis=f"law reproduces {hits}/{len(cells)} cells at the measured site; 11 random-init builds at 9 other sites (all 8 M9K columns, rows 20/60 in column 23) match the x1/x9 map exactly with one (frame,v) offset per site (m9k-site-offsets)",
                  support=ev_ids)
         same = [w for w in (2, 4, 8) if w in m9k_widths and m9k_widths[w][1] == cells]
         diff = [w for w in (9, 16) if w in m9k_widths and m9k_widths[w][1] != cells]
         log.info("M9K index->cell map identical to x1 at widths %s, different at %s", same, diff)
-    for w in (18, 32, 36):
-        sid = R.scope("cell-param", "keys", {"keys": [f"M9K:init:w{w}"]}, label=f"M9K init x{w}", n=9216)
-        R.unknown("cell-param", sid, "unasked", subject=f"M9K:init:w{w}", cls="4b", note="width not yet specimened")
-    sid = R.scope("cell-param", "keys", {"keys": [f"M9K:init:w{w}:hw-word-bit" for w in (2, 4, 8, 9, 16)]},
-                  label="M9K hardware (word,bit)->cell, widths > 1", n=5 * 9216)
-    R.unknown("cell-param", sid, "unasked", subject="M9K:init:hw-word-bit", cls="4b",
-              note="only generator index -> cell proven for widths > 1")
+    R.pattern("m9k-hw-lanes-v1", "cell-param",
+              "hardware (word,bit) map relations (exact on every cell at one site): x16 = x18; x36 = x18 at (word + 256*(bit>=18), bit%18); "
+              "x32 = x36 at (word, bit if bit<14 else bit+4); x9/x18 data = x1 index map by 8-bit lane, 9th bit of a lane = parity cell; "
+              "x9 parity: frame = 1111 + (w>>2), v = 2789 - 18*(w&1) - ((w>>1)&1)",
+              {"dims": 1, "parity_x9": {"frame": "1111 + (w>>2)", "v": "2789 - 18*(w&1) - ((w>>1)&1)"}},
+              matcher_id="affine-v1", status="open")
 
     # ── phys_map / li_map (voted + specimen entries) ──────────────────────────────────────────
     pm_path = REPO / "lifters/data/cycloneiv_ep4cgx150_phys_map.json"
