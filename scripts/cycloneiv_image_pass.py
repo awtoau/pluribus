@@ -10,15 +10,12 @@ Subjects (each reduced to a SparsePlane of set CRAM bits):
 Sections (all with the same functions applied to every subject):
   1 LUT masks    decoded for all 104 x 90 x 16 LAB LEs: used-LE count (mask != 0 or LE-used bit),
                  constant / 1-input / small-support fractions, distinct masks, carry-mask cells
-  2 routing      learnt tables (pooled X mod 8) applied to the routing bits of active LABs:
-                 mux reads as zero / one known source / ambiguous / nonzero-unknown
-  3 netlist      sampled LE inputs traced to drivers (cycloneiv_route_decode.Tracer): inputs the
-                 mask depends on that trace to a unique driver, comb loops, driver fan-in
+  2 routing, 3 netlist   removed with the learned-table decoder; pending the clean P2 tracer (#165)
   4 IO           sites whose configuration signature (cycloneiv_io_bits.py) is fully set
-  5 claims       set bits explained by the decode (LUT-mask bits, routing mux bits, IO signatures,
+  5 claims       set bits explained by the decode (LUT-mask bits, IO signatures,
                  bits set in >= STATIC_FRAC of the corpus) vs unclaimed
 
-  python3.15t scripts/cycloneiv_image_pass.py --image PATH --tables tmp/cycloneiv/rl_gx_m8.json
+  python3.15t scripts/cycloneiv_image_pass.py --image PATH
 Log tmp/logs/cycloneiv_image_pass.log (memory: planes are ~1-18 MB, run under a <= 2 GB cgroup)
 """
 import argparse
@@ -36,14 +33,10 @@ sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_geom as cg  # noqa: E402
 import cycloneiv_le_locate as ll  # noqa: E402
-import cycloneiv_route_decode as rd  # noqa: E402
 import cycloneiv_common as ccm  # noqa: E402
 
 log = logging.getLogger("cycloneiv_image_pass")
 STATIC_FRAC = 0.95      # a bit set in this fraction of corpus designs is static configuration
-SAMPLE_TILES = 600      # active LABs sampled for the routing classification
-SAMPLE_LES = 150        # LEs whose input cone is traced
-CONE_CAP = 2500         # nodes per traced cone
 CARRY_TOP = 8           # carry masks = most common masks among corpus arithmetic cells
 
 
@@ -115,86 +108,6 @@ def active_tiles(used, tiles):
     return [t for t, a in zip(tiles, u) if a]
 
 
-def route_classes(dec, plane, geom, tiles, rng):
-    t = dec.tables[0]
-    cats = collections.Counter()
-    groups_read = 0
-    for (x, y) in tiles:
-        cls = ccm.tile_class(geom, x, y, t.col_phase)
-        for key, (mux, pats, (ax, ay)) in dec.groups_in_class(t, cls):
-            if not mux or key[0] in ("LCCOMB", "FF"):
-                continue
-            bits = rd.read_bits(plane, geom, x + ax, y + ay, mux)
-            groups_read += 1
-            if not bits:
-                cats["zero"] += 1
-                continue
-            got = pats.get(bits)
-            cats["unknown" if got is None else "known" if len(got) == 1 else "ambiguous"] += 1
-    return cats, groups_read
-
-
-def netlist_stats(dec, plane, geom, tiles, masks, rng):
-    """Trace sampled LE inputs; loops over LCCOMB -> LCCOMB edges; driver kinds."""
-    tidx = {t: i for i, t in enumerate(tiles)}
-    tr = rd.Tracer(dec, plane, geom)
-    ports = ["DATAA", "DATAB", "DATAC", "DATAD"]
-    res = collections.Counter()
-    why = collections.Counter()
-    drivers = collections.Counter()
-    edges = {}
-    fan = collections.Counter()
-
-    def inputs_of(x, y, le):
-        i = tidx.get((x, y))
-        if i is None:
-            return None
-        m = int(masks[i * 16 + le])
-        dep = support_deps(m)
-        out = []
-        for p, d in zip(ports, dep):
-            if not d:
-                continue
-            got, reason = tr.trace(("LCCOMB", 2 * le, p), x, y)
-            if got is None:
-                res["input_unresolved"] += 1
-                why[reason.split(":")[0]] += 1
-            else:
-                res["input_resolved"] += 1
-                drivers[got[1]] += 1
-                fan[got] += 1
-                out.append(got)
-        return out
-    seeds = [(t, le) for t in tiles for le in range(16) if masks[tidx[t] * 16 + le]]
-    rng.shuffle(seeds)
-    seen, loops = set(), 0
-    for (x, y), le in seeds[:SAMPLE_LES]:
-        stack = [((x, y, le), 0)]
-        onpath = set()
-        order = []
-        # iterative DFS with colouring for cycle detection over comb nodes
-        color = {}
-        todo = [(x, y, le)]
-        while todo and len(seen) < CONE_CAP:
-            node = todo[-1]
-            if node not in color:
-                color[node] = 1
-                if node not in edges:
-                    edges[node] = [(d[3], d[4], d[2] // 2) for d in (inputs_of(*node) or []) if d[1] == "LCCOMB"]
-                    res["nodes_expanded"] += 1
-                seen.add(node)
-                pend = [c for c in edges[node] if color.get(c) is None]
-                todo.extend(pend)
-                for c in edges[node]:
-                    if color.get(c) == 1:
-                        loops += 1
-            else:
-                color[node] = 2
-                todo.pop()
-    res["comb_loops"] = loops
-    return res, why, drivers, fan
-
-
 def support_deps(m):
     dep = []
     for i in range(4):
@@ -250,13 +163,12 @@ def shuffle_control(plane, seed):
     return cc.SparsePlane(np.sort(np.concatenate(keys)).astype(np.int64), nf, nv)
 
 
-def claims(plane, geom, tiles, dec, io_sigs, static_keys):
-    """set bits explained by: LUT-mask + used bit, routing mux positions of every LAB tile, IO
-    signatures, static bits.  -> dict of counts."""
+def claims(plane, geom, tiles, io_sigs, static_keys):
+    """set bits explained by: LUT-mask + used bit, IO signatures, static bits.  -> dict of counts.
+    Routing-mux positions are pending the clean P2 tracer (#165)."""
     keys = plane.keys
     nf, nv = plane.shape
-    hit = {"lut": np.zeros(len(keys), dtype=bool), "route": np.zeros(len(keys), dtype=bool),
-           "io": np.zeros(len(keys), dtype=bool), "static": np.zeros(len(keys), dtype=bool)}
+    hit = {"lut": np.zeros(len(keys), dtype=bool), "io": np.zeros(len(keys), dtype=bool), "static": np.zeros(len(keys), dtype=bool)}
 
     def flag(name, k):
         k = np.unique(k[(k >= 0)])
@@ -267,25 +179,6 @@ def claims(plane, geom, tiles, dec, io_sigs, static_keys):
     for df, dv in ll.DK + [(-8, -1)]:
         f, v = le_positions(geom, tiles, df, dv)
         flag("lut", f * nv + v)
-    t = dec.tables[0]
-    fx = np.array([geom.FX.get(x, -10**6) for x in range(geom.xmax + 1)])
-    by_cls = collections.defaultdict(list)
-    for (x, y) in tiles:
-        by_cls[ccm.tile_class(geom, x, y, t.col_phase)].append((x, y))
-    for cls, tl in by_cls.items():
-        rows = []
-        for key, (mux, pats, (ax, ay)) in dec.groups_in_class(t, cls):
-            for df, dv in mux:
-                rows.append((ax, ay, df + ccm.WF[0], dv + ccm.WV[0]))
-        rows = np.unique(np.array(rows, dtype=np.int64), axis=0) if rows else np.zeros((0, 4), dtype=np.int64)
-        for (x, y) in tl:
-            xs = x + rows[:, 0]
-            ys = y + rows[:, 1]
-            ok = (xs >= 0) & (xs <= geom.xmax) & (ys >= 0) & (ys <= geom.ymax)
-            f = fx[xs[ok]] + rows[ok, 2]
-            v = geom.vy0 + geom.vpitch * ys[ok] + rows[ok, 3]
-            inb = (f >= 0) & (f < nf) & (v >= 0) & (v < nv)
-            flag("route", f[inb] * nv + v[inb])
     for kind, sigs in io_sigs.items():
         for site, bits in sigs.items():
             k = np.array([b[0] * nv + b[1] for b in bits if b[0] < nf and b[1] < nv], dtype=np.int64)
@@ -316,7 +209,6 @@ def static_bits(names):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--image", required=True)
-    ap.add_argument("--tables", default=str(REPO / "tmp" / "cycloneiv" / "rl_gx_m8.json"))
     ap.add_argument("--corpus", type=int, default=6, help="number of held-out corpus designs")
     ap.add_argument("--static-designs", type=int, default=60)
     a = ap.parse_args()
@@ -327,8 +219,6 @@ def main():
         log.addHandler(h)
     geom = cg.load("ep4cgx150")
     tiles = lab_tiles(geom)
-    dec = rd.Decoder([a.tables])
-    rng = random.Random(1)
     all_names = [n for n in cc.designs("gx150_sp_*") if not ccm.split_of(n, "even")]
     names = all_names[:a.corpus]
     # carry masks: most common masks among corpus arithmetic cells (sum_lutc_input = cin)
@@ -354,27 +244,13 @@ def main():
         st, masks, used = lut_stats(name, plane, geom, tiles, carry_masks)
         act = active_tiles(used, tiles)
         log.info("[LAB] active LABs (a used LE): %d of %d", len(act), len(tiles))
-        samp = rng.sample(act, min(SAMPLE_TILES, len(act))) if act else []
-        cats, nread = route_classes(dec, plane, geom, samp, rng)
-        nz = cats["known"] + cats["ambiguous"] + cats["unknown"]
-        log.info("[ROUTE] %s: %d active LABs sampled, %d muxes read: zero %d, known %d, ambiguous %d, "
-                 "nonzero-unknown %d; unknown share of nonzero %.3f; nonzero per LAB %.1f",
-                 name, len(samp), nread, cats["zero"], cats["known"], cats["ambiguous"], cats["unknown"],
-                 cats["unknown"] / max(nz, 1), nz / max(len(samp), 1))
-        res, why, drivers, fan = netlist_stats(dec, plane, geom, tiles, masks, rng)
-        fh = collections.Counter(min(v, 9) for v in fan.values())
-        tot_in = res["input_resolved"] + res["input_unresolved"]
-        log.info("[NET] %s: dependent LE inputs traced %d: resolved to a unique driver %d (%.3f), unresolved %d %s; "
-                 "driver kinds %s; nodes expanded %d; comb back-edges %d; fan-out of seen drivers (1..9+) %s", name, tot_in, res["input_resolved"],
-                 res["input_resolved"] / max(tot_in, 1), res["input_unresolved"], dict(why.most_common(4)),
-                 dict(drivers.most_common(4)), res["nodes_expanded"], res["comb_loops"],
-                 [fh.get(i, 0) for i in range(1, 10)])
+        log.info("[ROUTE]/[NET] pending clean P2 tracer (#165)")
         n, edges, sites = io_stats(plane, io_sigs)
         log.info("[IO] %s: output sites with full signature %d, input sites %d; edges %s", name, n["IOOBUF"],
                  n["IOIBUF"], dict(edges))
-        cl = claims(plane, geom, tiles, dec, io_sigs, stat)
-        log.info("[CLAIM] %s: set bits %d: LUT %d, routing-mux positions %d, IO %d, static %d; claimed (union) "
-                 "%d = %.3f, unclaimed %d = %.3f", name, cl["set_bits"], cl["lut"], cl["route"], cl["io"],
+        cl = claims(plane, geom, tiles, io_sigs, stat)
+        log.info("[CLAIM] %s: set bits %d: LUT %d, IO %d, static %d; claimed (union) "
+                 "%d = %.3f, unclaimed %d = %.3f", name, cl["set_bits"], cl["lut"], cl["io"],
                  cl["static"], cl["claimed"], cl["claimed"] / max(cl["set_bits"], 1), cl["unclaimed"],
                  cl["unclaimed"] / max(cl["set_bits"], 1))
     return 0

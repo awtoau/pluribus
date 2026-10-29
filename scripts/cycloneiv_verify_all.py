@@ -3,12 +3,12 @@
 
 Stages (each a subprocess; a stage fails on rc != 0; BLOCKING stages fail the run):
   1 lut_mask   cycloneiv_lut_check.py   every placed LUT mask decoded from CRAM vs the post-fit .vo (BLOCKING, 100%)
-  2 routing    cycloneiv_route_score.py per-pip score on held-out designs (reported, not blocking yet)
-  3 lifted_sim cycloneiv_lifted_sim_check.py  lifted Verilog vs the post-fit .vo, per (cell, signal) point (BLOCKING)
+  2 routing    removed with the learned tables; returns as the clean P3 gate (#165)
+  3 lifted_sim cycloneiv_lifted_sim_check.py  unavailable, pending clean P2 tracer (#165); not run, not counted
   4 not_lifted the lifter's NOT LIFTED list, printed loudly (M9K, multipliers, PLL, transceivers,
                IO routing, clock tree are never counted as matched)
 
-  python3.15t scripts/cycloneiv_verify_all.py [--tables A.json[,B.json]] [--limit N] [--skip routing]
+  python3.15t scripts/cycloneiv_verify_all.py [--limit N]
 Log tmp/logs/cycloneiv_verify_all.log
 """
 import argparse
@@ -28,7 +28,7 @@ LOG = REPO / "tmp" / "logs" / "cycloneiv_verify_all.log"
 # 3x the measured cold worst case of the stage (measured 2026-10-26 on gx150_sp_* odd half).
 STALL_S = 60
 POLL_S = 5
-OVERALL_S = {"lut_mask": 900, "routing": 2400, "lifted_sim": 3600}
+OVERALL_S = {"lut_mask": 900, "lifted_sim": 3600}
 
 
 def log(msg):
@@ -82,25 +82,16 @@ def run_stage(name, cmd):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tables", default=str(REPO / "tmp" / "cycloneiv" / "rl_gx_m8f.json"))
     ap.add_argument("--limit", type=int, default=0, help="designs per stage (0 = all)")
     ap.add_argument("--skip", default="", help="comma list of stages to skip")
     a = ap.parse_args()
     skip = set(a.skip.split(","))
     py = sys.executable
-    lim = ["--limit", str(a.limit)] if a.limit else []
     results = {}
     if "lut_mask" not in skip:
         rc, _ = run_stage("lut_mask", [py, "scripts/cycloneiv_lut_check.py", "--designs", "gx150_*", "--workers", "2"])
         results["lut_mask"] = (rc, True)
-    if "routing" not in skip:
-        rc, _ = run_stage("routing", [py, "scripts/cycloneiv_route_score.py", "--tables", a.tables,
-                                      "--designs", "gx150_sp_2[0-3]*", "--split", "odd", "--workers", "2"])
-        results["routing"] = (rc, False)
-    if "lifted_sim" not in skip:
-        rc, out = run_stage("lifted_sim", [py, "scripts/cycloneiv_lifted_sim_check.py", "--tables", a.tables,
-                                           "--pattern", "gx150_[sf][pf]*", "--split", "odd", "--jobs", "2"] + lim)
-        results["lifted_sim"] = (rc, True)
+    log("routing: removed with the learned tables (#165); lifted_sim: unavailable, pending clean P2 tracer (#165); neither ran")
     log("NOT LIFTED (never counted as matched): M9K / M144K memories, embedded multipliers, PLL, transceivers, "
         "IO-row routing and pad enables, clock tree, carry chains entering a LAB at LE 0")
     bad = [k for k, (rc, blocking) in results.items() if rc and blocking]
