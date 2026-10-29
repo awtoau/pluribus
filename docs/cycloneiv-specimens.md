@@ -160,3 +160,11 @@ LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58
 ## Raw-diff specimens (forced single-hop)
 
 - Binding rules: [recovery-process.md](recovery-process.md) "Specimen rules for agents".  Tier 0/1 tool: `scripts/cycloneiv_forced.py`.
+
+## LAB core checklist (item A, #141; tool `scripts/cycloneiv_lab_modes.py`)
+
+- [x] LOCAL_LINE sink ports, X10Y10: forced route per (LL index, port); 32 / 64 combinations legal (each LL reaches 2 ports), 480 / 480 pairs honoured, 4 cells per pair, per-port bit sets exactly additive source + sink
+- [x] same at X58Y30, X37Y60, X100Y75: seeded 10% samples, 48 / 48 each match X10Y10 under one (frame, v) offset (dv = 70 * dy)
+- [x] port-only change (`pswap`, 45 pairs): 2 cells off + 2 on, equals the difference of the two full-pair sets
+- [x] second sink on the same LL (`fan`, 45 pairs): diff = 2 cells, subset of the full pair; the other 2 cells (source) identical across sinks per source
+- [ ] strict single-cell isolation (0 / 305 cells so far), LE modes, LE_BUFFER groups, packing flags

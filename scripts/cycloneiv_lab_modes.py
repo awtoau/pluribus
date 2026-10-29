@@ -128,12 +128,18 @@ def multi_pair(tag, lab, src, spec_sinks, base_sinks, meta):
 
 
 def verilog_multi_all(cells, driven):
-    v = "module top(output y);\n  wire u0_o;\n" + CELL.format(mask="0000", name="u0", ports=".combout(u0_o)")
+    """Extra sink cells feed u1's first free port so they keep fan-out (a dangling cell is deleted)."""
     dm = {c: p for c, _, p in driven}
-    for c, _k in cells:
+    extra = [c for c, _k in cells if c != "u1"]
+    free = [x for x in "ABCD" if x != dm.get("u1")]
+    v = ("module top(output y);\n  wire u0_o;\n" + "".join(f"  wire {c}_o;\n" for c in extra)
+         + CELL.format(mask="0000", name="u0", ports=".combout(u0_o)"))
+    for c in extra:
         conn = f".data{dm[c].lower()}(u0_o), " if c in dm else ""
-        v += CELL.format(mask="FFFF", name=c, ports=conn + (".combout(y)" if c == "u1" else ".combout()"))
-    return v + "endmodule\n"
+        v += CELL.format(mask="FFFF", name=c, ports=conn + f".combout({c}_o)")
+    u1 = (f".data{dm['u1'].lower()}(u0_o), " if "u1" in dm else "") + "".join(
+        f".data{free[i].lower()}({c}_o), " for i, c in enumerate(extra))
+    return v + CELL.format(mask="FFFF", name="u1", ports=u1 + ".combout(y)") + "endmodule\n"
 
 
 def lp_ports():
