@@ -22,7 +22,12 @@ REFUTED if: fewer than 4 of 6 predicted cells in the diffs at a LAB, or a predic
 Builds: 3 LABs x (boot + base + 4 variants) = 18, + 2 null builds = 20 (cap 24), <= 6 concurrent.
 Nulls first: renamed design and other seed must give an empty diff.
 
-  python3.15t scripts/cycloneiv_blkrba_hold.py build [--jobs 6]
+ROUND 2 (corners, prediction written before any corner build): same table, same 6 cells per LAB, tile-relative,
+at X1Y1 and X116Y90 (extremes of the LAB array; edge LABs are their own class).  Same refutation rule (< 4 / 6 at a LAB,
+or a predicted cell absent from its knob / present in an unrelated knob).  Null pair at X1Y1 first.  Builds: 2 x 6 + 2 = 14.
+Five scopes then: X22Y40, X30Y20, X50Y45, X1Y1, X116Y90 (X10Y10 / X58Y30 were fit data).
+
+  python3.15t scripts/cycloneiv_blkrba_hold.py build [--jobs 6] [--round 2]
   python3.15t scripts/cycloneiv_blkrba_hold.py analyse [--record]
 Log tmp/logs/cycloneiv_blkrba_hold.log; result tmp/blkrba_hold.json
 """
@@ -41,6 +46,7 @@ import cycloneiv_geom as cg  # noqa: E402
 
 log = logging.getLogger("cycloneiv_blkrba_hold")
 LABS = [(22, 40), (30, 20), (50, 45)]
+CORNERS = [(1, 1), (116, 90)]
 SHIFT = -7
 KNOBS = {"clk": {"clk": "~KA"}, "ena": {"ena": "enap"}, "aclr": {"clr": "clrp"}, "sclr": {"sclr": "sclp"}}
 PRED = {"clk": [(-6, -30)], "ena": [(-8, -30), (-7, -30)], "aclr": [(-1, -32), (0, -32)], "sclr": [(2, -32)]}
@@ -70,8 +76,8 @@ def setup_log():
             lg.addHandler(h)
 
 
-def build(jobs):
-    b = base(NULL_LAB)
+def build(jobs, labs, null_lab):
+    b = base(null_lab)
     nulls = [(b, {**b, "nm": "r"}), (b, {**b, "seed": 2})]
     bh.run_variants([p for pr in nulls for p in pr], min(jobs, 2))
     ok = bh.okvars()
@@ -85,13 +91,13 @@ def build(jobs):
         if n:
             sys.exit("NULL CONTROL FAILED: stop")
     pl = []
-    for lab in LABS:
+    for lab in labs:
         b, vs = variants(lab)
         pl += [b] + list(vs.values())
     bh.run_variants(pl, jobs)
 
 
-def analyse(record):
+def analyse(record, labs):
     g = cg.load("ep4cgx150")
     ctl = bc.named_control(bl.DEFAULT_CSV)
     role_of = {}
@@ -102,7 +108,7 @@ def analyse(record):
     out = {}
     tot_found = 0
     rec = []
-    for lab in LABS:
+    for lab in labs:
         b, vs = variants(lab)
         nb = bh.pname(b)
         row = {}
@@ -135,8 +141,8 @@ def analyse(record):
         tot_found += found_lab >= 4
         log.info("LAB %s: %d / 6 predicted cells found -> %s", lab, found_lab, "ok" if found_lab >= 4 else "REFUTED")
         out[str(lab)] = row
-    log.info("LABs with >= 4 / 6: %d / %d", tot_found, len(LABS))
-    (REPO / "tmp/blkrba_hold.json").write_text(json.dumps(out, indent=1, default=list))
+    log.info("LABs with >= 4 / 6: %d / %d", tot_found, len(labs))
+    (REPO / ("tmp/blkrba_hold.json" if labs == LABS else "tmp/blkrba_hold_corners.json")).write_text(json.dumps(out, indent=1, default=list))
     if record:
         from provenance import evidence_io as E
         from provenance import corpus as CO
@@ -159,12 +165,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=("build", "analyse"))
     ap.add_argument("--jobs", type=int, default=6)
+    ap.add_argument("--round", type=int, default=1)
     ap.add_argument("--record", action="store_true")
     a = ap.parse_args()
     setup_log()
     if a.jobs > 6:
         sys.exit("cap: <= 6 concurrent")
-    build(a.jobs) if a.cmd == "build" else analyse(a.record)
+    labs = LABS if a.round == 1 else CORNERS
+    build(a.jobs, labs, NULL_LAB if a.round == 1 else CORNERS[0]) if a.cmd == "build" else analyse(a.record, labs)
     return 0
 
 
