@@ -612,17 +612,17 @@ def register_cycloneiv(conn, device, commit):
               matcher_id="affine-v1", status="open")
 
     # ── ddb map: vendor-decoded rule, conflict on the LI band ─────────────────────────────────
-    ddb = REPO / "lifters/data/cycloneiv_ep4cgx150_ddb_map.npz"
+    ddb = REPO / "tmp/ddb/stingray4_blockmap.npz"   # cycloneiv_ddb_blockmap.py build (regenerable)
     if ddb.exists():
         z = np.load(ddb)
         n_blocks = int(len(z["block"]))
-        ev_ddb = E.record_decode(conn, "cycloneiv", device, "routing.ddb fan-out decode", {"blocks": n_blocks, "meta": str(z["meta"])[:400]},
-                                 commit, "lifters/data/cycloneiv_ep4cgx150_ddb_map.npz", generator="scripts/cycloneiv_ddb_map.py",
+        ev_ddb = E.record_decode(conn, "cycloneiv", device, "routing.ddb fan-out decode", {"blocks": n_blocks},
+                                 commit, "tmp/ddb/stingray4_blockmap.npz", generator="scripts/cycloneiv_ddb_blockmap.py",
                                  n_objects=n_blocks)
         pid = R.pattern("ddb-group-eq-edge-v1", "mux-input", "asm group k == routing.ddb edge k (block -> destination record)",
                         {"rule": "group k == edge k", "dims": 1}, matcher_id="vendor-ddb-v1", parents=[ev_ddb], status="confirmed")
         sid_w = R.scope("mux-input", "formula", {"matcher": "vendor-ddb-v1", "n_objects": n_blocks, "subset": "wire destinations"})
-        c_w = R.claim("mux-input", "ddb:block->dest:wires", sid_w, {"rule": "group k == edge k", "npz": "lifters/data/cycloneiv_ep4cgx150_ddb_map.npz"},
+        c_w = R.claim("mux-input", "ddb:block->dest:wires", sid_w, {"rule": "group k == edge k", "npz": "tmp/ddb/stingray4_blockmap.npz"},
                       "vendor-decoded", "confirmed", pattern=pid, evidence=[ev_ddb],
                       basis="group k == edge k (A1 + A2, docs/cycloneiv-clean-pipeline.md)")
 

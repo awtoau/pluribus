@@ -11,7 +11,7 @@ input must be a stable, reviewable file); (c) derived → regenerate from the DB
 | `evidence/cycloneiv/cycloneiv_m9k_map{1,2,4,8,9,16}.json` (6) | 1.1 MB | (d) derived map = a measured claim | → `claims.meaning` (subject `M9K:init:w<w>`), verbatim; round trip OK 6/6 | done, same commit |
 | `evidence/cycloneiv/cycloneiv_forced_lab_table.json` | 20 KB | (c)/(d) derived from `forced_lab.json` | → claim `LOCAL_LINE:role-table`, verbatim; round trip OK | done |
 | `tmp/cycloneiv_forced_*.json`, `tmp/cycloneiv_m9k_*.json` (35) | 6.3 MB | copies of the above | tmp is disposable; nothing reads them once the inventory reads the DB | delete at will |
-| `lifters/data/cycloneiv_ep4cgx150_ddb_map.npz` | 7.3 MB | (d) vendor decode output | 2 claims + 1 conflict registered; the per-block table stays a file (1.6 M blocks) | keep: regenerable from routing.ddb by `cycloneiv_ddb_map.py`; move into a `ddb_blocks` table only when a query needs it |
+| `tmp/ddb/stingray4_blockmap.npz` | 7.3 MB | (d) vendor decode output | 2 claims + 1 conflict registered; the per-block table stays a file (1.6 M blocks) | keep: regenerable from routing.ddb by `cycloneiv_ddb_map.py`; move into a `ddb_blocks` table only when a query needs it |
 | `lifters/data/cycloneiv_*_geom.json`, `*_labs.json` | 100 KB | (a)/(d) device geometry | `devices.geometry` carries FX/VY/col_kind; the file stays the source (hand-checked anchors) | keep |
 | `lifters/data/cyclonev_*_clocks.json`, `*.v` models | 110 KB | (a) hand-curated | keep | — |
 | `docs/coverage-history.jsonl` | 6 KB | (d) ledger | `coverage_ledger` table now holds tier × status rows (source `claims` / `inventory-live`); the jsonl line stays the human-readable record and gains a `claims` field | keep both; the table is the queryable copy |

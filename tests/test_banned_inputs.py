@@ -1,22 +1,20 @@
 """Banned inputs of the clean Cyclone IV pipeline (docs/cycloneiv-clean-pipeline.md).
 
 1. The clean tree (lifters/cycloneiv_clean, tests/cycloneiv_clean, scripts/cycloneiv_clean_*.py) must not mention any banned identifier.
-2. Repo-wide: tracked .py files must not mention them either, except under LEGACY_PATHS.  Fill LEGACY_PATHS with the legacy
-   locations once the retirement commit exists (P4); until then the variant is skipped.
+2. Repo-wide: tracked .py files must not mention them either, except under LEGACY_PATHS (retirement P4 done; old code: tag pre-clean-cycloneiv).
 """
 import glob
 import os
 import re
 import subprocess
 
-import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BANNED = ["afx_map", "asm_to_plane_afx", "lab_vx", "Ddb.cm", "HOP_OVERRIDE", "R4_COLTABLE", "COORD_V2", "RELAX_ACTIVE",
           "asm_names", "li_map", "phys_map", "coltable", "EXC4", "cycloneiv_asm_decode", "cycloneiv_phys_trace",
           "cycloneiv_ddb_trace"]
-# TODO(P4): legacy locations allowed to keep banned identifiers after the retirement commit (repo-relative prefixes).
-LEGACY_PATHS = ()
+# repo-relative prefixes allowed to keep banned identifiers (archived code only)
+LEGACY_PATHS = ("debris/",)
 THIS = os.path.join("tests", "test_banned_inputs.py")
 
 
@@ -56,8 +54,6 @@ def test_clean_tree_has_no_banned_identifiers():
 
 
 def test_repo_wide_outside_legacy():
-    if not LEGACY_PATHS:
-        pytest.skip("LEGACY_PATHS empty: retirement commit (P4) not made yet")
     files = [p for p in tracked_py() if p != THIS and not p.startswith(tuple(LEGACY_PATHS))]
     found = hits(files)
     assert not found, "banned identifiers outside the legacy paths:\n" + "\n".join(found)

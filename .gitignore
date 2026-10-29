@@ -102,8 +102,6 @@ corpus/machxo2/coverage/_*.json
 corpus/machxo2/globals/_*.json
 databases/
 
-# vendor-derived (Quartus asm.ddb x routing.ddb) block->wire map: regenerable with scripts/cycloneiv_ddb_trace.py export, never committed
-lifters/data/cycloneiv_ep4cgx150_ddb_map.npz
 
 # Third-party Cyclone IV images: binaries stay local; manifest + README tracked
 !sources/cycloneiv-corpus/
