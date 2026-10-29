@@ -14,6 +14,9 @@ ALL fitting shifts (|df| <= 140) are stored per candidate in the evidence row (n
   cycloneiv_r4_rowparity.py plan --out P
   cycloneiv_r4_relcol.py build --plan P [--nulls]     (builds)
   cycloneiv_r4_rowparity.py analyse --plan P
+
+PREDICTION (Y mod 4, written before the run): at fixed X and fixed (I, rel) the resolved record is a function of Y mod 4 only.
+REFUTED by two rows of the same Y mod 4 class resolving to different records.  plan4 builds 4 rows per class.
 Log tmp/logs/cycloneiv_r4_rowparity.log.
 """
 import argparse
@@ -124,14 +127,14 @@ def cmd_analyse(a):
             continue
         lb = tuple(x["lb"])
         s = G.lb.get((G.vx(lb[1]), lb[2], lb[3]))
-        tvx, tvy = G.vx(X), x["tile"][1]
+        tvx, tvy = G.vx(x["tile"][0]), x["tile"][1]
         onset = set(on)
         cands = []
         for k, d, g in N.candidates(G, s, "R4"):
             fits = N.shifts_fit(g, onset, 140)                     # ALL fitting shifts
             cands.append({"k": k, "rec": int(d), "dir": int(N.z_dir(G, d)), "dx": int(G.P.vx[d]) - tvx, "dy": int(G.P.vy[d]) - tvy,
                           "idx": int(G.Q.index[d]), "n": len(g), "fits": fits})
-        cell = tab.get((X, x["rel"]))
+        cell = tab.get((x["tile"][0], x["rel"]))
         row["cands"] = cands
         row["table"] = cell
         hit = [c for c in cands if cell and c["dx"] == cell[0] and cell[1] in c["fits"]]
@@ -164,18 +167,41 @@ def cmd_analyse(a):
         log.info("evidence rows recorded")
     grp = collections.defaultdict(list)
     for r in rows:
-        if r.get("resolved") and r["set"] == 1:
+        if r.get("resolved") and r["set"] in (1, 4):
             c = r["resolved"]
-            grp[(r["I"], r["rel"], r["tile"][1] % 2)].append((r["tile"][1], (c["dir"], c["idx"], c["dx"], c["dy"])))
+            grp[(r["I"], r["rel"], r["tile"][1] % 4)].append((r["tile"][1], (c["dir"], c["idx"], c["dx"], c["dy"])))
     for k, v in sorted(grp.items()):
-        log.info("set1 (I, rel, parity) %s: %s -> %s", k, sorted(v), "CONSISTENT" if len({x[1] for x in v}) == 1 else "MISS: same-parity rows differ")
+        log.info("set1 (I, rel, Y mod 4) %s: %s -> %s", k, sorted(v), "CONSISTENT" if len({x[1] for x in v}) == 1 else "MISS: same-parity rows differ")
+
+
+def cmd_plan4(a):
+    global X
+    X = a.col
+    av = avail()
+    i, rel = a.i, a.rel
+    ys = sorted(y for (ii, r, y) in av if (ii, r) == (i, rel) and best(av, i, rel, y))
+    want = [int(v) for v in a.rows.split(",")] if a.rows else None
+    arcs = []
+    for c in range(4):
+        cl = [y for y in ys if y % 4 == c]
+        pick = [y for y in want if y in cl] if want else sorted({cl[0], cl[-1], cl[len(cl) // 3], cl[2 * len(cl) // 3]})
+        for y in pick[:a.per]:
+            lb, li = best(av, i, rel, y)
+            arcs.append(dict(mk(i, rel, y, lb, li), set=4))
+    Path(a.out).write_text(json.dumps({"tile": None, "arcs": arcs}))
+    log.info("plan4 X%d I=%d rel=%d: rows %s => %d arcs", X, i, rel, [x["tile"][1] for x in arcs], len(arcs))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("avail", "plan", "analyse"))
+    ap.add_argument("cmd", choices=("avail", "plan", "plan4", "analyse"))
     ap.add_argument("--out")
     ap.add_argument("--plan")
+    ap.add_argument("--col", type=int, default=47)
+    ap.add_argument("--i", type=int, default=0)
+    ap.add_argument("--rel", type=int, default=0)
+    ap.add_argument("--per", type=int, default=4)
+    ap.add_argument("--rows", default="")
     ap.add_argument("--record", action="store_true")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
