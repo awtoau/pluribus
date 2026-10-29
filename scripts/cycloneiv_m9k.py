@@ -184,6 +184,57 @@ def mode_pairs(site=SITE):
     return out
 
 
+# ── mode2: cycloneiv_ram_block directly, EVERY port wired to the same top-level nets in every design, one parameter differs ──
+WY_BASE = {"operation_mode": "single_port", "ram_block_type": "M9K", "logical_ram_name": "ram", "port_a_logical_ram_depth": 512,
+           "port_a_logical_ram_width": 16, "port_a_first_address": 0, "port_a_last_address": 511, "port_a_first_bit_number": 0,
+           "port_a_data_width": 16, "port_a_address_width": 9, "power_up_uninitialized": "false",
+           "port_a_byte_enable_mask_width": 1}
+WY_OUT = dict(WY_BASE, port_a_data_out_clock="clock0")
+# (name, base dict, override, extra qsf lines)
+WY_SPECS = [
+    ("null_rename", WY_BASE, {"logical_ram_name": "ram2"}, []),
+    ("null_seed", WY_BASE, {}, ["set_global_assignment -name SEED 2"]),
+    ("outclk", WY_BASE, {"port_a_data_out_clock": "clock0"}, []),
+    ("outclr", WY_OUT, {"port_a_data_out_clear": "clear0"}, []),
+    ("addrclr", WY_BASE, {"port_a_address_clear": "clear0"}, []),
+    ("rdw_old", WY_BASE, {"port_a_read_during_write_mode": "old_data"}, []),
+    ("byteena", WY_BASE, {"port_a_byte_enable_mask_width": 2, "port_a_byte_size": 8, "port_a_byte_enable_clock": "clock0"}, []),
+    ("cke_in_none", WY_BASE, {"clk0_input_clock_enable": "none"}, []),
+    ("cke_core_none", WY_BASE, {"clk0_core_clock_enable": "none"}, []),
+    ("cke_out_none", WY_OUT, {"clk0_output_clock_enable": "none"}, []),
+    ("cke_in_ena0", WY_BASE, {"clk0_input_clock_enable": "ena0"}, []),
+    ("cke_core_ena0", WY_BASE, {"clk0_core_clock_enable": "ena0"}, []),
+    ("cke_out_ena0", WY_OUT, {"clk0_output_clock_enable": "ena0"}, []),
+    ("wrclk", WY_BASE, {"port_a_write_enable_clock": "clock0"}, []),
+    ("powerup", WY_BASE, {"power_up_uninitialized": "true"}, []),
+]
+WY_BANDS = {"frames": None}
+
+
+def wy_design(prm, extra_qsf, site=SITE):
+    pl = ",\n    ".join(f".{k}({v if isinstance(v, int) else chr(34) + v + chr(34)})" for k, v in prm.items())
+    vals = list(prm.values())
+    ports = [".clk0(clk)", ".ena0(ce0)", ".portaaddr(aa)", ".portadatain(da)", ".portadataout(qa)",
+             f".portabyteenamasks(bea[{prm['port_a_byte_enable_mask_width'] - 1}:0])"]
+    if prm["operation_mode"] != "rom":
+        ports.append(".portawe(we)")
+    if "clear0" in vals:
+        ports.append(".clr0(ac0)")
+    v = ("module top(input clk, input ce0, input ac0, input we, input [8:0] aa, input [15:0] da, input [1:0] bea, output [15:0] qa);\n"
+         f"  cycloneiv_ram_block #(\n    {pl}\n  ) ram (\n    {', '.join(ports)});\nendmodule\n")
+    return v, [f"set_location_assignment {site} -to ram"] + list(extra_qsf)
+
+
+def wy_pairs(site=SITE):
+    out = []
+    st = "" if site == SITE else "_" + site.replace("M9K_", "").lower()
+    for nm, base, ov, xq in WY_SPECS:
+        bk = "o" if base is WY_OUT else "s"
+        out.append((f"gxm9k_w{st}_base_{bk}", f"gxm9k_w{st}_{nm}", {"wy": base, "site": site, "width": 16, "xq": []},
+                    {"wy": dict(base, **ov), "site": site, "width": 16, "xq": xq}, f"wysiwyg knob {nm}"))
+    return out
+
+
 def write_design(name, v, qsf, purpose, mif=None):
     d = CORPUS / name
     if (d / "bitstream.rbf").exists():
@@ -192,7 +243,8 @@ def write_design(name, v, qsf, purpose, mif=None):
     (d / "src" / "top.v").write_text(v)
     if mif is not None:
         (d / "src" / "init.mif").write_text(mif)
-    q = list(qsf) + ["set_global_assignment -name SEED 1", 'set_global_assignment -name FITTER_EFFORT "FAST FIT"']
+    q = list(qsf) + ([] if any("-name SEED" in x for x in qsf) else ["set_global_assignment -name SEED 1"]) + [
+        'set_global_assignment -name FITTER_EFFORT "FAST FIT"']
     ver = re.search(r"quartus-([\d.]+)", toolchain.quartus_bin())
     (d / "design.toml").write_text(
         f'top = "top"\npurpose = "{purpose}"\nexercises = {fz.toml_list(["m9k"])}\n'
@@ -400,6 +452,11 @@ def register():
         so = site_offsets()
         E.record_decode(conn, "cycloneiv", "EP4CGX150", "m9k-site-offsets", {"file": so}, commit, "scripts/cycloneiv_m9k.py site_offsets",
                         generator=gen, kind="derived-table", n_objects=len(so))
+        conn.execute(S.evidence.delete().where(S.evidence.c.name == "m9k-control-cells"))
+        cc_ = control_cells()
+        E.record_decode(conn, "cycloneiv", "EP4CGX150", "m9k-control-cells", {"file": cc_}, commit, "scripts/cycloneiv_m9k.py control_cells",
+                        generator=gen, kind="derived-table", n_objects=len({c for v in cc_["cells_by_knob"].values() for c in v["set"] + v["clear"]}))
+        log.info("control cells %s", cc_)
         laws = fit_laws()
         E.record_decode(conn, "cycloneiv", "EP4CGX150", "m9k-hw-laws", {"file": laws}, commit, "scripts/cycloneiv_m9k.py fit_laws",
                         generator=gen, kind="derived-table", n_objects=len(laws))
@@ -456,13 +513,45 @@ def site_offsets():
     return res
 
 
+CFG_FRAMES = (1103, 1108, 1109, 1110, 1111)    # frames (X23 column) where the isolated control bits sit; others in the band are routing
+
+
+def control_cells():
+    """Knob bits replicated at the 3 mode2 sites: {knob: {"set": [(f,v)], "clear": [(f,v)]}} in X23Y40 coordinates, plus sites."""
+    import cycloneiv_geom as cg
+    g = cg.load(cg.die_of("EP4CGX150"))
+    sites = {"x23_y40": (23, 40), "x65_y40": (65, 40), "x7_y60": (7, 60)}
+    reps = {}
+    for key in sites:
+        suf = "" if key == "x23_y40" else "_" + key + "_n0"
+        reps[key] = json.loads((REPO / "tmp" / f"cycloneiv_m9k_mode216d{suf}.json").read_text())
+
+    def cfg(rep, dfv, which):
+        df, dv = dfv
+        return {(f - df, v - dv) for f, v in map(tuple, rep[which]) if f - df in CFG_FRAMES and 2752 <= v - dv < 2822}
+    out = {}
+    for nm, *_ in WY_SPECS:
+        if nm.startswith("null"):
+            continue
+        sets = {w: None for w in ("only_spec", "only_base")}
+        for w in sets:
+            for key, (x, y) in sites.items():
+                st = "" if key == "x23_y40" else "_" + key + "_n0"
+                off = (g.FX[x] - g.FX[23], g.vpitch * (y - 40))
+                c = cfg(reps[key][f"gxm9k_w{st}_{nm}"], off, w)
+                sets[w] = c if sets[w] is None else sets[w] & c
+        if sets["only_spec"] or sets["only_base"]:
+            out[nm] = {"set": sorted(sets["only_spec"]), "clear": sorted(sets["only_base"])}
+    return {"cells_by_knob": out, "sites": sorted(sites.values())}
+
+
 def group_key(pr, setname, tag):
     """(json file, width, map file | None) a pair belongs to."""
     b, sp, kb = pr[0], pr[1], pr[2]
     w = kb["width"]
     site = kb.get("site", SITE)
     st = "" if site == SITE else "_" + site.replace("M9K_", "").lower()
-    if setname in ("rand", "bincode", "data", "p0", "mode", "sites", "sites2"):
+    if setname in ("rand", "bincode", "data", "p0", "mode", "mode2", "sites", "sites2"):
         kind = "rand" if setname in ("sites", "sites2") else setname
     else:
         kind = "hwbin" if re.search(r"_k\d+$", sp) else "hwrand" if "R" in sp.split("_")[1] else "hwprobe"
@@ -541,6 +630,8 @@ def main():
                  + hw_pairs(w, hw_probe_items(w), a.site, tag)]
     elif a.set == "mode":
         pairs = mode_pairs(a.site)
+    elif a.set == "mode2":
+        pairs = wy_pairs(a.site)
     elif a.set == "sites2":
         pairs = [x for site in SITES2 for x in rand_pairs(9, 1, site)]
     elif a.set == "sites":
@@ -557,7 +648,9 @@ def main():
     if a.cmd in ("gen", "build"):
         for b, sp, kb, ks, purpose in pairs:
             for nm, kw, pu in ((b, kb, purpose + " (base)"), (sp, ks, purpose)):
-                if kw.get("mode"):
+                if kw.get("wy"):
+                    write_design(nm, *wy_design(kw["wy"], kw["xq"], kw["site"]), pu)
+                elif kw.get("mode"):
                     write_design(nm, *mode_design(kw["mode"], kw["site"]), pu, mode_mif(kw["mode"]))
                 elif kw.get("hw"):
                     v, q, mif = hw_design(kw["width"], kw["depth"], kw.get("ones", ()), kw.get("site", SITE))

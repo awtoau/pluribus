@@ -67,6 +67,7 @@ pivot). Tooling: `scripts/cycloneiv_specimens.py` (gen / build / solve / verify)
   X-mod-8 class; never generalise an interior pattern to an edge tile without a verifying
   specimen there. Corners doubly so.
 - Coverage is reported as its own line: edge tiles touched / total, bonded pins touched / total.
+- Sampling, not enumeration (Dan, 2026-10-29): per area test the four corners + a seeded centre sample, and a few points along each edge; enumerate an area only on a miss. See recovery-process.md "Patterns and certainty" (sampling plan). The "every edge LAB tile / every bonded pin" sweeps above are superseded by this unless a miss demands them.
 
 ## Generalisation + verification
 
@@ -150,6 +151,19 @@ LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58
 - Read-during-write OLD_DATA (port A): clears (1110,2819) only.
 - Zero cells differ (parameter has no cram effect in this flow): cke_out bypass, address/input-data/write-control aclr, power-up uninitialised, mixed-port RDW OLD_DATA, port-B clock-enable output bypass.
 - Port-set changes (ROM, simple dual, true dual, input clock-enable bypass, byte enable, output aclr, RDW DONT_CARE, address-register clock 1) move 20-60 bits in the tile band plus routing: not isolated; needs per-pin routing specimens (ports checklist).
+
+## M9K control knobs, WYSIWYG pairs (#141)
+
+- `cycloneiv_ram_block` direct, ports legal for the mode only, one parameter per pair, x16 single-port, site X23Y40; replicated at X65Y40 and X7Y60 via the offset rule.
+- Null control: instance rename = 0 bits. A fitter seed change is NOT a null (about 755 bits move: placement/routing).
+- Isolated cells (frames 1103, 1108..1111; other band bits are routing and vary with the port set):
+  - output register (`port_a_data_out_clock` none -> clock0): clears (1109,2819), (1110,2820).
+  - read-during-write old_data: clears (1110,2819).
+  - address clear (`port_a_address_clear` clear0): sets (1109,2821); clr0 in use clears (1103,2790).
+  - output clock enable ena0 on a registered output: sets (1103,2786).
+- Zero bits: `clk0_{input,core,output}_clock_enable` none (default), `port_a_write_enable_clock`, `power_up_uninitialized`.
+- Not isolated (routing moves with the port set): byte enable, ena0 as input/core enable, dual/bidir/ROM modes (ROM and dont_care refused by the atom without further ports).
+- Open: port pins (one pin, one far end per build).
 
 ## Cost
 

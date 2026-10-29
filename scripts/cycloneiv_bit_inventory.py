@@ -60,7 +60,9 @@ CLASSES = [  # id, name, evidence tier
     ("4a", "periphery frames 1..36 (IO ring, clocks, PLL, misc)", "unknown"),
     ("4f", "M9K data cells at sites with an exact offset check", "verified"),
     ("4g", "M9K data cells at the other sites (per-site offset rule)", "sampled"),
-    ("4b", "M9K columns (8): cells outside the data tables (mode/control/other)", "unknown"),
+    ("4h", "M9K control cells (knob pairs) at the sites where measured", "measured"),
+    ("4i", "M9K control cells at the other sites (offset rule)", "predicted"),
+    ("4b", "M9K columns (8): cells outside the data tables and the control cells found", "unknown"),
     ("4c", "multiplier columns (4)", "unknown"),
     ("4d", "IOL / IOR columns (+ 4 frames before col 0)", "unknown"),
     ("4e", "IO row tiles (y=0, y=91) of LAB columns", "unknown"),
@@ -161,6 +163,26 @@ def m9k_data_cells(g, nfr):
     return np.concatenate(ver), np.concatenate(evi), ok_sites
 
 
+def m9k_control_cells(g, nfr):
+    """(measured flat, predicted flat): control cells found by knob pairs, in measured sites vs the offset rule elsewhere."""
+    import sqlite3
+    import dbtools
+    conn = sqlite3.connect(f"file:{dbtools.family_db('cycloneiv')}?mode=ro", uri=True)
+    row = conn.execute("select result from evidence where family='cycloneiv' and name='m9k-control-cells'").fetchone()
+    conn.close()
+    if not row:
+        return np.zeros(0, np.int64), np.zeros(0, np.int64)
+    d = json.loads(row[0])["file"]
+    cells = np.array(sorted({tuple(c) for v in d["cells_by_knob"].values() for c in v["set"] + v["clear"]}), np.int64)
+    meas = {tuple(x) for x in d["sites"]}
+    m, p = [], []
+    for x in sorted(c for c in g.kind if g.kind[c] == "M9K"):
+        for y in range(1, g.ymax):
+            flat = (cells[:, 0] + g.FX[x] - g.FX[23]) * NV + cells[:, 1] + g.vpitch * (y - 40)
+            (m if (x, y) in meas else p).append(flat)
+    return np.concatenate(m), np.concatenate(p)
+
+
 LEDGER = REPO / "docs/coverage-history.jsonl"
 # Fallback tier label per class when the DB holds no claims (verified = vendor-oracle compare, evidence =
 # mapping without per-bit oracle, unknown = nothing; 5a split by the header counts). With claims present the
@@ -170,9 +192,12 @@ LEDGER = REPO / "docs/coverage-history.jsonl"
 #   sampled    = verified-by-sampling (pattern, >= N scopes incl. extremes, 0 refutations) | predicted = pattern-predicted, below that bar
 #   decoded    = decoded-untested (vendor decode, nothing tested at the cell) | suspect / refuted = a pattern with a miss / contradicted
 # Patterns are revocable: a miss moves the class to suspect/refuted and its bits out of the verified tiers.
-TIER_KEYS = ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown")
+# projected = unknown cells set in NONE of the held bitstreams (pattern-predicted unused, revocable: one design that sets
+# the cell moves it back to unknown); shown beside unknown, never merged. Bitmap: scripts/cycloneiv_ever_set.py.
+TIER_KEYS = ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown", "projected")
+UNKNOWN_CLASSES = ("4a", "4b", "4c", "4d", "4e", "5c", "6")
 LEDGER_TIER = {"1a": "verified", "5b": "verified", "4f": "measured", "3": "measured", "5d": "measured",
-               "4g": "sampled", "3t": "predicted", "1c": "predicted", "2a": "decoded", "2b": "decoded", "1b": "suspect"}
+               "4g": "sampled", "4h": "measured", "4i": "predicted", "3t": "predicted", "1c": "predicted", "2a": "decoded", "2b": "decoded", "1b": "suspect"}
 BASIS = {  # class -> (what backs it, sample n / misses)
     "1a": ("LUT mask vs Quartus post-fit netlist (oracle compare)", "301 designs, 5,354,496 bits / 0 miss"),
     "1b": ("pattern-predicted rule from LE positions; 14 misses on one design, claim status suspect", "1,018 LEs / 14 miss"),
@@ -183,6 +208,8 @@ BASIS = {  # class -> (what backs it, sample n / misses)
     "3t": ("pattern ll-translate-v1 fitted at X10Y10, confirmed at 3 other LABs; below the 2-D bar (N=5); edge rows/columns outside scope", "4 LABs x 240 pairs / 0 miss"),
     "4f": ("measured: M9K data cells at sites with an exact random-init diff", "112 sites / 0 miss"),
     "4g": ("verified-by-sampling: M9K per-site (frame,v) offset rule, all 8 columns, rows 1..90 incl. extremes", "120 site checks / 0 miss"),
+    "4h": ("M9K knob pairs (output register, address clear, read-during-write, output clock enable) replicated at 3 sites", "3 sites / 0 miss, null rename = 0 bits"),
+    "4i": ("same cells at the other sites by the per-site offset rule; 3 positions, below the 2-D bar (N=5)", "3 sites / 0 miss"),
     "5a": ("header: sync+CRC verified; format fields and constants observed; option bits unknown", "-"),
     "5b": ("CRC-16 recomputed over the frame data", "6,154 frames"),
     "5d": ("constant 0xFF fill per the documented format", "-"),
@@ -206,6 +233,8 @@ def record(out, hdr_ver, hdr_known, hdr_unk, commit=None, ts=None, source="live"
         else:
             tier = LEDGER_TIER.get(r["id"], "unknown")
             tv = {tier: t}
+            if r["id"] in UNKNOWN_CLASSES:
+                tv = {"projected": r.get("projected", 0), "unknown": t - r.get("projected", 0)}
         assert sum(tv.values()) == t, r["id"]
         classes.append(dict(id=r["id"], name=r["name"], tier_label=r["tier"], die_bits=t,
                             **{k: tv.get(k, 0) for k in TIER_KEYS}, image_set=r["set"],
@@ -214,7 +243,7 @@ def record(out, hdr_ver, hdr_known, hdr_unk, commit=None, ts=None, source="live"
     if dirty is None:
         dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
     line = dict(ts=ts or datetime.datetime.now().astimezone().isoformat(timespec="seconds"), commit=commit,
-                subject=git("log", "-1", "--format=%s", commit), dirty=dirty, source=source, die_bits=out["die_bits"], **{k: out[k] for k in TIER_KEYS}, image_set_total=out["set_total"], classes=classes)
+                subject=git("log", "-1", "--format=%s", commit), dirty=dirty, source=source, die_bits=out["die_bits"], **{k: out[k] for k in TIER_KEYS}, image_set_total=out["set_total"], ever_set_n=out.get("ever_set_n"), classes=classes)
     assert sum(line[k] for k in TIER_KEYS) == line["die_bits"]
     # tier x status per class from the claims table (real rows only); also mirrored into coverage_ledger
     import evidence_io_bridge as eb
@@ -376,6 +405,9 @@ def run(a):
     m9k_ver, m9k_evi, m9k_sites = m9k_data_cells(g, nfr)
     inv.claim(m9k_ver, "4f")
     inv.claim(m9k_evi, "4g")
+    c_meas, c_pred = m9k_control_cells(g, nfr)
+    inv.claim(c_meas, "4h")
+    inv.claim(c_pred, "4i")
     log.info("M9K data: %d sites, verified-check x9 %d / x1-only %d / rule-only %d; cells verified %d, predicted %d", len(m9k_sites),
              sum(v == "x9" for v in m9k_sites.values()), sum(v == "x1" for v in m9k_sites.values()),
              sum(v is None for v in m9k_sites.values()), len(m9k_ver), len(m9k_evi))
@@ -419,10 +451,28 @@ def run(a):
     # header frame split (docs/cycloneiv-bitstream.md "Format"): sync+CRC16 verified 24; flag/length/family/variant 41
     # known; lanes 5-7 constant 1 (120) and 0xFF fill (6024) constant; option bits 159 unknown
     HDR_VER, HDR_KNOWN, HDR_UNK = 24, 41 + 120 + 6024, 159
+    ever = REPO / "databases" / "cycloneiv" / "ever_set.npy"
+    ever_n = None
+    if ever.exists():
+        import sqlite3
+        import dbtools
+        seen = np.unpackbits(np.load(ever, mmap_mode="r"))[:nfr * NV].astype(bool)
+        c_ = sqlite3.connect(f"file:{dbtools.family_db('cycloneiv')}?mode=ro", uri=True)
+        meta = json.loads(c_.execute("select result from evidence where name='ever-set-bitmap'").fetchone()[0])["file"]
+        c_.close()
+        ever_n = meta["n_designs"]
+        for r_ in rows:
+            if r_["id"] in UNKNOWN_CLASSES:
+                r_["projected"] = int(((inv.cls == CID[r_["id"]]) & ~seen).sum())
+                BASIS[r_["id"]] = (f"geometry-located region, no decoder; {r_['projected']:,} of its bits are set in none of {ever_n:,} held designs "
+                                   f"(projected unused, pattern-predicted, revocable); the rest are set in some design (live unknown)",
+                                   f"{ever_n:,} designs / 0 set the projected bits")
     tot_t = dict.fromkeys(TIER_KEYS, 0)
     for r_ in rows:
         if r_["id"] == "5a":
             tot_t["verified"] += HDR_VER; tot_t["measured"] += HDR_KNOWN; tot_t["unknown"] += HDR_UNK
+        elif r_["id"] in UNKNOWN_CLASSES:
+            tot_t["projected"] += r_.get("projected", 0); tot_t["unknown"] += r_["total"] - r_.get("projected", 0)
         else:
             tot_t[LEDGER_TIER.get(r_["id"], "unknown")] += r_["total"]
     assert sum(tot_t.values()) == die_bits, tot_t
@@ -463,7 +513,7 @@ def run(a):
     n_ll = len(tiles)
     moved_lab = [x for x in moved if g.kind[x] == "LAB"]
     out = dict(image_set_bits_in_plane=int(len(keys)), header_set=hdr_set, crc_set=crc_set, die_bits=die_bits,
-               set_total=set_all, rows=rows, **tot_t,
+               set_total=set_all, rows=rows, ever_set_n=ever_n, **tot_t,
                fired_groups=int(len(gids)), blocks=int(dec.nblocks),
                asm_entries=int(len(dec.gsize)), asm_entries_dropped=n_drop, asm_bits_unplaced=int(len(dpos)),
                afx_moved_columns=moved, afx_moved_lab_columns=moved_lab, specimen_labs=pats, specimen_cells_per_lab=len(universe),

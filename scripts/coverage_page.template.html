@@ -5,15 +5,15 @@
 /* Layout: headline tiles, then four chart sections, each with its exact-number table beneath. */
 :root{
   --bg:#f6f7f9; --panel:#ffffff; --fg:#14171c; --muted:#4f5663; --line:#d9dde3; --grid:#e8ebef;
-  --ver:#2a78d6; --mea:#1f9d8f; --sam:#5aa832; --pre:#8a94a6; --dec:#eda100; --sus:#d64545; --ref:#8b1e1e; --leg:#c9b27a; --unk:#e87ba4; --mix:#6250d6;
+  --ver:#2a78d6; --mea:#1f9d8f; --sam:#5aa832; --pre:#8a94a6; --dec:#eda100; --sus:#d64545; --ref:#8b1e1e; --leg:#c9b27a; --pro:#f3cadb; --unk:#e87ba4; --mix:#6250d6;
   --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#101215; --panel:#181b20; --fg:#eceef1; --muted:#aab0ba; --line:#2d323a; --grid:#242830;
-  --ver:#3987e5; --mea:#37b8a8; --sam:#7bc653; --pre:#9aa3b3; --dec:#c98500; --sus:#ea6a6a; --ref:#b04040; --leg:#a8935c; --unk:#d55181; --mix:#9085e9; color-scheme:dark}}
+  --ver:#3987e5; --mea:#37b8a8; --sam:#7bc653; --pre:#9aa3b3; --dec:#c98500; --sus:#ea6a6a; --ref:#b04040; --leg:#a8935c; --pro:#8a4a62; --unk:#d55181; --mix:#9085e9; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#101215; --panel:#181b20; --fg:#eceef1; --muted:#aab0ba; --line:#2d323a; --grid:#242830;
-  --ver:#3987e5; --mea:#37b8a8; --sam:#7bc653; --pre:#9aa3b3; --dec:#c98500; --sus:#ea6a6a; --ref:#b04040; --leg:#a8935c; --unk:#d55181; --mix:#9085e9; color-scheme:dark}
+  --ver:#3987e5; --mea:#37b8a8; --sam:#7bc653; --pre:#9aa3b3; --dec:#c98500; --sus:#ea6a6a; --ref:#b04040; --leg:#a8935c; --pro:#8a4a62; --unk:#d55181; --mix:#9085e9; color-scheme:dark}
 body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;
   padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 main{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
@@ -26,7 +26,7 @@ h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
 .tile .v{font-family:var(--mono);font-size:30px;font-weight:500;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px}
 .tile .m{font-size:12px;color:var(--muted);font-family:var(--mono)}
 .sw{display:inline-block;width:12px;height:12px;border-radius:2px;flex:none}
-.ver{background:var(--ver)}.mea{background:var(--mea)}.sam{background:var(--sam)}.pre{background:var(--pre)}.dec{background:var(--dec)}.sus{background:var(--sus)}.ref{background:var(--ref)}.leg{background:var(--leg)}.unk{background:var(--unk)}.mix{background:var(--mix)}
+.ver{background:var(--ver)}.mea{background:var(--mea)}.sam{background:var(--sam)}.pre{background:var(--pre)}.dec{background:var(--dec)}.sus{background:var(--sus)}.ref{background:var(--ref)}.leg{background:var(--leg)}.pro{background:var(--pro)}.unk{background:var(--unk)}.mix{background:var(--mix)}
 section{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
@@ -102,7 +102,7 @@ const TYPES=[
  {k:"clk",n:"LAB clock polarity",ids:["1c"]},
  {k:"asm",n:"asm routing cells",ids:["2a","2b"],flag:1},
  {k:"ll",n:"LOCAL_LINE specimen bits",ids:["3","3t"]},
- {k:"m9k",n:"M9K",ids:["4f","4g","4b"]},
+ {k:"m9k",n:"M9K",ids:["4f","4g","4h","4i","4b"]},
  {k:"mul",n:"Multiplier",ids:["4c"]},
  {k:"io",n:"IO (IOL/IOR + IO rows)",ids:["4d","4e"]},
  {k:"per",n:"Periphery",ids:["4a"]},
@@ -117,9 +117,10 @@ const TIERS=[["ver","verified","oracle-verified: compared claim-for-claim agains
  ["dec","decoded-untested","read from the vendor decode; nothing tested at the cell"],
  ["sus","suspect","a pattern with a recorded miss or a conflict; revoked from the verified tiers until audited"],
  ["ref","refuted","contradicted by a specimen inside its scope"],
- ["unk","unknown","nothing attributes a meaning"]];
-const FIELD={ver:"verified",mea:"measured",sam:"sampled",pre:"predicted",dec:"decoded",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence"};
-const K=["ver","mea","sam","pre","dec","sus","ref","unk","leg"],KN={ver:"verified",mea:"measured",sam:"verified-by-sampling",pre:"pattern-predicted",dec:"decoded-untested",sus:"suspect",ref:"refuted",unk:"unknown",leg:"evidence (older runs, unsplit)"};
+ ["unk","unknown, set in some design (live)","nothing attributes a meaning, and some held bitstream sets the cell"],
+ ["pro","unknown, never set in n designs (projected unused)".replace("n designs",((DATA.ledger.filter(r=>r.ever_set_n).pop()||{}).ever_set_n||"n")+" designs"),"nothing attributes a meaning and no held bitstream sets the cell: pattern-predicted unused, revocable (one design that sets it moves it back to live unknown)"]];
+const FIELD={ver:"verified",mea:"measured",sam:"sampled",pre:"predicted",dec:"decoded",sus:"suspect",ref:"refuted",unk:"unknown",pro:"projected",leg:"evidence"};
+const K=["ver","mea","sam","pre","dec","sus","ref","unk","pro","leg"],KN={ver:"verified",mea:"measured",sam:"verified-by-sampling",pre:"pattern-predicted",dec:"decoded-untested",sus:"suspect",ref:"refuted",unk:"unknown, set in some design (live)",pro:"unknown, never set in "+((DATA.ledger.filter(r=>r.ever_set_n).pop()||{}).ever_set_n||"n")+" designs (projected unused)",leg:"evidence (older runs, unsplit)"};
 const val=(o,k)=>o[FIELD[k]]||0;
 const ckey=c=>K.find(k=>val(c,k)===c.die_bits&&c.die_bits>0)||"unk";
 function tip(e,html){const t=$("tip");t.innerHTML=html;t.style.display="block";
@@ -181,7 +182,7 @@ function tipRow(r,s,segs){return `<b>${s.hash}</b> ${date(s.ts)} (${src(r)})<br>
   el(svg,"text",{x:cx,y:H-24,"text-anchor":"middle"},w.slice(13));
   if(!byHash[s.hash])el(svg,"text",{x:cx,y:H-10,"text-anchor":"middle"},"no data")}});
  $("t1").innerHTML=`<tr><th class="l">Commit</th><th class="l">Date</th><th class="l">Subject</th><th class="l">Source</th>${K.map(k=>`<th>${KN[k]}</th>`).join("")}<th>Die bits</th></tr>`+
- S.map(s=>{const r=byHash[s.hash];if(!r)return `<tr><td class="mono">${s.hash}</td><td class="mono">${date(s.ts)}</td><td class="l">${s.subject}</td><td class="l" colspan="10">no data point: ${s.why_missing}</td></tr>`;
+ S.map(s=>{const r=byHash[s.hash];if(!r)return `<tr><td class="mono">${s.hash}</td><td class="mono">${date(s.ts)}</td><td class="l">${s.subject}</td><td class="l" colspan="11">no data point: ${s.why_missing}</td></tr>`;
   return `<tr><td class="mono">${s.hash}</td><td class="mono">${date(s.ts)}</td><td class="l">${s.subject}</td><td class="l">${src(r)}${r.dirty?" (tree dirty)":""}</td>${K.map(k=>val(r,k)).map(v=>`<td>${pc(v,r.die_bits)}<br>${fmt(v)}</td>`).join("")}<td>${fmt(r.die_bits)}</td></tr>`}).join("");
 })();
 
@@ -235,9 +236,9 @@ function hbars(svg,items,total,tierKeys,tipFn,pcOf){
  $("s4sub").textContent=`${fmt(tot)} set bits (plane, header, CRC bytes, pre/post), measured at ${live.commit.slice(0,9)} on ${date(live.ts)}. Percent is of the image's set bits.`;
  hbars($("c4"),items,tot,[...K,"mix"],it=>`<b>${it.n}</b>${it.flag?" (decoded, untested)":""}<br>${fmt(it.total)} set bits = ${pc(it.total,tot)} of image<br>${K.map(k=>KN[k]+" "+fmt(it.seg[k])).join(" · ")} · header ${fmt(it.seg.mix)}`,v=>pc(v,tot));
  $("t4").innerHTML=`<tr><th class="l">Type</th><th>Set bits</th><th>% of image</th>${K.map(k=>`<th>${KN[k]}</th>`).join("")}<th>Header (mixed)</th></tr>`+items.map(it=>`<tr><td class="l">${it.n}${it.flag?" †":""}</td><td>${fmt(it.total)}</td><td>${pc(it.total,tot)}</td>${K.map(k=>`<td>${fmt(it.seg[k])}</td>`).join("")}<td>${fmt(it.seg.mix)}</td></tr>`).join("")+
-  `<tr><th class="l">Total</th><th>${fmt(tot)}</th><th>100%</th>${K.map(k=>`<th>${fmt(IS[k])}</th>`).join("")}<th>${fmt(ih)}</th></tr><tr><td class="l" colspan="12">† decoded, untested. Measured includes the 728 constant pre/post bits.</td></tr>`;
+  `<tr><th class="l">Total</th><th>${fmt(tot)}</th><th>100%</th>${K.map(k=>`<th>${fmt(IS[k])}</th>`).join("")}<th>${fmt(ih)}</th></tr><tr><td class="l" colspan="13">† decoded, untested. Measured includes the 728 constant pre/post bits.</td></tr>`;
 })();
-{ const rows=live.classes.map(c=>{const k=c.id==="5a"?"mixed":ckey(c);return `<tr><td class="mono">${c.id}</td><td class="l">${c.name}</td><td>${fmt(c.die_bits)}</td><td class="l"><i class="sw ${k==="mixed"?"mix":k}"></i> ${k==="mixed"?"mixed":KN[k]}</td><td class="l">${c.basis||""}<br><span class="mono">DB claims: ${c.tiers?Object.entries(c.tiers).map(([a,b])=>a+" "+fmt(b)).join(", "):"none"}</span></td><td class="l">${c.sample||""}</td></tr>`}).join("");
+{ const rows=live.classes.map(c=>{const k=c.id==="5a"?"mixed":ckey(c);return `<tr><td class="mono">${c.id}</td><td class="l">${c.name}</td><td>${fmt(c.die_bits)}</td><td class="l">${K.filter(x=>val(c,x)>0).map(x=>`<i class="sw ${x}"></i> ${KN[x]}${val(c,x)<c.die_bits?" "+fmt(val(c,x)):""}`).join("<br>")}</td><td class="l">${c.basis||""}<br><span class="mono">DB claims: ${c.tiers?Object.entries(c.tiers).map(([a,b])=>a+" "+fmt(b)).join(", "):"none"}</span></td><td class="l">${c.sample||""}</td></tr>`}).join("");
  $("t5").innerHTML=`<tr><th>Class</th><th class="l">Name</th><th>Bits</th><th class="l">Tier</th><th class="l">What backs it</th><th class="l">Sample n / misses</th></tr>`+rows;
 }
 (function(){const P=DATA.progress;if(!P||!P.rows.length){$("t0").innerHTML="<tr><td>no progress rows yet</td></tr>";return}

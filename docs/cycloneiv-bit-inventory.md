@@ -20,7 +20,8 @@ Names are the claim tiers/statuses of provenance-and-feedback.md; each inventory
 - **pattern-predicted** = a rule fitted to measured parents, below the sampling bar (3t: ll-translate-v1, 4 LABs confirmed, 2-D law needs 5; 1c statistical fit).
 - **decoded-untested** = read from the vendor decode, nothing tested at the cell (2a, 2b).
 - **suspect / refuted** = a pattern with a recorded miss / contradicted by a specimen in scope (1b: 14 misses in 1,018 LEs).
-- **unknown** = nothing attributes a meaning.
+- **unknown (live)** = nothing attributes a meaning and at least one held bitstream sets the cell.
+- **unknown, never set in n designs (projected unused)** = nothing attributes a meaning and none of the n held GX150 bitstreams (corpus builds + GX150 third-party images + specimens; `scripts/cycloneiv_ever_set.py`, bitmap `databases/cycloneiv/ever_set.npy`) sets it. Pattern-predicted and revocable: one design that sets the cell moves it back to live unknown. Shown beside unknown, never merged. Other-device images (EP4CE) have another plane and are not counted.
 - Ledger rows from before 2026-10-29 carry a single `evidence` bucket (unsplit); newer rows carry `verified, measured, sampled, predicted, decoded, suspect, refuted, unknown`. Old rows are not migrated.
 
 ## (A) Die-wide TOTAL bits, (B) image SET bits
@@ -44,7 +45,7 @@ Names are the claim tiers/statuses of provenance-and-feedback.md; each inventory
 | 5d | preamble + postamble | constant | 728 | 0.00 | 728 |
 | 6 | unclassified, LAB-column cells | unknown | 11,188,995 | 28.38 | 601,552 |
 
-- Die-wide, run 2026-10-29 13:52 (+10:00): verified 2,494,648 (6.33 %); measured 1,003,301 (2.54 %); verified-by-sampling 5,402,688 (13.70 %); pattern-predicted 2,610,914 (6.62 %); decoded-untested 7,344,838 (18.63 %); suspect 149,760 (0.38 %); refuted 0; unknown 20,418,867 (51.79 %). Class table with basis and sample n: `reports/coverage.html` section 5 and the inventory log.
+- Die-wide, run 2026-10-29 14:18 (+10:00), 3,448 held GX150 bitstreams: verified 2,494,648 (6.33 %); measured 1,003,319 (2.54 %); verified-by-sampling 5,402,688 (13.70 %); pattern-predicted 2,615,216 (6.63 %); decoded-untested 7,344,838 (18.63 %); suspect 149,760 (0.38 %); refuted 0; unknown, set in some design (live) 1,845,493 (4.68 %); unknown, never set (projected unused) 18,569,054 (47.10 %). Class table with basis and sample n: `reports/coverage.html` section 5 and the inventory log.
   - Header split used: 24 bits verified (sync + CRC-16), 6,185 known/constant (flag, length, family, lanes 5-7, 0xFF fill), 159 option bits unknown (docs/cycloneiv-bitstream.md "Format").
 - Image set bits: verified-class 701,845 (31.4 %); other-evidence 776,464 (34.7 %); unknown-class 752,809 (33.6 %); header/pre/post 7,008.
 - Not in the partition: 1,506,513 asm entries (261,850 distinct asm bits) have no plane cell (outside every column band). Placed asm cells: 7,359,058 of 51.6 M entries.
