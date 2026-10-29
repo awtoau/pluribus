@@ -103,7 +103,7 @@ class Phys:
 
     # -- blocks -------------------------------------------------------------------------
     def load_blocks(self):
-        path = os.path.join(WORK, f"{DIE}_blocks.npz")
+        path = os.path.join(WORK, f"{DIE}_blocks{D.COORD_TAG}.npz")
         if not os.path.exists(path):
             self.build_blocks(path)
         z = np.load(path, allow_pickle=True)

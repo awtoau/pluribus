@@ -122,3 +122,18 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Variant (diagnostic, `PLURIBUS_R4_COLTABLE_WINDOW_RELS=3`: rel +3 stays on the window resolver): LI wrong 4,441 (+137), C4 wrong 2,537 (+573): also rises.
 - Remaining hops without a cell: 926 (X < 15 or X >= 90, rel +4 238, rel 0 258, rel -1 233, rel +3 190).
 - C16 wrong (design gx150_rb_079): dest C16 at tile X42 Y60; chain DRV FF X41 Y76 -> LE_BUFFER X41 Y76 -> R4 X42 Y76 -> C16. The table resolves the R4 to the record at vx 74 vy 76 (index 3, in the C16 fan-in); the C16 mux fires the C4 at vx 74 vy 74 (index 18). With the resolver only (no frame shift, `PLURIBUS_R4_COLTABLE=2`) the same wrong appears; flag off counts the hop missing because the R4 above it is ambiguous. C16 matches 0 of 4,881 in every mode: pre-existing C16 mis-attribution revealed by the changed upstream resolution, not a table shift effect. The R4 record could still be wrong; not separable here.
+
+## Coordinate model v2 (#162/#165, 2026-10-29, `scripts/cycloneiv_coordv2_validate.py`, flag `PLURIBUS_COORD_V2`, default OFF)
+- Model: band base of LAB column X = afx[115 - vx(X)] (F1); every group entry mirrors about the SOURCE record's LAB column: plane frame = FX[Xs] + ABASE[Xs] + 17 - asm frame (F3). Records off a LAB column keep band placement. `prepare` under the flag writes `stingray4_decv2_*` (blocks rebuilt), `stingray4_blocksv2.npz`, cache tag `_cv2`.
+- Prediction (docstring, before the run): >= 383 / 399 arcs with a unique hit, no free shift, no table. HELD: 383 / 399 (96.0 %), 0 multi; rel -1 85/96, 0 102/102, +3 111/111, +4 85/90. Unique record equals the table's resolved record in 363 / 363; breaks F2 (vx, R+vy=91, idx rule) in 1 (X109Y26 I=29).
+- 16 misses: sources X27-30, X85-88, all (source, rel) = (29,-1) (28,-1) (86,-1) (87,-1) (85,+4) (88,+4) (27,+4) (30,+4); other rels of those sources hit. A free shift of +4 (X27, X29, X85, X87) / -4 (X28, X30, X86, X88) resolves all 16, each to the table's record. The FX+4 anchor at X29/X87 as stated does not: 379 / 399.
+- Single-valued asm frame -> plane frame (decompile inference): REFUTED offline. 132 of 457 asm frames in the 383 unique arcs map to 2 plane frames, always from different source columns (e.g. asm 872: plane 807 from X15 rel 0, 877 from X16 rel -1). Stored frames are source-tile independent; the per-source base is added somewhere outside the stored group bits.
+- Gate (76 odd designs, ambiguous_as_missing), flag off (gate_run 6) -> on (gate_run 7), matched / missing / extra / wrong:
+  - LI: 10,199 / 133,630 / 0 / 4,304 -> 6,084 / 137,045 / 0 / 5,004
+  - R4: 902 / 148,831 / 0 / 4,085 -> 920 / 149,179 / 0 / 3,719
+  - C4: 13,012 / 118,305 / 0 / 1,964 -> 7,037 / 121,330 / 0 / 4,914
+  - C16, R24: unchanged (0 / 4,881 / 0 / 0; 0 / 4,756 / 0 / 0)
+  - ALL: 24,113 / 410,403 / 0 / 10,353 (5.420 %) -> 14,041 / 417,191 / 0 / 13,637 (3.156 %)
+  - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 65,173 / 172,409 / 0 / 21,502
+- Flag stays OFF: matched and missing rise in every class except R4 matched (+18), wrong rises in LI, C4 and ALL. (block, dest) units 1,616,526 -> 4,103,695; dest records with >1 block 186,723 -> 964,872: the blocks (muxes) fragment, so F3 is not valid for every record class. Cause not isolated (candidate: apply F3 to LE_BUFFER sources only).
+- Steps 4 (confirmation builds) not run: no gain to confirm.

@@ -438,6 +438,7 @@ def record(dres):
                                  params={"tracer": "ddb", "hop_override": os.environ.get("PLURIBUS_HOP_OVERRIDE", "0"),
                                          "relax_active": os.environ.get("PLURIBUS_RELAX_ACTIVE", "0"),
                                          "r4_coltable": os.environ.get("PLURIBUS_R4_COLTABLE", "0"),
+                                         "coord_v2": os.environ.get("PLURIBUS_COORD_V2", "0"),
                                          "scoring": "ambiguous_as_missing"})
 
 

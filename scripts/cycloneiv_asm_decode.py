@@ -39,7 +39,9 @@ DIE = "stingray4"
 FRAME_MIRROR = 17      # plane offset k within a LAB column <-> asm offset 17 - k
 ROW_MIRROR = 6344      # plane v <-> asm 6344 - v
 NAME = re.compile(r"^(H4|V4|H24|V16)(?:R(\d+)C(\d+)|_C(\d+)(UP|DN)_R|R(\d+)_(RT|LT)_C)(RT|LT|UP|DN)?\[(\d+)\]$")
-DEC = os.path.join(A.TMP, f"{DIE}_dec")
+COORD_V2 = os.environ.get("PLURIBUS_COORD_V2", "0") == "1"      # coordinate model v2 (docs/cycloneiv-hop-override.md), default OFF
+COORD_TAG = "v2" if COORD_V2 else ""
+DEC = os.path.join(A.TMP, f"{DIE}_dec{COORD_TAG}")
 
 
 def icnames(die=DIE):
@@ -122,6 +124,39 @@ def afx_map(g, grec, gid, fa, names):
     return afx
 
 
+def lab_vx(g):
+    """fitter LAB column X -> vendor tile x: the vx values holding LE_BUFFER records (enum 45), descending, against the
+    LAB columns ascending (vx 115, 116 are not LAB columns).  Identical to cycloneiv_ddb_trace.Ddb.cm."""
+    z = np.load(os.path.join(A.TMP, f"{DIE}_rt_fanout.npz"))
+    vx = np.unique(z["x"][z["enum"][z["tpl"]] == 45])
+    vx = [int(v) for v in vx if v <= 114][::-1]
+    labs = sorted(x for x in g.kind if g.kind[x] == "LAB" and x <= 114)
+    if len(vx) != len(labs):
+        db_die(f"LAB columns {len(labs)} != LE_BUFFER vendor columns {len(vx)}")
+    return dict(zip(labs, vx)), z["x"]
+
+
+def coord_v2(g, afx, grec, gid, fa):
+    """Coordinate model v2: (1) band base of LAB column X = afx[115 - vx(X)] (vendor-x label, not the V4 name's C - 2);
+    (2) every entry of a record's groups mirrors about the SOURCE record's LAB column Xs:
+    plane frame = FX[Xs] + ABASE[Xs] + 17 - asm frame.  Records not on a LAB column, and entries outside every band
+    (offset 0..MAX_OFF of the relabelled bases), keep the band placement / drop.  -> (K per record, afx for bands)."""
+    cm, vx_rec = lab_vx(g)
+    abase = {X: afx[115 - v] for X, v in cm.items()}
+    afx2 = dict(afx)
+    afx2.update(abase)
+    seen, afx_u = {}, {}
+    for x in sorted(afx2, key=lambda x: (g.kind.get(x) != "LAB", x)):      # a LAB column wins a shared base
+        if afx2[x] not in seen:
+            seen[afx2[x]] = x
+            afx_u[x] = afx2[x]
+    K = np.full(int(grec.max()) + 1, -1, np.int64)
+    vx_rec = np.asarray(vx_rec)[:len(K)]
+    for X, v in cm.items():
+        K[:len(vx_rec)][vx_rec == v] = g.FX[X] + abase[X] + 17
+    return K, afx_u
+
+
 def db_die(msg):
     log.error(msg)
     raise SystemExit(msg)
@@ -165,6 +200,14 @@ def prepare():
     fa = (pos % 6154).astype(np.int64)
     afx = afx_map(g, np.asarray(grec), gid, fa, names)
     pf, pv = asm_to_plane_afx(fa, pos // 6154, g, afx)
+    if COORD_V2:
+        K, afx_v2 = coord_v2(g, afx, np.asarray(grec), gid, fa)
+        pf, pv = asm_to_plane_afx(fa, pos // 6154, g, afx_v2)
+        ke = K[np.asarray(grec)[gid]]
+        m = (ke >= 0) & (pf != DROP_F)
+        pf[m] = (ke[m] - fa[m]).astype(np.int32)
+        afx = {int(x): int(b) for x, b in afx_v2.items()}
+        log.info("coord v2: %d entries placed about the source LAB column, %d by band", int(m.sum()), int(((pf != DROP_F) & ~m).sum()))
     log.info("entries outside any band (dropped, never fire): %d / %d", int((pf == DROP_F).sum()), len(pf))
     first = np.zeros(len(pos), bool)
     first[gstart[gsize == 3]] = True          # the select entry of every 3-group (b0 = 0 on some)
@@ -231,7 +274,7 @@ class Dec:
         self.nblocks = int(self.block.max()) + 1
         if self.hop_override:
             self.pf = self._hop_pf()
-        self.pf_tag = "_hop" + self.hop_mode if self.hop_override else ""   # cache-key suffix; cycloneiv_r4_coltable.apply() extends it
+        self.pf_tag = ("_cv2" if COORD_V2 else "") + ("_hop" + self.hop_mode if self.hop_override else "")   # cache-key suffix; cycloneiv_r4_coltable.apply() extends it
 
     def _hop_pf(self):
         """pf with the LB -> R4 column displacement applied (derived array, cached beside the tables, mmapped).
