@@ -153,6 +153,17 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
   them and attack them by elimination; do not hold other blocks back to reach that point.
 - Re-rank after every inventory run; the doc's top-10 table is the queue.
 
+## Single-bit confirmation (Dan, 2026-10-29)
+
+Pairs prove a bit SET; the aim is to state what each single cell does. Evidence levels, weakest first (recorded on the evidence row, never mixed in one count):
+1. **Set**: base + specimen differ by one design change; the diff is a set of cells (typically 3-6 for a routing choice).
+2. **Attributed**: exact enumeration over a grid shows which variable each cell depends on (source, sink, port, position); `scripts/cycloneiv_localline_bits.py` is the model.
+3. **Isolated (strict single cell)**: two vendor builds of the same design that differ by one small design change and by EXACTLY ONE cell. The alternate bitstream is always a vendor build of a slightly different design, never a hand-edited file.
+4. **Hardware-confirmed**: the isolated cell flipped on real silicon changes the predicted behaviour (needs a board; decision #156).
+- **Bit hunter** (`scripts/cycloneiv_bit_hunter.py`): automated search for level-3 pairs. One pinned base design, hundreds of variants that each change exactly one knob (a LUT-mask bit, source/sink LE, port via a forced route, FF on/off, tied constant, control line), all pairs compared at full-plane level, pairs at distance 1 recorded (`n_objects = 1`), pairs at distance 2-3 split by in-between variants. It will not always find one; a hit is exact. Calibration first: one LUT-mask bit must flip exactly one cell (verified INIT cells), else the harness is wrong.
+- Confounded cells (identical membership over every pair so far) are listed as a queue of minimal specimens, not guessed.
+- A role is written for a cell only at level 2 or 3; a level-1 set never becomes a per-cell claim.
+
 ## Case study: Cyclone IV (#141)
 
 - The method was documented in four places before the deviation (#108, CLAUDE.md device-db rule,
