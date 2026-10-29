@@ -79,7 +79,7 @@ class Ddb:
                 self.cm[X] = int(P.vx[r])
         self.cm_cols = np.array(sorted(self.cm))
         self.x_of_vx = {v: X for X, v in self.cm.items()}
-        if CT.enabled():
+        if CT.enabled() and os.environ.get("PLURIBUS_R4_COLTABLE") != "2":      # =2: table resolver only, no asm frame shift (diagnostic)
             log.info("R4 column table applied to the asm frames: %s", CT.apply(self))
         sel = np.flatnonzero((Q.enum == 282) & (Q.index < LI_N))
         self.li_of = {(int(P.vx[r]), int(P.vy[r]), int(Q.index[r])): int(r) for r in sel.tolist()}
@@ -193,6 +193,22 @@ def count_unreached(children, node, P, hops, why, reason, self_too=True):
                 why["LI"][reason] += 1
 
 
+CUR = [None]
+DUMP = os.environ.get("PLURIBUS_DUMP_HOPS")
+
+
+def _dump_prev(hops, dump):
+    """Diagnostic (PLURIBUS_DUMP_HOPS=file): one JSON line per RCF hop with the counter deltas it caused."""
+    if not DUMP or dump[1] is None:
+        return
+    dn, sn, before = dump[1]
+    after = [hops[c][k] for c in ("LI",) + WIRE_T for k in ("matched", "missing", "wrong")]
+    d = [a - b for a, b in zip(after, before)]
+    with open(DUMP, "a") as fh:
+        fh.write(json.dumps({"d": CUR[0], "dn": list(map(str, dn)), "sn": list(map(str, sn)), "delta": d}) + "\n")
+    dump[1] = None
+
+
 def hop_forward(D, T, pips, fired, hops, why, amb):
     """Per-hop outcomes, alias-free: roots are exact LE_BUFFER / LOCAL_LINE records; every RCF hop
     (S -> D) with S's record known resolves D from the EXACT fan-out of S (LI: tile + index;
@@ -206,6 +222,7 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
         children[sn].append(dn)
     resolved = set()
     stack = []
+    dump = [None, None]
     colrank = T.colrank
     for sn in list(children):
         base = T.unnamed.get((sn[0], str(sn[2]))) if sn[0] == "LE_BUFFER" else None
@@ -219,6 +236,8 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
             continue
         fan = None
         for dn in children.get(sn, ()):
+            _dump_prev(hops, dump)
+            dump[1] = (dn, sn, [hops[c][k] for c in ("LI",) + WIRE_T for k in ("matched", "missing", "wrong")]) if DUMP else None
             typ = dn[0]
             if typ == LI_T:
                 if P.g.kind.get(dn[3]) != "LAB":
@@ -243,7 +262,7 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
                     fan = D.fan_of(rs)
                 tx, ty = XM - dn[3], dn[4]
                 dvx, dvy = WIN_OF[typ]
-                if typ == "R4" and CT.enabled() and sn_of[dn][0] == "LE_BUFFER":
+                if typ == "R4" and CT.enabled() and sn_of[dn][0] == "LE_BUFFER" and str(sn_of[dn][3] - dn[3]) not in CT.window_rels():
                     cell = CT.table().get((dn[3], sn_of[dn][3] - dn[3]))       # LB -> R4: (dx, dy 0) from the measured column table
                     if cell is None:
                         CT.NOCELL[(dn[3], sn_of[dn][3] - dn[3])] += 1
@@ -283,8 +302,15 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
                 else:
                     h["wrong"] += 1
                     why[cls]["fired another source"] += 1
+                    if cls in os.environ.get("PLURIBUS_TRACE_WRONG", "").split(","):
+                        up = [sn]
+                        while up[-1] in pips and len(up) < 4:
+                            up.append(pips[up[-1]])
+                        log.info("WRONG %s design %s dest %s src_rec %d (%s) dest_rec %d fired_rec %d (%s %s) chain %s", cls, CUR[0], dn, rs,
+                                 (int(P.vx[rs]), int(P.vy[rs]), int(Q.enum[rs])), rd, f, int(Q.enum[f]), (int(P.vx[f]), int(P.vy[f])), up)
             if typ in WIRE_T:
                 stack.append((dn, rd))
+    _dump_prev(hops, dump)
     return resolved
 
 
@@ -335,6 +361,7 @@ def score(names):
         # per-hop (chain from every used LI) + LI extra
         pips, _nets = AT.oracle(name, d, geom)
         dd = trs["ddb"]
+        CUR[0] = name
         resolved = hop_forward(D, T, pips, dd.fired, hops, hwhy, hamb)
         used_li = {(dn[3], dn[4], dn[2]) for dn in pips if dn[0] == LI_T}
         fu = np.flatnonzero(dd.fired >= 0)

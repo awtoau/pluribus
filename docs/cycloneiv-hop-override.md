@@ -107,3 +107,18 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
   - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 69,740 / 161,033 / 0 / 28,337.
 - Rises remain: LI missing +79, C4 missing +426, C16 wrong +1, C4 matched -4, pins missing +3,636 (wrong -3,688). Default stays OFF.
 - Hops still without a cell (R4, LB source): 4,974 (was 12,762); by rel: +4 2,329, 0 1,107, +3 780, -1 751; 2,889 in X15..89. Largest cells: (90,0) 108, (51,0) 105, (59,4) 98, (34,4) 96, (53,4) 96, (63,0) 96, (35,0) 94, (51,4) 94, (82,4) 94, (80,0) 94. The C4 / LI missing rise is hops below an R4 hop that the window resolver used to resolve and the table now leaves unresolved.
+
+## Table fill 3, M9K skip rule, C16 wrong (#160/#162, 2026-10-29)
+- Builds 164 of cap 200 (4 nulls 0 cells, 80 bases, 80 specs); 80 arcs, 73 resolved at |df| <= 140, 7 more at 400 = all resolved (49 per 100 builds, floor 10). Table 399 arcs; 2h-col `sampled` n=53 scopes, 48 groups of >= 2 rows, 0 misses.
+- P4 (predicted before the test, `cycloneiv_r4_relcol.py m9kpred`): a group next to an M9K column sits 2 LAB columns left SKIPPING the M9K gap, df = -(FX[c] - FX[second LAB column left of c]). Dest X22, X35, X51, X64, X80 rel 0: predicted -363, fitted -363 in 5/5 (one candidate fits each, none contradicts). X63 rel 0 (window 400): (0, -105) in 3 arcs. 7 rel +4 arcs: (dx -9, df -363).
+- Gate (76 designs; off = run 2; on = full table), matched / missing / extra / wrong:
+  - R4: 902 / 148,831 / 0 / 4,085 -> 4,448 / 148,753 / 0 / 617.
+  - LI: 10,199 / 133,630 / 0 / 4,304 -> 10,202 / 133,704 / 0 / 4,227.
+  - C4: 13,012 / 118,305 / 0 / 1,964 -> 13,009 / 118,708 / 0 / 1,564.
+  - C16: wrong 0 -> 1; R24 unchanged. ALL: 24,113 / 410,403 / 0 / 10,353 -> 27,659 / 410,801 / 0 / 6,409 (6.217 %).
+  - Pins LCCOMB: 69,672 / 157,397 / 0 / 32,025 -> 69,755 / 162,017 / 0 / 27,338.
+- Default stays OFF: LI missing +74, C4 missing +403, C16 wrong +1, C4 matched -3, pins missing +4,620.
+- Hop diff off vs on (`PLURIBUS_DUMP_HOPS`): R4 hops missing -> matched 3,679, wrong -> missing 3,098, wrong -> matched 582, matched -> missing 706 (690 are rel +3 at many columns, e.g. X66, X69, X68, X35, X56). C4 wrong -> missing 181, matched -> missing 8; LI wrong -> missing 33. The rises are wrong -> missing conversions plus the 706 R4 matched hops whose window record fired in off and whose table record is idle in on.
+- Variant (diagnostic, `PLURIBUS_R4_COLTABLE_WINDOW_RELS=3`: rel +3 stays on the window resolver): LI wrong 4,441 (+137), C4 wrong 2,537 (+573): also rises.
+- Remaining hops without a cell: 926 (X < 15 or X >= 90, rel +4 238, rel 0 258, rel -1 233, rel +3 190).
+- C16 wrong (design gx150_rb_079): dest C16 at tile X42 Y60; chain DRV FF X41 Y76 -> LE_BUFFER X41 Y76 -> R4 X42 Y76 -> C16. The table resolves the R4 to the record at vx 74 vy 76 (index 3, in the C16 fan-in); the C16 mux fires the C4 at vx 74 vy 74 (index 18). With the resolver only (no frame shift, `PLURIBUS_R4_COLTABLE=2`) the same wrong appears; flag off counts the hop missing because the R4 above it is ambiguous. C16 matches 0 of 4,881 in every mode: pre-existing C16 mis-attribution revealed by the changed upstream resolution, not a table shift effect. The R4 record could still be wrong; not separable here.

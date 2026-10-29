@@ -38,13 +38,21 @@ def table():
     if r is None:
         raise SystemExit("PLURIBUS_R4_COLTABLE=1 but no 'R4 per-column (dx, df) table' derived-table row in the DB")
     t = {}
+    only = os.environ.get("PLURIBUS_R4_COLTABLE_RELS")          # diagnostic: restrict the table to these source rels
     for key, v in r[0]["file"].items():
         vals = [k for k in v["values"] if not k.startswith("data:")]
         if len(vals) == 1:
             x, rel = (int(a) for a in key.split(","))
+            if only and str(rel) not in only.split(",") or str(rel) in window_rels():
+                continue
             t[(x, rel)] = ast.literal_eval(vals[0])
     _T = t
     return t
+
+
+def window_rels():
+    """Diagnostic: source rels resolved by the old window resolver and left unshifted (PLURIBUS_R4_COLTABLE_WINDOW_RELS=3)."""
+    return os.environ.get("PLURIBUS_R4_COLTABLE_WINDOW_RELS", "").split(",")
 
 
 def tag():

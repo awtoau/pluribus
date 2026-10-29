@@ -19,6 +19,12 @@ PREDICTION P3 (per-column enumeration, written before the sweep): for a fixed de
  same relative source column with different (dx, df); then the rows of that column are enumerated.  Each arc records
  FX[dst-1], FX[dst], FX[dst+1] and the kinds of dst-1 / dst+1; no rule is fitted first.
 
+PREDICTION P4 (M9K-neighbour rel 0, written before the test): the no-fit rows (dest column X with an M9K at X+1) fit because the
+ shift is 2 LAB columns left SKIPPING the M9K gap, not 2 raw columns: df = -(FX[c] - FX[c2]), c = asm column of the group cells,
+ c2 = second LAB column left of c.  (X22 arc: cells at the first LAB column right of the M9K, predicted df -363, fitted window was 210.)
+ REFUTED by any such arc whose fit at |df| <= 400 differs from the prediction or does not exist (2 arcs needed).
+ Command: m9kpred --plan P (rows of an analysed plan with window 400).
+
   scripts/cycloneiv_r4_relcol.py colplan --cols 87,25,88 --rows 2 --rels=-1,0,3,4 --out P
   scripts/cycloneiv_r4_relcol.py coltable
   scripts/cycloneiv_r4_relcol.py pool [--rng 80]        # re-read existing results, 0 builds
@@ -144,13 +150,41 @@ def cmd_cellplan(a):
         if not ys:
             log.info("cell X%d rel %+d: no corpus-seen chain left (data row)", X, rel)
             continue
-        y = random.Random(a.seed + X * 131 + rel * 7).choice(sorted(ys))
+        y = random.Random(a.seed + X * 131 + rel * 7 + len(have[(X, rel)])).choice(sorted(ys))
+        have[(X, rel)].add(y)
         sub = argparse.Namespace(tile=f"{X},{y}", rels=str(rel), seed=a.seed, out=str(TMP / "_tmp_plan.json"))
         cmd_plan(sub)
         arcs += [dict(x, ctx=ctx_of(g, X)) for x in json.loads(Path(sub.out).read_text())["arcs"]]
     Path(a.out).write_text(json.dumps({"tile": None, "arcs": arcs}))
     log.info("cellplan %s: %d arcs, %d bases => %d builds", Path(a.out).name, len(arcs), len({N.base_name(x) for x in arcs}),
              len(arcs) + len({N.base_name(x) for x in arcs}))
+
+
+def cmd_m9kpred(a):
+    import cycloneiv_geom as cg
+    g = cg.load("ep4cgx150")
+    labs = sorted(x for x in g.kind if g.kind[x] == "LAB")
+    N.shifts_fit.__defaults__ = (400,)
+    G = H.Graph()
+    ok = bad = 0
+    for r in json.loads(Path(a.plan).read_text())["rows"]:
+        if "on" not in r or not r.get("honoured"):
+            continue
+        s = G.lb.get((G.vx(r["lb"][1]), r["lb"][2], r["lb"][3]))
+        onset = set(r["on"])
+        for k, d, grp in N.candidates(G, s, "R4"):
+            if not grp:
+                continue
+            c = max((x for x in g.FX if g.FX[x] <= min(grp) // H.NV and x in g.kind), default=None, key=lambda x: g.FX[x])
+            lab_left = [x for x in labs if x < c]
+            pred = -(g.FX[c] - g.FX[lab_left[-2]]) if c in labs and len(lab_left) >= 2 else None
+            fits = N.shifts_fit(grp, onset, 400)
+            log.info("X%dY%d I=%d cand dx %d idx %d: group column X%s kind %s predicted df %s fits(|df|<=400) %s %s", r["tile"][0], r["tile"][1], r["I"],
+                     int(G.P.vx[d]) - G.vx(r["tile"][0]), int(G.Q.index[d]), c, g.kind.get(c), pred, fits[:4],
+                     "PRED-OK" if pred in fits else "")
+            ok += pred in fits
+            bad += bool(fits) and pred not in fits
+    log.info("candidates with prediction in the fit list: %d; with fits but not the prediction: %d", ok, bad)
 
 
 def cmd_coltable(a):
@@ -199,9 +233,11 @@ def cmd_analyse(a):
     N.shifts_fit.__defaults__ = (a.rng,)
     H.Graph.vx = lambda self, X: self.D.vx_of(X)      # non-LAB destination columns (MUL / M9K): nearest-LAB-left offset, same as the resolver
     if a.namer == "map":
-        N.spec_name = map_spec_name
-    N.cmd_analyse(a)
-    N.spec_name = spec_name
+        N.spec_name, N.PFX = map_spec_name, "gxr4"
+    try:
+        N.cmd_analyse(a)
+    finally:
+        N.spec_name, N.PFX = spec_name, "gxr4df"
 
 
 def load_rows(rng_note=None):
@@ -356,7 +392,7 @@ def cmd_colrecord(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("cellplan", "colrecord", "colplan", "coltable", "pool", "plan", "build", "analyse", "table", "record"))
+    ap.add_argument("cmd", choices=("m9kpred", "cellplan", "colrecord", "colplan", "coltable", "pool", "plan", "build", "analyse", "table", "record"))
     ap.add_argument("--tile", default="47,45")
     ap.add_argument("--rels", default="-1,0,3")
     ap.add_argument("--cols", default="87,25,88")
