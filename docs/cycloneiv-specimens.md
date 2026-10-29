@@ -108,7 +108,7 @@ Order: M9K → LAB core classes (LOCAL_LINE sink ports, control stripe, LE modes
 LI/R4/C4 interior → multiplier → IO/periphery → edges/corners last. Edges are NOT first.
 
 M9K checklist (one M9K, pinned site, one change per pair, raw diff; tick each):
-- [ ] data: word 0 bit 0 init vs all-zero → 1 cell expected; then words 1,2,4,8,… (address law), bits 1,2,4,8 (bit law); widths ×1,×2,×4,×8,×9,×16,×18,×32,×36
+- [x] data: widths x1,x2,x4,x8,x9,x16,x18,x32,x36 at one site (M9K_X23_Y40_N0): full (word,bit) -> cell tables, 0 unattributed, held-out round trips exact (commit: see M9K hardware map below)
 - [ ] mode: single-port / simple dual / true dual / ROM / FIFO; one change per pair
 - [ ] clocking: clock-enable, aclr, read-during-write, output register on/off, address register on/off
 - [ ] ports: each address / data / byte-enable / write-enable pin routed (one pin, one far-end per build)
@@ -120,6 +120,23 @@ LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58
 - [x] clk, clkpin, ena, aclr, sclr, sload, asdata: 17 pairs x 4 labs built and diffed, 6 rebuilt (10%), 0 unstable (536a7b312)
 - [ ] pos, pos2 (LE position), idle: sweep paused; held-out TileClassTranslate prediction pending
 - Cross-lab: a single (frame, v) offset per lab (b +2438/+1400, c +1455/+3500, d +4676/+4550) explains only 5-34% of the bits per set; the diffs carry routing bits of the new connection, so lab-to-lab laws need the routing part separated first.
+
+## M9K hardware (word,bit) map, one site (#141)
+
+- Method: altsyncram + MIF (Quartus does the logical -> physical placement); binary-coded init, specimen k sets (word,bit) iff bit k of word*W+bit+1; raw cram-plane diff, no decoder. Tables: `tmp/cycloneiv_m9k_hmap<W>.json` (also in the family DB as derived-table rows, `scripts/cycloneiv_m9k.py register`).
+- Located: 8192 cells (x1,x2,x4,x8,x16,x32) or 9216 (x9,x18,x36), 0 unattributed, per width.
+- Held out: 2 random builds per width (~150 distinct (word,bit) pairs each, 2 x 9 widths): predicted set == raw diff, 18/18 exact.
+- Stability: 23 of 187 builds (12%) rebuilt under new names: raw diff identical, 23/23.
+- Laws (exact on every cell, F1 = the x1 index map `tmp/cycloneiv_m9k_hmap1.json`):
+  - x1,x2,x4,x8: cell = F1[word*W + bit].
+  - x9: lane = bit%9; lane < 8 -> F1[word*8 + bit]; bit 8 -> parity cell P[word].
+  - x18: bit = 9*L + r; r < 8 -> F1[word*16 + 8*L + r]; r = 8 -> parity P2[word,L] (1024 parity cells in total, disjoint from F1's).
+  - x16 = x18 (same word, same bit index 0..15).
+  - x36 = x18 (word + 256*(bit >= 18), bit % 18).
+  - x32 = x36 (same word, bit if bit < 14 else bit + 4): x36 bits 14..17 are not reached by x32.
+  - x9 parity (fitted, `pattern_matchers.BitLinearLaw`, held-out 204/204): frame = 1111 + (w>>2); v = 2789 - 18*(w&1) - ((w>>1)&1).
+- The WYSIWYG ram_block primitive rejects port_a_data_width 32 and 36 (quartus_map error 14093); altsyncram is the route for those widths.
+- The (word,bit) map equals the mem_init-index map (index = word*W + bit) for x1..x18: no separate hardware permutation exists for them.
 
 ## Cost
 

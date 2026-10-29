@@ -29,6 +29,8 @@ log = logging.getLogger("cycloneiv_m9k")
 CORPUS = REPO / "corpus" / "cycloneiv"
 DEVICE = "EP4CGX150DF31C7"
 SITE = "M9K_X23_Y40_N0"
+# one site per M9K column at y=40, plus two more rows in column 23
+SITES = [f"M9K_X{x}_Y40_N0" for x in (7, 36, 52, 65, 81, 94, 110)] + ["M9K_X23_Y20_N0", "M9K_X23_Y60_N0"]
 BITS = 2048          # bits per mem_init parameter; 5 per M9K (4096 data + parity 512 per 2 params, linear order)
 
 
@@ -64,12 +66,113 @@ def ram_design(width=1, depth=8192, mode="single_port", ones=(), site=SITE, extr
     return v, qsf
 
 
-def write_design(name, v, qsf, purpose):
+def hw_design(width, depth, ones, site=SITE, extra=None):
+    """Logical (word,bit) init through altsyncram + MIF: Quartus does the (word,bit)->mem_init mapping.
+    ones: set of (word, bit).  Returns (verilog, qsf, mif_text)."""
+    aw = (depth - 1).bit_length()
+    prm = {"operation_mode": '"SINGLE_PORT"', "width_a": width, "widthad_a": aw, "numwords_a": depth,
+           "ram_block_type": '"M9K"', "init_file": '"../src/init.mif"', "outdata_reg_a": '"UNREGISTERED"',
+           "lpm_type": '"altsyncram"', "power_up_uninitialized": '"FALSE"'}
+    prm.update(extra or {})
+    pl = ",\n    ".join(f".{k}({v})" for k, v in prm.items())
+    v = (f"module top(input clk, input we, input [{aw - 1}:0] addr, input [{width - 1}:0] d, "
+         f"output [{width - 1}:0] q);\n"
+         f"  altsyncram #(\n    {pl}\n  ) ram (\n"
+         f"    .clock0(clk), .wren_a(we), .address_a(addr), .data_a(d), .q_a(q));\n"
+         "endmodule\n")
+    by = {}
+    for w, b in ones:
+        by[w] = by.get(w, 0) | (1 << b)
+    mif = [f"WIDTH={width};", f"DEPTH={depth};", "ADDRESS_RADIX=HEX;", "DATA_RADIX=BIN;", "CONTENT BEGIN",
+           f"[0..{depth - 1:X}] : {'0' * width};"]
+    mif += [f"{w:X} : {by[w]:0{width}b};" for w in sorted(by)]
+    mif.append("END;")
+    return v, [f"set_location_assignment {site} -to ram"], "\n".join(mif) + "\n"
+
+
+# ── mode / control specimens: altsyncram, every port wired in every design, ONE parameter differs ──────
+MODE_BASE = {"operation_mode": "SINGLE_PORT", "width_a": 16, "widthad_a": 9, "numwords_a": 512, "width_b": 16,
+             "widthad_b": 9, "numwords_b": 512, "width_byteena_a": 1, "ram_block_type": "M9K",
+             "outdata_reg_a": "UNREGISTERED", "outdata_reg_b": "UNREGISTERED", "address_reg_b": "CLOCK0",
+             "indata_aclr_a": "NONE", "wrcontrol_aclr_a": "NONE", "address_aclr_a": "NONE", "outdata_aclr_a": "NONE",
+             "byteena_aclr_a": "NONE", "address_aclr_b": "NONE", "outdata_aclr_b": "NONE", "clock_enable_input_a": "NORMAL",
+             "clock_enable_output_a": "NORMAL", "clock_enable_input_b": "NORMAL", "clock_enable_output_b": "NORMAL",
+             "read_during_write_mode_port_a": "NEW_DATA_NO_NBE_READ", "read_during_write_mode_mixed_ports": "DONT_CARE",
+             "power_up_uninitialized": "FALSE", "byte_size": 8, "lpm_type": "altsyncram"}
+DUAL_BASE = dict(MODE_BASE, operation_mode="DUAL_PORT")
+BIDIR_BASE = dict(MODE_BASE, operation_mode="BIDIR_DUAL_PORT")
+# (specimen name, base mode dict, override)
+MODE_SPECS = [
+    ("rom", MODE_BASE, {"operation_mode": "ROM"}),
+    ("dual", MODE_BASE, {"operation_mode": "DUAL_PORT"}),
+    ("bidir", MODE_BASE, {"operation_mode": "BIDIR_DUAL_PORT"}),
+    ("outreg_a", MODE_BASE, {"outdata_reg_a": "CLOCK0"}),
+    ("rdw_old", MODE_BASE, {"read_during_write_mode_port_a": "OLD_DATA"}),
+    ("rdw_dontcare", MODE_BASE, {"read_during_write_mode_port_a": "DONT_CARE"}),
+    ("cke_in_bypass", MODE_BASE, {"clock_enable_input_a": "BYPASS"}),
+    ("cke_out_bypass", MODE_BASE, {"clock_enable_output_a": "BYPASS"}),
+    ("byteena2", MODE_BASE, {"width_byteena_a": 2}),
+    ("aclr_addr_a", MODE_BASE, {"address_aclr_a": "CLEAR0"}),
+    ("aclr_out_a", MODE_BASE, {"outdata_aclr_a": "CLEAR0", "outdata_reg_a": "CLOCK0"}),
+    ("aclr_in_a", MODE_BASE, {"indata_aclr_a": "CLEAR0"}),
+    ("aclr_wr_a", MODE_BASE, {"wrcontrol_aclr_a": "CLEAR0"}),
+    ("powerup_uninit", MODE_BASE, {"power_up_uninitialized": "TRUE"}),
+    ("d_outreg_b", DUAL_BASE, {"outdata_reg_b": "CLOCK0"}),
+    ("d_addrreg_b_c1", DUAL_BASE, {"address_reg_b": "CLOCK1"}),
+    ("d_rdw_mixed_old", DUAL_BASE, {"read_during_write_mode_mixed_ports": "OLD_DATA"}),
+    ("d_cke_out_b", DUAL_BASE, {"clock_enable_output_b": "BYPASS"}),
+    ("d_aclr_out_b", DUAL_BASE, {"outdata_aclr_b": "CLEAR0", "outdata_reg_b": "CLOCK0"}),
+    ("d_byteena2", DUAL_BASE, {"width_byteena_a": 2}),
+    ("b_outreg_a", BIDIR_BASE, {"outdata_reg_a": "CLOCK0"}),
+    ("b_outreg_b", BIDIR_BASE, {"outdata_reg_b": "CLOCK0"}),
+    ("b_rdw_old", BIDIR_BASE, {"read_during_write_mode_port_a": "OLD_DATA"}),
+]
+MODE_BASES = {"s": MODE_BASE, "d": DUAL_BASE, "b": BIDIR_BASE}
+
+
+def mode_design(prm, site=SITE):
+    p = dict(prm)
+    mode = p["operation_mode"]
+    pl = ",\n    ".join(f".{k}({v if isinstance(v, int) else chr(34) + v + chr(34)})" for k, v in p.items())
+    wa, wb = p["width_a"], p["width_b"]
+    ports = [".clock0(clk)", ".clock1(clk1)", ".clocken0(ce0)", ".clocken1(ce1)", ".aclr0(ac0)", ".address_a(aa)",
+             ".address_b(ab)", ".q_a(qa)", ".q_b(qb)"]
+    if mode != "ROM":
+        ports += [".wren_a(wea)", ".data_a(da)"]
+    if mode == "BIDIR_DUAL_PORT":
+        ports += [".wren_b(web)", ".data_b(db)"]
+    if p["width_byteena_a"] > 1:
+        ports += [".byteena_a(bea)"]
+    v = (f"module top(input clk, input clk1, input ce0, input ce1, input ac0, input wea, input web, "
+         f"input [{p['widthad_a'] - 1}:0] aa, input [{p['widthad_b'] - 1}:0] ab, input [{wa - 1}:0] da, "
+         f"input [{wb - 1}:0] db, input [{max(p['width_byteena_a'], 1) - 1}:0] bea, "
+         f"output [{wa - 1}:0] qa, output [{wb - 1}:0] qb);\n"
+         f"  altsyncram #(\n    {pl}\n  ) ram (\n    {', '.join(ports)});\nendmodule\n")
+    return v, [f"set_location_assignment {site} -to ram"]
+
+
+def mode_mif(p):
+    return (f"WIDTH={p['width_a']};\nDEPTH={p['numwords_a']};\nADDRESS_RADIX=HEX;\nDATA_RADIX=BIN;\nCONTENT BEGIN\n"
+            f"[0..{p['numwords_a'] - 1:X}] : {'0' * p['width_a']};\nEND;\n")
+
+
+def mode_pairs(site=SITE):
+    out = []
+    for nm, base, ov in MODE_SPECS:
+        bk = next(k for k, v in MODE_BASES.items() if v is base)
+        out.append((f"gxm9k_m_base_{bk}", f"gxm9k_m_{nm}", {"mode": base, "site": site, "width": 16},
+                    {"mode": dict(base, **ov), "site": site, "width": 16}, f"mode change {nm}"))
+    return out
+
+
+def write_design(name, v, qsf, purpose, mif=None):
     d = CORPUS / name
     if (d / "bitstream.rbf").exists():
         return
     (d / "src").mkdir(parents=True, exist_ok=True)
     (d / "src" / "top.v").write_text(v)
+    if mif is not None:
+        (d / "src" / "init.mif").write_text(mif)
     q = list(qsf) + ["set_global_assignment -name SEED 1", 'set_global_assignment -name FITTER_EFFORT "FAST FIT"']
     ver = re.search(r"quartus-([\d.]+)", toolchain.quartus_bin())
     (d / "design.toml").write_text(
@@ -105,10 +208,46 @@ def bin_pairs(width, site=SITE):
     """Binary-coded init: specimen k sets cell c iff bit k of (c+1) is set; shared all-zero base."""
     n = DEPTH[width] * width
     nb = n.bit_length()          # codes 1..n
-    base = f"gxm9k_b{width}_base"
+    st = "" if site == SITE else "_" + site.replace("M9K_", "").lower()
+    base = f"gxm9k_b{width}{st}_base"
     kw = {"width": width, "depth": DEPTH[width], "site": site}
-    return [(base, f"gxm9k_b{width}_k{k}", dict(kw),
+    return [(base, f"gxm9k_b{width}{st}_k{k}", dict(kw),
              dict(kw, ones={c for c in range(n) if ((c + 1) >> k) & 1}), f"bincode bit {k}") for k in range(nb)]
+
+
+def hw_probe_items(width):
+    """words 0,1 x bit indices 0 and powers of two below width, plus the top bit."""
+    bs = sorted({0, width - 1} | {1 << i for i in range(6) if (1 << i) < width})
+    return [(w, b) for w in (0, 1) for b in bs]
+
+
+def hw_pairs(width, items, site=SITE, tag="h"):
+    """Logical (word,bit) init through altsyncram+MIF; shared all-zero base."""
+    depth = DEPTH[width]
+    kb = {"width": width, "depth": depth, "site": site, "hw": True}
+    return [(f"gxm9k_{tag}{width}_base", f"gxm9k_{tag}{width}_w{w}b{b}", dict(kb), dict(kb, ones={(w, b)}),
+             f"logical word {w} bit {b} (altsyncram MIF)") for w, b in items]
+
+
+def hw_rand_ones(width, seed, n=150):
+    import random
+    r = random.Random(seed)
+    return set((r.randrange(DEPTH[width]), r.randrange(width)) for _ in range(n))
+
+
+def hw_rand_pairs(width, seed, site=SITE, tag="h"):
+    kb = {"width": width, "depth": DEPTH[width], "site": site, "hw": True}
+    return [(f"gxm9k_{tag}{width}_base", f"gxm9k_{tag}R{width}_s{seed}", dict(kb),
+             dict(kb, ones=hw_rand_ones(width, seed)), f"150 random logical (word,bit) seed {seed}")]
+
+
+def hw_bin_pairs(width, site=SITE, tag="h"):
+    """Binary-coded logical init: specimen k sets (word,bit) iff bit k of (word*width+bit+1) is set."""
+    n = DEPTH[width] * width
+    kb = {"width": width, "depth": DEPTH[width], "site": site, "hw": True}
+    return [(f"gxm9k_{tag}b{width}_base", f"gxm9k_{tag}b{width}_k{k}", dict(kb),
+             dict(kb, ones={divmod(c, width) for c in range(n) if ((c + 1) >> k) & 1}), f"hw bincode bit {k}")
+            for k in range(n.bit_length())]
 
 
 def rand_ones(width, seed):
@@ -126,6 +265,13 @@ def rand_pairs(width, seed, site=SITE):
 def predict(width, sp):
     """Predicted only_spec set from the located-cell map; None if the pair is not predictable."""
     mp = REPO / "tmp" / f"cycloneiv_m9k_map{width}.json"
+    m = re.match(rf"gxm9k_hR{width}_s(\d+)$", sp)
+    if m:
+        mp = REPO / "tmp" / f"cycloneiv_m9k_hmap{width}.json"
+        if not mp.exists():
+            return None
+        cells = {int(k): tuple(v) for k, v in json.loads(mp.read_text())["cells"].items()}
+        return {cells[w * width + b] for w, b in hw_rand_ones(width, int(m[1]))}
     if not mp.exists():
         return None
     cells = {int(k): tuple(v) for k, v in json.loads(mp.read_text())["cells"].items()}
@@ -187,75 +333,196 @@ def build(names, jobs):
         trim(n)
         log.info("%s: %s", n, "ok" if f is None else f"FAIL at {f}")
         return n, f
-    with ThreadPoolExecutor(jobs) as ex:
-        return dict(ex.map(one, names))
+    import build_pool
+    return dict(build_pool.map_adaptive(one, names, per_job_gb=1.2, max_workers=jobs or None))
+
+
+def fit_laws():
+    """Bit-linear fits (pattern_matchers.BitLinearLaw) of the hardware cell maps, held-out checked."""
+    import numpy as np
+    import pattern_matchers as pm
+    L = lambda n: {int(k): tuple(v) for k, v in json.loads((REPO / "tmp" / n).read_text())["cells"].items()}  # noqa: E731
+    h9 = L("cycloneiv_m9k_hmap9.json")
+    out = {}
+    for name, cells in (("x9-parity", {c // 9: v for c, v in h9.items() if c % 9 == 8}),):
+        idx = sorted(cells)
+        hold = set(np.random.default_rng(1).choice(idx, size=len(idx) // 5, replace=False).tolist())
+        mt = pm.BitLinearLaw(nbits=10)
+        cand = mt.propose({"subject": f"M9K:{name}", "index_to_cell": {str(i): list(cells[i]) for i in idx if i not in hold},
+                           "parents": [], "scope": {}})[0]
+        miss = sum(1 for i in hold if mt.predict(cand, i) != list(cells[i]))
+        out[name] = {"law": cand.law["text"], "train": cand.fit, "held_out": len(hold), "held_out_miss": miss}
+    return out
+
+
+def register():
+    """Evidence rows into the family database (idempotent): new pair JSONs as specimen-pairs, maps and laws as derived tables."""
+    import dbtools
+    import schema as S
+    from provenance import evidence_io as E
+    import db
+    S.init()
+    commit = E.git_head(REPO)
+    gen = "scripts/cycloneiv_m9k.py"
+    n = 0
+    with db.engine().begin() as conn:
+        E.ensure_family(conn, "cycloneiv")
+        for pth in sorted((REPO / "tmp").glob("cycloneiv_m9k_*.json")):
+            rel = pth.relative_to(REPO)
+            d = json.loads(pth.read_text())
+            if "cells" in d and "width" in d:
+                E.record_decode(conn, "cycloneiv", "EP4CGX150", pth.name, {"file": d}, commit, str(rel), generator=gen,
+                                kind="derived-table", n_objects=len(d["cells"]))
+                n += 1
+            elif E.import_json_file(conn, str(pth), "cycloneiv", "EP4CGX150", 6368, commit, gen, str(REPO)) is not None:
+                n += 1
+        laws = fit_laws()
+        E.record_decode(conn, "cycloneiv", "EP4CGX150", "m9k-hw-laws", laws, commit, "scripts/cycloneiv_m9k.py fit_laws",
+                        generator=gen, kind="derived-table", n_objects=len(laws))
+    log.info("registered %d files into %s; laws %s", n, dbtools.family_db("cycloneiv"), laws)
+
+
+def stab(frac=0.1, seed=7):
+    """Rebuild ~frac of the hardware-map specimens under a new name; raw diff vs the recorded base must be identical."""
+    import random
+    reps = {}
+    for pth in sorted((REPO / "tmp").glob("cycloneiv_m9k_hw*.json")):
+        reps.update(json.loads(pth.read_text()))
+    names = sorted(reps)
+    pick = random.Random(seed).sample(names, max(1, int(len(names) * frac)))
+    for n in pick:
+        d = CORPUS / (n + "_rb")
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        for f in (CORPUS / n / "src").iterdir():
+            shutil.copy(f, d / "src" / f.name)
+        shutil.copy(CORPUS / n / "design.toml", d / "design.toml")
+    res = build([n + "_rb" for n in pick if not (CORPUS / (n + "_rb") / "bitstream.rbf").exists()], 0)
+    same = 0
+    for n in pick:
+        b = bits(reps[n]["base"])
+        got = [fv(k) for k in sorted(bits(n + "_rb") - b)]
+        ok = got == [tuple(x) for x in reps[n]["only_spec"]]
+        same += ok
+        prune(n + "_rb")
+        log.info("STAB %s: identical=%s", n, ok)
+    log.info("STAB %d / %d rebuilt specimens identical (fail %s)", same, len(pick), [k for k, v in res.items() if v])
+    return same, len(pick)
+
+
+def group_key(pr, setname, tag):
+    """(json file, width, map file | None) a pair belongs to."""
+    b, sp, kb = pr[0], pr[1], pr[2]
+    w = kb["width"]
+    site = kb.get("site", SITE)
+    st = "" if site == SITE else "_" + site.replace("M9K_", "").lower()
+    if setname in ("rand", "bincode", "data", "p0", "mode", "sites"):
+        kind = "bincode" if setname == "sites" else setname
+    else:
+        kind = "hwbin" if re.search(r"_k\d+$", sp) else "hwrand" if "R" in sp.split("_")[1] else "hwprobe"
+    fname = f"cycloneiv_m9k_{kind}{w}{tag if not kb.get('hw') else 'h'}{st}.json"
+    hw = "h" if kb.get("hw") else ""
+    mapname = f"cycloneiv_m9k_{hw}map{w}{st}.json" if kind in ("bincode", "hwbin") else None
+    return fname, w, mapname
+
+
+def diff_group(pairs, out, width, mapname, keep):
+    rep = json.loads(out.read_text()) if out.exists() else {}
+    cache = {}
+    for i, (b, sp, *_) in enumerate(pairs):
+        if sp in rep:
+            continue
+        if b not in cache:
+            cache[b] = bits(b)
+        A, B = cache[b], bits(sp)
+        rep[sp] = {"base": b, "only_base": [fv(k) for k in sorted(A - B)],
+                   "only_spec": [fv(k) for k in sorted(B - A)]}
+        pr = predict(width, sp)
+        if pr is not None:
+            got = {tuple(x) for x in rep[sp]["only_spec"]}
+            rep[sp]["predicted_hit"] = bool(got == pr and not rep[sp]["only_base"])
+            rep[sp]["pred_missing"], rep[sp]["pred_extra"] = len(pr - got), len(got - pr)
+            log.info("PREDICT %s: hit=%s missing %d extra %d (of %d)", sp, rep[sp]["predicted_hit"],
+                     len(pr - got), len(got - pr), len(pr))
+        log.info("%s vs %s: only-base %s only-spec %s", b, sp, rep[sp]["only_base"][:8], rep[sp]["only_spec"][:8])
+        if i >= keep:
+            prune(sp)
+    out.write_text(json.dumps(rep))
+    if mapname:
+        cells, masked, bad = bin_decode(width, rep)
+        n = DEPTH[width] * width
+        log.info("%s: %d / %d cells located, masked CRC/tail %d, unattributed %d %s", mapname, len(cells), n,
+                 len(masked), len(bad), bad[:6])
+        (REPO / "tmp" / mapname).write_text(json.dumps(
+            {"width": width, "cells": {str(c): fvv for c, fvv in sorted(cells.items())},
+             "masked": masked, "unattributed": bad}))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["gen", "build", "diff"])
+    ap.add_argument("cmd", choices=["gen", "build", "diff", "register", "stab"])
     ap.add_argument("set", help="named set, or 'data'")
-    ap.add_argument("--jobs", type=int, default=2)
+    ap.add_argument("--jobs", type=int, default=0, help="0 = pool default (cores-2)")
     ap.add_argument("--width", type=int, default=1)
     ap.add_argument("--items", default="", help="data set: word:bit,word:bit,...")
     ap.add_argument("--site", default=SITE)
-    ap.add_argument("--tag", default="d")
+    ap.add_argument("--tag", default="")
     ap.add_argument("--keep", type=int, default=0, help="diff: keep bitstreams of the first N specimens")
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_m9k.log"),
                                   logging.StreamHandler()])
+    if a.cmd == "stab":
+        stab()
+        return
+    if a.cmd == "register":
+        register()
+        return
+    tag = a.tag or ("h" if a.set.startswith("hw") else "d")
     if a.set == "rand":
         pairs = rand_pairs(a.width, int(a.items), a.site)
+    elif a.set == "hwprobe":
+        pairs = hw_pairs(a.width, hw_probe_items(a.width), a.site, tag)
+    elif a.set == "hwrand":
+        pairs = hw_rand_pairs(a.width, int(a.items), a.site, tag)
+    elif a.set == "hwall":
+        pairs = [x for w in (1, 2, 4, 8, 9, 16, 18, 32, 36)
+                 for x in hw_bin_pairs(w, a.site, tag) + hw_rand_pairs(w, 1, a.site, tag) + hw_rand_pairs(w, 2, a.site, tag)
+                 + hw_pairs(w, hw_probe_items(w), a.site, tag)]
+    elif a.set == "mode":
+        pairs = mode_pairs(a.site)
+    elif a.set == "sites":
+        pairs = [x for site in SITES for w in (1, 9) for x in bin_pairs(w, site)]
+        pairs = [(b, sp, kb, ks, pu) for b, sp, kb, ks, pu in pairs]
+    elif a.set == "hwbin":
+        pairs = hw_bin_pairs(a.width, a.site, tag)
     elif a.set == "bincode":
         pairs = bin_pairs(a.width, a.site)
     elif a.set == "data":
-        pairs = data_pairs(a.width, [tuple(map(int, i.split(":"))) for i in a.items.split(",")], a.site, a.tag)
+        pairs = data_pairs(a.width, [tuple(map(int, i.split(":"))) for i in a.items.split(",")], a.site, tag)
     else:
         pairs = sets()[a.set]
     names = list(dict.fromkeys(n for p in pairs for n in p[:2]))
     if a.cmd in ("gen", "build"):
         for b, sp, kb, ks, purpose in pairs:
-            write_design(b, *ram_design(**kb), purpose + " (base)")
-            write_design(sp, *ram_design(**ks), purpose)
+            for nm, kw, pu in ((b, kb, purpose + " (base)"), (sp, ks, purpose)):
+                if kw.get("mode"):
+                    write_design(nm, *mode_design(kw["mode"], kw["site"]), pu, mode_mif(kw["mode"]))
+                elif kw.get("hw"):
+                    v, q, mif = hw_design(kw["width"], kw["depth"], kw.get("ones", ()), kw.get("site", SITE))
+                    write_design(nm, v, q, pu, mif)
+                else:
+                    write_design(nm, *ram_design(**kw), pu)
     if a.cmd == "build":
         todo = [n for n in names if not (CORPUS / n / "bitstream.rbf").exists()]
         res = build(todo, a.jobs)
         log.info("built %d, failed %s", len(todo), [n for n, f in res.items() if f])
     if a.cmd == "diff":
-        rep = {}
-        out = REPO / "tmp" / f"cycloneiv_m9k_{a.set}{a.width}{a.tag}.json"
-        if out.exists():
-            rep = json.loads(out.read_text())
-        cache = {}
-        for i, (b, sp, *_) in enumerate(pairs):
-            if sp in rep:
-                continue
-            if b not in cache:
-                cache[b] = bits(b)
-            A, B = cache[b], bits(sp)
-            rep[sp] = {"base": b, "only_base": [fv(k) for k in sorted(A - B)],
-                       "only_spec": [fv(k) for k in sorted(B - A)]}
-            pr = predict(a.width, sp)
-            if pr is not None:
-                got = {tuple(x) for x in rep[sp]["only_spec"]}
-                rep[sp]["predicted_hit"] = bool(got == pr and not rep[sp]["only_base"])
-                rep[sp]["pred_missing"], rep[sp]["pred_extra"] = len(pr - got), len(got - pr)
-                log.info("PREDICT %s: hit=%s missing %d extra %d (of %d)", sp, rep[sp]["predicted_hit"],
-                         len(pr - got), len(got - pr), len(pr))
-            log.info("%s vs %s: only-base %s only-spec %s", b, sp, rep[sp]["only_base"][:8], rep[sp]["only_spec"][:8])
-            if i >= a.keep:
-                prune(sp)
-        out.write_text(json.dumps(rep))
-        if a.set == "bincode":
-            cells, masked, bad = bin_decode(a.width, rep)
-            n = DEPTH[a.width] * a.width
-            log.info("bincode x%d: %d / %d cells located, masked CRC/tail %d, unattributed %d %s", a.width,
-                     len(cells), n, len(masked), len(bad), bad[:6])
-            (REPO / "tmp" / f"cycloneiv_m9k_map{a.width}.json").write_text(json.dumps(
-                {"width": a.width, "cells": {str(c): fvv for c, fvv in sorted(cells.items())},
-                 "masked": masked, "unattributed": bad}))
+        groups = {}
+        for pr in pairs:
+            groups.setdefault(group_key(pr, a.set, tag), []).append(pr)
+        for (fname, width, mapname), gp in groups.items():
+            diff_group(gp, REPO / "tmp" / fname, width, mapname, a.keep)
 
 
 if __name__ == "__main__":
