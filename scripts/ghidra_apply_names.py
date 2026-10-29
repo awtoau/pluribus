@@ -20,7 +20,8 @@ sys.path.insert(0, HERE)
 import heavy_guard  # noqa: E402
 
 REPO = os.environ.get("PLURIBUS_REPO") or os.path.dirname(HERE)
-QROOT = os.environ.get("PLURIBUS_QUARTUS_DIR", "/mnt/2tb/opt/altera/quartus-25.1/quartus")
+import toolchain  # noqa: E402
+QROOT = os.environ.get("PLURIBUS_QUARTUS_DIR") or os.path.dirname(toolchain.quartus_bin())
 PROJ = os.path.join(REPO, "vendor-analysis", "altera", "ghidra-project")
 PNAME = "quartus"
 TSV = os.path.join(REPO, "reference", "ghidra")

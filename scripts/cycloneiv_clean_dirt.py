@@ -23,7 +23,8 @@ sys.path.insert(0, HERE)
 import cyclonev_ddb_decode as dd  # noqa: E402
 from elftools.elf.elffile import ELFFile  # noqa: E402
 
-QROOT = os.environ.get("PLURIBUS_QUARTUS_DIR", "/mnt/2tb/opt/altera/quartus-25.1/quartus")
+import toolchain  # noqa: E402
+QROOT = os.environ.get("PLURIBUS_QUARTUS_DIR") or os.path.dirname(toolchain.quartus_bin())
 TABLES = {"dirt_type": (0xEB020, 0x980), "arch_group_type": (0xEC320, 0x91C0), "block_type": (0xFE6A0, 0x10F8)}
 LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_dirt.log")
 

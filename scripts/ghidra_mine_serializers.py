@@ -16,7 +16,9 @@ import sys
 from elftools.elf.elffile import ELFFile
 
 REPO = os.environ.get("PLURIBUS_REPO") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-QROOT = os.environ.get("PLURIBUS_QUARTUS_DIR", "/mnt/2tb/opt/altera/quartus-25.1/quartus")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import toolchain  # noqa: E402
+QROOT = os.environ.get("PLURIBUS_QUARTUS_DIR") or os.path.dirname(toolchain.quartus_bin())
 OUT = os.path.join(REPO, "reference", "ghidra", "structs.tsv")
 LOG = os.path.join(REPO, "tmp", "logs", "ghidra_mine_serializers.log")
 IMAGE_BASE = 0x100000
