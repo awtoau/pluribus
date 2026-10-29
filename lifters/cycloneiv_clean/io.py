@@ -12,9 +12,8 @@ import numpy as np
 
 from . import plane as P
 
-# source: libcomp_asmcc ASM_BITFIELD::silent_set_bits @ 0x117e50 (static decompile): address tag tests in this order;
-#   a >= 0 -> CRAM bit a; (a & mask) == mask picks the space, index = a & keep.  Literal 0xfffffffa..0xfffffffe are
-#   DB_ILLEGAL_* markers (error on write), 0xfffffffb is ignored.
+# a >= 0 -> CRAM bit a; (a & mask) == mask picks the space, index = a & keep; 0xfffffffa..e = DB_ILLEGAL_* markers.
+# source: libcomp_asmcc ASM_BITFIELD::silent_set_bits @ 0x117e50 (static decompile), tag tests in this order
 ADDRESS_SPACES = (
     # name, mask (all bits must be set), keep (index bits)
     ("LITERAL", 0xC0000000, 0x3FFFFFFF),
@@ -124,3 +123,15 @@ class Cff:
         rep = (fr[self.primary[..., 0], self.primary[..., 1]] >> self.primary[..., 2]) & 1
         val = rep[:, 0]
         return val.astype(np.uint8), int((rep != val[:, None]).sum())
+
+
+# source: libcomp_asm ASM_IO_PIN_MODE::process_atom @ 0x29101c (static decompile): mux_select(group, value) per pin state
+PIN_MODE_MUX = {
+    "input": 0,
+    "output_oe_const": 1,
+    "output_oe_wired": 2,
+    "open_drain_oe_const": 3,
+    "open_drain_oe_wired": 4,
+    "output_oe_registered": 5,
+    "open_drain_oe_registered": 6,
+}

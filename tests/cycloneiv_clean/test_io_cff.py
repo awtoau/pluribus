@@ -128,3 +128,7 @@ def test_io_site_signatures_in_cff_space(cff):
     # IOOBUF: one shared 9-bit shape; IOIBUF: one bit.  Sites below that count are reported, not hidden.
     assert max(n for (a, _), n in shapes.items() if a == "IOOBUF") >= 150
     assert all(len(s) == 1 for (a, s) in shapes if a == "IOIBUF")
+
+
+def test_pin_mode_mux_values():
+    assert sorted(IO.PIN_MODE_MUX.values()) == list(range(7))      # direction mux: 7 selectable states, 0 = input

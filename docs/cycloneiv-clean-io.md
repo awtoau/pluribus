@@ -47,3 +47,12 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 - Group index -> setting name: asmdb groups are unnamed. Names live in the callers (`ASM_IO_PIN_MODEL_YGR::process_atom`, `ASM_IO_SET_DRIVE_STRENGTH_YGR`, `ASM_IOST_CZAR_YGR` in libcomp_asm). Needs decompile of those and their enum constants.
 - Pad -> pin: `ddb_stingray4_pad.ddb` (520 `DEV_PAD`, 89 `DEV_IO_STANDARD_DESC`, 32 `DEV_IO_RULE`) and `ddb_stingray4fbga896_pkg.ddb` (896 `DEV_PIN`) are the sources. Pad bodies are `QTL_BOOL_VECTOR` / int / string tables keyed by `DEV_PAD_*_ENUM`; enum names not recovered. Oracle for the result: `build.pin` (ball, direction, standard) joined to `postfit.vo` sites by signal name.
 - Specimens needed before any field claim: one pin, one setting changed per pair (standard, drive, slew, pull, direction, bus hold). The corpus has none.
+
+## Direction mux (2026-10-30, static decompile of `ASM_IO_PIN_MODE::process_atom`, libcomp_asm 0x29101c)
+
+- The pin-mode setting is one arch-group mux with 7 values (`io.PIN_MODE_MUX`): 0 input, 1 output (OE const), 2 output + OE, 3 open-drain, 4 open-drain + OE, 5 registered OE, 6 registered-OE open-drain.
+- Selected via `ASM_ARCH_GROUP::mux_select(this, resolve_io_index_for_block(), value)`; the group index comes from `ASM_IO_PIN_MODEL::construct_gid_to_pin_index_map` (dirt index cache 0x17).
+- I/O standard is a separate mux (`handle_ygr_dual_pin_iost`: 0/1 select by standard class 0x37.. / 0x47.. / 0x48.. + atom bit 4); `asm_convert_db_to_asm_iost` maps DEV_IO_STANDARD_ENUM to class 0..12 (not yet tied to a group).
+- Corpus fit: IOIBUF = value 0 (1 CFF bit), IOOBUF = value 1 (9 bits); consistent, not yet bit-exact.
+- Not done: asmdb block/group walk for the IV die. The Cyclone V `block_infos` reader finds 0 CFF block records in the IV asmdb body (record layout differs); group -> CFF vectors, instance bases, pad -> pin, field decode all still 0.
+- Decompile outputs: gitignored `vendor-analysis/altera/analysis/io/`.
