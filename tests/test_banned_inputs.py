@@ -13,8 +13,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BANNED = ["afx_map", "asm_to_plane_afx", "lab_vx", "Ddb.cm", "HOP_OVERRIDE", "R4_COLTABLE", "COORD_V2", "RELAX_ACTIVE",
           "asm_names", "li_map", "phys_map", "coltable", "EXC4", "cycloneiv_asm_decode", "cycloneiv_phys_trace",
           "cycloneiv_ddb_trace"]
-# repo-relative prefixes allowed to keep banned identifiers (archived code only)
-LEGACY_PATHS = ("debris/",)
+# repo-relative prefixes allowed to keep banned identifiers (archived code; the DB retirement script names the retired rows)
+LEGACY_PATHS = ("debris/", "scripts/cycloneiv_retire_db_rows.py")
 THIS = os.path.join("tests", "test_banned_inputs.py")
 
 
