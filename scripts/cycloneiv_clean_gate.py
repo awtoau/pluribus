@@ -1,0 +1,433 @@
+#!/usr/bin/env python3.15t
+"""Clean P3 gate: score lifters/cycloneiv_clean/tracer.py against Quartus ground truth (docs/cycloneiv-clean-pipeline.md, #165).
+
+  PLURIBUS_SQLITE_PATH=databases/cycloneiv/gx150.db python3.15t scripts/cycloneiv_clean_gate.py --set rb10 [--record]
+  python3.15t scripts/cycloneiv_clean_gate.py --set corpus --root /mnt/2tb/corpus-rebuild/cycloneiv-<stamp> [--limit N] [--record]
+
+Ground truth per design (Quartus outputs of the build): routing.rcf (pips, nets, LUT pin routing, FF clock nets), postfit.vo
+(LUT masks, FF sites, pin locations), build.pin (pin direction).  Plane = bitstream.rbf.  The corpus root is read only.
+Per category: matched / (matched + missing + extra + wrong); a missing connection is a fault, ambiguous = missing.
+  pips      GT edge (RCF parent -> child, exact names, edge exists in routing.ddb) programmed by the tracer = matched; GT edge not
+            programmed and unresolvable (name / not in graph) = missing; GT edge not programmed while another source drives its
+            destination = wrong; programmed edge with no GT edge at its destination = extra.
+  nets      per RCF net: tracer reach from the net roots equals the GT edge set (matched); only GT edges absent = missing;
+            only surplus edges = extra; both = wrong.  Tracer root trees touching no GT edge count as extra nets.
+  lut_init  per LE with a combinational GT LUT: tracer cells == .vo lut_mask with cell index 15 - l (O1; the .vo ports are the
+            physical post-fit pins: q102~0 sits on datab where the RCF route_port says DATAB, so no RCF permutation applies).
+            Arithmetic-mode LE = missing (mapping not defined; the relation test is logged beside); cells differ = wrong; tracer LE
+            with set cells and no GT LUT = extra.
+  register_clock  per GT FF: the programmed trees reaching the LAB's BLK_CLK_BUF elements all contain the GT clock-net root = matched;
+            none reach = missing; some contain it = ambiguous = missing; none contain it = wrong.  The tracer cannot claim FFs (register
+            mode not decoded), so extra is always 0 here (not measured).
+  pins      GT ball set vs balls of IO sites whose CFF key groups equal a decoded default pattern (direction class must agree: else wrong).
+No rule changes between runs: headline variant is fixed (`lit_x`); the other three tracer variants are reported beside it.
+Log: tmp/logs/cycloneiv_clean_gate.log; results tmp/cycloneiv_clean/gate_<set>.json.
+"""
+import argparse
+import collections
+import concurrent.futures as cf
+import glob
+import json
+import logging
+import os
+import re
+import sys
+import time
+
+import numpy as np
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+from lifters.cycloneiv_clean import ddb, names  # noqa: E402
+from lifters.cycloneiv_clean import tracer as T  # noqa: E402
+
+log = logging.getLogger("cycloneiv_clean_gate")
+HEADLINE = "lit_x"                      # fixed before the first GT comparison: literal flag rule + flag-decoded exclusion bits
+VARIANTS = ("lit", "lit_x", "sel", "sel_x")
+CATS = ("pips", "nets", "lut_init", "register_clock", "pins")
+REGION = 30                             # region bands of dst tile x / y for the failing-scope enumeration
+FILES = ("bitstream.rbf", "routing.rcf", "postfit.vo", "build.pin")
+LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_gate.log")
+OUT = os.path.join(REPO, "tmp", "cycloneiv_clean")
+# source: Quartus lcell input port order; lut_mask index = a + 2 b + 4 c + 8 d (cycloneiv_lcell_comb primitive)
+PORTS = ("DATAA", "DATAB", "DATAC", "DATAD")
+
+
+# source: io_decode.json default-pattern base kinds (in / regin, out / regout, bidir / regoe / tri) vs build.pin direction column
+DIR = {"input": {"in", "regin"}, "output": {"out", "regout"}, "bidir": {"bidir", "regoe", "tri"}}
+
+
+def counts():
+    return {"matched": 0, "missing": 0, "extra": 0, "wrong": 0}
+
+
+def headline(c):
+    t = sum(c.values())
+    return 100.0 * c["matched"] / t if t else 100.0
+
+
+# ---- ground truth from the vo / pin files ---------------------------------------------------------------------------------------------
+
+def parse_vo(path):
+    text = open(path).read()
+    ports = {m[1]: m[2] for m in re.finditer(r"^// (\S+)\t=>  Location: PIN_(\w+),", text, re.M)}
+    lcs, ffs = {}, {}
+    for blk in text.split("\n// Location: ")[1:]:
+        head, _, body = blk.partition("\n")
+        m = re.match(r"(LCCOMB|FF)_X(\d+)_Y(\d+)_N(\d+)$", head.strip())
+        if not m:
+            continue
+        x, y, n = int(m[2]), int(m[3]), int(m[4]) // 2        # N = 2 * LE index (+ 1 for the FF half)
+        nm = re.match(r"(?:cycloneiv_lcell_comb|dffeas) (\S+?)\s*\(", body)
+        if not nm:
+            continue
+        name = nm[1].lstrip("\\")
+        if m[1] == "FF":
+            ffs[name] = (x, y, n)
+            continue
+        con = {p: v for p, v in re.findall(r"\.(data[abcd]|cin)\((.*?)\)", body)}
+        mask = re.search(r"\.lut_mask = 16'h([0-9A-Fa-f]{4})", body)
+        mode = re.search(r"\.sum_lutc_input = \"(\w+)\"", body)
+        cout = re.search(r"\.cout\((.*?)\)\);", body)
+        lcs[(x, y, n)] = dict(name=name, mask=int(mask[1], 16) if mask else None, mode=mode[1] if mode else None,
+                              arith=bool(cout and cout[1].strip()) or con.get("cin", "gnd").strip() != "gnd" or (mode and mode[1] != "datac"),
+                              live=[p.upper() for p in PORTS_LOWER if con.get(p, "gnd").strip() not in ("gnd", "vcc", "")])
+    return ports, lcs, ffs
+
+
+# source: Quartus lcell input port names (cycloneiv_lcell_comb primitive)
+PORTS_LOWER = ("dataa", "datab", "datac", "datad")
+
+
+def parse_pin(path):
+    out = {}
+    for line in open(path):
+        f = [s.strip() for s in line.split(":")]
+        if len(f) >= 3 and f[2] in ("input", "output", "bidir"):
+            out[f[0]] = (f[1], f[2])
+    return out
+
+
+def lut_expected(mask):
+    """Cell vector of one LE: cell[15 - l] = INIT bit l, l = a + 2 b + 4 c + 8 d of the .vo ports (O1: RBLUT index = complement)."""
+    return tuple((mask >> (15 - m)) & 1 for m in range(16))
+
+
+# ---- one design -----------------------------------------------------------------------------------------------------------------------
+
+class Ctx:
+    """Shared, read-only per-run state."""
+
+    def __init__(self):
+        t0 = time.time()
+        self.rt = ddb.Routing()
+        self.st = T.Static()
+        self.res = T.Resolver(self.rt)
+        self.st.edge_ids([0], [0])          # build the (src, dst) key index before worker threads start
+        self.lut = T.Lut()
+        self.io = T.Io()
+        self.enum = np.where(self.rt.tpl >= 0, self.rt.enum[np.maximum(self.rt.tpl, 0)].astype(np.int32), -1)
+        self.tname = {v: k for k, v in names.enums().items()}
+        blk = names.enum_of("BLK_CLK_BUF")
+        sel = np.flatnonzero(self.enum == blk)
+        self.blk = collections.defaultdict(list)
+        for r in sel.tolist():
+            self.blk[(int(self.rt.x[r]), int(self.rt.y[r]))].append(r)
+        log.info("context ready in %.1fs", time.time() - t0)
+
+    def tn(self, rec):
+        return self.tname.get(int(self.enum[rec]), str(int(self.enum[rec])))
+
+
+def score_design(cx, d, fire_workers):
+    t0 = time.time()
+    st, rt = cx.st, cx.rt
+    bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
+    fired = st.fire(bits, workers=fire_workers)
+    nets = T.parse_rcf(os.path.join(d, "routing.rcf"))
+    allnames = sorted({e for n in nets for pc in n["edges"] for e in pc} | {r for n in nets for r in n["roots"]})
+    idx = {n: i for i, n in enumerate(allnames)}
+    rec, why = cx.res.resolve(allnames)
+    # GT edges
+    gt_edges, unres = {}, collections.Counter()
+    net_gt = []
+    for n in nets:
+        eid, u = set(), 0
+        for a, b in n["edges"]:
+            ra, rb = rec[idx[a]], rec[idx[b]]
+            if ra < 0 or rb < 0:
+                u += 1
+                unres[("name:" + str(why[idx[a]] if ra < 0 else why[idx[b]]), a[0], b[0])] += 1
+                continue
+            e = int(st.edge_ids([ra], [rb])[0])
+            if e < 0:
+                u += 1
+                unres[("not_in_graph", a[0], b[0])] += 1
+            else:
+                eid.add(e)
+                gt_edges[e] = True
+        roots = [int(rec[idx[r]]) for r in n["roots"]]
+        net_gt.append((n, eid, u, roots))
+    G = set(gt_edges)
+    n_unres = sum(unres.values())
+    out = {"design": os.path.basename(d), "gt_edges": len(G), "gt_unresolved": n_unres,
+           "unresolved": {"|".join(k): v for k, v in unres.items()}}
+    # ---- pips, all variants
+    scope = {k: collections.Counter() for k in ("missing", "extra", "wrong")}
+    out["pips_variants"] = {}
+    for v in VARIANTS:
+        Pr = set(fired[v].tolist())
+        c = counts()
+        c["matched"] = len(G & Pr)
+        miss, ext = G - Pr, Pr - G
+        xd = {int(st.edst[e]) for e in ext}
+        W = [e for e in miss if int(st.edst[e]) in xd]
+        wd = {int(st.edst[e]) for e in W}
+        ex = [e for e in ext if int(st.edst[e]) not in wd]
+        c["wrong"], c["extra"], c["missing"] = len(W), len(ex), len(miss) - len(W) + n_unres
+        out["pips_variants"][v] = c
+        if v == HEADLINE:
+            out["pips"] = c
+            wset, mset = set(W), [e for e in miss if e not in set(W)]
+            for kind, es in (("missing", mset), ("extra", ex), ("wrong", W)):
+                for e in es:
+                    s_, d_ = int(st.esrc[e]), int(st.edst[e])
+                    scope[kind][(cx.tn(s_), cx.tn(d_), int(rt.x[d_]) // REGION, int(rt.y[d_]) // REGION)] += 1
+            for (why_, ta, tb), k in unres.items():
+                scope["missing"][(ta, tb, "unresolved:" + why_, -1)] += k
+    out["pips_scope"] = {kind: {"|".join(map(str, k)): v for k, v in c.items()} for kind, c in scope.items()}
+    # ---- nets
+    g = T.Graph(st, fired[HEADLINE])
+    roots = g.roots()
+    gt_root_recs = {r for _, _, _, rs in net_gt for r in rs if r >= 0}
+    nc = counts()
+    covered = set()
+    for n, eid, u, rs in net_gt:
+        if not n["edges"]:
+            continue
+        R = set(g.reach([r for r in rs if r >= 0]))
+        covered |= R
+        miss = (eid - R) or u or any(r < 0 for r in rs)
+        extra = R - eid
+        nc["matched" if not miss and not extra else "wrong" if miss and extra else "missing" if miss else "extra"] += 1
+    for r in roots:
+        if r not in gt_root_recs and not (set(g.reach([r])) & G):
+            nc["extra"] += 1
+    out["nets"] = nc
+    # ---- LUT INIT
+    ports, lcs, ffs = parse_vo(os.path.join(d, "postfit.vo"))
+    cells = cx.lut.cells(bits).astype(np.uint8)
+    lc, why_l = counts(), collections.Counter()
+    gt_sites = set()
+    for (x, y, nn), L in lcs.items():
+        i = cx.lut.lab(x, y)
+        gt_sites.add((i, nn))
+        if i < 0 or L["mask"] is None:
+            lc["missing"] += 1
+            why_l["site_or_mask_unresolved"] += 1
+        elif L["arith"]:
+            lc["missing"] += 1
+            why_l["arithmetic_mode"] += 1
+            why_l["arithmetic_same_relation" if tuple(int(b) for b in cells[i, nn]) == lut_expected(L["mask"]) else "arithmetic_other"] += 1
+        else:
+            ok = tuple(int(b) for b in cells[i, nn]) == lut_expected(L["mask"])
+            lc["matched" if ok else "wrong"] += 1
+            why_l["cells_equal" if ok else "cells_differ"] += 1
+    nz = np.argwhere(cells.sum(axis=2) > 0)
+    lc["extra"] = sum(1 for i, nn in nz.tolist() if (i, nn) not in gt_sites)
+    out["lut_init"], out["lut_scope"] = lc, dict(why_l)
+    # ---- register clock
+    node_roots = collections.defaultdict(set)
+    for r in roots:
+        node_roots[r].add(r)
+        for e in g.reach([r]):
+            node_roots[int(st.edst[e])].add(r)
+    gt_clk = {}
+    for n in nets:
+        rs = [int(rec[idx[r]]) for r in n["roots"] if rec[idx[r]] >= 0]
+        for last, cell, port, rp in n["dests"]:
+            if port == "CLK":
+                gt_clk[cell] = rs
+    rc, why_r = counts(), collections.Counter()
+    for name, (x, y, nn) in ffs.items():
+        gr = gt_clk.get(name)
+        if not gr:
+            rc["missing"] += 1
+            why_r["gt_clock_unresolved"] += 1
+            continue
+        cand = set()
+        for b in cx.blk.get((x, y), ()):
+            cand |= node_roots.get(b, set())
+        if not cand:
+            rc["missing"] += 1
+            why_r["no_programmed_clock_reaches_lab"] += 1
+            continue
+        has = {c for c in cand if any(c in node_roots.get(r, ()) or c == r for r in gr)}
+        if has == cand:
+            rc["matched"] += 1
+        elif not has:
+            rc["wrong"] += 1
+            why_r["clock_net_differs"] += 1
+        else:
+            rc["missing"] += 1
+            why_r["ambiguous_clock_candidates"] += 1
+    out["register_clock"], out["clock_scope"] = rc, dict(why_r)
+    # ---- pins
+    pins_gt = parse_pin(os.path.join(d, "build.pin"))
+    gt_balls = {b: dirn for nm_, (b, dirn) in pins_gt.items() if nm_ in ports}
+    cl = cx.io.classify(os.path.join(d, "bitstream.rbf"))
+    tr = {}
+    for s, kinds in cl.items():
+        b = cx.io.site_ball.get(s)
+        if b:
+            tr[b] = kinds
+    pc, pscope = counts(), collections.Counter()
+    for b, dirn in gt_balls.items():
+        if b not in tr:
+            pc["missing"] += 1
+            pscope["missing_" + dirn] += 1
+        elif tr[b] & DIR[dirn]:
+            pc["matched"] += 1
+        else:
+            pc["wrong"] += 1
+    pc["extra"] = sum(1 for b in tr if b not in gt_balls)
+    out["pins"], out["pins_scope"] = pc, dict(pscope)
+    out["seconds"] = round(time.time() - t0, 2)
+    return out
+
+
+# ---- run ------------------------------------------------------------------------------------------------------------------------------
+
+def discover(args):
+    if args.set == "rb10":
+        return [os.path.join(REPO, "corpus", "cycloneiv", f"gx150_rb_{i:03d}") for i in range(10)]
+    ds = []
+    for d in sorted(glob.glob(os.path.join(args.root, "*"))):
+        if not os.path.isdir(d) or not all(os.path.exists(os.path.join(d, f)) for f in FILES):
+            continue
+        try:
+            if json.load(open(os.path.join(d, "rebuild.json"))).get("status") != "ok":
+                continue
+            if "EP4CGX150" not in open(os.path.join(d, "routing.rcf")).read(600):
+                continue
+        except (OSError, ValueError):
+            continue
+        ds.append(d)
+    return ds[: args.limit] if args.limit else ds
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--set", choices=("rb10", "corpus"), required=True)
+    ap.add_argument("--root", help="corpus-rebuild stamp directory (read only)")
+    ap.add_argument("--limit", type=int)
+    ap.add_argument("--workers", type=int, default=3)
+    ap.add_argument("--record", action="store_true", help="write gate_runs / gate_results (PLURIBUS_SQLITE_PATH)")
+    ap.add_argument("--tag", default="")
+    args = ap.parse_args()
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    os.makedirs(OUT, exist_ok=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
+                        handlers=[logging.StreamHandler(), logging.FileHandler(LOG)])
+    ds = discover(args)
+    log.info("set=%s designs=%d workers=%d", args.set, len(ds), args.workers)
+    import heavy_guard
+    # declared from the first measured run (tmp/logs/lease_telemetry.jsonl); correct JOB_GB from `heavy_guard.py report`
+    gb = heavy_guard.JOB_GB["cyc4_clean_gate_base"] + args.workers * heavy_guard.JOB_GB["cyc4_clean_gate_worker"]
+    rows, t0 = [], time.time()
+    with heavy_guard.lease(gb, "cyc4_clean_gate", log):
+        cx = Ctx()
+        stall = 60
+        with cf.ThreadPoolExecutor(args.workers) as ex:
+            futs = {ex.submit(score_design, cx, d, 2): d for d in ds}
+            pending = set(futs)
+            while pending:
+                done, pending = cf.wait(pending, timeout=stall, return_when=cf.FIRST_COMPLETED)
+                if not done:
+                    log.error("stall: no design finished in %ds (%d pending, load %s)", stall, len(pending), os.getloadavg())
+                    for f in pending:
+                        f.cancel()
+                    raise SystemExit(3)
+                for f in done:
+                    try:
+                        r = f.result()
+                    except Exception as e:  # a design that cannot be scored is a result, not a skip
+                        log.error("%s: %s: %s", futs[f], type(e).__name__, e)
+                        r = {"design": os.path.basename(futs[f]), "error": f"{type(e).__name__}: {e}"}
+                    rows.append(r)
+                    if "error" not in r:
+                        log.info("%s pips %s nets %s lut %s clk %s pins %s %.1fs", r["design"], r["pips"], r["nets"], r["lut_init"],
+                                 r["register_clock"], r["pins"], r["seconds"])
+    rows.sort(key=lambda r: r["design"])
+    good = [r for r in rows if "error" not in r]
+    tot = {c: counts() for c in CATS}
+    for r in good:
+        for c in CATS:
+            for k, v in r[c].items():
+                tot[c][k] += v
+    var = {v: counts() for v in VARIANTS}
+    for r in good:
+        for v in VARIANTS:
+            for k, x in r["pips_variants"][v].items():
+                var[v][k] += x
+    scope = {k: collections.Counter() for k in ("missing", "extra", "wrong")}
+    for r in good:
+        for kind, c in r["pips_scope"].items():
+            for key, v in c.items():
+                scope[kind][key] += v
+    log.info("DESIGNS scored %d / %d (errors %d), %.0fs", len(good), len(rows), len(rows) - len(good), time.time() - t0)
+    for c in CATS:
+        log.info("HEADLINE %-15s %6.2f%%  %s", c, headline(tot[c]), tot[c])
+    for v in VARIANTS:
+        log.info("pips variant %-6s %6.2f%%  %s%s", v, headline(var[v]), var[v], "  <- headline" if v == HEADLINE else "")
+    for kind in scope:
+        log.info("pips %s by (src type, dst type, dst x band, dst y band), top 25 of %d:", kind, len(scope[kind]))
+        for k, v in scope[kind].most_common(25):
+            log.info("   %7d  %s", v, k)
+    for key in ("lut_scope", "clock_scope", "pins_scope"):
+        agg = collections.Counter()
+        for r in good:
+            agg.update(r[key])
+        log.info("%s %s", key, dict(agg))
+    un = collections.Counter()
+    for r in good:
+        un.update(r["unresolved"])
+    log.info("GT edges unresolved (reason|src type|dst type) top 15: %s", un.most_common(15))
+    res = dict(set=args.set, root=args.root, designs=len(good), errors=[r for r in rows if "error" in r], totals=tot, pips_variants=var,
+               headline={c: round(headline(tot[c]), 4) for c in CATS}, rows=rows,
+               scope={k: dict(v.most_common(200)) for k, v in scope.items()})
+    path = os.path.join(OUT, f"gate_{args.set}{args.tag}.json")
+    json.dump(res, open(path, "w"), indent=0, default=str)
+    log.info("wrote %s", path)
+    if args.record:
+        record(args, good, tot, var)
+
+
+def record(args, good, tot, var):
+    import db
+    import schema
+    from provenance import corpus as C
+    from provenance import evidence_io as E
+    schema.init()
+    commit = E.git_head(REPO)
+    suffix = "" if args.set == "rb10" else "@" + os.path.basename(args.root.rstrip("/"))
+    results = {}
+    with db.engine().begin() as conn:
+        E.ensure_family(conn, "cycloneiv")
+        for r in good:
+            name = r["design"] + suffix
+            C.ensure_member(conn, "cycloneiv", name, "oracle-build", commit, device="EP4CGX150",
+                            source_ref=(args.root or "corpus/cycloneiv") + "/" + r["design"], gate_script="scripts/cycloneiv_clean_gate.py",
+                            required=False)
+            results[name] = {c: r[c] for c in CATS}
+        run = C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_clean_gate.py", commit, results,
+                                params={"set": args.set, "root": args.root, "headline_variant": HEADLINE, "baseline": True,
+                                        "designs": len(good)},
+                                summary={"totals": tot, "pips_variants": var,
+                                         "headline": {c: round(headline(tot[c]), 4) for c in CATS}})
+    log.info("recorded gate_runs id %s commit %s members %d", run, commit, len(results))
+
+
+if __name__ == "__main__":
+    main()
