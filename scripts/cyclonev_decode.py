@@ -654,6 +654,11 @@ class Model:
                             ("T_DSP", "DSP", "dsp")):
             tiles = [(p, self.pos2bit(p), -1) for p in t["pos"][tp]]
             res += self._decode_group(key, self.mux[mk], tiles, "cram", S)
+        return res + self.pram_settings(S, with_dcram=True)
+
+    def pram_group_list(self):
+        """[(block key, mux-list key, [(pos, pram base, variant)], mode)] for every PRAM-resident block."""
+        t = self.t
         pram_groups = []
         gp = [(r["pos"], r["pram"], (r["pram"] >> 24) & 1) for r in t["iob"] if r["idx"] == 0 and r["btype"] == "gpio"]
         pram_groups.append(("GPIO", "gpio", gp, "pram"))
@@ -665,12 +670,20 @@ class Model:
                              ("LVL", "lvl", "lvl"), ("SERPAR", "serpar", "serpar"), ("TERM", "term", "term"),
                              ("HIP", "hip", "hip"), ("HMC", "hmc", "hmc")):
             pram_groups.append((key, mk, [(p, b, -1) for p, b in fx[src] if p is not None], "pram"))
-        for key, mk, tiles, mode in pram_groups:
-            res += self._decode_group(key, self.mux[mk], tiles, mode, S)
         p3 = [(p, b, (b >> 24) & 1) for p, b in fx["pma3"] if p is not None]
-        res += self._decode_group("PMA3", self.mux["pma3"], p3, "pram", S)
-        res += self._decode_group("PMA3", self.mux["pma3c"], [(p, 18 * ((b >> 24) & 3), -1) for p, b, _ in p3],
-                                  "dcram", S)
+        pram_groups.append(("PMA3", "pma3", p3, "pram"))
+        return pram_groups
+
+    def pram_settings(self, S=None, with_dcram=False):
+        """Peripheral-block settings read from the PRAM plane only (PMA3 'c' muxes read CRAM: opt-in)."""
+        S = S or Solve(self)
+        res = []
+        for key, mk, tiles, mode in self.pram_group_list():
+            res += self._decode_group(key, self.mux[mk], tiles, mode, S)
+        if with_dcram:
+            p3 = [(p, b, (b >> 24) & 1) for p, b in self.pram_group_list()[-1][2]]
+            res += self._decode_group("PMA3", self.mux["pma3c"], [(p, 18 * ((b >> 24) & 3), -1) for p, b, _ in p3],
+                                      "dcram", S)
         return res
 
     def options(self):
