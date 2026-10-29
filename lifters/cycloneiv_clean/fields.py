@@ -24,7 +24,7 @@ ROWS_PER_COLUMN = 90                 # source: 9,360 / 104 = 720 / 8 = 360 / 4; 
 DB_ILLEGAL = {0xFFFFFFFD, 0xFFFFFFFC, 0xFFFFFFFE, 0xFFFFFFFA, 0xFFFFFFFB}     # source: silent_set_bits markers (docs/cycloneiv-address-spaces.md 2.1)
 CLASS = {5: "calc", 6: "std", 7: "dumb", 8: "stlmap"}   # source: ddb type table class ids (docs/cycloneiv-clean-io.md)
 
-# name-pattern -> role; patterns are the vendor type names, the role words are ours
+# source: libdb_asmdb arch-group-type names (prefix match); the role words are our labels, not vendor data
 ROLES = (
     ("LE_LUT_FUNCTION", "lut_init"),
     ("LE_LUT_INPUT", "le_input_mux"),
