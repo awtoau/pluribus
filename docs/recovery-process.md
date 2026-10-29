@@ -181,6 +181,15 @@ Pairs prove a bit SET; the aim is to state what each single cell does. Evidence 
 - Confounded cells (identical membership over every pair so far) are listed as a queue of minimal specimens, not guessed.
 - A role is written for a cell only at level 2 or 3; a level-1 set never becomes a per-cell claim.
 
+## Patterns and certainty (Dan, 2026-10-29)
+
+- **Every detected pattern is reported.** A rule found by inspection or fitting goes into the report and the DB as a `pattern-predicted` claim with its sample size and misses; it is never folded into measured counts.
+- **The DB tags certainty per claim**, on a cell, a range or a class (`claims.tier`, `status`, `confirmations`, `refutations`, `scope_id`; statuses in `docs/provenance-and-feedback.md`). Reports and the coverage page group bits by these tags, never by one "evidence" bucket.
+- **Patterns are never locked.** A missed corner case flips the claim to `suspect` or `refuted` and the bits fall back to `predicted`/`unknown`. A pattern is preferred to enumeration only until a specimen contradicts it; on any miss, enumerate that scope.
+- **Coverage counts a pattern that has a reasonable hit rate on the test cases** (`verified-by-sampling`: confirmations at >= N distinct scopes, extremes included, zero refutations). It is shown as its own tier beside `measured`, never merged into it.
+- **A real lift or reverse build that fails makes every pattern claim in its path suspect** until the failure is explained, whatever its coverage status. The gate decides; coverage only reports.
+- Not required: testing every site/cell. A rule that passed the sampling standard stands; stated sample size and miss count are the evidence.
+
 ## Case study: Cyclone IV (#141)
 
 - The method was documented in four places before the deviation (#108, CLAUDE.md device-db rule,

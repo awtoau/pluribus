@@ -10,11 +10,18 @@ Tool: `scripts/cycloneiv_bit_inventory.py --image <path> --record` (run with `--
 - Image = the third-party EP4CGX150 image, 2,178,780 set bits in the plane (+6,280 header, +52,338 CRC bytes, +728 pre/post = 2,238,126).
 - Run 2026-10-29, interpreter `the free-threaded interpreter` (the default 3.15t env had no numpy at the time).
 
-## Evidence tiers (what "known" means here)
+## Tiers (what "known" means here)
 
-- **verified** = compared against a vendor oracle.
-- **decoded / partial / specimen / table-only** = a mapping exists, no per-bit oracle compare. NOT counted as verified.
+Names are the claim tiers/statuses of provenance-and-feedback.md; each inventory class carries exactly one, with its sample n / misses. Patterns are revocable (recovery-process.md "Patterns and certainty"): a miss moves a class to suspect/refuted and its bits out of the verified tiers.
+
+- **verified** = oracle-verified: compared claim-for-claim against a vendor oracle (1a, 5b, header sync/CRC).
+- **measured** = raw diff or observation at that cell/site (3 at the 4 specimen LABs, 4f, constants).
+- **verified-by-sampling** = a pattern confirmed at >= N distinct scopes incl. extremes, zero refutations (4g: 120 site checks, all 8 columns, 0 misses).
+- **pattern-predicted** = a rule fitted to measured parents, below the sampling bar (3t: ll-translate-v1, 4 LABs confirmed, 2-D law needs 5; 1c statistical fit).
+- **decoded-untested** = read from the vendor decode, nothing tested at the cell (2a, 2b).
+- **suspect / refuted** = a pattern with a recorded miss / contradicted by a specimen in scope (1b: 14 misses in 1,018 LEs).
 - **unknown** = nothing attributes a meaning.
+- Ledger rows from before 2026-10-29 carry a single `evidence` bucket (unsplit); newer rows carry `verified, measured, sampled, predicted, decoded, suspect, refuted, unknown`. Old rows are not migrated.
 
 ## (A) Die-wide TOTAL bits, (B) image SET bits
 
@@ -37,7 +44,7 @@ Tool: `scripts/cycloneiv_bit_inventory.py --image <path> --record` (run with `--
 | 5d | preamble + postamble | constant | 728 | 0.00 | 728 |
 | 6 | unclassified, LAB-column cells | unknown | 11,188,995 | 28.38 | 601,552 |
 
-- Die-wide: verified 2,494,648 (6.33 %); other evidence (1b, 1c, 2a, 2b, 3, constants) 10,113,581 (25.65 %); unknown 26,816,787 (68.02 %).
+- Die-wide, run 2026-10-29 13:52 (+10:00): verified 2,494,648 (6.33 %); measured 1,003,301 (2.54 %); verified-by-sampling 5,402,688 (13.70 %); pattern-predicted 2,610,914 (6.62 %); decoded-untested 7,344,838 (18.63 %); suspect 149,760 (0.38 %); refuted 0; unknown 20,418,867 (51.79 %). Class table with basis and sample n: `reports/coverage.html` section 5 and the inventory log.
   - Header split used: 24 bits verified (sync + CRC-16), 6,185 known/constant (flag, length, family, lanes 5-7, 0xFF fill), 159 option bits unknown (docs/cycloneiv-bitstream.md "Format").
 - Image set bits: verified-class 701,845 (31.4 %); other-evidence 776,464 (34.7 %); unknown-class 752,809 (33.6 %); header/pre/post 7,008.
 - Not in the partition: 1,506,513 asm entries (261,850 distinct asm bits) have no plane cell (outside every column band). Placed asm cells: 7,359,058 of 51.6 M entries.

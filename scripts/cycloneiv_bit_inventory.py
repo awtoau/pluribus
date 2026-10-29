@@ -55,10 +55,11 @@ CLASSES = [  # id, name, evidence tier
     ("1c", "LAB clock-polarity bit", "partial"),
     ("2a", "asm routing: cells of groups FIRED in this image", "decoded"),
     ("2b", "asm routing: cells in groups/blocks not fired in this image", "table-only"),
-    ("3", "LOCAL_LINE specimen bits (LAB-translated)", "specimen"),
+    ("3", "LOCAL_LINE specimen bits at the 4 specimen LABs (measured)", "specimen"),
+    ("3t", "LOCAL_LINE specimen bits translated to all other LABs", "predicted"),
     ("4a", "periphery frames 1..36 (IO ring, clocks, PLL, misc)", "unknown"),
     ("4f", "M9K data cells at sites with an exact offset check", "verified"),
-    ("4g", "M9K data cells, site offset rule-predicted (not checked)", "evidence"),
+    ("4g", "M9K data cells at the other sites (per-site offset rule)", "sampled"),
     ("4b", "M9K columns (8): cells outside the data tables (mode/control/other)", "unknown"),
     ("4c", "multiplier columns (4)", "unknown"),
     ("4d", "IOL / IOR columns (+ 4 frames before col 0)", "unknown"),
@@ -164,8 +165,28 @@ LEDGER = REPO / "docs/coverage-history.jsonl"
 # Fallback tier label per class when the DB holds no claims (verified = vendor-oracle compare, evidence =
 # mapping without per-bit oracle, unknown = nothing; 5a split by the header counts). With claims present the
 # ledger line carries the tier x status breakdown read from the claims table (provenance-schema.md).
-LEDGER_TIER = {"1a": "verified", "5b": "verified", "1b": "evidence", "1c": "evidence", "2a": "evidence",
-               "2b": "evidence", "3": "evidence", "5d": "evidence", "4f": "verified", "4g": "evidence"}
+# Tier names follow docs/provenance-and-feedback.md (statuses) and docs/recovery-process.md "Patterns and certainty":
+#   verified   = oracle-verified (vendor post-fit compare) | measured = raw diff / observed at that cell or site
+#   sampled    = verified-by-sampling (pattern, >= N scopes incl. extremes, 0 refutations) | predicted = pattern-predicted, below that bar
+#   decoded    = decoded-untested (vendor decode, nothing tested at the cell) | suspect / refuted = a pattern with a miss / contradicted
+# Patterns are revocable: a miss moves the class to suspect/refuted and its bits out of the verified tiers.
+TIER_KEYS = ("verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown")
+LEDGER_TIER = {"1a": "verified", "5b": "verified", "4f": "measured", "3": "measured", "5d": "measured",
+               "4g": "sampled", "3t": "predicted", "1c": "predicted", "2a": "decoded", "2b": "decoded", "1b": "suspect"}
+BASIS = {  # class -> (what backs it, sample n / misses)
+    "1a": ("LUT mask vs Quartus post-fit netlist (oracle compare)", "301 designs, 5,354,496 bits / 0 miss"),
+    "1b": ("pattern-predicted rule from LE positions; 14 misses on one design, claim status suspect", "1,018 LEs / 14 miss"),
+    "1c": ("statistical fit over clock lines + one isolated cell (pattern-predicted, open)", "5,442 lines / fit Jaccard 0.85"),
+    "2a": ("decoded from vendor asm tables, (frame,v) map inferred; decoded-untested, not rule-verified", "held-out routing score 17.1% of pips"),
+    "2b": ("same vendor tables, groups not fired in the image; decoded-untested, not rule-verified", "none"),
+    "3": ("raw-diff specimens at the 4 specimen LABs", "4 LABs x 240 pairs"),
+    "3t": ("pattern ll-translate-v1 fitted at X10Y10, confirmed at 3 other LABs; below the 2-D bar (N=5); edge rows/columns outside scope", "4 LABs x 240 pairs / 0 miss"),
+    "4f": ("measured: M9K data cells at sites with an exact random-init diff", "112 sites / 0 miss"),
+    "4g": ("verified-by-sampling: M9K per-site (frame,v) offset rule, all 8 columns, rows 1..90 incl. extremes", "120 site checks / 0 miss"),
+    "5a": ("header: sync+CRC verified; format fields and constants observed; option bits unknown", "-"),
+    "5b": ("CRC-16 recomputed over the frame data", "6,154 frames"),
+    "5d": ("constant 0xFF fill per the documented format", "-"),
+}
 
 
 def git(*args):
@@ -181,20 +202,20 @@ def record(out, hdr_ver, hdr_known, hdr_unk, commit=None, ts=None, source="live"
     for r in out["rows"]:
         t = r["total"]
         if r["id"] == "5a":
-            v, e, u = hdr_ver, hdr_known, hdr_unk
+            tv = {"verified": hdr_ver, "measured": hdr_known, "unknown": hdr_unk}
         else:
             tier = LEDGER_TIER.get(r["id"], "unknown")
-            v, e, u = (t if tier == "verified" else 0), (t if tier == "evidence" else 0), (t if tier == "unknown" else 0)
-        assert v + e + u == t, r["id"]
-        classes.append(dict(id=r["id"], name=r["name"], tier_label=r["tier"], die_bits=t, verified=v, evidence=e,
-                            unknown=u, image_set=r["set"]))
+            tv = {tier: t}
+        assert sum(tv.values()) == t, r["id"]
+        classes.append(dict(id=r["id"], name=r["name"], tier_label=r["tier"], die_bits=t,
+                            **{k: tv.get(k, 0) for k in TIER_KEYS}, image_set=r["set"],
+                            basis=BASIS.get(r["id"], ("", ""))[0], sample=BASIS.get(r["id"], ("", ""))[1]))
     commit = commit or git("rev-parse", "HEAD")
     if dirty is None:
         dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
     line = dict(ts=ts or datetime.datetime.now().astimezone().isoformat(timespec="seconds"), commit=commit,
-                subject=git("log", "-1", "--format=%s", commit), dirty=dirty, source=source, die_bits=out["die_bits"], verified=out["verified"], evidence=out["evidence"],
-                unknown=out["unknown"], image_set_total=out["set_total"], classes=classes)
-    assert line["verified"] + line["evidence"] + line["unknown"] == line["die_bits"]
+                subject=git("log", "-1", "--format=%s", commit), dirty=dirty, source=source, die_bits=out["die_bits"], **{k: out[k] for k in TIER_KEYS}, image_set_total=out["set_total"], classes=classes)
+    assert sum(line[k] for k in TIER_KEYS) == line["die_bits"]
     # tier x status per class from the claims table (real rows only); also mirrored into coverage_ledger
     import evidence_io_bridge as eb
     tiers_by_class = eb.ledger_tiers("cycloneiv", "EP4CGX150", commit, [(r["id"], r["total"]) for r in out["rows"]])
@@ -322,7 +343,11 @@ def run(a):
     spec_cells = np.concatenate([((fxa + df) * NV + vya + dv) for df, dv in universe])
     prior = inv.cls[np.unique(spec_cells)]
     spec_overlap = {CLASSES[c - 1][0]: int(n) for c, n in zip(*np.unique(prior[prior > 0], return_counts=True))}
-    spec_new = inv.claim(spec_cells, "3")
+    meas = np.concatenate([((g.FX[lx] + np.array([d[0] for d in universe])) * NV + g.vy0 + g.vpitch * ly + np.array([d[1] for d in universe]))
+                           for lx, ly in FORCED_LAB])
+    n3 = inv.claim(meas, "3")
+    n3t = inv.claim(spec_cells, "3t")
+    spec_new = (n3[0] + n3t[0], n3[1] + n3t[1])
     # full-pattern matches of the image: all 4 bits of a (src, snk) specimen set at a LAB
     match_pairs, per_snk = 0, collections.Counter()
     labs_hit = np.zeros(len(tiles), bool)
@@ -394,9 +419,13 @@ def run(a):
     # header frame split (docs/cycloneiv-bitstream.md "Format"): sync+CRC16 verified 24; flag/length/family/variant 41
     # known; lanes 5-7 constant 1 (120) and 0xFF fill (6024) constant; option bits 159 unknown
     HDR_VER, HDR_KNOWN, HDR_UNK = 24, 41 + 120 + 6024, 159
-    ver = T["1a"] + T["5b"] + T["4f"] + HDR_VER
-    ev = T["1b"] + T["1c"] + T["2a"] + T["2b"] + T["3"] + T["4g"] + HDR_KNOWN + T["5d"]
-    unk = die_bits - ver - ev
+    tot_t = dict.fromkeys(TIER_KEYS, 0)
+    for r_ in rows:
+        if r_["id"] == "5a":
+            tot_t["verified"] += HDR_VER; tot_t["measured"] += HDR_KNOWN; tot_t["unknown"] += HDR_UNK
+        else:
+            tot_t[LEDGER_TIER.get(r_["id"], "unknown")] += r_["total"]
+    assert sum(tot_t.values()) == die_bits, tot_t
     # ---- unknown regions: one partition of classes 4a-4e, 5c, 6 ------------------------------
     unknown_ids = [CID[k] for k in ("4a", "4b", "4c", "4d", "4e", "5c", "6")]
     u2 = np.isin(inv.cls, unknown_ids).reshape(nfr, NV)
@@ -434,7 +463,7 @@ def run(a):
     n_ll = len(tiles)
     moved_lab = [x for x in moved if g.kind[x] == "LAB"]
     out = dict(image_set_bits_in_plane=int(len(keys)), header_set=hdr_set, crc_set=crc_set, die_bits=die_bits,
-               set_total=set_all, rows=rows, verified=ver, evidence=ev, unknown=unk,
+               set_total=set_all, rows=rows, **tot_t,
                fired_groups=int(len(gids)), blocks=int(dec.nblocks),
                asm_entries=int(len(dec.gsize)), asm_entries_dropped=n_drop, asm_bits_unplaced=int(len(dpos)),
                afx_moved_columns=moved, afx_moved_lab_columns=moved_lab, specimen_labs=pats, specimen_cells_per_lab=len(universe),
@@ -448,19 +477,22 @@ def run(a):
         record(out, HDR_VER, HDR_KNOWN, HDR_UNK)
 
     P = log.info
+    P("%-4s %12s  %-13s  %-95s  %s", "class", "bits", "tier", "what backs it", "sample n / misses")
+    for r in rows:
+        if r["id"] in BASIS:
+            P("%-4s %12d  %-13s  %-95s  %s", r["id"], r["total"], LEDGER_TIER.get(r["id"], "mixed"), *BASIS[r["id"]])
     P("=== (A) die-wide TOTAL bits per class; die = %d bits (handbook 39,425,016) ===", die_bits)
     P("%-4s %-58s %-9s %12s %12s %7s", "id", "class", "tier", "total", "image set", "% die")
     for r in rows:
         P("%-4s %-58s %-9s %12d %12d %6.2f%%", r["id"], r["name"], r["tier"], r["total"], r["set"], r["pct_die"])
     P("2c   asm bits with no plane cell (outside partition): %d distinct, %d entries", len(dpos), n_drop)
-    P("verified (oracle compare) %d = %.2f%%; other evidence (partial/decoded/table-only/specimen/constant) %d = %.2f%%; unknown %d = %.2f%%",
-      ver, 100 * ver / die_bits, ev, 100 * ev / die_bits, unk, 100 * unk / die_bits)
+    P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items()))
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
-    sv, se = S["1a"] + S["5b"] + S["4f"], S["1b"] + S["1c"] + S["2a"] + S["2b"] + S["3"] + S["4g"]
+    sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["2a"] + S["2b"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
     P("    verified-class set bits %d (%.1f%%), other-evidence %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
       sv, 100 * sv / set_all, se, 100 * se / set_all, set_all - sv - se - S["5a"] - T["5d"],
       100 * (set_all - sv - se - S["5a"] - T["5d"]) / set_all)
-    P("    in 1a %d, 1b %d, 1c %d, 2a %d, 2b %d, 3 %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["2a"], S["2b"], S["3"],
+    P("    in 1a %d, 1b %d, 1c %d, 2a %d, 2b %d, 3 %d, 3t %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["2a"], S["2b"], S["3"], S["3t"],
       sum(S[k] for k in ("4a", "4b", "4c", "4d", "4e")), S["5b"], S["5c"], S["6"])
     P("asm: groups fired %d, blocks %d; entries with no plane cell %d; columns whose asm base != FX: %d (LAB %d: %s)",
       len(gids), dec.nblocks, n_drop, len(moved), len(moved_lab), moved_lab)
