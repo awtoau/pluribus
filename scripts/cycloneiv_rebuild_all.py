@@ -52,13 +52,10 @@ DERIVED = [   # (artifact or None for a cache-prep step, command); order matters
     (None, ["scripts/cycloneiv_ddb_routing.py", "nodes"]),
     (None, ["scripts/cycloneiv_ddb_routing.py", "twin"]),
     (None, ["scripts/cycloneiv_ddb_routing.py", "templates"]),
-    (None, ["scripts/cycloneiv_asm_decode.py", "prepare"]),                  # tmp/ddb/<die>_dec_*.npy from the vendor files
     (None, ["scripts/cycloneiv_ddb_blockmap.py", "build"]),                  # tmp/ddb/<die>_blockmap.npz
-    ("cycloneiv_ep4cgx150_ddb_map.npz", ["scripts/cycloneiv_ddb_trace.py", "export"]),
-    ("cycloneiv_ep4cgx150_li_map.json", ["scripts/cycloneiv_li_map.py", "extract", "--designs", "gx150_*", "--split", "even"]),
-    ("cycloneiv_ep4cgx150_phys_map.json", ["scripts/cycloneiv_phys_trace.py", "learn", "--designs", "gx150_*", "--split", "even"]),
 ]
-# Not regenerated (no regenerating CLI or inputs are device probes, not builds): asm_names.json, geom.json, labs.json.
+# Learned maps (ddb_map, li_map, phys_map, asm_names) are retired (#165); no derived artifact is regenerated.
+# Not regenerated (inputs are device probes, not builds): geom.json, labs.json.
 # Backstop per regeneration/gate command: first full run, nothing measured yet; the 60 s CPU-stall guard is primary.
 CMD_OVERALL_S = 4 * 3600
 log = logging.getLogger("rebuild_all")
@@ -416,9 +413,6 @@ def make_view(root):
     (v / "tmp/limits").mkdir()
     shutil.copy2(REPO / "tmp/limits/build_pool.max", v / "tmp/limits/build_pool.max")
     (v / "tmp/cycloneiv").mkdir()
-    for f in ("rl_gx_m8f.json", "rl_gx_m8c.json"):      # learner tables the phys tracer reads; see derived-stage notes
-        if (REPO / "tmp/cycloneiv" / f).exists():
-            os.symlink(REPO / "tmp/cycloneiv" / f, v / "tmp/cycloneiv" / f)
     (v / ".ready").write_text(datetime.datetime.now().isoformat())
     log.info("view ready: %s", v)
     return v
@@ -515,7 +509,8 @@ def stage_gates(root):
     cov_after = json.loads((view / "docs/coverage-history.jsonl").read_text().splitlines()[-1])
     keys = ("die_bits", "verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown")
     out["inventory"] = {"before": {k: cov_before.get(k) for k in keys}, "after": {k: cov_after.get(k) for k in keys}}
-    out["gate_rc"] = run_in_view(view, ["scripts/cycloneiv_ddb_trace.py", "score", "--designs", "gx150_rb*", "--split", "odd"], "gate_76").returncode
+    # TODO(#165): the 76-design gate returns with the clean P3 gate; the old ddb_trace score is retired.
+    out["gate_rc"] = None
     out["gate"] = {"before": before_g, "after": last_gate(vdb)}
     out["ledger_rc"] = run_in_view(view, ["scripts/progress_ledger.py"], "progress_ledger").returncode
     (REPO / "tmp/rebuild_gates.json").write_text(json.dumps(out, indent=1, default=str))
