@@ -313,6 +313,19 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
         log.info("class %-3s -> %-9s n=%-6d misses=%-3d %s", cid, v["tier"], v["n"], v["misses"], v["rule"])
         return c
 
+    def sync_diewide(cid, class_claim_id, pattern):
+        links = conn.execute(select(S.claim_evidence.c.evidence_id, S.claim_evidence.c.role)
+                             .where(S.claim_evidence.c.claim_id == class_claim_id)).fetchall()
+        v = tiering.class_verdict(conn, fam, device, cid)
+        for (cl,) in conn.execute(select(S.claims.c.id).where(and_(
+                S.claims.c.family == fam, S.claims.c.device == device, S.claims.c.inventory_class == cid,
+                S.claims.c.subject_key != f"CLASS:{cid}"))).fetchall():
+            for e, role in links:
+                conn.execute(insert(S.claim_evidence).values(claim_id=cl, evidence_id=e, role=role))
+            conn.execute(update(S.claims).where(S.claims.c.id == cl).values(
+                tier="pattern-predicted", pattern_id=pattern, status=STATUS_OF[v["tier"]],
+                confirmations=v["n"], refutations=v["misses"], updated_at=now()))
+
     # LAB-side classes
     ev_lut = ids(ev.c.name == "LUT INIT oracle compare (301 designs)")
     class_claim("1a", "pattern-predicted", "lut-anchor-v1", [("direct", ev_lut)], "LUT mask vs post-fit netlist, 301 designs")
@@ -323,7 +336,9 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
                                n_objects=14, kind="audit")]
     class_claim("1b", "pattern-predicted", "le-used-v1", [("conflict", ev_miss)], "LE-used bit at (FX-8, vy-sign)")
     ev_clk = ids(ev.c.kind == "specimen-pair", ev.c.source_ref == "bit_hunter:B:clk")
-    class_claim("1c", "pattern-predicted", "clock-polarity-v1", [("parent", ev_clk)], "clock-polarity cell isolated by bit-hunter pairs")
+    c1c = class_claim("1c", "pattern-predicted", "clock-polarity-v1", [("parent", ev_clk)], "clock-polarity cell isolated by bit-hunter pairs")
+    # die-wide 1c claim (carries the bit count in coverage()): same pattern + evidence links, status from the verdict, tier never hand-set
+    sync_diewide("1c", c1c, p_clk)
     for k in ("2a", "2b"):
         class_claim(k, "vendor-decoded", None, [], "vendor asm tables, placement via afx_map")
     ll_files = {"cycloneiv_forced_lab.json": "parent", "cycloneiv_forced_lab_58x30.json": "confirm",
