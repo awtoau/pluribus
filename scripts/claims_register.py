@@ -369,6 +369,8 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
     if ev_hold:
         class_claim("1d-c", "pattern-predicted", "blkrba-control-v1", [("parent", ev_hold)],
                     "6 control cells (clock polarity 1, ena 2, aclr 2, sclr 1) at constant 22, prediction-first at held-out LABs; supersedes 1d-b for these cells")
+        conn.execute(update(S.claims).where(and_(S.claims.c.inventory_class == "1d-c", S.claims.c.subject_key != "CLASS:1d-c"))
+                     .values(pattern_id="blkrba-control-v1"))   # die-wide claim is created before the pattern exists
     ev_miss = [E.record_decode(conn, fam, device, "le-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)",
                                {"n_les": 1018, "misses": 14, "design": "one corpus design", "meta": {},
                                 "note": "figures from the earlier analysis (docs/cycloneiv-bit-inventory.md 1b); not recomputed in this run"},
@@ -774,10 +776,13 @@ def register_cycloneiv(conn, device, commit):
                 cls="1b", basis="14/1,018 misses on one design = unacted refutations")
         R.claim("bit", "LAB:clock-polarity", cls_scope("1c", cls["1c"]["name"]), {"fit": "greedy"}, "statistical", "open", cls="1c",
                 basis="Jaccard 0.85 over 5,442 clock lines")
-        for k_ in ("1d-a", "1d-b"):   # present once a ledger line with the blkrba classes has been recorded
+        for k_ in ("1d-a", "1d-b", "1d-c", "1d-d"):   # present once a ledger line with the blkrba classes has been recorded
             if k_ in cls:
+                c_ = k_ == "1d-c"
                 R.claim("bit", f"LAB:blkrba:{k_}", cls_scope(k_, cls[k_]["name"]), {"source": "blkrba.ddb"},
-                        "vendor-decoded", "refuted" if k_ == "1d-b" else "open", cls=k_, basis="vendor ddb positions; law validated on the LUT cells only")
+                        "pattern-predicted" if c_ else "vendor-decoded",
+                        "verified-by-sampling" if c_ else "refuted" if k_ == "1d-b" else "open",
+                        cls=k_, basis="vendor ddb positions; tier from the class verdict")
         afx_claim = R.claim("coord-map", "asm->plane:columns", R.scope("coord-map", "keys", {"keys": [f"asm->plane:x{x}" for x in range(118)]}, n=118),
                             {"source": "afx_map"}, "statistical", "open", pattern=p_afx, cls="2a", basis="vote peaks; 32 columns differ from FX")
         for k in ("2a", "2b"):

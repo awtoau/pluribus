@@ -54,7 +54,9 @@ CLASSES = [  # id, name, evidence tier
     ("1b", "LE-used bit", "partial"),
     ("1c", "LAB clock-polarity bit", "partial"),
     ("1d-a", "LAB blkrba named REG/OUT/IN bits (vendor name only; table in vendor-analysis, not committed)", "decoded"),
-    ("1d-b", "LAB blkrba named control bits RSCNT/RSMUX/ROWCLK (positions miss the measured control cells)", "refuted"),
+    ("1d-b", "LAB blkrba named control bits RSCNT/RSMUX/ROWCLK at constant 15 (positions miss the measured control cells)", "refuted"),
+    ("1d-c", "LAB blkrba control cells at constant 22 (clock polarity, ena 2, aclr 2, sclr 1)", "sampled"),
+    ("1d-d", "LAB blkrba other control names at constant 22 (position only)", "decoded"),
     ("2a", "asm routing: cells of groups FIRED in this image", "decoded"),
     ("2b", "asm routing: cells in groups/blocks not fired in this image", "table-only"),
     ("3", "LOCAL_LINE specimen bits at the 4 specimen LABs (measured)", "specimen"),
@@ -224,7 +226,9 @@ BASIS = {  # class -> (what backs it, sample n / misses)
     "1a": ("LUT mask vs Quartus post-fit netlist (oracle compare)", "301 designs, 5,354,496 bits / 0 miss"),
     "1b": ("pattern-predicted rule from LE positions; 14 misses on one design, claim status suspect", "1,018 LEs / 14 miss"),
     "1c": ("statistical fit over clock lines + one isolated cell (pattern-predicted, open)", "5,442 lines / fit Jaccard 0.85"),
-    "1d-b": ("blkrba control names: positions miss every measured clock-polarity/ena/aclr/sclr cell; refuting rows, claim refuted", "8 measured cells / 0 on a name"),
+    "1d-c": ("blkrba control cells at constant 22, prediction-first at held-out LABs (claims_register 1d-c)", "5 scopes incl. corners"),
+    "1d-d": ("blkrba other control names at constant 22; no specimen isolates them; position only", "-"),
+    "1d-b": ("blkrba control names at constant 15: positions miss every measured clock-polarity/ena/aclr/sclr cell; refuting rows, claim refuted", "8 measured cells / 0 on a name"),
     "1d-a": ("vendor ddb decode (blkrba) of per-LAB bit positions; position law validated on the 256 LUT cells (4,749,088 mask bits vs .vo, 0 wrong); non-LUT names carry no exact evidence", "300 designs, LUT cells only"),
     "2a": ("decoded from vendor asm tables, (frame,v) map inferred; decoded-untested, not rule-verified", "held-out routing score 17.1% of pips"),
     "2b": ("same vendor tables, groups not fired in the image; decoded-untested, not rule-verified", "none"),
@@ -334,11 +338,11 @@ def run(a):
     import cycloneiv_blkrba_lab as bl
     nl = bl.nonlut_positions()
     if nl["a"]:   # (dx, dy) per tile: frame = FX + dy - 15, v = vy0 + 70*Y + 2 - dx  (TEST 1, #165)
-        for k in ("a", "b"):
-            inv.claim(np.concatenate([(fx + dy - 15) * NV + vy + 2 - dx for dx, dy in nl[k]]), f"1d-{k}")
+        for k, c in (("a", 15), ("c", 22), ("d", 22), ("b", 15)):   # b last: refuted bits never shadow a better class
+            inv.claim(np.concatenate([(fx + dy - c) * NV + vy + 2 - dx for dx, dy in nl[k]]), f"1d-{k}")
     else:
         log.warning("1d: blkrba table not found (vendor-analysis, local only); class 1d stays empty")
-    log.info("class 1 claimed: %s", {k: int((inv.cls == CID[k]).sum()) for k in ("1a", "1b", "1c", "1d-a", "1d-b")})
+    log.info("class 1 claimed: %s", {k: int((inv.cls == CID[k]).sum()) for k in ("1a", "1b", "1c", "1d-a", "1d-b", "1d-c", "1d-d")})
 
     # ---- 2: asm routing -------------------------------------------------------------------
     dec = ad.Dec()
@@ -575,11 +579,11 @@ def run(a):
     P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items())
       + f"; of which unknown projected unused (never set in {ever_n} designs) {tot_proj} = {100 * tot_proj / die_bits:.2f}%")
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
-    sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["1d-a"] + S["1d-b"] + S["2a"] + S["2b"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
+    sv, se = S["1a"] + S["5b"], S["4f"] + S["1b"] + S["1c"] + S["1d-a"] + S["1d-b"] + S["1d-c"] + S["1d-d"] + S["2a"] + S["2b"] + S["3"] + S["3t"] + S["4g"]   # se: evidence + predicted
     P("    verified-class set bits %d (%.1f%%), other-evidence %d (%.1f%%), unknown-class %d (%.1f%%; header/pre/post excluded)",
       sv, 100 * sv / set_all, se, 100 * se / set_all, set_all - sv - se - S["5a"] - T["5d"],
       100 * (set_all - sv - se - S["5a"] - T["5d"]) / set_all)
-    P("    in 1a %d, 1b %d, 1c %d, 1d-a %d, 1d-b %d, 2a %d, 2b %d, 3 %d, 3t %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["1d-a"], S["1d-b"], S["2a"], S["2b"], S["3"], S["3t"],
+    P("    in 1a %d, 1b %d, 1c %d, 1d-a %d, 1d-b %d, 1d-c %d, 1d-d %d, 2a %d, 2b %d, 3 %d, 3t %d, 4* %d, 5b %d, 5c %d, 6 %d", S["1a"], S["1b"], S["1c"], S["1d-a"], S["1d-b"], S["1d-c"], S["1d-d"], S["2a"], S["2b"], S["3"], S["3t"],
       sum(S[k] for k in ("4a", "4b", "4c", "4d", "4e")), S["5b"], S["5c"], S["6"])
     P("asm: groups fired %d, blocks %d; entries with no plane cell %d; columns whose asm base != FX: %d (LAB %d: %s)",
       len(gids), dec.nblocks, n_drop, len(moved), len(moved_lab), moved_lab)

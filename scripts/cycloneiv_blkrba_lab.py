@@ -62,14 +62,24 @@ def lut_table(names):
 CONTROL = re.compile(r"^L:(RSCNT|RSMUX|LABCLK)")
 
 
+# measured control cells at constant 22: clock polarity, ena x2, aclr x2, sclr (tile-relative (-6,-30) etc.), as (dx, dy)
+CONTROL22_MEASURED = {(32, 16), (32, 14), (32, 15), (34, 21), (34, 22), (34, 24)}
+
+
 def nonlut_positions(path=DEFAULT_CSV):
-    """({'a': [(dx, dy)] REG/OUT/IN, 'b': [(dx, dy)] RSCNT/RSMUX/ROWCLK}); empty when the local (gitignored) table is absent."""
-    out = {"a": [], "b": []}
+    """{'a': REG/OUT/IN (dy-15), 'b': all control names (dy-15, refuted), 'c': the 6 measured control cells (dy-22),
+    'd': the other control names (dy-22)} as [(dx, dy)]; empty when the local (gitignored) table is absent."""
+    out = {"a": [], "b": [], "c": [], "d": []}
     if not Path(path).exists():
         return out
     for n, xy in load_csv(path).items():
-        if not LUT.match(n):
-            out["b" if CONTROL.match(n) else "a"].append(xy)
+        if LUT.match(n):
+            continue
+        if CONTROL.match(n):
+            out["b"].append(xy)
+            out["c" if xy in CONTROL22_MEASURED else "d"].append(xy)
+        else:
+            out["a"].append(xy)
     return out
 
 
