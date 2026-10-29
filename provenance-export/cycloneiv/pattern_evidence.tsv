@@ -1,5 +1,5 @@
 pattern_id	evidence_id	role
-ddb-group-eq-edge-v1	ref:cycloneivEP4CGX150vendor-decoderouting.ddb fan-out decodelifters/data/cycloneiv_ep4cgx150_ddb_map.npz	parent
+ddb-group-eq-edge-v1	ref:cycloneivEP4CGX150vendor-decoderouting.ddb fan-out decodetmp/ddb/stingray4_blockmap.npz	parent
 ll-translate-v1	ref:cycloneivEP4CGX150specimen-pairgxll100x75_00_02evidence/cycloneiv/cycloneiv_forced_lab_100x75.json	parent
 ll-translate-v1	ref:cycloneivEP4CGX150specimen-pairgxll100x75_00_04evidence/cycloneiv/cycloneiv_forced_lab_100x75.json	parent
 ll-translate-v1	ref:cycloneivEP4CGX150specimen-pairgxll100x75_00_06evidence/cycloneiv/cycloneiv_forced_lab_100x75.json	parent
@@ -960,17 +960,17 @@ ll-translate-v1	ref:cycloneivEP4CGX150specimen-pairgxll_30_22evidence/cyclon
 ll-translate-v1	ref:cycloneivEP4CGX150specimen-pairgxll_30_24evidence/cycloneiv/cycloneiv_forced_lab.json	parent
 ll-translate-v1	ref:cycloneivEP4CGX150specimen-pairgxll_30_26evidence/cycloneiv/cycloneiv_forced_lab.json	parent
 ll-translate-v1	ref:cycloneivEP4CGX150specimen-pairgxll_30_28evidence/cycloneiv/cycloneiv_forced_lab.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k0evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k1evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k10evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k11evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k12evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k13evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k2evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k3evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k4evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k5evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k6evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k7evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k8evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
-m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k9evidence/cycloneiv/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k0tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k1tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k10tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k11tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k12tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k13tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k2tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k3tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k4tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k5tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k6tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k7tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k8tmp/cycloneiv_m9k_bincode1d.json	parent
+m9k-init-x1-law-v1	ref:cycloneivEP4CGX150specimen-pairgxm9k_b1_k9tmp/cycloneiv_m9k_bincode1d.json	parent

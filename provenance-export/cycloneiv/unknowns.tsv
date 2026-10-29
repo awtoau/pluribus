@@ -1,17 +1,11 @@
 family	device	space	subject_key	scope_id	reason	status	absence_evidence	inventory_class	n_objects	note	created_commit	updated_at
-cycloneiv	EP4CGX150	bit	LOCAL_LINE:*	ref:8b0a8e26ed58355b	unasked	open		3	713700	outside ll-translate-v1 parent scope (column anomaly)	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:18
-cycloneiv	EP4CGX150	bit	LOCAL_LINE:*	ref:9f33f38af03848af	unasked	open		3	63440	outside ll-translate-v1 parent scope (edge rule)	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:18
-cycloneiv	EP4CGX150	bit	class:4a	ref:6207bc37261c4173	unasked	open		4a	229248	periphery frames 1..36 (IO ring, clocks, PLL, misc)	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	bit	class:4b	ref:06b43037f7ea41e4	unasked	open		4b	14269948	M9K columns (8) incl. content	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	bit	class:4c	ref:2c952ff2754dc385	unasked	open		4c	620960	multiplier columns (4)	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	bit	class:4d	ref:4eb5f1129099085b	unasked	open		4d	331000	IOL / IOR columns (+ 4 frames before col 0)	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	bit	class:4e	ref:9ca2d15d9cc2af13	unasked	open		4e	118034	IO row tiles (y=0, y=91) of LAB columns	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	bit	class:5c	ref:75fb6ebab2c31a32	unasked	open		5c	49227	lane-tail byte (v 6344..6351, CRAM frames)	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	bit	class:6	ref:9fbf8333ee6890c4	unasked	open		6	11188995	unclassified (LAB-column cells no decoder claims)	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	cell-param	M9K:init:hw-word-bit	ref:dadd793522e02ce7	unasked	open		4b	46080	only generator index -> cell proven for widths > 1	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:19
-cycloneiv	EP4CGX150	cell-param	M9K:init:w18	ref:7afbb83424bfba37	unasked	open		4b	9216	width not yet specimened	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:19
-cycloneiv	EP4CGX150	cell-param	M9K:init:w32	ref:a55a20d3fbbcdfb0	unasked	open		4b	9216	width not yet specimened	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:19
-cycloneiv	EP4CGX150	cell-param	M9K:init:w36	ref:e112c664b766c22b	unasked	open		4b	9216	width not yet specimened	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:19
-cycloneiv	EP4CGX150	mux-input	li_map:ambiguous	ref:f9aa0bbda413afb1	unasked	open		2b	3210	3210 ambiguous LI keys	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	mux-input	phys_map:unresolved	ref:04b50a39f3526804	unasked	open		2b	10971	10971 class keys with no resolved driver ({'none': 10966, 'default-only': 2177, 'undersampled': 2167, 'wire': 14, 'ambiguous': 5})	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
-cycloneiv	EP4CGX150	stream-option	header:option-bits	ref:08b9e27d883a1c60	unasked	open		5a	159	159 option bits set by quartus_cpf; option sweep not done	85bf5e282e09e6f2c05d5cf7e849f25d749a9cb7	2026-10-29T09:15:21
+cycloneiv	EP4CGX150	bit	LOCAL_LINE:*	ref:8b0a8e26ed58355b	unasked	open		3	713700	outside ll-translate-v1 parent scope (column anomaly)	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:02
+cycloneiv	EP4CGX150	bit	LOCAL_LINE:*	ref:9f33f38af03848af	unasked	open		3	63440	outside ll-translate-v1 parent scope (edge rule)	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:02
+cycloneiv	EP4CGX150	bit	class:4a	ref:6207bc37261c4173	unasked	open		4a	229248	periphery frames 1..36 (IO ring, clocks, PLL, misc)	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:05
+cycloneiv	EP4CGX150	bit	class:4b	ref:dff283547d276eac	unasked	open		4b	7854748	M9K columns (8): cells outside the data tables and the control cells found	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:05
+cycloneiv	EP4CGX150	bit	class:4c	ref:6dea3ab7532e7679	unasked	open		4c	614480	multiplier columns (4)	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:05
+cycloneiv	EP4CGX150	bit	class:4d	ref:067f8c5477525758	unasked	open		4d	329380	IOL / IOR columns (+ 4 frames before col 0)	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:05
+cycloneiv	EP4CGX150	bit	class:4e	ref:f5f0fbb3d7f4e170	unasked	open		4e	117834	IO row tiles (y=0, y=91) of LAB columns	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:05
+cycloneiv	EP4CGX150	bit	class:5c	ref:75fb6ebab2c31a32	unasked	open		5c	49227	lane-tail byte (v 6344..6351, CRAM frames)	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:05
+cycloneiv	EP4CGX150	bit	class:6	ref:8aa13bad92beb432	unasked	open		6	9683945	unclassified (LAB-column cells no decoder claims)	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:05
+cycloneiv	EP4CGX150	stream-option	header:option-bits	ref:08b9e27d883a1c60	unasked	open		5a	159	159 option bits set by quartus_cpf; option sweep not done	111eedbba51568a6cb2dc6d8a79dc5510d54a578	2026-10-30T06:04:05
