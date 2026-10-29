@@ -70,3 +70,13 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Held: X88Y40 (w 39) equals X30Y50 at all three keys ((+2,+4), (0,-70), (-6,0)); X31Y22 equals X47Y45 at all three; X21Y29 d 109 (-6, 0) equals X63Y32 d 363 pattern only by dx/df, different d.
 - Post-hoc, not tested: X87 sits left of the 39-frame column X88 (df -74/-4 = the 39-frame span, as in R4-shift-v1); X25 is two columns right of the X23 M9K column (as X63 left of X65). Pitch class of the destination alone is too coarse; neighbouring column widths/kinds enter. Next: enumerate by (neighbour widths) as a prediction.
 - `claims_register.py` run regenerates derived tables including `gate_runs` (wiped every run by design); the #160 gate_run row is gone from the DB and must be re-run, numbers stay in this doc.
+
+## Per-column enumeration (#162 P3, 2026-10-29, `cycloneiv_r4_relcol.py colplan/coltable/colrecord`; claim class `2h-col`)
+- Prediction P3: (dx, df) constant per destination column and source relative column, across rows Y and R4 names. Refuted by two arcs with different (dx, df) in one (column, rel).
+- Result: HELD, 0 misses. 75 confirm rows over 30 (column, rel) groups (6 columns x 2 rows x rels -1/0/+3/+4, plus earlier X30/X47/X63/X89); 147 further (column, rel) cells have one row (no constancy test). Tier `sampled` n=83 scopes is inflated by the single rows.
+- Builds about 385 of cap 400 (4 nulls 0 cells; 190 bases; 190 specs); 264 arcs honoured; 252 resolved (+ data rows) = about 65 answered features per 100 builds (floor 10).
+- Measured table: derived-table row "R4 per-column (dx, df) table by source rel (264 arcs)" with FX[dst-1], FX[dst], FX[dst+1], neighbour kinds, per (X, rel).
+- Coverage: rels 0 and +3 in all 68 forceable LAB columns X15..89 (one row); rel -1 in 44 of them; rel +4 in 8 columns only.
+- Observed rel 0: df -70 in most columns; -74 at X27, X29, X85, X87; -65 at X40, X71; -95 at X42, X73; -105 at X34, X41, X50, X72, X79. No fit (|df| <= 140, 5 data rows) at X22, X35, X51, X64, X80 (right neighbour X+1 = M9K) and X63.
+- Observed rel +3: (-6, 0) in most; (-7, -35) at X18, X19, X31, X32, X38, X39, X47, X48, X60, X61, X69, X70, X76, X77, X89; (-5, 0) at X21, X22, X34, X35, X41, X42, X50, X51, X63, X64, X72, X73, X79, X80.
+- No rule fitted (process: enumerate, then fit). Next: fit candidates against this table as predictions on held-out columns.
