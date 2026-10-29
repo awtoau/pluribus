@@ -1,7 +1,7 @@
 """Cyclone IV GX (EP4CGX150) CRAM geometry and the sof -> rbf closed form.  Pure functions only.
 
-Accepted facts: docs/cycloneiv-clean-pipeline.md A4-A6.  The address -> plane function is an OPEN INTERFACE:
-`address_to_plane` raises until #165 decides; CANDIDATES holds the named implementations the oracles compare.
+Accepted facts: docs/cycloneiv-clean-pipeline.md A4-A6.  `address_to_plane` = sof identity then A5 (#165).
+CANDIDATES keeps the rejected `lut_law_preserved` alongside it for the oracles.
 Plane cell = (r, j, k): CRAM frame r (0..6153), data byte j (1..793), bit k (0..7).
 """
 import os
@@ -103,10 +103,12 @@ def plane_v_to_jk(pv):
     return pv % ROWS + 1, LANES - 1 - pv // ROWS
 
 
-# ---- open interface: raw asm address -> plane cell -------------------------------------------------------
+# ---- raw asm address -> plane cell ------------------------------------------------------------------------
 
-def address_to_plane(addr):
-    raise NotImplementedError("pending v7/#165")
+def address_to_plane(addr, tables=None):
+    """Raw asm address -> (r, j, k): the address is the sof data bit index (A4), then A5.
+    Validated: routing arcs (O2) and, with the LAB LUT formula's in-column sign negated, all LUT cells (O1, #165)."""
+    return sof_to_rbf(addr, tables)
 
 
 def _cand_sof_identity_reversed(addr, tables=None):

@@ -5,7 +5,7 @@ Cyclone IV GX (EP4CGX150) address engine rebuilt from vendor-derived facts only.
 ## Modules
 
 - `ddb.py`: raw loaders for `routing.ddb` fan-out (A1) and `asm.ddb` group bits (A2). Vendor x/y/index straight from the file, stored 31-bit addresses, flag bytes split out. No coordinate conversion.
-- `plane.py`: geometry (A6) and the sof -> rbf closed form (A5). `address_to_plane` is an OPEN INTERFACE (raises until #165 decides); `CANDIDATES` holds named implementations for the oracles.
+- `plane.py`: geometry (A6) and the sof -> rbf closed form (A5). `address_to_plane` = raw address as sof bit index, then A5 (one function for routing and LUT cells); `CANDIDATES` keeps the rejected alternative for the oracles.
 - `sofio.py`: sof / rbf file helpers around `quartus_cpf` (black box).
 - `names.py`: RCF element names (A7).
 
@@ -15,8 +15,8 @@ Cyclone IV GX (EP4CGX150) address engine rebuilt from vendor-derived facts only.
 |---|---|---|
 | A1 | routing graph from `routing.ddb` | `ddb.Routing` |
 | A2 | asm group bits, group = destination position in the source fan-out | `ddb.Asm` |
-| A3 | LAB LUT address law (asmdb) | oracle O1, not code |
-| A4 | address -> image byte/bit | candidate only |
+| A3 | LAB LUT address law (asmdb), dy negated, columns ascending | oracle O1 (`test_o1_sign_variants`), not code |
+| A4 | address -> image byte/bit | `plane.address_to_plane` |
 | A5 | sof bit -> rbf closed form + mirrored blocks | `plane.sof_to_rbf`, oracle O3 |
 | A6 | geometry | `plane` constants |
 | A7 | name -> element, exact | `names`, oracle O4 |
