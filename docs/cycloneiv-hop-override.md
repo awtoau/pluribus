@@ -39,3 +39,22 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Exact tile: 0 of 5,913 alias-named R4 hops; named record dx in {-3,-2,-1,+1,+2} from the RCF x, dy 0. C4: dx,dy = 0,0 in 37,299 of 37,299.
 - Prediction "dx = f(wire index, pitch)" REFUTED (fit 3 designs, 73 held out): 55.1 % agree of 5,525 covered, 480 wrong, 1,981 ambiguous (several R4 records at one tile). Tile offset alone does not identify the record; the vendor wire name (alias forms) does, and the alias table names only 10 % of R4 hops. Gap: new issue.
 - Resolver and override default unchanged (override OFF); the override re-run under the corrected scoring was not made.
+
+## LB -> R4 (dx, df) vs source column (#162, `scripts/cycloneiv_r4_relcol.py`; 2026-10-29, 0 new builds)
+- Pool of 59 existing set-level arcs (results_r4map_*, r4df_*), 4 destination tiles (X30Y50, X47Y45, X63Y32, X89Y44), rigid-shift window |df| <= 80 (140 for the rel +4 re-read).
+- P1 as written ((dx, df) = f(source X - destination X, destination pitch)): REFUTED. X63Y32 rel +3 (source X66) = (-5, 0) against (-7, -35) in 18/18 arcs at X47Y45/X89Y44 (same rel, pitch 35).
+- Cause visible in the geometry: X66 is 363 frames from X63 (M9K column X65 between); X47->X50 is 105. Keyed by source-minus-destination frame distance `FX[src]-FX[dst]` instead of X, no key has two outcomes (n small, one key per scope pair):
+
+| FX distance | dest pitch | (dx, df) | n | tiles |
+|---|---|---|---|---|
+| -35 | 35 | (+2, 0) | 9 | X47Y45, X89Y44 |
+| -39 | 39 | (+2, +4) | 3 | X30Y50 |
+| 0 | 35 / 39 | (0, -70) | 16 / 2 | X47Y45, X89Y44 / X30Y50 |
+| +105 | 35 / 39 | (-7, -35) / (-6, 0) | 18 / 2 | X47Y45, X89Y44 / X30Y50 |
+| +363 | 35 | (-5, 0) | 1 | X63Y32 |
+| +140 | 35 / 39 | no fit (2) / (-9, -105) (1) | 3 | X47Y45 / X30Y50 |
+
+- Frame-distance keying is a post-hoc fit, not a prediction; a specimen must show it. Not recorded as a rule claim.
+- P2 (rel +4 sources unmatched only because of the window): window to 140 resolves 1 of 3 (X30Y50, df -105, one arc); X47Y45 still no fit (2 arcs). Not supported.
+- Corpus RCF edges LB -> R4 only have source X offsets -1, 0, +3, +4 (+1, +2 never seen, so cannot be forced).
+- 5-scope sampling plan (corners + seeded interior) not built: first prediction miss stops the sweep (Yield rule).
