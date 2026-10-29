@@ -187,6 +187,15 @@ def trim_memory():
         pass
 
 
+def _cap_override(name, default):
+    """Live tuning without restarts: tmp/limits/<name>.max holds an integer cap for concurrent leases of that name."""
+    try:
+        with open(os.path.join(REPO, "tmp", "limits", name + ".max")) as fh:
+            return int(fh.read().strip())
+    except (OSError, ValueError):
+        return default
+
+
 @contextlib.contextmanager
 def lease(gb, name, log, budget_gb=None, on_blocked=None, max_same_name=None):
     """Hold `gb` GB of the shared memory budget while the body runs, and MEASURE what it really used.
@@ -218,7 +227,8 @@ def lease(gb, name, log, budget_gb=None, on_blocked=None, max_same_name=None):
             used = sum(v["gb"] for v in data.values())
             now = time.time()
             fits = (used + gb <= budget) or not data
-            if max_same_name is not None and sum(1 for v in data.values() if v['name'] == name) >= max_same_name:
+            cap = _cap_override(name, max_same_name)
+            if cap is not None and sum(1 for v in data.values() if v['name'] == name) >= cap:
                 fits = False   # global concurrency cap for this kind of job (CPU headroom), across every process
             ramp_ok = all(now - v["t"] >= LEASE_RAMP_S for v in data.values())
             ram_ok = available_gb() - gb >= MIN_AVAILABLE_GB
