@@ -31,7 +31,12 @@ for h, what in MILESTONES + [(r["commit"][:9], "") for r in rows]:
 slots = sorted(slots.values(), key=lambda s: s["ts"])
 for s in slots:
     s["why_missing"] = None if s["row"] else "inventory script did not exist at this commit (first committed in 2ad8dd8c9); not fabricated"
-data = dict(ledger=rows, slots=slots)
+prog = REPO / "docs/progress-history.jsonl"
+sys.path.insert(0, str(REPO / "scripts"))
+from progress_ledger import METRICS  # noqa: E402  (module guarded by __main__)
+progress = dict(rows=[json.loads(l) for l in open(prog) if l.strip()] if prog.exists() else [],
+                metrics=[dict(k=k, label=v[0]) for k, v in METRICS.items()])
+data = dict(ledger=rows, slots=slots, progress=progress)
 tpl = (REPO / "scripts/coverage_page.template.html").read_text()
 Path(sys.argv[1]).write_text(tpl.replace("/*DATA*/null", json.dumps(data, separators=(",", ":"))))
 print("wrote", sys.argv[1], len(rows), "ledger rows,", len(slots), "slots")

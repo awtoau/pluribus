@@ -60,6 +60,9 @@ td.mono,.mono{font-family:var(--mono)}
 </header>
 <div class="tiles" id="tiles"></div>
 
+<section id="s0"><div><h2>Progress: what we know</h2><p class="sub">Counted from the evidence database, one row per run of scripts/progress_ledger.py. Die coverage below moves only when the inventory counts cells; these lines move first.</p></div>
+  <div class="scroll"><table id="t0"></table></div></section>
+
 <section id="s1"><div><h2>1. Die coverage by commit</h2><p class="sub">Each column is one commit, in commit order; height is 100% of die bits. Commits without a column have no measurement.</p></div>
   <div class="scroll"><svg id="c1" role="img" aria-label="Die coverage by commit, stacked verified, evidence, unknown"></svg></div>
   <div class="scroll"><table id="t1"></table></div></section>
@@ -222,5 +225,12 @@ function hbars(svg,items,total,tierKeys,tipFn,pcOf){
  $("t4").innerHTML=`<tr><th class="l">Type</th><th>Set bits</th><th>% of image</th><th>Verified</th><th>Evidence</th><th>Unknown</th><th>Header (mixed)</th></tr>`+items.map(it=>`<tr><td class="l">${it.n}${it.flag?" †":""}</td><td>${fmt(it.total)}</td><td>${pc(it.total,tot)}</td><td>${fmt(it.seg.ver)}</td><td>${fmt(it.seg.ev)}</td><td>${fmt(it.seg.unk)}</td><td>${fmt(it.seg.mix)}</td></tr>`).join("")+
   `<tr><th class="l">Total</th><th>${fmt(tot)}</th><th>100%</th><th>${fmt(iv)}</th><th>${fmt(ie)}</th><th>${fmt(iu)}</th><th>${fmt(ih)}</th></tr><tr><td class="l" colspan="7">† decoded, not oracle-verified. Evidence includes the 728 constant pre/post bits.</td></tr>`;
 })();
+})();
+(function(){const P=DATA.progress;if(!P||!P.rows.length){$("t0").innerHTML="<tr><td>no progress rows yet</td></tr>";return}
+ const R=P.rows,last=R[R.length-1],prev=R.length>1?R[R.length-2]:null,first=R[0];
+ $("t0").innerHTML=`<tr><th class="l">Metric</th><th>Now</th><th>Change vs previous row</th><th>First row</th></tr>`+P.metrics.map(m=>{
+  const n=last.m[m.k]||0,d=prev?n-(prev.m[m.k]||0):0;
+  return `<tr><td class="l">${m.label}</td><td>${fmt(n)}</td><td>${d?(d>0?"+":"")+fmt(d):"0"}</td><td>${fmt(first.m[m.k]||0)}</td></tr>`}).join("")+
+  `<tr><td class="l" colspan="4">Last row ${last.ts.slice(0,16)}, commit ${last.commit}; ${R.length} rows.</td></tr>`;
 })();
 </script>
