@@ -103,9 +103,12 @@ class Walk:
             self.ptr("BI")
         for st in ("AG", "DG"):
             self.ptr_vec(st)
-        for _ in range(2):                                    # default / forced bit lists (delta u32)
-            n = self.u32()
-            self.pos += 4 * n
+        self.default_bits, self.forced_bits = [], []          # default / forced bit lists: i32 deltas, running sum (docs/cycloneiv-address-spaces.md 3.1)
+        for lst in (self.default_bits, self.forced_bits):
+            a = 0
+            for _ in range(self.u32()):
+                a = (a + self.i32()) & M32
+                lst.append(a)
         for st in ("LSM", "DG", "AG"):                        # labeled muxes, local default, local arch groups
             self.ptr_vec(st)
         for _ in range(3):                                    # hc nodes / fringe / wires (empty on IV)
@@ -158,6 +161,7 @@ class Walk:
 
     def _block_info(self, o):
         o["s"] = [self.string() for _ in range(3)]
+        self.first.pop("bi.list", None)     # first element is a delta vs 0 per BLOCK_INFO (LAB cells = body.bin run, #169)
         o["lists"] = {}
         for _ in range(self.u32()):
             k = self.i32()
