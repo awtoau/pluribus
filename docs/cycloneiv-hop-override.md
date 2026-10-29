@@ -30,7 +30,7 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Rigid-shift fits of 2-cell groups are not diagnostic (a small group fits some shift by chance); only exact vs not-exact is used.
 
 ## NEW BASELINE: gate scoring correction (2026-10-29, #160)
-- Superseded, not comparable: every earlier gate headline (26.89 % pins is unchanged; per-hop R4 8.7 %, ALL 24,113 / 35,xxx) dropped ambiguous hops and everything below an unresolved hop from the denominator.
+- Superseded, not comparable: every earlier gate headline (26.89 % pins is unchanged; per-hop R4 8.7 %, ALL 24,113 / 52,288 = 46.1 %: matched + 17,822 missing + 10,353 wrong) dropped ambiguous hops and everything below an unresolved hop from the denominator.
 - Rule: ambiguous / unresolved hop = MISSING, plus every RCF hop below it (`count_unreached` in `scripts/cycloneiv_ddb_trace.py`; gate_runs param `scoring=ambiguous_as_missing`).
 - Flag-off baseline (76 odd designs, gate_run 1): pins LCCOMB 69,672 matched (26.89 %, unchanged). Hops matched / missing / extra / wrong: LI 10,199 / 133,630 / 0 / 4,304; R4 902 / 148,831 / 0 / 4,085; C4 13,012 / 118,305 / 0 / 1,964; C16 0 / 4,881; R24 0 / 4,756; ALL 24,113 / 410,403 / 0 / 10,353 = 5.42 %.
 - Earlier "ambiguous" counts: full flag-off runs R4 44,850 / C4 25,960 / LI 422 (every run 15:18-16:27); R4 6 / C4 22,522 and R4 34 / C4 18 were the exact-tile and a limited run; 2,784 R4 is the 5-design subset.
