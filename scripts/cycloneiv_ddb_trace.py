@@ -246,6 +246,7 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
                 if typ == "R4" and CT.enabled() and sn_of[dn][0] == "LE_BUFFER":
                     cell = CT.table().get((dn[3], sn_of[dn][3] - dn[3]))       # LB -> R4: (dx, dy 0) from the measured column table
                     if cell is None:
+                        CT.NOCELL[(dn[3], sn_of[dn][3] - dn[3])] += 1
                         hops[cls]["missing"] += 1
                         why[cls]["R4 column table: no cell for (dest column, source rel) (counted missing)"] += 1
                         count_unreached(children, dn, P, hops, why, "below an unresolved hop", self_too=False)
@@ -384,6 +385,10 @@ def score(names):
     den = tm["matched"] + tm["missing"] + tm["extra"] + tm["wrong"]
     log.info("  ALL   matched %d / (matched %d + missing %d + extra %d + wrong %d) = %.3f%%", tm["matched"], tm["matched"],
              tm["missing"], tm["extra"], tm["wrong"], 100 * tm["matched"] / max(1, den))
+    if CT.NOCELL:
+        log.info("  R4 column table: hops without a cell by (dest X, rel): total %d; by rel %s", sum(CT.NOCELL.values()),
+                 dict(sorted(collections.Counter({r: sum(n for (x, rr), n in CT.NOCELL.items() if rr == r) for r in {k[1] for k in CT.NOCELL}}.items()))))
+        log.info("  R4 column table NOCELL %s", json.dumps({f"{x},{r}": n for (x, r), n in CT.NOCELL.most_common()}))
     log.info("  ambiguous hops (>1 candidate in window; counted missing): %s", dict(hamb))
     log.info("  fired wire units not on any resolved path (upper bound on extra: includes pad/clock-driven nets and unreached hops): %s", dict(unattr))
     log.info("  extra detail %s; fired %s", dict(li_x), dict(fired_stats))

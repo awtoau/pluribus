@@ -94,3 +94,16 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Missing rises (R4 +485, LI +142, C4 +550, pins +2,416) and LI / C4 matched fall by 3 / 11: default stays OFF (rule: no fault category may rise). Missing grows where the table has no cell (rel +1/+2 absent; M9K-neighbour columns) and below those hops.
 - Table + `PLURIBUS_HOP_OVERRIDE=1`: R4 3,997 -> 829 matched, wrong 505 -> 2,420 (hop shift on the remaining R4 edges is wrong). Not an additive pair; the table alone is better.
 - Not done (flag off): bit inventory / progress ledger reruns.
+
+## Table fill 2 (#160/#162, 2026-10-29): 114 builds (4 nulls 0 cells, 55 bases, 55 specs); 55 arcs, all resolved = 48 per 100 builds (floor 10)
+- Cells added: second rows at X15 (rel 0, +3) and X89 (rel -1, 0, +3), all consistent; 50 high-hop-count cells (rel -1, +3, +4, including MUL / M9K destination columns X36, X42-X44, X52, X65-X68, X74, ...). 0 misses. Table: 319 arcs; 2h-col `sampled` n=25 scopes from 34 groups of >= 2 rows, extremes included.
+- Rel 0 at X22, X35, X51, X63, X64, X80 (right neighbour M9K), window widened to |df| <= 210: still no fit (candidates dx 0 x2 and -4; 5 arcs). Data rows. Rel +1/+2 never in corpus edges: data rows, no cells.
+- Gate, flag off (run 2) vs on (table fill 2), matched / missing / extra / wrong:
+  - R4: 902 / 148,831 / 0 / 4,085 -> 4,413 / 148,787 / 0 / 618.
+  - LI: 10,199 / 133,630 / 0 / 4,304 -> 10,201 / 133,709 / 0 / 4,223.
+  - C4: 13,012 / 118,305 / 0 / 1,964 -> 13,008 / 118,731 / 0 / 1,542.
+  - C16: 0 / 4,881 / 0 / 0 -> 0 / 4,880 / 0 / 1. R24 unchanged.
+  - ALL: 24,113 / 410,403 / 0 / 10,353 (5.420 %) -> 27,622 / 410,863 / 0 / 6,384 (6.209 %).
+  - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 69,740 / 161,033 / 0 / 28,337.
+- Rises remain: LI missing +79, C4 missing +426, C16 wrong +1, C4 matched -4, pins missing +3,636 (wrong -3,688). Default stays OFF.
+- Hops still without a cell (R4, LB source): 4,974 (was 12,762); by rel: +4 2,329, 0 1,107, +3 780, -1 751; 2,889 in X15..89. Largest cells: (90,0) 108, (51,0) 105, (59,4) 98, (34,4) 96, (53,4) 96, (63,0) 96, (35,0) 94, (51,4) 94, (82,4) 94, (80,0) 94. The C4 / LI missing rise is hops below an R4 hop that the window resolver used to resolve and the table now leaves unresolved.

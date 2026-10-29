@@ -13,6 +13,8 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _T = None
+import collections
+NOCELL = collections.Counter()      # (dest X, rel) -> LB -> R4 hops without a table cell (diagnostic)
 
 
 def enabled():

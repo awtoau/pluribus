@@ -129,6 +129,30 @@ def cmd_colplan(a):
              len(arcs) + len({N.base_name(x) for x in arcs}))
 
 
+def cmd_cellplan(a):
+    """Plan one arc per requested (dest X, rel) cell; rows Y already measured for that cell are avoided (second row)."""
+    import cycloneiv_geom as cg
+    g = cg.load("ep4cgx150")
+    ch = chains()
+    have = collections.defaultdict(set)
+    for r in load_rows():
+        have[(r["tile"][0], r["lb"][1] - r["tile"][0])].add(r["tile"][1])
+    arcs = []
+    for cell in a.cells.split(";"):
+        X, rel = (int(v) for v in cell.split(","))
+        ys = {y for (t, x, y, i), (lbs, lis) in ch.items() if x == X and 6 <= y <= 77 and any(l[1] - X == rel for l in lbs)} - have[(X, rel)]
+        if not ys:
+            log.info("cell X%d rel %+d: no corpus-seen chain left (data row)", X, rel)
+            continue
+        y = random.Random(a.seed + X * 131 + rel * 7).choice(sorted(ys))
+        sub = argparse.Namespace(tile=f"{X},{y}", rels=str(rel), seed=a.seed, out=str(TMP / "_tmp_plan.json"))
+        cmd_plan(sub)
+        arcs += [dict(x, ctx=ctx_of(g, X)) for x in json.loads(Path(sub.out).read_text())["arcs"]]
+    Path(a.out).write_text(json.dumps({"tile": None, "arcs": arcs}))
+    log.info("cellplan %s: %d arcs, %d bases => %d builds", Path(a.out).name, len(arcs), len({N.base_name(x) for x in arcs}),
+             len(arcs) + len({N.base_name(x) for x in arcs}))
+
+
 def cmd_coltable(a):
     """Measured per-column table: (dest X, rel) -> {(dx, df): rows}; no-fit rows listed as data."""
     import cycloneiv_geom as cg
@@ -173,6 +197,7 @@ def cmd_build(a):
 def cmd_analyse(a):
     global NAMER
     N.shifts_fit.__defaults__ = (a.rng,)
+    H.Graph.vx = lambda self, X: self.D.vx_of(X)      # non-LAB destination columns (MUL / M9K): nearest-LAB-left offset, same as the resolver
     if a.namer == "map":
         N.spec_name = map_spec_name
     N.cmd_analyse(a)
@@ -331,10 +356,11 @@ def cmd_colrecord(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("colrecord", "colplan", "coltable", "pool", "plan", "build", "analyse", "table", "record"))
+    ap.add_argument("cmd", choices=("cellplan", "colrecord", "colplan", "coltable", "pool", "plan", "build", "analyse", "table", "record"))
     ap.add_argument("--tile", default="47,45")
     ap.add_argument("--rels", default="-1,0,3")
     ap.add_argument("--cols", default="87,25,88")
+    ap.add_argument("--cells", default="")
     ap.add_argument("--rows", type=int, default=2)
     ap.add_argument("--seed", type=int, default=H.SEED)
     ap.add_argument("--rng", type=int, default=80)
