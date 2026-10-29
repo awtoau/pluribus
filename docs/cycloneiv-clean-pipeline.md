@@ -50,3 +50,17 @@ Rebuild of the placement/lift stack from vendor-derived facts only. The layered 
   - `lifters/cycloneiv_lift.py` keeps scan / LUT / FF / Design; routing needs a tracer passed to `lift()` (clean P2 pending).
   - Docs that mention 2a / 2b / `Dec.active` as history point to `docs/cycloneiv-retired-coordinate-model.md`.
 - Step 6: learned-map JSONs and derived `tmp/ddb` coordinate-model files removed; env flags and their readers gone. DB rows / claim classes to retire: listed on #165, rebuild happens last.
+
+## Gate regression hygiene (2026-10-30, #165)
+
+- Every recorded gate run stores its member list: `gate_runs.params.members` (design@root names) and the `gate_results` rows.
+- `cycloneiv_clean_gate.py --set corpus --root <root> --members-run <run id>` scores exactly the designs of an earlier run (like-with-like fault columns).
+- Run 14 (4,007 designs) is recoverable from its `gate_results` rows; run 18 was a superset (4,075 designs, 68 added by corpus growth).
+
+## Register-used, BIM and LOCAL_LINE decodes (2026-10-30, #165)
+
+| Decode | Source | Evidence |
+|---|---|---|
+| Register used (`reg_used.py`) | asmdb LE_REG_OUT_YGR gi 0 / 1 / 2, LE_USE_SYNC_CLEAR / LOAD, LE_LUT_FUNCTION; used LE_BUFFER from the programmed edges | `scripts/cycloneiv_clean_reg_pairs.py`: 5 LABs x 75 feature sites, 7 pair builds + base, vo ground truth; YGR gi <-> LE_BUFFER parity on rb_000..009 |
+| LI -> BIM, VIO data pins (`bim.py`) | MIO_LABLINE_TO_DATA gi 0 (asmdb) + SUB_LOC -> (tile dx, BIM index) | `scripts/cycloneiv_clean_bim_specimens.py`: 6 builds, 24 pads, routing.rcf names the BIM, vo names the pad site |
+| LOCAL_LINE -> LAB_CONTROL_MUX | LAB_PIA_TO_INPUT map: 54 inputs = 38 LI + 16 LOCAL_LINE | rb_000..009 GT edges, test_decoders.py |

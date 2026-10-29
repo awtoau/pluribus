@@ -294,19 +294,23 @@ class Extras:
     (lab_control.py, edges absent from the routing graph: ids >= st.n_edges, appended to st.esrc / st.edst)."""
 
     def __init__(self, st, lut, rt=None):
-        from . import clocks, lab_control
+        from . import bim, clocks, lab_control, reg_used
         if len(st.esrc) != st.n_edges:
             raise SystemExit("Static already extended")
         self.st = st
         self.clocks = clocks.Clocks(st, lut, rt)
         self.imp = lab_control.Implicit(lut, rt, n_real=st.n_edges)
+        self.reg = reg_used.RegUsed(lut, st, rt)
         st.esrc = np.concatenate([st.esrc, self.imp.esrc])
         st.edst = np.concatenate([st.edst, self.imp.edst])
+        self.bim = bim.Implicit(rt, n_real=len(st.esrc))
+        st.esrc = np.concatenate([st.esrc, self.bim.esrc])
+        st.edst = np.concatenate([st.edst, self.bim.edst])
         st._key = None
 
     def apply(self, bits, fired):
         """{variant: edge ids} with the clock and LAB-control edges added to every variant."""
-        imp = self.imp.apply(bits)
+        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits)])
         return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp])) for v, e in fired.items()}
 
 

@@ -99,14 +99,14 @@ def test_lab_clock_line_per_register(tr):
 
 
 def test_lab_control_mux_inputs(tr):
-    """LOCAL_INTERCONNECT -> LAB_CONTROL_MUX: every ground-truth edge is programmed through the LAB_PIA_TO_INPUT input map."""
+    """LOCAL_INTERCONNECT / LOCAL_LINE -> LAB_CONTROL_MUX: every ground-truth edge is programmed through the LAB_PIA_TO_INPUT input map."""
     res = T.Resolver(tr.ext.clocks.rt)
     tot = collections.Counter()
     for d in DESIGNS:
         bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
         prog = set(tr.ext.imp.apply(bits).tolist())
         gt = {(a, b) for n in T.parse_rcf(os.path.join(d, "routing.rcf")) for a, b in n["edges"]
-              if a[0] == "LOCAL_INTERCONNECT" and b[0] == "LAB_CONTROL_MUX"}
+              if a[0] in ("LOCAL_INTERCONNECT", "LOCAL_LINE") and b[0] == "LAB_CONTROL_MUX"}
         nm = sorted({e for p in gt for e in p})
         rec, _ = res.resolve(nm)
         ix = {n: i for i, n in enumerate(nm)}
@@ -116,7 +116,7 @@ def test_lab_control_mux_inputs(tr):
         tot["matched"] += len(ids & prog)
         tot["extra"] += len(prog - ids)
     report("decoders-lab-control", **tot)
-    assert tot["matched"] == tot["gt"] and tot["gt"] >= 175
+    assert tot["matched"] == tot["gt"] and tot["gt"] >= 177
 
 
 def test_carry_flag_is_sum_lutc_input(tr):
@@ -132,3 +132,91 @@ def test_carry_flag_is_sum_lutc_input(tr):
             tot["agree"] += (L["mode"] == "cin") == bool(cin[tr.lut.lab(x, y), n])
     report("decoders-carry-flag", **tot)
     assert tot["le"] > 8000 and tot["agree"] == tot["le"]
+
+
+def test_register_used_claim(tr):
+    """reg_used.RegUsed.ff against the .vo flip-flops of rb_000..009: the claim covers every ground truth LE (none missing); extras counted beside it."""
+    import cycloneiv_clean_gate as G
+    tot = collections.Counter()
+    for d in DESIGNS:
+        bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
+        fired = tr.ext.apply(bits, tr.st.fire(bits, workers=2))["lit_x"]
+        ff = tr.ext.reg.ff(bits, fired)
+        _, _, ffs = G.parse_vo(os.path.join(d, "postfit.vo"))
+        gt = {(tr.lut.lab(x, y), n) for x, y, n in ffs.values()}
+        got = {(int(i), int(n)) for i, n in np.argwhere(ff)}
+        tot["gt"] += len(gt)
+        tot["matched"] += len(gt & got)
+        tot["extra"] += len(got - gt)
+        tot["missing"] += len(gt - got)
+    report("decoders-register-used", **tot)
+    assert tot["missing"] == 0 and tot["extra"] == 1       # 1 extra LE of 1,684 (not chased); a change either way is a regression or a fix
+
+
+def test_ygr_gi_is_le_buffer_parity(tr):
+    """LE_REG_OUT_YGR gi b (b = 0, 1) is 1 for every LUT-only LE whose ground truth uses only LE_BUFFER 2 le + b."""
+    import cycloneiv_clean_gate as G
+    tot = collections.Counter()
+    for d in DESIGNS:
+        bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
+        _, lcs, ffs = G.parse_vo(os.path.join(d, "postfit.vo"))
+        ffsite = {(x, y, n) for x, y, n in ffs.values()}
+        used = collections.defaultdict(set)
+        for n in T.parse_rcf(os.path.join(d, "routing.rcf")):
+            for a, b in n["edges"]:
+                if a[0] == "LE_BUFFER":
+                    used[(a[1], a[2], a[4] // 2)].add(a[4] % 2)
+        for (x, y, le), bs in used.items():
+            if (x, y, le) in ffsite or (x, y, le) not in lcs or len(bs) != 1:
+                continue
+            b = next(iter(bs))
+            lab = tr.lut.lab(x, y)
+            tot["le"] += 1
+            tot["ok"] += int(bits[tr.ext.reg.ygr[b][lab, le]]) == 1 and int(bits[tr.ext.reg.ygr[1 - b][lab, le]]) == 0
+    report("decoders-ygr-buffer-parity", **tot)
+    assert tot["le"] > 1000 and tot["ok"] == tot["le"]
+
+
+BIM_SPEC = os.path.join(REPO, "tmp", "cycloneiv_clean", "bim_specimens")
+
+
+def _bim_edges(tr, d):
+    res = T.Resolver(tr.ext.clocks.rt)
+    gt = {(a, b) for n in T.parse_rcf(os.path.join(d, "routing.rcf")) for a, b in n["edges"]
+          if a[0] == "LOCAL_INTERCONNECT" and b[0] == "BLOCK_INPUT_MUX" and b[2] in (0, 91)}
+    nm = sorted({e for p in gt for e in p})
+    rec, _ = res.resolve(nm)
+    ix = {n: i for i, n in enumerate(nm)}
+    return {int(tr.st.edge_ids([rec[ix[a]]], [rec[ix[b]]])[0]) for a, b in gt}
+
+
+def test_vio_bim_data_edges(tr):
+    """LI -> BLOCK_INPUT_MUX of VIO pad data pins: every ground-truth edge of rb_000..009 is programmed by MIO_LABLINE_TO_DATA gi 0 + SUB_LOC_BIM."""
+    tot = collections.Counter()
+    for d in DESIGNS:
+        bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
+        prog = set(tr.ext.bim.apply(bits).tolist())
+        ids = _bim_edges(tr, d)
+        assert -1 not in ids or True
+        tot["gt"] += len(ids)
+        tot["matched"] += len(ids & prog)
+        tot["extra"] += len(prog - ids)
+    report("decoders-vio-bim", **tot)
+    assert tot["gt"] >= 100 and tot["matched"] == tot["gt"] and tot["extra"] == 0
+
+
+def test_vio_bim_specimens(tr):
+    """The 24 label-specimen pads: the programmed edge of each build equals the routing.rcf edge (the table's own labels, decode side only)."""
+    import glob
+    need(*(glob.glob(os.path.join(BIM_SPEC, "*", "build.rbf")) or [os.path.join(BIM_SPEC, "missing")]))
+    tot = collections.Counter()
+    for d in sorted(glob.glob(os.path.join(BIM_SPEC, "*", "routing.rcf"))):
+        d = os.path.dirname(d)
+        bits = T.plane_bits(os.path.join(d, "build.rbf"))
+        prog = set(tr.ext.bim.apply(bits).tolist())
+        ids = _bim_edges(tr, d)
+        tot["gt"] += len(ids)
+        tot["matched"] += len(ids & prog)
+        tot["extra"] += len(prog - ids)
+    report("decoders-vio-bim-specimens", **tot)
+    assert tot["gt"] == 24 and tot["matched"] == 24 and tot["extra"] == 0

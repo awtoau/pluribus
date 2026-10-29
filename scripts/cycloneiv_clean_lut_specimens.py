@@ -77,7 +77,7 @@ def build_one(name, sites, masks):
     return build_project(d, name, verilog(sites, masks), qsf)
 
 
-def build_project(d, name, top_v, extra_qsf, device=DEVICE):
+def build_project(d, name, top_v, extra_qsf, device=DEVICE, vo=False, rcf=False):
     """map / fit / asm / cpf of one project dir; keeps build.sof and build.rbf (uncompressed) in d."""
     import cycloneiv_fuzz as fz
     import toolchain
@@ -92,18 +92,29 @@ def build_project(d, name, top_v, extra_qsf, device=DEVICE):
            "set_global_assignment -name TOP_LEVEL_ENTITY top", "set_global_assignment -name VERILOG_FILE ../src/top.v",
            'set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-STATED"',
            "set_global_assignment -name NUM_PARALLEL_PROCESSORS 1"] + list(extra_qsf)
+    if vo:
+        qsf += ['set_global_assignment -name EDA_SIMULATION_TOOL "QuestaSim (Verilog)"',
+                'set_global_assignment -name EDA_OUTPUT_DATA_FORMAT "VERILOG HDL" -section_id eda_simulation']
     open(os.path.join(q, "build.qsf"), "w").write("\n".join(qsf) + "\n")
     open(os.path.join(q, "build.qpf"), "w").write('QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "build"\n')
     qb = toolchain.quartus_bin()
     steps = [("quartus_map", [f"{qb}/quartus_map", "build"]), ("quartus_fit", [f"{qb}/quartus_fit", "build"]),
              ("quartus_asm", [f"{qb}/quartus_asm", "build"]),
              ("quartus_cpf", [f"{qb}/quartus_cpf", "-c", "-o", "bitstream_compression=off", "build.sof", "build.rbf"])]
+    if vo:       # post-fit netlist kept as ground truth (same command as the corpus builds, cycloneiv_fuzz.py)
+        steps.insert(3, ("quartus_eda", [f"{qb}/quartus_eda", "build", "--simulation", "--tool=modelsim", "--format=verilog"]))
     from pathlib import Path
     for step, cmd in steps:
         if not fz.run(step, cmd, Path(q), Path(d) / "logs", LIMITS):
             return name, step
+    if rcf:       # full routing of every net (same export as the corpus builds)
+        if not fz.rcf_export(Path(q), Path(d), Path(qb), LIMITS):
+            return name, "quartus_cdb"
     shutil.copyfile(os.path.join(q, "build.rbf"), os.path.join(d, "build.rbf"))
     shutil.copyfile(os.path.join(q, "build.sof"), os.path.join(d, "build.sof"))
+    if vo:
+        import glob
+        shutil.copyfile(next(glob.iglob(os.path.join(q, "simulation", "**", "*.vo"), recursive=True)), os.path.join(d, "postfit.vo"))
     shutil.rmtree(q)
     return name, None
 

@@ -20,7 +20,7 @@ Per category: matched / (matched + missing + extra + wrong); a missing connectio
   register_clock  per GT FF: the tracer's claim for that (LAB, LE) = BLK_CLK_BUF line chosen by LE_CLOCK_SELECT + LAB_CLOCK_FAST_MUX
             (clocks.py); the programmed tree(s) containing that BLK_CLK_BUF all have the GT clock-net root = matched; no line / no tree =
             missing; some roots match = ambiguous = missing; none match = wrong.  extra = (LAB, LE) with a claimed line in a programmed
-            tree and no FF in the .vo.  No register-used bit is decoded: every LE of a LAB with a driven selected line is claimed.
+            tree and no FF in the .vo.  The claim needs the register-used decode (reg_used.py: YGR output select x used LE_BUFFER); undecidable = no claim = missing.
   pins      GT ball set vs balls of IO sites whose CFF key groups equal a decoded default pattern (direction class must agree: else wrong).
 No rule changes between runs: headline variant is fixed (`lit_x`); the other three tracer variants are reported beside it.
 Log: tmp/logs/cycloneiv_clean_gate.log; results tmp/cycloneiv_clean/gate_<set>.json.
@@ -100,6 +100,14 @@ def parse_vo(path):
 
 # source: Quartus lcell input port names (cycloneiv_lcell_comb primitive)
 PORTS_LOWER = ("dataa", "datab", "datac", "datad")
+
+
+def parse_ff_q(path):
+    """{dffeas instance name: its .q net name without escape / '~q'}: the RCF names a register by its output net (`r1_8_q`) when that differs from the instance (`r1_8`)."""
+    out = {}
+    for m in re.finditer(r"dffeas (\S+?)\s*\(.*?\.q\((.*?)\)", open(path).read(), re.S):
+        out[m[1].lstrip("\\")] = re.sub(r"~q$", "", m[2].strip().lstrip("\\"))
+    return out
 
 
 def parse_pin(path):
@@ -257,11 +265,14 @@ def score_design(cx, d, fire_workers):
                 gt_clk[cell] = rs
     rc, why_r = counts(), collections.Counter()
     blk = cx.ext.clocks.le_blk(bits)                    # tracer claim: BLK_CLK_BUF record per (LAB, LE) from LAB clock mux + LE_CLOCK_SELECT
+    ffm = cx.ext.reg.ff(bits, fired[HEADLINE])          # register-used claim (reg_used.py); undecidable = no claim
+    blk = np.where(ffm, blk, -1)
     gt_sites_ff = set()
+    qname = parse_ff_q(os.path.join(d, "postfit.vo"))
     for name, (x, y, nn) in ffs.items():
         i = cx.lut.lab(x, y)
         gt_sites_ff.add((i, nn))
-        gr = gt_clk.get(name)
+        gr = gt_clk.get(name) or gt_clk.get(qname.get(name))
         if not gr:
             rc["missing"] += 1
             why_r["gt_clock_unresolved"] += 1
@@ -269,7 +280,7 @@ def score_design(cx, d, fire_workers):
         b = int(blk[i, nn]) if i >= 0 else -1
         if b < 0:
             rc["missing"] += 1
-            why_r["lab_clock_mux_selects_no_line"] += 1
+            why_r["no_ff_claim_or_no_clock_line"] += 1
             continue
         cand = node_roots.get(b, set())
         if not cand:
@@ -329,8 +340,26 @@ def discover(args):
         except (OSError, ValueError):
             continue
         ds.append(d)
+    if args.members_run:
+        # exact member set of an earlier recorded run (gate_runs.params.members, else its gate_results rows): like-with-like comparison
+        want = run_members(args.members_run)
+        have = {os.path.basename(d) + "@" + os.path.basename(args.root.rstrip("/")): d for d in ds}
+        missing = [m for m in want if m not in have]
+        if missing:
+            raise SystemExit(f"run {args.members_run}: {len(missing)} members not complete in {args.root}: {missing[:3]}")
+        return [have[m] for m in want]
     ds = ds[:: args.stride]
     return ds[: args.limit] if args.limit else ds
+
+
+def run_members(run_id):
+    import db
+    from sqlalchemy import select
+    import schema as S
+    with db.engine().connect() as conn:
+        return sorted(r[0] for r in conn.execute(
+            select(S.corpus_members.c.name).distinct().join(S.gate_results, S.gate_results.c.member_id == S.corpus_members.c.id)
+            .where(S.gate_results.c.run_id == run_id)))
 
 
 def main():
@@ -339,6 +368,7 @@ def main():
     ap.add_argument("--root", help="corpus-rebuild stamp directory (read only)")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--stride", type=int, default=1, help="every n-th complete design in name order (deterministic sample)")
+    ap.add_argument("--members-run", type=int, help="score exactly the designs recorded in this gate_runs id (needs PLURIBUS_SQLITE_PATH)")
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--record", action="store_true", help="write gate_runs / gate_results (PLURIBUS_SQLITE_PATH)")
     ap.add_argument("--tag", default="")
@@ -441,7 +471,7 @@ def record(args, good, tot, var):
             results[name] = {c: r[c] for c in CATS}
         run = C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_clean_gate.py", commit, results,
                                 params={"set": args.set, "root": args.root, "headline_variant": HEADLINE, "baseline": args.baseline, "tag": args.tag,
-                                        "designs": len(good)},
+                                        "designs": len(good), "members": sorted(results)},
                                 summary={"totals": tot, "pips_variants": var,
                                          "headline": {c: round(headline(tot[c]), 4) for c in CATS}})
     log.info("recorded gate_runs id %s commit %s members %d", run, commit, len(results))
