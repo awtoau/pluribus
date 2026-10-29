@@ -1,0 +1,8 @@
+top = "top"
+purpose = "LAB control base ena/3 at lab a"
+exercises = ["ctrl"]
+qsf = ["set_location_assignment LCCOMB_X10_Y10_N0 -to l0", "set_location_assignment FF_X10_Y10_N1 -to r0", "set_location_assignment LCCOMB_X10_Y10_N2 -to l1", "set_location_assignment FF_X10_Y10_N3 -to r1", "set_location_assignment LCCOMB_X10_Y10_N30 -to sKA", "set_location_assignment LCCOMB_X10_Y10_N28 -to sE", "set_location_assignment LCCOMB_X10_Y10_N26 -to sE2", "set_location_assignment LCCOMB_X58_Y30_N0 -to fl", "set_location_assignment FF_X58_Y30_N1 -to far1", "set_location_assignment FF_X58_Y32_N1 -to far2", "set_location_assignment PIN_A11 -to D", "set_location_assignment PIN_A15 -to D2", "set_location_assignment PIN_B9 -to y0", "set_location_assignment PIN_A13 -to y1", "set_location_assignment PIN_A14 -to yf1", "set_location_assignment PIN_A16 -to yf2", "set_global_assignment -name AUTO_GLOBAL_CLOCK OFF", "set_global_assignment -name AUTO_GLOBAL_REGISTER_CONTROLS OFF", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
+device = "EP4CGX150DF31C7"
+tool = "quartus"
+tool_version = "25.1"
+built = "2026-10-29"

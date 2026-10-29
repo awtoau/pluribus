@@ -1,4 +1,0 @@
-top = "top"
-purpose = "held-out lut_mask 39b0 at LCCOMB_X16_Y9_N20"
-exercises = ["lut_mask", "le_address", "held_out"]
-qsf = ["set_location_assignment LCCOMB_X16_Y9_N20 -to lut", "set_location_assignment PIN_28 -to a", "set_location_assignment PIN_30 -to b", "set_location_assignment PIN_31 -to c", "set_location_assignment PIN_32 -to d", "set_location_assignment PIN_42 -to y"]

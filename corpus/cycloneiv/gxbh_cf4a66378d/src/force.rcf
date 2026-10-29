@@ -1,0 +1,131 @@
+### Routing Constraints File: build.rcf
+### Written on:				Thu Oct 29 14:24:29 2026
+### Written by:				Version 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+
+section global_data {
+	rcf_written_by = "Quartus Prime 25.1 Build 1129";
+	device = EP4CGX150DF31C7;
+}
+
+signal_name = q {
+	LE_BUFFER:X10Y10S0I1;
+	R4:X10Y11S0I13;
+	R4:X14Y11S0I12;
+	R4:X17Y11S0I14;
+	R24:X21Y11S0I0;
+	C16:X35Y12S0I0;
+	C16:X35Y26S0I0;
+	C16:X35Y42S0I0;
+	C16:X35Y58S0I0;
+	C16:X35Y74S0I0;
+	R4:X32Y89S0I31;
+	C4:X33Y90S0I11;
+	LOCAL_INTERCONNECT:X34Y91S0I12;
+	BLOCK_INPUT_MUX:X34Y91S0I13;
+	dest = ( y~output, I );
+}
+signal_name = KA {
+	LOCAL_LINE:X10Y10S0I8;
+	LAB_CONTROL_MUX:X10Y10S0I1;
+	dest = ( q, CLK );
+}
+signal_name = y~output {
+	dest = ( y, PADIN );
+}
+signal_name = ina~input {
+	IO_DATAIN:X44Y91S3I0;
+	C16:X44Y75S0I1;
+	C16:X44Y59S0I1;
+	C16:X44Y43S0I1;
+	C16:X44Y27S0I1;
+	R24:X21Y29S0I0;
+	C16:X20Y13S0I1;
+	R24:X0Y21S0I23;
+	C16:X13Y5S0I1;
+	label = Label_R4:X10Y10S0I30, R4:X10Y10S0I30;
+	R4:X7Y10S0I31;
+	LOCAL_INTERCONNECT:X10Y10S0I28;
+	dest = ( KA, DATAB ), route_port = DATAB;
+
+	branch_point = Label_R4:X10Y10S0I30;
+	label = Label_LOCAL_INTERCONNECT:X10Y10S0I37, LOCAL_INTERCONNECT:X10Y10S0I37;
+	dest = ( t_o, DATAA ), route_port = DATAA;
+
+	branch_point = Label_LOCAL_INTERCONNECT:X10Y10S0I37;
+	dest = ( KA, DATAA ), route_port = DATAA;
+
+	branch_point = Label_LOCAL_INTERCONNECT:X10Y10S0I37;
+	dest = ( KA, DATAC ), route_port = DATAC;
+
+	IO_DATAIN:X44Y91S3I1;
+	C16:X44Y77S0I1;
+	C16:X44Y61S0I1;
+	C16:X44Y45S0I1;
+	C16:X44Y29S0I1;
+	C16:X44Y13S0I1;
+	R24:X21Y13S0I0;
+	R24:X0Y13S0I23;
+	C4:X9Y9S0I23;
+	LOCAL_INTERCONNECT:X10Y10S0I29;
+	dest = ( KA, DATAA ), route_port = DATAD;
+}
+signal_name = ina {
+	dest = ( ina~input, I );
+}
+signal_name = enap~input {
+	CLK_BUFFER:X57Y91S0I0;
+	GEN_CORE_BUF:X57Y91S0I0;
+	C16:X56Y77S0I1;
+	R24:X33Y77S0I0;
+	C16:X32Y61S0I1;
+	C16:X32Y45S0I1;
+	C16:X32Y29S0I1;
+	C16:X32Y13S0I1;
+	R24:X9Y13S0I0;
+	C4:X10Y9S0I19;
+	LOCAL_INTERCONNECT:X10Y10S0I10;
+	dest = ( t_o, DATAC ), route_port = DATAC;
+}
+signal_name = enap {
+	dest = ( enap~input, I );
+}
+signal_name = clrp~input {
+	IO_DATAIN:X61Y0S2I0;
+	C16:X61Y1S0I2;
+	R24:X38Y4S0I0;
+	R24:X14Y4S0I0;
+	C16:X13Y5S0I0;
+	R4:X10Y10S0I25;
+	LOCAL_INTERCONNECT:X10Y10S0I9;
+	dest = ( t_o, DATAD ), route_port = DATAD;
+}
+signal_name = clrp {
+	dest = ( clrp~input, I );
+}
+signal_name = sclp~input {
+	IO_DATAIN:X50Y0S0I1;
+	C16:X49Y1S0I6;
+	R24:X26Y8S0I0;
+	R24:X4Y8S0I0;
+	C4:X10Y9S0I11;
+	LOCAL_INTERCONNECT:X10Y10S0I7;
+	dest = ( t_o, DATAB ), route_port = DATAB;
+}
+signal_name = sclp {
+	dest = ( sclp~input, I );
+}
+signal_name = ~ALTERA_NCEO~~obuf {
+	dest = ( ~ALTERA_NCEO~, PADIN );
+}
+signal_name = ~ALTERA_DATA0~ {
+	dest = ( ~ALTERA_DATA0~~ibuf, I );
+}
+signal_name = ~ALTERA_ASDO_DATA1~ {
+	dest = ( ~ALTERA_ASDO_DATA1~~ibuf, I );
+}
+signal_name = ~ALTERA_NCSO~ {
+	dest = ( ~ALTERA_NCSO~~ibuf, I );
+}
+signal_name = ~ALTERA_DCLK~~obuf {
+	dest = ( ~ALTERA_DCLK~, PADIN );
+}

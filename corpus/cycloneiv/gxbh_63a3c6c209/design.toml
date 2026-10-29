@@ -1,0 +1,8 @@
+top = "top"
+purpose = "bit_hunter gxbh_63a3c6c209"
+exercises = ["bit_hunter"]
+qsf = ["set_location_assignment LCCOMB_X10_Y10_N16 -to sKA", "set_location_assignment LCCOMB_X10_Y10_N18 -to sKB", "set_location_assignment LCCOMB_X10_Y10_N20 -to sE", "set_location_assignment LCCOMB_X10_Y10_N22 -to sC", "set_location_assignment LCCOMB_X10_Y10_N24 -to sS", "set_location_assignment LCCOMB_X10_Y10_N26 -to sL", "set_location_assignment LCCOMB_X10_Y10_N28 -to sM", "set_location_assignment LCCOMB_X10_Y10_N0 -to t", "set_location_assignment PIN_A11 -to ina", "set_location_assignment PIN_B9 -to y", "set_global_assignment -name AUTO_GLOBAL_CLOCK OFF", "set_global_assignment -name AUTO_GLOBAL_REGISTER_CONTROLS OFF", "set_global_assignment -name ROUTING_BACK_ANNOTATION_MODE NORMAL", "set_global_assignment -name ROUTING_BACK_ANNOTATION_FILE ../src/force.rcf", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
+device = "EP4CGX150DF31C7"
+tool = "quartus"
+tool_version = "25.1"
+built = "2026-10-29"
