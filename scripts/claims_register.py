@@ -381,8 +381,6 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
     c1c = class_claim("1c", "pattern-predicted", "clock-polarity-v1", [("parent", ev_clk)], "clock-polarity cell isolated by bit-hunter pairs")
     # die-wide 1c claim (carries the bit count in coverage()): same pattern + evidence links, status from the verdict, tier never hand-set
     sync_diewide("1c", c1c, p_clk)
-    for k in ("2a", "2b"):
-        class_claim(k, "vendor-decoded", None, [], "vendor asm tables, placement via afx_map")
     ll_files = {"cycloneiv_forced_lab.json": "parent", "cycloneiv_forced_lab_58x30.json": "confirm",
                 "cycloneiv_forced_lab_37x60.json": "confirm", "cycloneiv_forced_lab_100x75.json": "confirm"}
     ll = {fn: ids(ev.c.kind == "specimen-pair", ev.c.source_ref.like("%/" + fn)) for fn in ll_files}
@@ -431,68 +429,6 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
                                generator="scripts/cycloneiv_ever_set.py", n_objects=es["n_designs"], kind="audit")
         class_claim("5b", "measured", None, [("direct", [e_crc])], "CRC-16 per CRAM frame")
         class_claim("5d", "measured", None, [("direct", [e_pp])], "constant 0xFF pre/postamble")
-    # LB -> R4 group displacement (hop specimens, issue #157): pattern R4-shift-v1 over the forceable core of the LAB array
-    hop = []
-    for eid, res in conn.execute(select(ev.c.id, ev.c.result).where(and_(ev.c.family == fam, ev.c.source_ref == "hop_specimen:R4"))):
-        m = res.get("meta", {})
-        if m.get("honoured") and m.get("consistent") is not None and m.get("tile"):
-            hop.append((eid, m))
-    if hop:
-        xs, ys = [m["tile"][0] for _, m in hop], [m["tile"][1] for _, m in hop]
-        R.matcher("hop-shift-v1", "deterministic", "R4-destined mux cells = asm cells - (w(c) + w(c-1)) plane frames", 1,
-                  "cycloneiv_asm_decode:Dec._hop_pf")
-        R.pattern("hop-shift-v1", "bit", "LB -> R4 asm group sits two asm columns left (-70 plane frames, -74 over the 39-frame columns)",
-                  {"dims": 2, "axes": {"x": [min(xs), max(xs)], "y": [min(ys), max(ys)]},
-                   "scope": "LABs reachable by forcing (corpus-named R4 muxes); corners and sides are not forceable"},
-                  matcher_id="hop-shift-v1", status="open")
-        e_gate = E.record_decode(conn, fam, device, "hop override vs the 76-design vendor-oracle gate: R4 hops matched 902 -> 715",
-                                 {"gate": "scripts/cycloneiv_ddb_trace.py score, gx150_rb odd split, 76 designs",
-                                  "flag_off": {"R4": [902, 5335, 0, 4085], "ALL": [24113, 17822, 0, 10353]},
-                                  "flag_on": {"R4": [715, 4784, 0, 4823], "ALL": [23926, 17271, 0, 11091]},
-                                  "order": "matched, missing, extra, wrong", "meta": {}}, commit,
-                                 "scripts/cycloneiv_ddb_trace.py", generator="scripts/cycloneiv_hop_specimens.py", n_objects=76,
-                                 kind="oracle-compare")
-        ok = [(e, m) for e, m in hop if m["consistent"]]
-        class_claim("2h", "pattern-predicted", "hop-shift-v1",
-                    [("parent", [e for e, m in ok if m["role"] == "parent"]), ("confirm", [e for e, m in ok if m["role"] == "confirm"]),
-                     ("refute", [e for e, m in hop if not m["consistent"]]), ("conflict", [e_gate])],
-                    "LB -> R4 group displacement; fitted on parent rows, confirm rows predicted before building; gate conflict stands")
-    # LB -> R4 (dx, df) = f(frame distance FX[src]-FX[dst], destination pitch) (#162): P1' predicted from the parent rows
-    rc = []
-    for eid, res in conn.execute(select(ev.c.id, ev.c.result).where(and_(ev.c.family == fam, ev.c.source_ref == "r4_relcol:R4"))):
-        m = res.get("meta", {})
-        if m.get("consistent") is not None and m.get("tile"):
-            rc.append((eid, m))
-    if rc:
-        R.matcher("r4-framedist-v1", "deterministic", "R4 (dx, df) = f(FX[src]-FX[dst], dest pitch) tabulated from parent rows", 1,
-                  "scripts/cycloneiv_r4_relcol.py")
-        R.pattern("r4-framedist-v1", "bit", "LB -> R4 record dx and group shift df are a function of source-destination frame distance and destination pitch",
-                  {"dims": 2, "axes": {"x": [15, 89], "y": [6, 77]}, "scope": "forceable core; corners/sides not forceable"},
-                  matcher_id="r4-framedist-v1", status="open")
-        class_claim("2h-fd", "pattern-predicted", "r4-framedist-v1",
-                    [("parent", [e for e, m in rc if m["role"] == "parent" and m["consistent"]]),
-                     ("confirm", [e for e, m in rc if m["role"] == "confirm" and m["consistent"]]),
-                     ("refute", [e for e, m in rc if not m["consistent"]])],
-                    "P1' frame-distance law; parent rows fitted, confirm rows predicted before building")
-    # LB -> R4 (dx, df) constant per destination column and source relative column (#162 P3; first row per (X, rel) = parent)
-    col = []
-    for eid, res in conn.execute(select(ev.c.id, ev.c.result).where(and_(ev.c.family == fam, ev.c.source_ref == "r4_col:R4"))):
-        m = res.get("meta", {})
-        if m.get("consistent") is not None and m.get("tile"):
-            col.append((eid, m))
-    parents = [eid for eid, res in conn.execute(select(ev.c.id, ev.c.result).where(and_(ev.c.family == fam, ev.c.source_ref == "r4_col:R4")))
-               if res.get("meta", {}).get("role") == "parent"]
-    if col:
-        R.matcher("r4-percol-v1", "deterministic", "R4 (dx, df) constant per (destination column, source relative column)", 1,
-                  "scripts/cycloneiv_r4_relcol.py")
-        R.pattern("r4-percol-v1", "bit", "LB -> R4 record dx and group shift df constant per destination column and source relative column",
-                  {"dims": 2, "axes": {"x": [15, 89], "y": [6, 77]}, "min_rows_per_group": 2,
-                   "scope": "forceable core; corners/sides not forceable"},
-                  matcher_id="r4-percol-v1", status="open")
-        class_claim("2h-col", "pattern-predicted", "r4-percol-v1",
-                    [("parent", parents), ("confirm", [e for e, m in col if m["role"] == "confirm" and m["consistent"]]),
-                     ("refute", [e for e, m in col if not m["consistent"]])],
-                    "P3 per-column constancy; first resolved row per (X, rel) is the parent")
     for cid in classes:
         if cid in ("4a", "4b", "4c", "4d", "4e", "5c", "6"):
             class_claim(cid, "unknown", None, [], "no attribution")
@@ -517,8 +453,6 @@ def register_cycloneiv(conn, device, commit):
               "pattern_matchers:AffineLaw")
     R.matcher("tile-translate-v1", "deterministic", "tile-class translation by (frame, v) offset", 1,
               "pattern_matchers:TileClassTranslate")
-    R.matcher("vote-v1", "statistical", "voted / learnt over many builds (phys_map, li_map, asm_names)", 1,
-              "pattern_matchers:VoteMatcher", {"source": "cycloneiv_phys_trace / cycloneiv_li_map / cycloneiv_asm_tables"})
     R.matcher("vendor-ddb-v1", "deterministic", "routing.ddb / asm.ddb decode (group k == edge k)", 1,
               "cycloneiv_ddb_map", {"rule": "group k == edge k"})
     R.matcher("llm-proposer-v1", "llm-proposed", "Claude-API proposer (candidates only; checked before registration)", 1,
@@ -677,58 +611,6 @@ def register_cycloneiv(conn, device, commit):
               {"dims": 1, "parity_x9": {"frame": "1111 + (w>>2)", "v": "2789 - 18*(w&1) - ((w>>1)&1)"}},
               matcher_id="affine-v1", status="open")
 
-    # ── phys_map / li_map (voted + specimen entries) ──────────────────────────────────────────
-    pm_path = REPO / "lifters/data/cycloneiv_ep4cgx150_phys_map.json"
-    if pm_path.exists():
-        pm = json.loads(pm_path.read_text())
-        sha = hashlib.sha256(pm_path.read_bytes()).hexdigest()
-        ev_vote = E.record_decode(conn, "cycloneiv", device, "phys_map voted tables", {"designs": len(pm.get("designs", [])),
-                                  "stats": pm.get("stats"), "sha256": sha}, commit, "lifters/data/cycloneiv_ep4cgx150_phys_map.json",
-                                  generator="scripts/cycloneiv_phys_trace.py", kind="vendor-decode")
-        R.pattern("class-generalise-v1", "mux-input", "class-wide entry from 2-3 agreeing specimen positions (phys_map provenance=specimen)",
-                  {"min_positions": 2, "dims": 2}, matcher_id="class-generalise-v1", status="confirmed")
-        prov = pm.get("provenance", {})
-        for table, space_sub in (("wires_tile", "wire"), ("lis_tile", "li")):
-            for key, val in pm.get(table, {}).items():
-                sid = R.scope("mux-input", "keys", {"keys": [f"{table}:{key}"]}, n=1)
-                R.claim("mux-input", f"{space_sub}:{key}", sid, {"value": val, "table": table}, "measured", "open",
-                        cls="2a", basis="specimen at one tile (per-tile override)")
-        for table, space_sub in (("wires", "wire"), ("lis", "li")):
-            for key, val in pm.get(table, {}).items():
-                sid = R.scope("mux-input", "keys", {"keys": [f"{table}:{key}"]}, n=1)
-                if prov.get(table, {}).get(key) == "specimen":
-                    R.claim("mux-input", f"{space_sub}:{key}", sid, {"value": val, "table": table}, "pattern-predicted",
-                            "confirmed", pattern="class-generalise-v1", cls="2a", basis=">=2 positions agree, class-wide")
-                else:
-                    R.claim("mux-input", f"{space_sub}:{key}", sid, {"value": val, "table": table}, "statistical", "open",
-                            evidence=[ev_vote], cls="2a", basis=f"vote {val}")
-        for key, val in pm.get("defaults", {}).items():
-            sid = R.scope("mux-input", "keys", {"keys": [f"defaults:{key}"]}, n=1)
-            R.claim("mux-input", f"default:{key}", sid, {"value": val}, "statistical", "open", evidence=[ev_vote], cls="2a",
-                    basis="voted default")
-        for key, val in pm.get("cells", {}).items():
-            sid = R.scope("mux-input", "keys", {"keys": [f"cells:{key}"]}, n=1)
-            R.claim("mux-input", f"cell:{key}", sid, {"value": val, "votes": pm.get("cell_votes", {}).get(key)},
-                    "statistical", "open", evidence=[ev_vote], cls="2a", basis=f"votes {pm.get('cell_votes', {}).get(key)}")
-        unres = pm.get("unresolved", [])
-        if unres:
-            sid = R.scope("mux-input", "keys", {"keys": [f"unresolved:{u['class']}:{u['key']}" for u in unres]}, n=len(unres))
-            R.unknown("mux-input", sid, "unasked", subject="phys_map:unresolved", cls="2b",
-                      note=f"{len(unres)} class keys with no resolved driver ({pm.get('stats')})")
-    li_path = REPO / "lifters/data/cycloneiv_ep4cgx150_li_map.json"
-    if li_path.exists():
-        li = json.loads(li_path.read_text())
-        ev_li = E.record_decode(conn, "cycloneiv", device, "li_map learnt", {"stats": li.get("stats"), "designs": len(li.get("designs", []))},
-                                commit, "lifters/data/cycloneiv_ep4cgx150_li_map.json", generator="scripts/cycloneiv_li_map.py")
-        for key, val in li.get("lis", {}).items():
-            sid = R.scope("mux-input", "keys", {"keys": [f"li_map:{key}"]}, n=1)
-            R.claim("mux-input", f"li:{key}", sid, {"value": val}, "statistical", "open", evidence=[ev_li], cls="2a",
-                    basis="li_map resolved")
-        amb = int(li.get("stats", {}).get("ambiguous", 0))
-        if amb:
-            sid = R.scope("mux-input", "formula", {"matcher": "vote-v1", "n_objects": amb, "what": "li_map ambiguous keys"})
-            R.unknown("mux-input", sid, "unasked", subject="li_map:ambiguous", cls="2b", note=f"{amb} ambiguous LI keys")
-
     # ── ddb map: vendor-decoded rule, conflict on the LI band ─────────────────────────────────
     ddb = REPO / "lifters/data/cycloneiv_ep4cgx150_ddb_map.npz"
     if ddb.exists():
@@ -741,14 +623,8 @@ def register_cycloneiv(conn, device, commit):
                         {"rule": "group k == edge k", "dims": 1}, matcher_id="vendor-ddb-v1", parents=[ev_ddb], status="confirmed")
         sid_w = R.scope("mux-input", "formula", {"matcher": "vendor-ddb-v1", "n_objects": n_blocks, "subset": "wire destinations"})
         c_w = R.claim("mux-input", "ddb:block->dest:wires", sid_w, {"rule": "group k == edge k", "npz": "lifters/data/cycloneiv_ep4cgx150_ddb_map.npz"},
-                      "vendor-decoded", "confirmed", pattern=pid, evidence=[ev_ddb], cls="2b",
-                      basis="3,479/3,490 wire destinations agree with specimens")
-        sid_li = R.scope("mux-input", "keys", {"keys": ["ddb:block->dest:LI-band:6-class-keys"]}, n=1073)
-        c_li = R.claim("mux-input", "ddb:block->dest:LI", sid_li, {"rule": "group k == edge k", "band": "LI"}, "vendor-decoded", "open",
-                       pattern=pid, evidence=[ev_ddb], cls="2b", basis="1,073 LI destinations disagree with specimen on 6 class keys")
-        c_sp = R.claim("mux-input", "ddb:block->dest:LI", R.scope("mux-input", "keys", {"keys": ["specimen:LI-band:6-class-keys"]}, n=1073),
-                       {"source": "specimen LI drivers (phys_map lis)"}, "measured", "open", cls="2a", basis="specimen LI band, 6 class keys")
-        F.conflict(conn, c_li, c_sp, commit, detail={"band": "LI", "class_keys": 6, "wrong": 1073})
+                      "vendor-decoded", "confirmed", pattern=pid, evidence=[ev_ddb],
+                      basis="group k == edge k (A1 + A2, docs/cycloneiv-clean-pipeline.md)")
 
     # ── inventory classes (n_objects from the latest real ledger line) ────────────────────────
     led = _ledger_latest()
@@ -759,11 +635,8 @@ def register_cycloneiv(conn, device, commit):
                                   "oracle": "Quartus post-fit .vo lut_mask"}, commit, "docs/cycloneiv-bitstream.md",
                                  generator="scripts/cycloneiv_lut_check.py", n_objects=5354496, kind="oracle-compare")
         R.matcher("lut-anchor-v1", "deterministic", "LUT INIT anchor law (DK offsets from LE anchor)", 1, "cycloneiv_le_locate:DK")
-        R.matcher("afx-mirror-v1", "statistical", "asm column base from vote peaks (afx_map)", 1, "cycloneiv_asm_decode:afx_map")
         p_lut = R.pattern("lut-anchor-v1", "bit", "LUT INIT bits at anchor + DK offsets, every LE of every LAB", {"dims": 2, "axes": LAB_AXES, "DK": "cycloneiv_le_locate.DK"},
                           matcher_id="lut-anchor-v1", status="oracle-verified")
-        p_afx = R.pattern("afx-mirror-v1", "coord-map", "asm frame axis -> plane frame per column (vote peaks; 32 columns != FX)",
-                          {"dims": 1, "moved_columns": 32}, matcher_id="afx-mirror-v1", status="open")
         p_leu = R.pattern("le-used-v1", "bit", "LE-used bit at (FX-8, vy - sign)", {"dims": 2, "axes": LAB_AXES, "misses": "14/1018 on one design"},
                           matcher_id="lut-anchor-v1", status="suspect")
         R.matcher("clock-polarity-fit-v1", "statistical", "greedy LAB clock-polarity fit (Jaccard 0.85)", 1, "cycloneiv_route_learn")
@@ -783,11 +656,6 @@ def register_cycloneiv(conn, device, commit):
                         "pattern-predicted" if c_ else "vendor-decoded",
                         "verified-by-sampling" if c_ else "refuted" if k_ == "1d-b" else "open",
                         cls=k_, basis="vendor ddb positions; tier from the class verdict")
-        afx_claim = R.claim("coord-map", "asm->plane:columns", R.scope("coord-map", "keys", {"keys": [f"asm->plane:x{x}" for x in range(118)]}, n=118),
-                            {"source": "afx_map"}, "statistical", "open", pattern=p_afx, cls="2a", basis="vote peaks; 32 columns differ from FX")
-        for k in ("2a", "2b"):
-            R.claim("bit", f"asm:cells:{k}", cls_scope(k, cls[k]["name"]), {"source": "asm.ddb groups", "depends_on": [afx_claim]},
-                    "statistical", "open", cls=k, basis="bits vendor-decoded; placement rests on afx_map (weakest link = statistical)")
         hdr = next(c for c in led["classes"] if c["id"] == "5a")
         R.claim("stream-option", "header:sync+crc16", R.scope("stream-option", "keys", {"keys": ["header:sync", "header:crc16"]}, n=hdr["verified"]),
                 {"meaning": "sync word + CRC-16"}, "measured", "oracle-verified", cls="5a", basis="recomputed")
