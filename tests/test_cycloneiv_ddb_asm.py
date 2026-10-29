@@ -6,7 +6,7 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "scripts"))
-import cycloneiv_asm_decode as D  # noqa: E402
+import cycloneiv_asm_prep as D  # noqa: E402
 import cycloneiv_ddb_asm as A  # noqa: E402
 
 

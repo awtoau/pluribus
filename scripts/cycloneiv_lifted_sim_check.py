@@ -229,7 +229,7 @@ class OracleTracer:
 def check(name, tables, steps=STEPS, oracle=False):
     d = cc.load(name)
     geom = cm.one_geom([name])
-    lift = lf.CycloneIVLift(geom.die, tables)
+    lift = lf.CycloneIVLift(geom.die)
     des = lift.lift(d["plane"], tracer=OracleTracer(d) if oracle else None)
     work = WORK / name
     work.mkdir(parents=True, exist_ok=True)

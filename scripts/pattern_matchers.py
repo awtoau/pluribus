@@ -13,7 +13,7 @@ the vote as confidence and can never reach a claim without a specimen.
 
 register_expectations(conn, matcher, candidates, family, device, commit) writes expectations rows with
 the matcher id + version; a pattern row is created per candidate (status open) so blast radius works.
-Retired learner code (cycloneiv_route_learn / asm_tables / route_score / li_map / phys_trace, #142) was
+Retired learner code (#142, #165) was
 reviewed for this interface only; nothing is imported from it.
 
   python3.15t scripts/pattern_matchers.py demo-m9k      # fit the x1 law from the M9K evidence rows in the DB, hold out, verify

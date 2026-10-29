@@ -93,7 +93,7 @@ class Ddb:
         return r + self.C[self.coff[t]:self.coff[t] + self.nd[t]]
 
     def leb_rec(self, i, x, y):
-        # base[I] was a learned table (asm_names.json, retired #165); pending the A7 exact-name resolver (clean P2).
+        # learned name table retired (#165); pending the A7 exact-name resolver (clean P2).
         raise SystemExit("cycloneiv_ddb_fanout: LE_BUFFER record lookup unavailable, pending clean P2 name resolver (#165)")
 
     def fam_setup(self):

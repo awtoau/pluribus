@@ -54,7 +54,7 @@ DERIVED = [   # (artifact or None for a cache-prep step, command); order matters
     (None, ["scripts/cycloneiv_ddb_routing.py", "templates"]),
     (None, ["scripts/cycloneiv_ddb_blockmap.py", "build"]),                  # tmp/ddb/<die>_blockmap.npz
 ]
-# Learned maps (ddb_map, li_map, phys_map, asm_names) are retired (#165); no derived artifact is regenerated.
+# Learned maps are retired (#165); no derived artifact is regenerated.
 # Not regenerated (inputs are device probes, not builds): geom.json, labs.json.
 # Backstop per regeneration/gate command: first full run, nothing measured yet; the 60 s CPU-stall guard is primary.
 CMD_OVERALL_S = 4 * 3600

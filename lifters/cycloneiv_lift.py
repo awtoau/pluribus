@@ -4,14 +4,15 @@
 Sibling of cyclonev_lift / ecp5_lift (no shared flags).  Everything comes from the bitstream and
 device tables; the Quartus post-fit netlist is only an oracle in the gate, never an input.
 
-Device-driven: `lifters/data/cycloneiv_<die>_geom.json` (tile anchors, lane sizes) and the routing
-mux tables learnt by scripts/cycloneiv_route_learn.py (or the vendor tables, same Decoder API).
+Device-driven: `lifters/data/cycloneiv_<die>_geom.json` (tile anchors, lane sizes).  Routing comes from
+a tracer passed to lift() (`trace(pin, x, y)` API); the learned-table tracer is retired (#165), the
+clean P2 tracer is pending.
 
 Cells (per used LE, bit (3,-2) of the LE window):
   LUT   init (16-bit truth table, index = a + 2 b + 4 c + 8 d), inputs a..d, cin mode (DATAC mux
         reads the carry code), cout = init[{0, cin, b, a}]
   FF    exists when an LE_BUFFER of the LE selects the register output; pins D / ASDATA / CLK /
-        CLRN / ENA / SCLR / SLOAD traced through the routing tables; clock inversion = LAB bit
+        CLRN / ENA / SCLR / SLOAD traced by the tracer; clock inversion = LAB bit
 Nets: a driver cell's output; terminals are named, never guessed:
   ('PAD', x, y, s, i)    IO_DATAIN element (an input pad; identity learnt from the corpus)
   ('CLKW', type, ...)    LAB_CLK / global clock element (clock tree not decoded)
@@ -26,7 +27,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_geom as cg  # noqa: E402
-import cycloneiv_route_decode as rd  # noqa: E402
 import cycloneiv_common as cm  # noqa: E402
 
 LE_USED = (-8, -1)         # LE window bit: set for 95.8% of LUT cells and absent from empty LEs
@@ -80,23 +80,11 @@ def tiles_partial(tiles, geom):
 
 
 class CycloneIVLift:
-    def __init__(self, die, tables, phys=None, phys_fallback=False):
-        """tables: learner mux tables (cycloneiv_route_learn).  phys: a cycloneiv_phys_trace.Phys -> LCCOMB
-        inputs are traced on asm record ids (issue #138); the learner then serves FF pins, the LE_BUFFER
-        comb/reg select and carry / constant codes only (and, with phys_fallback, any pin the physical
-        trace leaves open)."""
+    def __init__(self, die):
         self.geom = cg.load(die)
-        self.dec = rd.Decoder(tables)
-        self.phys, self.phys_fallback = phys, phys_fallback
 
     def tracer(self, plane):
-        if self.phys is None:
-            return rd.Tracer(self.dec, plane, self.geom, terminals=TERMINAL_WIRES)
-        if hasattr(self.phys, "make_tracer"):              # exact-graph tracer (cycloneiv_ddb_trace)
-            return self.phys.make_tracer(plane, self.geom, self.dec, TERMINAL_WIRES)
-        import cycloneiv_phys_trace as pt
-        return pt.PhysTracer(self.phys, plane, self.geom, learner=self.dec, terminals=TERMINAL_WIRES,
-                             fallback=self.phys_fallback)
+        raise NotImplementedError("no routing tracer: learned tables retired (#165); pass tracer= (clean P2 pending)")
 
     # -- per-tile primitives ------------------------------------------------------------
     def le_bit(self, plane, x, y, le, df, dv):
@@ -327,15 +315,7 @@ class CycloneIVLift:
         des.not_lifted["comb loop edges cut (decode error)"] += cut
 
     def ff_exists(self, tr, plane, x, y, le):
-        if hasattr(tr, "ff_present"):          # oracle debug mode
-            return tr.ff_present(x, y, le)
-        for i in (2 * le, 2 * le + 1):
-            if not self.dec.nonzero(plane, self.geom, ("LE_BUFFER", 0, i), x, y):
-                continue          # a zero mux is the idle code, not a selection
-            cands, _why = self.dec.sources(plane, self.geom, ("LE_BUFFER", 0, i), x, y)
-            if any(c.startswith("DRV|FF|") for c in cands):
-                return True
-        return hasattr(tr, "ff_present") and tr.ff_present(x, y, le)
+        return tr.ff_present(x, y, le)
 
     def lift_ff(self, tr, plane, des, x, y, le):
         n = 2 * le + 1
