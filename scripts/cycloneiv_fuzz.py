@@ -54,6 +54,16 @@ OVERALL_GX_S = {"quartus_map": 37, "quartus_fit": 95, "quartus_asm": 12, "quartu
 MAX_JOBS = 2          # Quartus processes at once (shared box; coordinator cap after the 2026-10-26 OOM, #124)
 JOB_MIN_GB = 20       # available RAM before a job starts (#122)
 log = logging.getLogger("cycloneiv_fuzz")
+# Per-thread overrides so a rebuild can target another tree with its own scratch dir (cycloneiv_rebuild_all.py).
+_tl = threading.local()
+
+
+def corpus_root():
+    return getattr(_tl, "corpus", CORPUS)
+
+
+def qtmp_root():
+    return getattr(_tl, "qtmp", QTMP)
 
 # Fixed fabric sites for the fuzz cells (smoke_lut placed its LE at X1_Y18; LUT at N even, its FF at N+1).
 LUT_SITES = [("LCCOMB_X1_Y18_N0", "a"), ("LCCOMB_X1_Y18_N2", "b"), ("LCCOMB_X10_Y10_N16", "c")]
@@ -185,10 +195,11 @@ def run(step, cmd, cwd, logdir, limits=OVERALL_S):
     overall = limits[step]
     logdir.mkdir(parents=True, exist_ok=True)
     t0 = time.monotonic()
-    QTMP.mkdir(parents=True, exist_ok=True)
+    qt = qtmp_root()
+    qt.mkdir(parents=True, exist_ok=True)
     proc = subprocess.Popen([str(c) for c in cmd], cwd=cwd, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, errors="replace",
-                            env=dict(os.environ, TMPDIR=str(QTMP)))
+                            env=dict(os.environ, TMPDIR=str(qt)))
     lines = queue.Queue()
 
     def pump():
@@ -251,7 +262,7 @@ def reap_qtmp():
 
 def build_one(name):
     reap_qtmp()
-    d = CORPUS / name
+    d = corpus_root() / name
     spec = tomllib.loads((d / "design.toml").read_text())
     for p in d.iterdir():
         if p.name not in KEEP:

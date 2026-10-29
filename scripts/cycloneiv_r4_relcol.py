@@ -14,6 +14,13 @@ PREDICTION P1' (frame-distance form, written after the P1 miss at X63Y32, before
  d = FX[src] - FX[dst] and the destination pitch w only.  REFUTED by any two arcs with the same (d, w) giving different (dx, df).
 Evidence level SET (rigid-shift fits of 2-cell groups; weak).  Rows with no fit are data rows, never retried.
 
+PREDICTION P3 (per-column enumeration, written before the sweep): for a fixed destination COLUMN X and fixed source relative
+ column, (dx, df) is constant across rows Y and across R4 names.  REFUTED by two arcs in the same destination column and the
+ same relative source column with different (dx, df); then the rows of that column are enumerated.  Each arc records
+ FX[dst-1], FX[dst], FX[dst+1] and the kinds of dst-1 / dst+1; no rule is fitted first.
+
+  scripts/cycloneiv_r4_relcol.py colplan --cols 87,25,88 --rows 2 --rels=-1,0,3,4 --out P
+  scripts/cycloneiv_r4_relcol.py coltable
   scripts/cycloneiv_r4_relcol.py pool [--rng 80]        # re-read existing results, 0 builds
   scripts/cycloneiv_r4_relcol.py plan --tile 88,40 --rels -1,0,3 [--seed N]
   scripts/cycloneiv_r4_relcol.py build --plan P [--nulls]
@@ -57,8 +64,18 @@ def pitch(g, X):
     return g.FX[X] - g.FX[X - 1]
 
 
+_CH = None
+
+
+def chains():
+    global _CH
+    if _CH is None:
+        _CH = N.chains_observed()
+    return _CH
+
+
 def cmd_plan(a):
-    ch = N.chains_observed()
+    ch = chains()
     X, Y = (int(v) for v in a.tile.split(","))
     rng = random.Random(a.seed * 100003 + X * 1000 + Y)
     arcs = []
@@ -82,6 +99,71 @@ def cmd_plan(a):
              len(arcs) + len({N.base_name(x) for x in arcs}))
     for x in arcs:
         log.info("  rel %+d I=%d from %s -> LI %s", x["rel"], x["I"], x["lb"], x["li"][3])
+
+
+def ctx_of(g, X):
+    return {"fx": [int(g.FX[X - 1]), int(g.FX[X]), int(g.FX[X + 1])], "kinds": [g.kind.get(X - 1), g.kind.get(X + 1)]}
+
+
+def cmd_colplan(a):
+    import cycloneiv_geom as cg
+    g = cg.load("ep4cgx150")
+    ch = chains()
+    rels = [int(v) for v in a.rels.split(",")]
+    arcs = []
+    for X in (int(v) for v in a.cols.split(",")):
+        ys = collections.defaultdict(set)
+        for (t, x, y, i), (lbs, lis) in ch.items():
+            if x == X and 6 <= y <= 77:
+                ys[y] |= {l[1] - X for l in lbs} & set(rels)
+        order = sorted(ys, key=lambda y: (-len(ys[y]), random.Random(a.seed + X * 131 + y).random()))
+        rows = order[:a.rows]
+        log.info("column X%d: rows %s rels available %s", X, rows, [sorted(ys[y]) for y in rows])
+        for y in rows:
+            sub = argparse.Namespace(tile=f"{X},{y}", rels=a.rels, seed=a.seed, out=str(TMP / "_tmp_plan.json"))
+            cmd_plan(sub)
+            for x in json.loads(Path(sub.out).read_text())["arcs"]:
+                arcs.append(dict(x, ctx=ctx_of(g, X)))
+    Path(a.out).write_text(json.dumps({"tile": None, "arcs": arcs}))
+    log.info("colplan %s: %d arcs, %d bases => %d builds", Path(a.out).name, len(arcs), len({N.base_name(x) for x in arcs}),
+             len(arcs) + len({N.base_name(x) for x in arcs}))
+
+
+def cmd_coltable(a):
+    """Measured per-column table: (dest X, rel) -> {(dx, df): rows}; no-fit rows listed as data."""
+    import cycloneiv_geom as cg
+    g = cg.load("ep4cgx150")
+    seen = {}
+    for r in load_rows():
+        seen[(r["tile"][0], r["tile"][1], r["I"], tuple(r["lb"]))] = r
+    tab = collections.defaultdict(lambda: collections.defaultdict(list))
+    for (x, y, i, lb), r in seen.items():
+        rel = lb[1] - x
+        if r["status"] == "resolved":
+            tab[(x, rel)][(r["resolved"]["dx"], r["resolved"]["fits"][0])].append((y, i))
+        else:
+            tab[(x, rel)]["data:" + r["status"]].append((y, i))
+    miss = 0
+    for k in sorted(tab):
+        d = tab[k]
+        res = [v for v in d if not str(v[0]).startswith("data")] if False else [v for v in d if isinstance(v, tuple)]
+        flag = "MISS" if len(res) > 1 else ""
+        miss += bool(flag)
+        c = ctx_of(g, k[0])
+        log.info("X%-3d rel %+d fx %s kinds %s: %s %s", k[0], k[1], c["fx"], c["kinds"], {str(v): len(rs) for v, rs in d.items()}, flag)
+    log.info("columns x rel with >1 distinct (dx, df): %d", miss)
+    if a.nulls:      # --nulls doubles as "record the table" here
+        import db
+        from provenance import evidence_io as E
+        table = {f"{k[0]},{k[1]}": {"fx": ctx_of(g, k[0])["fx"], "kinds": ctx_of(g, k[0])["kinds"],
+                                    "values": {str(v): [list(r) for r in rs] for v, rs in d.items()}} for k, d in tab.items()}
+        n = sum(len(rs) for d in tab.values() for rs in d.values())
+        with db.engine().begin() as conn:
+            E.ensure_family(conn, "cycloneiv")
+            E.record_decode(conn, "cycloneiv", "EP4CGX150", f"R4 per-column (dx, df) table by source rel ({n} arcs)",
+                            {"file": table, "meta": {}}, E.git_head(REPO), "scripts/cycloneiv_r4_relcol.py coltable",
+                            generator="scripts/cycloneiv_r4_relcol.py", n_objects=n, kind="derived-table")
+        log.info("recorded derived-table row, %d arcs", n)
 
 
 def cmd_build(a):
@@ -204,11 +286,51 @@ def cmd_record(a):
     log.info("recorded %d evidence rows", n)
 
 
+def cmd_colrecord(a):
+    """Evidence rows (source_ref r4_col:R4) for the per-column prediction P3: per (dest X, rel) the first resolved row (by Y, I)
+    is the parent, every later resolved row is a confirm row (consistent = same (dx, df)) or a refute row.  Singletons: consistent None."""
+    import db
+    from provenance import evidence_io as E
+    seen = {}
+    for r in load_rows():
+        seen[(r["tile"][0], r["tile"][1], r["I"], tuple(r["lb"]))] = r
+    grp = collections.defaultdict(list)
+    for r in seen.values():
+        if r["status"] == "resolved" and r.get("honoured") and "on" in r:
+            grp[(r["tile"][0], r["lb"][1] - r["tile"][0])].append(r)
+    commit = E.git_head(REPO)
+    n = 0
+    import cycloneiv_geom as cg
+    g = cg.load("ep4cgx150")
+    with db.engine().begin() as conn:
+        E.ensure_family(conn, "cycloneiv")
+        for (X, rel), rs in sorted(grp.items()):
+            rs.sort(key=lambda r: (r["tile"][1], r["I"], r["lb"]))
+            val = lambda r: (r["resolved"]["dx"], r["resolved"]["fits"][0])   # noqa: E731
+            par = val(rs[0])
+            for j, r in enumerate(rs):
+                nme = map_spec_name(r) if r["_file"].startswith("results_r4map") else spec_name(r)
+                bnm = N.base_name(r).replace("gxr4df_", "gxr4_", 1) if r["_file"].startswith("results_r4map") else N.base_name(r)
+                if not ((H.CORPUS / nme / "design.toml").exists() and (H.CORPUS / bnm / "design.toml").exists()):
+                    continue
+                bid = H.register_build(conn, bnm, "r4 column base")
+                sid = H.register_build(conn, nme, "r4 column forced single path")
+                meta = {"group": "r4_col", "tile": r["tile"], "I": r["I"], "lb": r["lb"], "rel": rel, "col_ctx": ctx_of(g, X),
+                        "role": "parent" if j == 0 else "confirm", "observed": val(r), "pred": par,
+                        "consistent": (val(r) == par) if len(rs) > 1 else None, "plane_level": True, "evidence_level": "set"}
+                E.record_specimen(conn, "cycloneiv", "EP4CGX150", nme, bnm, r["on"], r["off"], meta, "r4_col:R4",
+                                  "scripts/cycloneiv_r4_relcol.py", commit, H.NV, tool_version="25.1", build_base=bid, build_spec=sid)
+                n += 1
+    log.info("recorded %d per-column evidence rows", n)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("pool", "plan", "build", "analyse", "table", "record"))
+    ap.add_argument("cmd", choices=("colrecord", "colplan", "coltable", "pool", "plan", "build", "analyse", "table", "record"))
     ap.add_argument("--tile", default="47,45")
     ap.add_argument("--rels", default="-1,0,3")
+    ap.add_argument("--cols", default="87,25,88")
+    ap.add_argument("--rows", type=int, default=2)
     ap.add_argument("--seed", type=int, default=H.SEED)
     ap.add_argument("--rng", type=int, default=80)
     ap.add_argument("--namer", default="df")

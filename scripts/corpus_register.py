@@ -39,8 +39,10 @@ def toolchain_of(d: Path):
     return None
 
 
-def register(family: str):
-    root = REPO / "corpus" / family
+def register(family: str, root=None):
+    """root: alternative corpus tree (a rebuild); its fit.rpt Quartus version wins over design.toml's tool_version."""
+    alt = root is not None
+    root = Path(root) if alt else REPO / "corpus" / family
     if not root.is_dir():
         db.die(f"no corpus dir {root}")
     rows = []
@@ -60,10 +62,10 @@ def register(family: str):
         rows.append(dict(
             design=d.name, family=family,
             device=t.get("device", ""), top=t.get("top", "top"),
-            toolchain=t.get("tool_version") or toolchain_of(d),
+            toolchain=(toolchain_of(d) or t.get("tool_version")) if alt else (t.get("tool_version") or toolchain_of(d)),
             src_sha256=src, qsf=t.get("qsf", []),
             purpose=t.get("purpose"), exercises=t.get("exercises", []),
-            built_at=built, out_dir=str(d.relative_to(REPO)),
+            built_at=built, out_dir=str(d.relative_to(REPO)) if d.is_relative_to(REPO) else str(d),
             status="ok" if "bitstream.rbf" in outs else "fail:no-bitstream",
         ))
     schema.init()
@@ -84,8 +86,9 @@ def main():
                                   logging.FileHandler(REPO / "tmp/logs/corpus_register.log")])
     ap = argparse.ArgumentParser()
     ap.add_argument("--family", required=True)
+    ap.add_argument("--root", default=None, help="alternative corpus tree (default corpus/<family>)")
     args = ap.parse_args()
-    register(args.family)
+    register(args.family, args.root)
 
 
 if __name__ == "__main__":
