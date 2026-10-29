@@ -2,7 +2,7 @@
 """Clean P3 gate: score lifters/cycloneiv_clean/tracer.py against Quartus ground truth (docs/cycloneiv-clean-pipeline.md, #165).
 
   PLURIBUS_SQLITE_PATH=databases/cycloneiv/gx150.db python3.15t scripts/cycloneiv_clean_gate.py --set rb10 [--record]
-  python3.15t scripts/cycloneiv_clean_gate.py --set corpus --root /mnt/2tb/corpus-rebuild/cycloneiv-<stamp> [--limit N] [--record]
+  python3.15t scripts/cycloneiv_clean_gate.py --set corpus --root <corpus-rebuild-dir>/cycloneiv-<stamp> [--limit N] [--record]
 
 Ground truth per design (Quartus outputs of the build): routing.rcf (pips, nets, LUT pin routing, FF clock nets), postfit.vo
 (LUT masks, FF sites, pin locations), build.pin (pin direction).  Plane = bitstream.rbf.  The corpus root is read only.
