@@ -265,6 +265,8 @@ def build_one(name):
              'set_global_assignment -name EDA_SIMULATION_TOOL "QuestaSim (Verilog)"',
              'set_global_assignment -name EDA_OUTPUT_DATA_FORMAT "VERILOG HDL" -section_id eda_simulation',
              'set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-STATED"',
+             # one thread per chain: fit spawned 32-47 threads per process (load ~100 on 30 cores, 17% sys); chains are the parallelism
+             "set_global_assignment -name NUM_PARALLEL_PROCESSORS 1",
              *spec.get("qsf", [])]
     (q / "build.qsf").write_text("\n".join(lines) + "\n")
     (q / "build.qpf").write_text('QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "build"\n')
