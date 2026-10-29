@@ -1,0 +1,3570 @@
+{
+ "source": "scripts/cycloneiv_clean_options_build.py; asmdb walk + vendor sfl sof tag 18 + cff2rbf option table + pair builds",
+ "n_bits": 160,
+ "class_counts": {
+  "group": 30,
+  "forced": 35,
+  "default": 95
+ },
+ "entries": [
+  {
+   "index": 0,
+   "sof_value_bit": 0,
+   "sof_flag_bit": 160,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     1,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "user_clk_on"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_USE_CLKUSR",
+   "group_type": 2365,
+   "group_class": 7,
+   "group_arch": 0,
+   "group_bits": [
+    0
+   ],
+   "bit_in_group": 0,
+   "function": "user-supplied start-up clock (CLKUSR) used",
+   "polarity": "inverted",
+   "settings": [
+    "USER_START_UP_CLOCK"
+   ],
+   "ghidra": "ASM_OPTION_REG_USE_CLKUSR::process_end_of_phase @0x1caa60",
+   "driver": "CDB_CHIP_DB_ENTRY::is_user_start_up_clock",
+   "group_pairs": [
+    "user_clk_on"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2365 OPTION_REG_USE_CLKUSR (libdb_asmdb enum); ASM_OPTION_REG_USE_CLKUSR::process_end_of_phase @0x1caa60; pairs user_clk_on"
+  },
+  {
+   "index": 1,
+   "sof_value_bit": 1,
+   "sof_flag_bit": 161,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 2,
+   "sof_value_bit": 2,
+   "sof_flag_bit": 162,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     3,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "release_clears_on"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_RELEASE_CLEAR_BEFORE_TRI",
+   "group_type": 2368,
+   "group_class": 7,
+   "group_arch": 0,
+   "group_bits": [
+    2
+   ],
+   "bit_in_group": 0,
+   "function": "release device-wide clear before the tri-states",
+   "polarity": "inverted",
+   "settings": [
+    "RELEASE_CLEARS_BEFORE_TRI_STATES"
+   ],
+   "ghidra": "ASM_OPTION_REG_RELEASE_CLEAR_BEFORE_TRI::process_end_of_phase @0x1caafc",
+   "driver": "asmcc_get_bool_option ACF 0x4c6",
+   "group_pairs": [
+    "release_clears_on"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2368 OPTION_REG_RELEASE_CLEAR_BEFORE_TRI (libdb_asmdb enum); ASM_OPTION_REG_RELEASE_CLEAR_BEFORE_TRI::process_end_of_phase @0x1caafc; pairs release_clears_on"
+  },
+  {
+   "index": 3,
+   "sof_value_bit": 3,
+   "sof_flag_bit": 163,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     4,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "init_done_on"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_USE_INITDONE",
+   "group_type": 2369,
+   "group_class": 7,
+   "group_arch": 0,
+   "group_bits": [
+    3
+   ],
+   "bit_in_group": 0,
+   "function": "INIT_DONE output pin enabled",
+   "polarity": "inverted",
+   "settings": [
+    "ENABLE_INIT_DONE_OUTPUT"
+   ],
+   "ghidra": "ASM_OPTION_REG_USE_INITDONE::process_end_of_phase @0x1cac7a",
+   "driver": "CDB_CHIP_DB_ENTRY::is_init_done",
+   "group_pairs": [
+    "init_done_on"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2369 OPTION_REG_USE_INITDONE (libdb_asmdb enum); ASM_OPTION_REG_USE_INITDONE::process_end_of_phase @0x1cac7a; pairs init_done_on"
+  },
+  {
+   "index": 4,
+   "sof_value_bit": 4,
+   "sof_flag_bit": 164,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     5,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "dev_reset_on"
+   ],
+   "klass": "group",
+   "name": "DEVICE_USE_GLOBAL_CLEAR",
+   "group_type": 2336,
+   "group_class": 7,
+   "group_arch": 0,
+   "group_bits": [
+    4
+   ],
+   "bit_in_group": 0,
+   "function": "device-wide reset (DEV_CLRn) enabled",
+   "polarity": "inverted",
+   "settings": [
+    "ENABLE_DEVICE_WIDE_RESET"
+   ],
+   "ghidra": "ASM_DEVICE_USE_GLOBAL_CLEAR::process_end_of_phase @0x18e112",
+   "driver": "CDB_CHIP_DB_ENTRY::is_dev_clr",
+   "group_pairs": [
+    "dev_reset_on"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2336 DEVICE_USE_GLOBAL_CLEAR (libdb_asmdb enum); ASM_DEVICE_USE_GLOBAL_CLEAR::process_end_of_phase @0x18e112; pairs dev_reset_on"
+  },
+  {
+   "index": 5,
+   "sof_value_bit": 5,
+   "sof_flag_bit": 165,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     6,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "dev_oe_on"
+   ],
+   "klass": "group",
+   "name": "DEVICE_USE_GLOBAL_TRI",
+   "group_type": 2337,
+   "group_class": 7,
+   "group_arch": 0,
+   "group_bits": [
+    5
+   ],
+   "bit_in_group": 0,
+   "function": "device-wide output enable (DEV_OE) enabled",
+   "polarity": "inverted",
+   "settings": [
+    "ENABLE_DEVICE_WIDE_OE"
+   ],
+   "ghidra": "ASM_DEVICE_USE_GLOBAL_TRI::process_end_of_phase @0x18e158",
+   "driver": "CDB_CHIP_DB_ENTRY::is_dev_oe",
+   "group_pairs": [
+    "dev_oe_on"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2337 DEVICE_USE_GLOBAL_TRI (libdb_asmdb enum); ASM_DEVICE_USE_GLOBAL_TRI::process_end_of_phase @0x18e158; pairs dev_oe_on"
+  },
+  {
+   "index": 6,
+   "sof_value_bit": 6,
+   "sof_flag_bit": 166,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     7,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "auto_restart_off"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_ENABLE_AUTO_RECONFIGURE",
+   "group_type": 2370,
+   "group_class": 7,
+   "group_arch": 1,
+   "group_bits": [
+    6
+   ],
+   "bit_in_group": 0,
+   "function": "auto-restart configuration after error; default ON in the base build",
+   "polarity": "direct",
+   "settings": [
+    "AUTO_RESTART_CONFIGURATION"
+   ],
+   "ghidra": "ASM_OPTION_REG_ENABLE_AUTO_RECONFIGURE::process_end_of_phase @0x1cab5a",
+   "driver": "asmcc_get_bool_option ACF 0x4c7",
+   "group_pairs": [
+    "auto_restart_on",
+    "auto_restart_off"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2370 OPTION_REG_ENABLE_AUTO_RECONFIGURE (libdb_asmdb enum); ASM_OPTION_REG_ENABLE_AUTO_RECONFIGURE::process_end_of_phase @0x1cab5a; pairs auto_restart_off"
+  },
+  {
+   "index": 7,
+   "sof_value_bit": 7,
+   "sof_flag_bit": 167,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     8,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 8,
+   "sof_value_bit": 8,
+   "sof_flag_bit": 168,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     3,
+     4
+    ],
+    [
+     0,
+     7,
+     4
+    ],
+    [
+     0,
+     9,
+     1
+    ],
+    [
+     0,
+     19,
+     3
+    ],
+    [
+     0,
+     20,
+     3
+    ],
+    [
+     0,
+     22,
+     3
+    ],
+    [
+     0,
+     23,
+     3
+    ],
+    [
+     0,
+     26,
+     3
+    ],
+    [
+     0,
+     27,
+     3
+    ],
+    [
+     0,
+     30,
+     3
+    ],
+    [
+     0,
+     34,
+     3
+    ],
+    [
+     0,
+     36,
+     3
+    ],
+    [
+     0,
+     37,
+     3
+    ],
+    [
+     0,
+     38,
+     3
+    ],
+    [
+     0,
+     39,
+     3
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crc_check_on",
+    "crcblock_div1",
+    "crcblock_div128",
+    "crcblock_div16",
+    "crcblock_div2",
+    "crcblock_div256",
+    "crcblock_div32",
+    "crcblock_div4",
+    "crcblock_div64",
+    "crcblock_div8",
+    "crcblock_loc",
+    "stratix_crc_on"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_USE_ERROR_DETECT",
+   "group_type": 2371,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    8,
+    92
+   ],
+   "bit_in_group": 0,
+   "function": "bit 8 cleared by the QSF option or a crcblock atom; second bit (92) set only by the QSF option",
+   "polarity": "value",
+   "settings": [
+    "CRC_ERROR_CHECKING",
+    "cycloneiv_crcblock atom"
+   ],
+   "ghidra": "ASM_OPTION_REG_USE_ERROR_DETECT::process_atom @0x1cacc0 + process_end_of_phase @0x1cd832",
+   "driver": "crcblock atom (m_value 1) / QSF option",
+   "group_pairs": [
+    "crc_check_on",
+    "crcblock_div1"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2371 OPTION_REG_USE_ERROR_DETECT (libdb_asmdb enum); ASM_OPTION_REG_USE_ERROR_DETECT::process_atom @0x1cacc0 + process_end_of_phase @0x1cd832; pairs crc_check_on,crcblock_div1,crcblock_div128,crcblock_div16,crcblock_div2,crcblock_div256"
+  },
+  {
+   "index": 9,
+   "sof_value_bit": 9,
+   "sof_flag_bit": 169,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     10,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "scheme_fpp",
+    "scheme_ps"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_SPI_PIN_STATE",
+   "group_type": 2372,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    9,
+    10
+   ],
+   "bit_in_group": 0,
+   "function": "2-bit SPI pin state: passive schemes 3; active serial 2; active serial + TRI_STATE_SPI_PINS 0",
+   "polarity": "value",
+   "settings": [
+    "CYCLONEIII_CONFIGURATION_SCHEME",
+    "TRI_STATE_SPI_PINS"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_SPI_PIN_STATE::process_end_of_phase @0x1cb268",
+   "driver": "get_programming_mode / get_spi_flash_mode / is_tri_state_spi_pins",
+   "group_pairs": [
+    "scheme_ps",
+    "scheme_fpp",
+    "spi_tristate_on",
+    "scheme_ps_tristate"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2372 OPTION_REG_SELECT_SPI_PIN_STATE (libdb_asmdb enum); ASM_OPTION_REG_SELECT_SPI_PIN_STATE::process_end_of_phase @0x1cb268; pairs scheme_fpp,scheme_ps"
+  },
+  {
+   "index": 10,
+   "sof_value_bit": 10,
+   "sof_flag_bit": 170,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     11,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "spi_tristate_on"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_SPI_PIN_STATE",
+   "group_type": 2372,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    9,
+    10
+   ],
+   "bit_in_group": 1,
+   "function": "2-bit SPI pin state: passive schemes 3; active serial 2; active serial + TRI_STATE_SPI_PINS 0",
+   "polarity": "value",
+   "settings": [
+    "CYCLONEIII_CONFIGURATION_SCHEME",
+    "TRI_STATE_SPI_PINS"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_SPI_PIN_STATE::process_end_of_phase @0x1cb268",
+   "driver": "get_programming_mode / get_spi_flash_mode / is_tri_state_spi_pins",
+   "group_pairs": [
+    "scheme_ps",
+    "scheme_fpp",
+    "spi_tristate_on",
+    "scheme_ps_tristate"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2372 OPTION_REG_SELECT_SPI_PIN_STATE (libdb_asmdb enum); ASM_OPTION_REG_SELECT_SPI_PIN_STATE::process_end_of_phase @0x1cb268; pairs spi_tristate_on"
+  },
+  {
+   "index": 11,
+   "sof_value_bit": 11,
+   "sof_flag_bit": 171,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "group",
+   "name": "OPTION_REG_SET_POF_ID",
+   "group_type": 2373,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+   ],
+   "bit_in_group": 0,
+   "function": "8-bit POF id of the part (1 on every IV GX sfl sof); no QSF setting reaches it",
+   "polarity": "value",
+   "settings": [],
+   "ghidra": "ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e",
+   "driver": "DEV_PART_MANAGER::get_pof_id_of(part)",
+   "group_pairs": [],
+   "status": "named (decompile + asmdb), no setting reaches it",
+   "source": "asmdb group 2373 OPTION_REG_SET_POF_ID (libdb_asmdb enum); ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e; pairs none"
+  },
+  {
+   "index": 12,
+   "sof_value_bit": 12,
+   "sof_flag_bit": 172,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     13,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "group",
+   "name": "OPTION_REG_SET_POF_ID",
+   "group_type": 2373,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+   ],
+   "bit_in_group": 1,
+   "function": "8-bit POF id of the part (1 on every IV GX sfl sof); no QSF setting reaches it",
+   "polarity": "value",
+   "settings": [],
+   "ghidra": "ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e",
+   "driver": "DEV_PART_MANAGER::get_pof_id_of(part)",
+   "group_pairs": [],
+   "status": "named (decompile + asmdb), no setting reaches it",
+   "source": "asmdb group 2373 OPTION_REG_SET_POF_ID (libdb_asmdb enum); ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e; pairs none"
+  },
+  {
+   "index": 13,
+   "sof_value_bit": 13,
+   "sof_flag_bit": 173,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     14,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "group",
+   "name": "OPTION_REG_SET_POF_ID",
+   "group_type": 2373,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+   ],
+   "bit_in_group": 2,
+   "function": "8-bit POF id of the part (1 on every IV GX sfl sof); no QSF setting reaches it",
+   "polarity": "value",
+   "settings": [],
+   "ghidra": "ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e",
+   "driver": "DEV_PART_MANAGER::get_pof_id_of(part)",
+   "group_pairs": [],
+   "status": "named (decompile + asmdb), no setting reaches it",
+   "source": "asmdb group 2373 OPTION_REG_SET_POF_ID (libdb_asmdb enum); ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e; pairs none"
+  },
+  {
+   "index": 14,
+   "sof_value_bit": 14,
+   "sof_flag_bit": 174,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     15,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "group",
+   "name": "OPTION_REG_SET_POF_ID",
+   "group_type": 2373,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+   ],
+   "bit_in_group": 3,
+   "function": "8-bit POF id of the part (1 on every IV GX sfl sof); no QSF setting reaches it",
+   "polarity": "value",
+   "settings": [],
+   "ghidra": "ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e",
+   "driver": "DEV_PART_MANAGER::get_pof_id_of(part)",
+   "group_pairs": [],
+   "status": "named (decompile + asmdb), no setting reaches it",
+   "source": "asmdb group 2373 OPTION_REG_SET_POF_ID (libdb_asmdb enum); ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e; pairs none"
+  },
+  {
+   "index": 15,
+   "sof_value_bit": 15,
+   "sof_flag_bit": 175,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     16,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "group",
+   "name": "OPTION_REG_SET_POF_ID",
+   "group_type": 2373,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+   ],
+   "bit_in_group": 4,
+   "function": "8-bit POF id of the part (1 on every IV GX sfl sof); no QSF setting reaches it",
+   "polarity": "value",
+   "settings": [],
+   "ghidra": "ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e",
+   "driver": "DEV_PART_MANAGER::get_pof_id_of(part)",
+   "group_pairs": [],
+   "status": "named (decompile + asmdb), no setting reaches it",
+   "source": "asmdb group 2373 OPTION_REG_SET_POF_ID (libdb_asmdb enum); ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e; pairs none"
+  },
+  {
+   "index": 16,
+   "sof_value_bit": 16,
+   "sof_flag_bit": 176,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     17,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "group",
+   "name": "OPTION_REG_SET_POF_ID",
+   "group_type": 2373,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+   ],
+   "bit_in_group": 5,
+   "function": "8-bit POF id of the part (1 on every IV GX sfl sof); no QSF setting reaches it",
+   "polarity": "value",
+   "settings": [],
+   "ghidra": "ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e",
+   "driver": "DEV_PART_MANAGER::get_pof_id_of(part)",
+   "group_pairs": [],
+   "status": "named (decompile + asmdb), no setting reaches it",
+   "source": "asmdb group 2373 OPTION_REG_SET_POF_ID (libdb_asmdb enum); ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e; pairs none"
+  },
+  {
+   "index": 17,
+   "sof_value_bit": 17,
+   "sof_flag_bit": 177,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     18,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "group",
+   "name": "OPTION_REG_SET_POF_ID",
+   "group_type": 2373,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+   ],
+   "bit_in_group": 6,
+   "function": "8-bit POF id of the part (1 on every IV GX sfl sof); no QSF setting reaches it",
+   "polarity": "value",
+   "settings": [],
+   "ghidra": "ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e",
+   "driver": "DEV_PART_MANAGER::get_pof_id_of(part)",
+   "group_pairs": [],
+   "status": "named (decompile + asmdb), no setting reaches it",
+   "source": "asmdb group 2373 OPTION_REG_SET_POF_ID (libdb_asmdb enum); ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e; pairs none"
+  },
+  {
+   "index": 18,
+   "sof_value_bit": 18,
+   "sof_flag_bit": 178,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     19,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "group",
+   "name": "OPTION_REG_SET_POF_ID",
+   "group_type": 2373,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+   ],
+   "bit_in_group": 7,
+   "function": "8-bit POF id of the part (1 on every IV GX sfl sof); no QSF setting reaches it",
+   "polarity": "value",
+   "settings": [],
+   "ghidra": "ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e",
+   "driver": "DEV_PART_MANAGER::get_pof_id_of(part)",
+   "group_pairs": [],
+   "status": "named (decompile + asmdb), no setting reaches it",
+   "source": "asmdb group 2373 OPTION_REG_SET_POF_ID (libdb_asmdb enum); ASM_OPTION_REG_SET_POF_ID::process_end_of_phase @0x1cbc2e; pairs none"
+  },
+  {
+   "index": 19,
+   "sof_value_bit": 19,
+   "sof_flag_bit": 179,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 20,
+   "sof_value_bit": 20,
+   "sof_flag_bit": 180,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 21,
+   "sof_value_bit": 21,
+   "sof_flag_bit": 181,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 22,
+   "sof_value_bit": 22,
+   "sof_flag_bit": 182,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 23,
+   "sof_value_bit": 23,
+   "sof_flag_bit": 183,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 24,
+   "sof_value_bit": 24,
+   "sof_flag_bit": 184,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 25,
+   "sof_value_bit": 25,
+   "sof_flag_bit": 185,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 26,
+   "sof_value_bit": 26,
+   "sof_flag_bit": 186,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 27,
+   "sof_value_bit": 27,
+   "sof_flag_bit": 187,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     28,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crcblock_div2"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER",
+   "group_type": 2375,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34
+   ],
+   "bit_in_group": 0,
+   "function": "one-hot CRC clock divider: divisor 2^k sets bit 26+k (k 1..8); divisor 1 = all zero",
+   "polarity": "value",
+   "settings": [
+    "ERROR_CHECK_FREQUENCY_DIVISOR",
+    "cycloneiv_crcblock oscillator_divider"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96",
+   "driver": "crcblock oscillator_divider / QSF divisor",
+   "group_pairs": [
+    "crc_on_div_32",
+    "crc_on_div_256",
+    "crcblock_div2",
+    "crcblock_div256"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2375 OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER (libdb_asmdb enum); ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96; pairs crcblock_div2"
+  },
+  {
+   "index": 28,
+   "sof_value_bit": 28,
+   "sof_flag_bit": 188,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     29,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crcblock_div4"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER",
+   "group_type": 2375,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34
+   ],
+   "bit_in_group": 1,
+   "function": "one-hot CRC clock divider: divisor 2^k sets bit 26+k (k 1..8); divisor 1 = all zero",
+   "polarity": "value",
+   "settings": [
+    "ERROR_CHECK_FREQUENCY_DIVISOR",
+    "cycloneiv_crcblock oscillator_divider"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96",
+   "driver": "crcblock oscillator_divider / QSF divisor",
+   "group_pairs": [
+    "crc_on_div_32",
+    "crc_on_div_256",
+    "crcblock_div2",
+    "crcblock_div256"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2375 OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER (libdb_asmdb enum); ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96; pairs crcblock_div4"
+  },
+  {
+   "index": 29,
+   "sof_value_bit": 29,
+   "sof_flag_bit": 189,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     30,
+     1
+    ],
+    [
+     0,
+     41,
+     3
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crcblock_div8"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER",
+   "group_type": 2375,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34
+   ],
+   "bit_in_group": 2,
+   "function": "one-hot CRC clock divider: divisor 2^k sets bit 26+k (k 1..8); divisor 1 = all zero",
+   "polarity": "value",
+   "settings": [
+    "ERROR_CHECK_FREQUENCY_DIVISOR",
+    "cycloneiv_crcblock oscillator_divider"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96",
+   "driver": "crcblock oscillator_divider / QSF divisor",
+   "group_pairs": [
+    "crc_on_div_32",
+    "crc_on_div_256",
+    "crcblock_div2",
+    "crcblock_div256"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2375 OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER (libdb_asmdb enum); ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96; pairs crcblock_div8"
+  },
+  {
+   "index": 30,
+   "sof_value_bit": 30,
+   "sof_flag_bit": 190,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     31,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crcblock_div16"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER",
+   "group_type": 2375,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34
+   ],
+   "bit_in_group": 3,
+   "function": "one-hot CRC clock divider: divisor 2^k sets bit 26+k (k 1..8); divisor 1 = all zero",
+   "polarity": "value",
+   "settings": [
+    "ERROR_CHECK_FREQUENCY_DIVISOR",
+    "cycloneiv_crcblock oscillator_divider"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96",
+   "driver": "crcblock oscillator_divider / QSF divisor",
+   "group_pairs": [
+    "crc_on_div_32",
+    "crc_on_div_256",
+    "crcblock_div2",
+    "crcblock_div256"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2375 OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER (libdb_asmdb enum); ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96; pairs crcblock_div16"
+  },
+  {
+   "index": 31,
+   "sof_value_bit": 31,
+   "sof_flag_bit": 191,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     32,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crc_on_div_32",
+    "crcblock_div32"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER",
+   "group_type": 2375,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34
+   ],
+   "bit_in_group": 4,
+   "function": "one-hot CRC clock divider: divisor 2^k sets bit 26+k (k 1..8); divisor 1 = all zero",
+   "polarity": "value",
+   "settings": [
+    "ERROR_CHECK_FREQUENCY_DIVISOR",
+    "cycloneiv_crcblock oscillator_divider"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96",
+   "driver": "crcblock oscillator_divider / QSF divisor",
+   "group_pairs": [
+    "crc_on_div_32",
+    "crc_on_div_256",
+    "crcblock_div2",
+    "crcblock_div256"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2375 OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER (libdb_asmdb enum); ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96; pairs crc_on_div_32,crcblock_div32"
+  },
+  {
+   "index": 32,
+   "sof_value_bit": 32,
+   "sof_flag_bit": 192,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     33,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crcblock_div64"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER",
+   "group_type": 2375,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34
+   ],
+   "bit_in_group": 5,
+   "function": "one-hot CRC clock divider: divisor 2^k sets bit 26+k (k 1..8); divisor 1 = all zero",
+   "polarity": "value",
+   "settings": [
+    "ERROR_CHECK_FREQUENCY_DIVISOR",
+    "cycloneiv_crcblock oscillator_divider"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96",
+   "driver": "crcblock oscillator_divider / QSF divisor",
+   "group_pairs": [
+    "crc_on_div_32",
+    "crc_on_div_256",
+    "crcblock_div2",
+    "crcblock_div256"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2375 OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER (libdb_asmdb enum); ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96; pairs crcblock_div64"
+  },
+  {
+   "index": 33,
+   "sof_value_bit": 33,
+   "sof_flag_bit": 193,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     34,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crcblock_div128"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER",
+   "group_type": 2375,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34
+   ],
+   "bit_in_group": 6,
+   "function": "one-hot CRC clock divider: divisor 2^k sets bit 26+k (k 1..8); divisor 1 = all zero",
+   "polarity": "value",
+   "settings": [
+    "ERROR_CHECK_FREQUENCY_DIVISOR",
+    "cycloneiv_crcblock oscillator_divider"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96",
+   "driver": "crcblock oscillator_divider / QSF divisor",
+   "group_pairs": [
+    "crc_on_div_32",
+    "crc_on_div_256",
+    "crcblock_div2",
+    "crcblock_div256"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2375 OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER (libdb_asmdb enum); ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96; pairs crcblock_div128"
+  },
+  {
+   "index": 34,
+   "sof_value_bit": 34,
+   "sof_flag_bit": 194,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     35,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crc_on_div_256",
+    "crcblock_div256"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER",
+   "group_type": 2375,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34
+   ],
+   "bit_in_group": 7,
+   "function": "one-hot CRC clock divider: divisor 2^k sets bit 26+k (k 1..8); divisor 1 = all zero",
+   "polarity": "value",
+   "settings": [
+    "ERROR_CHECK_FREQUENCY_DIVISOR",
+    "cycloneiv_crcblock oscillator_divider"
+   ],
+   "ghidra": "ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96",
+   "driver": "crcblock oscillator_divider / QSF divisor",
+   "group_pairs": [
+    "crc_on_div_32",
+    "crc_on_div_256",
+    "crcblock_div2",
+    "crcblock_div256"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2375 OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER (libdb_asmdb enum); ASM_OPTION_REG_SELECT_CRC_FREQUENCY_DIVIDER::process_atom @0x1caef6 + process_end_of_phase @0x1cbf96; pairs crc_on_div_256,crcblock_div256"
+  },
+  {
+   "index": 35,
+   "sof_value_bit": 35,
+   "sof_flag_bit": 195,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 36,
+   "sof_value_bit": 36,
+   "sof_flag_bit": 196,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 37,
+   "sof_value_bit": 37,
+   "sof_flag_bit": 197,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 38,
+   "sof_value_bit": 38,
+   "sof_flag_bit": 198,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     39,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 39,
+   "sof_value_bit": 39,
+   "sof_flag_bit": 199,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 40,
+   "sof_value_bit": 40,
+   "sof_flag_bit": 200,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 41,
+   "sof_value_bit": 41,
+   "sof_flag_bit": 201,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 42,
+   "sof_value_bit": 42,
+   "sof_flag_bit": 202,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 43,
+   "sof_value_bit": 43,
+   "sof_flag_bit": 203,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 44,
+   "sof_value_bit": 44,
+   "sof_flag_bit": 204,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 45,
+   "sof_value_bit": 45,
+   "sof_flag_bit": 205,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 46,
+   "sof_value_bit": 46,
+   "sof_flag_bit": 206,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 47,
+   "sof_value_bit": 47,
+   "sof_flag_bit": 207,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 48,
+   "sof_value_bit": 48,
+   "sof_flag_bit": 208,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 49,
+   "sof_value_bit": 49,
+   "sof_flag_bit": 209,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 50,
+   "sof_value_bit": 50,
+   "sof_flag_bit": 210,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 51,
+   "sof_value_bit": 51,
+   "sof_flag_bit": 211,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 52,
+   "sof_value_bit": 52,
+   "sof_flag_bit": 212,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 53,
+   "sof_value_bit": 53,
+   "sof_flag_bit": 213,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 54,
+   "sof_value_bit": 54,
+   "sof_flag_bit": 214,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 55,
+   "sof_value_bit": 55,
+   "sof_flag_bit": 215,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 56,
+   "sof_value_bit": 56,
+   "sof_flag_bit": 216,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 57,
+   "sof_value_bit": 57,
+   "sof_flag_bit": 217,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 58,
+   "sof_value_bit": 58,
+   "sof_flag_bit": 218,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 59,
+   "sof_value_bit": 59,
+   "sof_flag_bit": 219,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 60,
+   "sof_value_bit": 60,
+   "sof_flag_bit": 220,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 61,
+   "sof_value_bit": 61,
+   "sof_flag_bit": 221,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 62,
+   "sof_value_bit": 62,
+   "sof_flag_bit": 222,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 63,
+   "sof_value_bit": 63,
+   "sof_flag_bit": 223,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 64,
+   "sof_value_bit": 64,
+   "sof_flag_bit": 224,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 65,
+   "sof_value_bit": 65,
+   "sof_flag_bit": 225,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 66,
+   "sof_value_bit": 66,
+   "sof_flag_bit": 226,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 67,
+   "sof_value_bit": 67,
+   "sof_flag_bit": 227,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 68,
+   "sof_value_bit": 68,
+   "sof_flag_bit": 228,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 69,
+   "sof_value_bit": 69,
+   "sof_flag_bit": 229,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 70,
+   "sof_value_bit": 70,
+   "sof_flag_bit": 230,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 71,
+   "sof_value_bit": 71,
+   "sof_flag_bit": 231,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [
+    [
+     0,
+     42,
+     2
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 72,
+   "sof_value_bit": 72,
+   "sof_flag_bit": 232,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 73,
+   "sof_value_bit": 73,
+   "sof_flag_bit": 233,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 74,
+   "sof_value_bit": 74,
+   "sof_flag_bit": 234,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 75,
+   "sof_value_bit": 75,
+   "sof_flag_bit": 235,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 76,
+   "sof_value_bit": 76,
+   "sof_flag_bit": 236,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 77,
+   "sof_value_bit": 77,
+   "sof_flag_bit": 237,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 78,
+   "sof_value_bit": 78,
+   "sof_flag_bit": 238,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 79,
+   "sof_value_bit": 79,
+   "sof_flag_bit": 239,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 80,
+   "sof_value_bit": 80,
+   "sof_flag_bit": 240,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 81,
+   "sof_value_bit": 81,
+   "sof_flag_bit": 241,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 82,
+   "sof_value_bit": 82,
+   "sof_flag_bit": 242,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 83,
+   "sof_value_bit": 83,
+   "sof_flag_bit": 243,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 84,
+   "sof_value_bit": 84,
+   "sof_flag_bit": 244,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 85,
+   "sof_value_bit": 85,
+   "sof_flag_bit": 245,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 86,
+   "sof_value_bit": 86,
+   "sof_flag_bit": 246,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 87,
+   "sof_value_bit": 87,
+   "sof_flag_bit": 247,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 88,
+   "sof_value_bit": 88,
+   "sof_flag_bit": 248,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 89,
+   "sof_value_bit": 89,
+   "sof_flag_bit": 249,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 90,
+   "sof_value_bit": 90,
+   "sof_flag_bit": 250,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 91,
+   "sof_value_bit": 91,
+   "sof_flag_bit": 251,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     12,
+     3
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "nceo_io"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_USE_NCEO",
+   "group_type": 2378,
+   "group_class": 7,
+   "group_arch": 0,
+   "group_bits": [
+    91
+   ],
+   "bit_in_group": 0,
+   "function": "nCEO pin kept as programming pin; 'USE AS REGULAR IO' sets the bit",
+   "polarity": "inverted",
+   "settings": [
+    "CYCLONEII_RESERVE_NCEO_AFTER_CONFIGURATION"
+   ],
+   "ghidra": "ASM_OPTION_REG_USE_NCEO::process_end_of_phase @0x1cb48a",
+   "driver": "CDB_CHIP_DB_ENTRY::get_nceo_reserved_mode != 5",
+   "group_pairs": [
+    "nceo_io"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2378 OPTION_REG_USE_NCEO (libdb_asmdb enum); ASM_OPTION_REG_USE_NCEO::process_end_of_phase @0x1cb48a; pairs nceo_io"
+  },
+  {
+   "index": 92,
+   "sof_value_bit": 92,
+   "sof_flag_bit": 252,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     13,
+     3
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "crc_check_on",
+    "stratix_crc_on"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_USE_ERROR_DETECT",
+   "group_type": 2371,
+   "group_class": 6,
+   "group_arch": null,
+   "group_bits": [
+    8,
+    92
+   ],
+   "bit_in_group": 1,
+   "function": "bit 8 cleared by the QSF option or a crcblock atom; second bit (92) set only by the QSF option",
+   "polarity": "value",
+   "settings": [
+    "CRC_ERROR_CHECKING",
+    "cycloneiv_crcblock atom"
+   ],
+   "ghidra": "ASM_OPTION_REG_USE_ERROR_DETECT::process_atom @0x1cacc0 + process_end_of_phase @0x1cd832",
+   "driver": "crcblock atom (m_value 1) / QSF option",
+   "group_pairs": [
+    "crc_check_on",
+    "crcblock_div1"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2371 OPTION_REG_USE_ERROR_DETECT (libdb_asmdb enum); ASM_OPTION_REG_USE_ERROR_DETECT::process_atom @0x1cacc0 + process_end_of_phase @0x1cd832; pairs crc_check_on,stratix_crc_on"
+  },
+  {
+   "index": 93,
+   "sof_value_bit": 93,
+   "sof_flag_bit": 253,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     14,
+     3
+    ],
+    [
+     0,
+     42,
+     5
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "oct_done_on"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_WAIT_FOR_OCTDONE",
+   "group_type": 2379,
+   "group_class": 7,
+   "group_arch": 0,
+   "group_bits": [
+    93
+   ],
+   "bit_in_group": 0,
+   "function": "wait for OCT calibration done",
+   "polarity": "inverted",
+   "settings": [
+    "ENABLE_OCT_DONE"
+   ],
+   "ghidra": "ASM_OPTION_REG_WAIT_FOR_OCTDONE::process_end_of_phase @0x1cb4d6",
+   "driver": "asmcc_get_bool_option ACF 0x4cd",
+   "group_pairs": [
+    "oct_done_on"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2379 OPTION_REG_WAIT_FOR_OCTDONE (libdb_asmdb enum); ASM_OPTION_REG_WAIT_FOR_OCTDONE::process_end_of_phase @0x1cb4d6; pairs oct_done_on"
+  },
+  {
+   "index": 94,
+   "sof_value_bit": 94,
+   "sof_flag_bit": 254,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     15,
+     3
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 95,
+   "sof_value_bit": 95,
+   "sof_flag_bit": 255,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 96,
+   "sof_value_bit": 96,
+   "sof_flag_bit": 256,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 97,
+   "sof_value_bit": 97,
+   "sof_flag_bit": 257,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 98,
+   "sof_value_bit": 98,
+   "sof_flag_bit": 258,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 99,
+   "sof_value_bit": 99,
+   "sof_flag_bit": 259,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 100,
+   "sof_value_bit": 100,
+   "sof_flag_bit": 260,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 101,
+   "sof_value_bit": 101,
+   "sof_flag_bit": 261,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 102,
+   "sof_value_bit": 102,
+   "sof_flag_bit": 262,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 103,
+   "sof_value_bit": 103,
+   "sof_flag_bit": 263,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 104,
+   "sof_value_bit": 104,
+   "sof_flag_bit": 264,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 105,
+   "sof_value_bit": 105,
+   "sof_flag_bit": 265,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 106,
+   "sof_value_bit": 106,
+   "sof_flag_bit": 266,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [
+    [
+     0,
+     41,
+     1
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 107,
+   "sof_value_bit": 107,
+   "sof_flag_bit": 267,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 108,
+   "sof_value_bit": 108,
+   "sof_flag_bit": 268,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 109,
+   "sof_value_bit": 109,
+   "sof_flag_bit": 269,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 110,
+   "sof_value_bit": 110,
+   "sof_flag_bit": 270,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 111,
+   "sof_value_bit": 111,
+   "sof_flag_bit": 271,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 112,
+   "sof_value_bit": 112,
+   "sof_flag_bit": 272,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [
+    [
+     0,
+     41,
+     5
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 113,
+   "sof_value_bit": 113,
+   "sof_flag_bit": 273,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 114,
+   "sof_value_bit": 114,
+   "sof_flag_bit": 274,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 115,
+   "sof_value_bit": 115,
+   "sof_flag_bit": 275,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 116,
+   "sof_value_bit": 116,
+   "sof_flag_bit": 276,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 117,
+   "sof_value_bit": 117,
+   "sof_flag_bit": 277,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 118,
+   "sof_value_bit": 118,
+   "sof_flag_bit": 278,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 119,
+   "sof_value_bit": 119,
+   "sof_flag_bit": 279,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 120,
+   "sof_value_bit": 120,
+   "sof_flag_bit": 280,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 121,
+   "sof_value_bit": 121,
+   "sof_flag_bit": 281,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 122,
+   "sof_value_bit": 122,
+   "sof_flag_bit": 282,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 123,
+   "sof_value_bit": 123,
+   "sof_flag_bit": 283,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 124,
+   "sof_value_bit": 124,
+   "sof_flag_bit": 284,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 125,
+   "sof_value_bit": 125,
+   "sof_flag_bit": 285,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 126,
+   "sof_value_bit": 126,
+   "sof_flag_bit": 286,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 127,
+   "sof_value_bit": 127,
+   "sof_flag_bit": 287,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 128,
+   "sof_value_bit": 128,
+   "sof_flag_bit": 288,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [
+    [
+     0,
+     9,
+     4
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "as_clk_clkusr"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_EXTERNAL_CLK_SPI",
+   "group_type": 2472,
+   "group_class": 8,
+   "group_arch": null,
+   "group_bits": [
+    128,
+    129
+   ],
+   "bit_in_group": 0,
+   "function": "active-serial clock source via asmdb value map {262:3, 263:1, 264:0}: FREQ_20MHz 3, FREQ_40MHz 1 (default), CLKUSR 0",
+   "polarity": "value",
+   "settings": [
+    "ACTIVE_SERIAL_CLOCK"
+   ],
+   "ghidra": "ASM_OPTION_REG_EXTERNAL_CLK_SPI::process_end_of_phase @0x1cb676",
+   "driver": "asmcc_get_enum_option ACF 0x3ed",
+   "group_pairs": [
+    "as_clk_20",
+    "as_clk_40",
+    "as_clk_clkusr"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2472 OPTION_REG_EXTERNAL_CLK_SPI (libdb_asmdb enum); ASM_OPTION_REG_EXTERNAL_CLK_SPI::process_end_of_phase @0x1cb676; pairs as_clk_clkusr"
+  },
+  {
+   "index": 129,
+   "sof_value_bit": 129,
+   "sof_flag_bit": 289,
+   "vendor_value": 0,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [
+    "as_clk_20"
+   ],
+   "klass": "group",
+   "name": "OPTION_REG_EXTERNAL_CLK_SPI",
+   "group_type": 2472,
+   "group_class": 8,
+   "group_arch": null,
+   "group_bits": [
+    128,
+    129
+   ],
+   "bit_in_group": 1,
+   "function": "active-serial clock source via asmdb value map {262:3, 263:1, 264:0}: FREQ_20MHz 3, FREQ_40MHz 1 (default), CLKUSR 0",
+   "polarity": "value",
+   "settings": [
+    "ACTIVE_SERIAL_CLOCK"
+   ],
+   "ghidra": "ASM_OPTION_REG_EXTERNAL_CLK_SPI::process_end_of_phase @0x1cb676",
+   "driver": "asmcc_get_enum_option ACF 0x3ed",
+   "group_pairs": [
+    "as_clk_20",
+    "as_clk_40",
+    "as_clk_clkusr"
+   ],
+   "status": "named, confirmed by pairs",
+   "source": "asmdb group 2472 OPTION_REG_EXTERNAL_CLK_SPI (libdb_asmdb enum); ASM_OPTION_REG_EXTERNAL_CLK_SPI::process_end_of_phase @0x1cb676; pairs as_clk_20"
+  },
+  {
+   "index": 130,
+   "sof_value_bit": 130,
+   "sof_flag_bit": 290,
+   "vendor_value": 1,
+   "vendor_flag": 0,
+   "rbf_cells": [
+    [
+     0,
+     11,
+     4
+    ]
+   ],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "default",
+   "name": null,
+   "function": null,
+   "status": "unknown: default-list bit, no group, no setting changes it",
+   "source": "asmdb default-bit list (ASMDB_DIE::add_default_bit); value 1, flag 0 = set via ASM_BITFIELD::silent_set_bits"
+  },
+  {
+   "index": 131,
+   "sof_value_bit": 131,
+   "sof_flag_bit": 291,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 132,
+   "sof_value_bit": 132,
+   "sof_flag_bit": 292,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 133,
+   "sof_value_bit": 133,
+   "sof_flag_bit": 293,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 134,
+   "sof_value_bit": 134,
+   "sof_flag_bit": 294,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 135,
+   "sof_value_bit": 135,
+   "sof_flag_bit": 295,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 136,
+   "sof_value_bit": 136,
+   "sof_flag_bit": 296,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 137,
+   "sof_value_bit": 137,
+   "sof_flag_bit": 297,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 138,
+   "sof_value_bit": 138,
+   "sof_flag_bit": 298,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 139,
+   "sof_value_bit": 139,
+   "sof_flag_bit": 299,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 140,
+   "sof_value_bit": 140,
+   "sof_flag_bit": 300,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 141,
+   "sof_value_bit": 141,
+   "sof_flag_bit": 301,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 142,
+   "sof_value_bit": 142,
+   "sof_flag_bit": 302,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 143,
+   "sof_value_bit": 143,
+   "sof_flag_bit": 303,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 144,
+   "sof_value_bit": 144,
+   "sof_flag_bit": 304,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 145,
+   "sof_value_bit": 145,
+   "sof_flag_bit": 305,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 146,
+   "sof_value_bit": 146,
+   "sof_flag_bit": 306,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 147,
+   "sof_value_bit": 147,
+   "sof_flag_bit": 307,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 148,
+   "sof_value_bit": 148,
+   "sof_flag_bit": 308,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 149,
+   "sof_value_bit": 149,
+   "sof_flag_bit": 309,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 150,
+   "sof_value_bit": 150,
+   "sof_flag_bit": 310,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 151,
+   "sof_value_bit": 151,
+   "sof_flag_bit": 311,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 152,
+   "sof_value_bit": 152,
+   "sof_flag_bit": 312,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 153,
+   "sof_value_bit": 153,
+   "sof_flag_bit": 313,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 154,
+   "sof_value_bit": 154,
+   "sof_flag_bit": 314,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 155,
+   "sof_value_bit": 155,
+   "sof_flag_bit": 315,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 156,
+   "sof_value_bit": 156,
+   "sof_flag_bit": 316,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 157,
+   "sof_value_bit": 157,
+   "sof_flag_bit": 317,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 158,
+   "sof_value_bit": 158,
+   "sof_flag_bit": 318,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  },
+  {
+   "index": 159,
+   "sof_value_bit": 159,
+   "sof_flag_bit": 319,
+   "vendor_value": 1,
+   "vendor_flag": 1,
+   "rbf_cells": [],
+   "rbf_cells_flag": [],
+   "pairs": [],
+   "klass": "forced",
+   "name": null,
+   "function": null,
+   "status": "unknown: forced-list bit, no group, no setting changes it",
+   "source": "asmdb forced-bit list (ASMDB_DIE::add_forced_bit); value 1, flag 1 = set via ASM_BITFIELD::set_bits"
+  }
+ ],
+ "jtag": [
+  {
+   "klass": "ASM_JTAG_PIA",
+   "group": null,
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_PIA_TO_CORE_CTL",
+   "group": "JTAG_PIA_TO_CORECTL",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_PIA_TO_TCKCORE",
+   "group": "JTAG_PIA_TO_TCKCORE",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_PIA_TO_TDICORE",
+   "group": "JTAG_PIA_TO_TDICORE",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_PIA_TO_TMSCORE",
+   "group": "JTAG_PIA_TO_TMSCORE",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_PIA_TO_TDOUSER",
+   "group": "JTAG_PIA_TO_TDOUSER",
+   "in_asmdb": true,
+   "space": "CRAM",
+   "n_bits": 16,
+   "bits": [
+    5310882,
+    5310883,
+    5310884,
+    5310885,
+    5310886,
+    5310887,
+    5310888,
+    5310889,
+    5317036,
+    5317037,
+    5317038,
+    5317039,
+    5317040,
+    5317041,
+    5317042,
+    5317043
+   ],
+   "measured": {
+    "bits_set_vs_base": {
+     "jtag_user_in": 2,
+     "jtag_user_lut": 2,
+     "jtag_user_reg": 2,
+     "jtag_all": 2
+    },
+    "builds": "tdouser driven from pin / LUT / register; ports of the cycloneiv_jtag atom"
+   },
+   "group_class": 6
+  },
+  {
+   "klass": "ASM_JTAG_PIA_TO_TDOUTAP",
+   "group": "JTAG_PIA_TO_TDOUTAP",
+   "in_asmdb": true,
+   "space": "CRAM",
+   "n_bits": 16,
+   "bits": [
+    5323190,
+    5323191,
+    5323192,
+    5323193,
+    5323194,
+    5323195,
+    5323196,
+    5323197,
+    5329344,
+    5329345,
+    5329346,
+    5329347,
+    5329348,
+    5329349,
+    5329350,
+    5329351
+   ],
+   "measured": {
+    "bits_set_vs_base": {
+     "jtag_user_in": 0,
+     "jtag_user_lut": 0,
+     "jtag_user_reg": 0,
+     "jtag_all": 0
+    },
+    "builds": "tdouser driven from pin / LUT / register; ports of the cycloneiv_jtag atom"
+   },
+   "group_class": 6
+  },
+  {
+   "klass": "ASM_JTAG_TCKCORE_INVERT",
+   "group": "JTAG_TCKCORE_INVERT",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_TDICORE_INVERT",
+   "group": "JTAG_TDICORE_INVERT",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_TMSCORE_INVERT",
+   "group": "JTAG_TMSCORE_INVERT",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_TDOUSER_INVERT",
+   "group": "JTAG_TDOUSER_INVERT",
+   "in_asmdb": true,
+   "space": "DB_ILLEGAL marker (writing it is an internal error)",
+   "n_bits": 0,
+   "bits": [],
+   "measured": null,
+   "group_class": 7
+  },
+  {
+   "klass": "ASM_JTAG_TDOUTAP_INVERT",
+   "group": "JTAG_TDOUTAP_INVERT",
+   "in_asmdb": true,
+   "space": "DB_ILLEGAL marker (writing it is an internal error)",
+   "n_bits": 0,
+   "bits": [],
+   "measured": null,
+   "group_class": 7
+  },
+  {
+   "klass": "ASM_JTAG_CORECTL_INVERT",
+   "group": "JTAG_CORECTL_INVERT",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_ENABLE_BST_SUPPORT",
+   "group": "JTAG_ENABLE_BST_SUPPORT",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  },
+  {
+   "klass": "ASM_JTAG_WRITE_USER_CODE",
+   "group": "JTAG_WRITE_USER_CODE",
+   "in_asmdb": false,
+   "space": null,
+   "n_bits": 0,
+   "bits": [],
+   "measured": null
+  }
+ ],
+ "flag_semantics": {
+  "text": "sof tag 18 bits 160..319 = ASM_BITFIELD shadow buffer: 1 where the bit was written by set_bits (forced list, option groups), 0 where only silent_set_bits wrote it (default list)",
+  "source": "libcomp_asmcc ASM_BITFIELD::set_bits @0x118000 (value + written mask + shadow) vs silent_set_bits @0x117e50 (value only), docs/cycloneiv-address-spaces.md 3.2"
+ }
+}
