@@ -185,7 +185,8 @@ Pairs prove a bit SET; the aim is to state what each single cell does. Evidence 
 
 - Before launch every sweep states: the question ("decode X from Y"), the predicted diff (cells, +/-, must-be-clear), a build cap and a yield floor.
 - **Yield = distinct new meaning-bearing cells or answered features per 100 builds,** computed by `scripts/progress_ledger.py` from evidence rows new since the last ledger row; the row prints yield vs floor. Defaults: routing 10 features per 100 builds, isolation hunts 1 new cell per 100.
-- **Stop on:** yield below the floor over the last 200 builds, the first prediction miss, or the cap. Stop = report + numbered issue, not another round.
+- **Stop on:** yield below the floor over the last 200 builds, or the cap. Stop = report + numbered issue, not another round.
+- **On a prediction miss:** enumerate that scope (every row of the failing key) before anything else; do not fit a replacement rule from the misses, and do not launch another one-hypothesis round.
 - A gate flat (< 0.5 pp) across two attempts at one level stops that level.
 
 ## Patterns and certainty (Dan, 2026-10-29)
