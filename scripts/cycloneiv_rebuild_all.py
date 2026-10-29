@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.15t
 """Full Cyclone IV corpus rebuild into a NEW tree, then migration checks (Dan 2026-10-29).
 
-  scripts/cycloneiv_rebuild_all.py [--root DIR] [--sample N] [--jobs 12] [--stages build,determinism,register,evidence,derived,gates,swap]
+  scripts/cycloneiv_rebuild_all.py [--root DIR] [--sample N] [--jobs 20] [--stages build,determinism,register,evidence,derived,gates,swap]
 
 Stages (each resumable; --root DIR resumes a run):
   build        every corpus/cycloneiv/<d> with design.toml + src/ -> <root>/<d>/ through cycloneiv_fuzz.build_one
@@ -40,9 +40,9 @@ sys.path.insert(0, str(REPO))
 OLD = REPO / "corpus" / "cycloneiv"
 OUT_ROOT = Path("/mnt/2tb/corpus-rebuild")
 DISK_STOP_GB = 60
-DEFAULT_JOBS = 12
+DEFAULT_JOBS = 20
 PER_JOB_GB = 2.0
-IMAGE = REPO / "sources/cycloneiv-corpus/neptuno_cgx150_mc2/mc2.rbf"   # the third-party EP4CGX150 image
+IMAGE_FILE = REPO / "tmp/inventory_image.path"   # untracked: one line, path of the third-party EP4CGX150 image (never logged)
 DROP_DIRS = ("db", "incremental_db", "qdb")
 STAGES = ("build", "determinism", "register", "evidence", "derived", "gates", "swap")
 # derived artifact -> regenerating command (cwd = view). Inputs the commands read from corpus/cycloneiv are the NEW tree.
@@ -490,6 +490,14 @@ def last_gate(dbp):
     return r
 
 
+def link_image(view):
+    """Symlink (not a copy) so logs show only the label tmp/third_party_ep4cgx150_image."""
+    ln = view / "tmp/third_party_ep4cgx150_image"
+    if not ln.is_symlink():
+        os.symlink(IMAGE_FILE.read_text().strip(), ln)
+    return str(ln.relative_to(view))
+
+
 def stage_gates(root):
     view = make_view(root)
     vdb = view / "databases/cycloneiv/gx150.db"
@@ -503,7 +511,7 @@ def stage_gates(root):
     out["claims"] = {"status_before": before_stat, "status_after": after_stat, "verdict_rows_removed": sum(gone.values()),
                      "verdict_rows_added": sum(new.values()), "sample_removed": [list(k) for k in list(gone)[:5]],
                      "sample_added": [list(k) for k in list(new)[:5]]}
-    out["inventory_rc"] = run_in_view(view, ["scripts/cycloneiv_bit_inventory.py", "--image", str(IMAGE), "--record"], "bit_inventory").returncode
+    out["inventory_rc"] = run_in_view(view, ["scripts/cycloneiv_bit_inventory.py", "--image", link_image(view), "--record"], "bit_inventory").returncode
     cov_after = json.loads((view / "docs/coverage-history.jsonl").read_text().splitlines()[-1])
     keys = ("die_bits", "verified", "measured", "sampled", "predicted", "decoded", "suspect", "refuted", "unknown")
     out["inventory"] = {"before": {k: cov_before.get(k) for k in keys}, "after": {k: cov_after.get(k) for k in keys}}
