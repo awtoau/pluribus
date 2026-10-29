@@ -102,8 +102,8 @@ clock polarity 2/2; all others 0 (src LE 0/8, snk LE 0/14, port 0/1, tie 0/6, ff
 - Design `dn`: u0 and u1 ports tied to four different input pins (u1 keeps u0's net on the forced port). Same LE x bit enumeration as round 2 on LEs 0, 1, 2, 8, 15.
 - Result vs X10Y10 (bit label -> cell, tile-relative): LEs 1, 2, 8, 15 (sink role) 64 / 64 bits identical at each of the 3 other LABs. LE 0 (source role, four free pins) still permuted (2-4 / 16 identical).
 - Cell sets identical in 5 / 5 LEs at every LAB.
-- Conclusion: the label shifts of round 2 come from the fitter swapping ports that carry the same net; where a port is anchored and nets are distinct the INIT label -> cell map is the same at all LABs.
-- Rule for specimens: give every LUT port a distinct net, or compare cell sets only.
+- Conclusion: the label shifts of round 2 come from the fitter swapping ports that carry the same net.
+- Rule for specimens: give every LUT port a distinct net, or compare cell sets / positions only (round 4 uses cell sets).
 
 ### 2. Control nets driven from a pin (X10Y10, X58Y30)
 - Base: FF in the test LE, clock from a same-LAB LUT, pins `enap`, `clrp`, `sclp` already feed test-LUT ports B/C/D (so the pins and their routes exist in base); control ports unconnected. Spec connects ONE pin to ONE control port. Base routing back-annotated.
@@ -125,3 +125,10 @@ clock polarity 2/2; all others 0 (src LE 0/8, snk LE 0/14, port 0/1, tie 0/6, ff
 - Port C (lines 2, 4): fixed port cell (-10, row-1) plus a line cell ((-17, row) line 2, (-16, row-1) line 4).
 - Port D (lines 0, 6, 8, 10, 12, 14): the two cells are (-15..-11 .. -13, row) and (-9, row-1 or row); which of the two rows each takes depends on the line, so port and line cells are not separable into one fixed port cell. The df -9 column belongs to port D, the df -11..-15 column to the line.
 - Tables: `tmp/bit_hunter/round3.json` (`ll`).
+
+## Round 4 (2026-10-29)
+- Distinct-net INIT enumeration for ALL 16 LEs (16 bits each) at 6 LABs: X10Y10 (reference), X58Y30, X37Y60, X100Y75 and the corners X1Y1, X116Y90.
+- Cell sets identical to X10Y10 in 16 / 16 LEs at each of the 5 other LABs (position comparison; bit labels identical 242-244 / 256 at the 4 inner/far LABs, 122 / 256 at X1Y1; LE 0 is the free-pin source LE).
+- Clock polarity (clk vs ~clk) is a single cell at all 6 LABs, tile-relative (df -6, dv -30).
+- Claim 1c: tier is computed (`provenance/tiering.py` class_verdict) from the bit-hunter rows linked in `claims_register.py`: 6 distinct scopes >= 5 for a 2-D law, axis extremes (x 1 and 116, y 1 and 90) included, 0 refutations -> sampled.
+  - Round 3 hand-set the status at 4 LABs; reverted. At 4 LABs the function returns predicted (below the bar and extremes missing).

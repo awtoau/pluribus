@@ -546,12 +546,13 @@ def law():
     return cell
 
 
-DN_LES = (0, 1, 2, 8, 15)
+EXT_LABS = ALL_LABS + [(1, 1), (116, 90)]      # corners supply the axis extremes the sampling rule asks for
+DN_LES = tuple(range(16))
 PIN_NETS = ("enap", "clrp", "sclp")
 CTLS = ("ena", "clr", "sclr", "sload")
 
 
-def dn_pairs(labs=ALL_LABS):
+def dn_pairs(labs=EXT_LABS):
     """Distinct net per LUT port: same LE/bit enumeration as init_pairs on a subset of LEs."""
     out = []
     for lab in labs:
@@ -591,6 +592,10 @@ def ll_lab_variants(labs=((58, 30), (37, 60), (100, 75)), positions=(2, 16)):
     return out
 
 
+def round4():
+    return [p for pr in clk_pairs(EXT_LABS) + dn_pairs(EXT_LABS) for p in pr[:2]]
+
+
 def round3():
     return ([p for pr in dn_pairs() for p in pr[:2]] + ctl_variants() + ll_lab_variants())
 
@@ -614,9 +619,9 @@ def analyse3():
             if len(cs) == 1:
                 cell[(tuple(m["lab"]), m["le"], m["bit"])] = tile_of(g, *divmod(cs[0][0], NV))[2:]
     dn = {}
-    for lab in ALL_LABS[1:]:
+    for lab in EXT_LABS[1:]:
         same = tot = setok = 0
-        for le in (0,) + DN_LES[1:]:
+        for le in DN_LES:
             a = {b: cell.get(((10, 10), le, b)) for b in range(16)}
             c = {b: cell.get((lab, le, b)) for b in range(16)}
             if None in a.values() or None in c.values():
@@ -910,7 +915,7 @@ def record_pairs(cells, D, par, g):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("calib", "batch1", "batch2", "batch3", "round2a", "round2b", "law", "round3", "analyse3", "adapt", "report", "record", "replicate"))
+    ap.add_argument("cmd", choices=("calib", "batch1", "batch2", "batch3", "round2a", "round2b", "law", "round3", "round4", "analyse3", "adapt", "report", "record", "replicate"))
     ap.add_argument("--jobs", type=int, default=0)
     ap.add_argument("--budget", type=int, default=100)
     ap.add_argument("--depth", type=int, default=3)
@@ -939,6 +944,9 @@ def main():
         report()
     elif a.cmd == "round3":
         run_variants(round3(), a.jobs)
+        analyse3()
+    elif a.cmd == "round4":
+        run_variants(round4(), a.jobs)
         analyse3()
     elif a.cmd == "analyse3":
         analyse3()

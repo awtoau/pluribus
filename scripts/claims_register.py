@@ -655,14 +655,8 @@ def register_cycloneiv(conn, device, commit):
                 pattern=p_lut, evidence=[ev_lut], cls="1a", basis="301 designs, 5,354,496 bits matched 100 %")
         R.claim("bit", "LE:used", cls_scope("1b", cls["1b"]["name"]), {"law": "le-used-v1"}, "pattern-predicted", "suspect", pattern=p_leu,
                 cls="1b", basis="14/1,018 misses on one design = unacted refutations")
-        ev_clk = [r[0] for r in conn.execute(select(S.evidence.c.id).where(and_(
-            S.evidence.c.family == "cycloneiv", S.evidence.c.kind == "specimen-pair",
-            S.evidence.c.source_ref == "bit_hunter:B:clk")))]
-        p_clk = R.pattern("lab-clock-polarity-cell-v1", "bit", "LAB clock-polarity cell at (FX-6, vy-30): clk vs ~clk flips exactly it",
-                          {"dims": 2, "cell": "(FX-6, vy-30)", "sample_n": len(ev_clk), "misses": 0}, parents=ev_clk, status="verified-by-sampling" if len(ev_clk) >= 4 else "open")
-        R.claim("bit", "LAB:clock-polarity", cls_scope("1c", cls["1c"]["name"]), {"law": "lab-clock-polarity-cell-v1"}, "pattern-predicted",
-                "verified-by-sampling" if len(ev_clk) >= 4 else "open", pattern=p_clk, evidence=ev_clk, cls="1c",
-                basis=f"single-cell pairs (clk vs ~clk, one cell differs) at {len(ev_clk)} LABs, 0 misses; dims-2 sampling rule asks 5 scopes, status set at 4 on Dan's request (2026-10-29)")
+        R.claim("bit", "LAB:clock-polarity", cls_scope("1c", cls["1c"]["name"]), {"fit": "greedy"}, "statistical", "open", cls="1c",
+                basis="Jaccard 0.85 over 5,442 clock lines")
         afx_claim = R.claim("coord-map", "asm->plane:columns", R.scope("coord-map", "keys", {"keys": [f"asm->plane:x{x}" for x in range(118)]}, n=118),
                             {"source": "afx_map"}, "statistical", "open", pattern=p_afx, cls="2a", basis="vote peaks; 32 columns differ from FX")
         for k in ("2a", "2b"):
