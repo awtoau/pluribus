@@ -123,13 +123,13 @@ def rcf_truth(name):
     """{(x, y, snk_N, port): src} from the RCF LOCAL_LINE hops of a corpus design + diagnostics.
     Sink = an LCCOMB atom placed in the same LAB; others are counted in `skipped` by reason."""
     import cycloneiv_corpus as cc
-    import cycloneiv_route_learn as rl
+    import cycloneiv_common as cm
     d = cc.CORPUS / name
     rcf = cc.parse_rcf(d / "routing.rcf")
     vo = cc.load_vo(name)
     loc = {}
     for aname, a in vo.atoms.items():
-        m = rl.LOC.match(a.get("location") or "")
+        m = cm.LOC.match(a.get("location") or "")
         if m and m.group(1) == "LCCOMB":
             loc[aname] = (int(m.group(2)), int(m.group(3)), int(m.group(4)))
     truth, skipped = {}, collections.Counter()
@@ -287,8 +287,8 @@ def cmd_validate(a):
     import heavy_guard
     import cycloneiv_corpus as cc
     import cycloneiv_geom as cg
-    import cycloneiv_route_learn as rl
-    names = [n for n in cc.designs("gx150_rb*") if rl.split_of(n, "odd")]
+    import cycloneiv_common as cm
+    names = [n for n in cc.designs("gx150_rb*") if cm.split_of(n, "odd")]
     log.info("gate set: %d designs with routing.rcf + bitstream.rbf", len(names))
     if a.limit:
         names = names[:a.limit]

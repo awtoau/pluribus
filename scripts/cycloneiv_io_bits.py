@@ -22,7 +22,6 @@ import numpy as np
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
 
 log = logging.getLogger("cycloneiv_io_bits")
 NEG_MAX = 0.03     # fraction of negative designs allowed to have the bit

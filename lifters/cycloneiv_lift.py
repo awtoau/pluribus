@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_geom as cg  # noqa: E402
 import cycloneiv_route_decode as rd  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
+import cycloneiv_common as cm  # noqa: E402
 
 LE_USED = (-8, -1)         # LE window bit: set for 95.8% of LUT cells and absent from empty LEs
 CLK_POL = (-6, -30)        # LAB-relative bit (frame, v offset from the tile anchor): clock inverted
@@ -100,7 +100,7 @@ class CycloneIVLift:
 
     # -- per-tile primitives ------------------------------------------------------------
     def le_bit(self, plane, x, y, le, df, dv):
-        return rl.le_bit(plane, self.geom, x, y, le, df, dv)
+        return cm.le_bit(plane, self.geom, x, y, le, df, dv)
 
     def mask(self, plane, x, y, le):
         from cycloneiv_le_locate import DK

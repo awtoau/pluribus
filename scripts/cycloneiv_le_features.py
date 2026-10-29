@@ -28,7 +28,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
+import cycloneiv_common as cm  # noqa: E402
 
 log = logging.getLogger("cycloneiv_le_features")
 WIN_F = (-34, 9)
@@ -140,11 +140,11 @@ def main():
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
     names = cc.designs(a.designs)
-    geom = rl.one_geom(names)
+    geom = cm.one_geom(names)
     with ThreadPoolExecutor(a.workers) as ex:
         res = list(ex.map(lambda n: collect(n, geom), names))
-    tr = [r for r in res if rl.split_of(r[0], "even")]
-    te = [r for r in res if not rl.split_of(r[0], "even")]
+    tr = [r for r in res if cm.split_of(r[0], "even")]
+    te = [r for r in res if not cm.split_of(r[0], "even")]
     Xtr, Ytr = np.concatenate([r[1] for r in tr]), np.concatenate([r[2] for r in tr])
     Xte, Yte = np.concatenate([r[1] for r in te]), np.concatenate([r[2] for r in te])
     nfr = WIN_F[1] - WIN_F[0]

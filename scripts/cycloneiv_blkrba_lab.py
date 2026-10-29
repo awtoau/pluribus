@@ -36,7 +36,6 @@ sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_geom as cg  # noqa: E402
 import cycloneiv_le_locate as ll  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
 
 log = logging.getLogger("cycloneiv_blkrba_lab")
 DEFAULT_CSV = REPO / "vendor-analysis/altera/inventory/s1/blkrba_stingray_abs.csv"

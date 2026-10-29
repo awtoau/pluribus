@@ -38,7 +38,7 @@ import heavy_guard  # noqa: E402
 import cycloneiv_emit as em  # noqa: E402
 import cycloneiv_geom as cg  # noqa: E402
 import cycloneiv_lift as lf  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
+import cycloneiv_common as cm  # noqa: E402
 import cycloneiv_sim_check as sc  # noqa: E402
 
 LOG = REPO / "tmp" / "logs" / "cycloneiv_lifted_sim_check.log"
@@ -228,7 +228,7 @@ class OracleTracer:
 
 def check(name, tables, steps=STEPS, oracle=False, phys=None, phys_fallback=False):
     d = cc.load(name)
-    geom = rl.one_geom([name])
+    geom = cm.one_geom([name])
     lift = lf.CycloneIVLift(geom.die, tables, phys=phys, phys_fallback=phys_fallback)
     des = lift.lift(d["plane"], tracer=OracleTracer(d) if oracle else None)
     work = WORK / name
@@ -390,7 +390,7 @@ def main():
     ap.add_argument("--phys", action="store_true", help="LCCOMB inputs traced on asm record ids (cycloneiv_phys_trace)")
     ap.add_argument("--phys-fallback", action="store_true", help="with --phys: learner trace where the physical one is open")
     a = ap.parse_args()
-    names = a.designs or [n for n in cc.designs(a.pattern) if rl.split_of(n, a.split)]
+    names = a.designs or [n for n in cc.designs(a.pattern) if cm.split_of(n, a.split)]
     if a.limit:
         names = names[:a.limit]
     tables = a.tables.split(",")

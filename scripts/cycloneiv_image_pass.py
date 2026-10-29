@@ -37,7 +37,7 @@ import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_geom as cg  # noqa: E402
 import cycloneiv_le_locate as ll  # noqa: E402
 import cycloneiv_route_decode as rd  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
+import cycloneiv_common as ccm  # noqa: E402
 
 log = logging.getLogger("cycloneiv_image_pass")
 STATIC_FRAC = 0.95      # a bit set in this fraction of corpus designs is static configuration
@@ -120,7 +120,7 @@ def route_classes(dec, plane, geom, tiles, rng):
     cats = collections.Counter()
     groups_read = 0
     for (x, y) in tiles:
-        cls = rl.tile_class(geom, x, y, t.col_phase)
+        cls = ccm.tile_class(geom, x, y, t.col_phase)
         for key, (mux, pats, (ax, ay)) in dec.groups_in_class(t, cls):
             if not mux or key[0] in ("LCCOMB", "FF"):
                 continue
@@ -271,12 +271,12 @@ def claims(plane, geom, tiles, dec, io_sigs, static_keys):
     fx = np.array([geom.FX.get(x, -10**6) for x in range(geom.xmax + 1)])
     by_cls = collections.defaultdict(list)
     for (x, y) in tiles:
-        by_cls[rl.tile_class(geom, x, y, t.col_phase)].append((x, y))
+        by_cls[ccm.tile_class(geom, x, y, t.col_phase)].append((x, y))
     for cls, tl in by_cls.items():
         rows = []
         for key, (mux, pats, (ax, ay)) in dec.groups_in_class(t, cls):
             for df, dv in mux:
-                rows.append((ax, ay, df + rl.WF[0], dv + rl.WV[0]))
+                rows.append((ax, ay, df + ccm.WF[0], dv + ccm.WV[0]))
         rows = np.unique(np.array(rows, dtype=np.int64), axis=0) if rows else np.zeros((0, 4), dtype=np.int64)
         for (x, y) in tl:
             xs = x + rows[:, 0]
@@ -329,7 +329,7 @@ def main():
     tiles = lab_tiles(geom)
     dec = rd.Decoder([a.tables])
     rng = random.Random(1)
-    all_names = [n for n in cc.designs("gx150_sp_*") if not rl.split_of(n, "even")]
+    all_names = [n for n in cc.designs("gx150_sp_*") if not ccm.split_of(n, "even")]
     names = all_names[:a.corpus]
     # carry masks: most common masks among corpus arithmetic cells (sum_lutc_input = cin)
     cm = collections.Counter()

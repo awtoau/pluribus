@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_le_locate as ll  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
+import cycloneiv_common as cm  # noqa: E402
 
 log = logging.getLogger("cycloneiv_lut_check")
 LOC = re.compile(r"^LCCOMB_X(\d+)_Y(\d+)_N(\d+)$")
@@ -32,7 +32,7 @@ def decode_mask(plane, geom, x, y, le):
         return None
     m = 0
     for k, (df, dv) in enumerate(ll.DK):
-        if rl.le_bit(plane, geom, x, y, le, df, dv):
+        if cm.le_bit(plane, geom, x, y, le, df, dv):
             m |= 1 << k
     return m
 
@@ -72,7 +72,7 @@ def main():
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
     names = cc.designs(a.designs)
-    geom = rl.one_geom(names)
+    geom = cm.one_geom(names)
     tot = collections.Counter()
     bad = []
     with ThreadPoolExecutor(a.workers) as ex:

@@ -25,7 +25,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_le_features as lf  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
+import cycloneiv_common as cm  # noqa: E402
 
 log = logging.getLogger("cycloneiv_lab_controls")
 PORTS = ["CLK", "CLRN", "ENA"]
@@ -38,7 +38,7 @@ def ff_lines(d):
         for s, t in edges:
             if t[0] != "SINK" or s[0] != "W":
                 continue
-            loc = rl.atom_xyn(vo, t[1])
+            loc = cm.atom_xyn(vo, t[1])
             if loc is None or loc[0] != "FF":
                 continue
             _k, x, y, n = loc
@@ -86,15 +86,15 @@ def main():
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
     names = cc.designs(a.designs)
-    geom = rl.one_geom(names)
+    geom = cm.one_geom(names)
     with ThreadPoolExecutor(a.workers) as ex:
         res = list(ex.map(lambda n: collect(n, geom), names))
     nfr = lf.WIN_F[1] - lf.WIN_F[0]
     nvv = 2 * lf.WIN_V + 1
     pos = [(lf.WIN_F[0] + i // nvv, i % nvv - lf.WIN_V) for i in range(nfr * nvv)]
     for port in PORTS:
-        tr = [g for n, r in res if rl.split_of(n, "even") for g in r.get(port, [])]
-        te = [g for n, r in res if not rl.split_of(n, "even") for g in r.get(port, [])]
+        tr = [g for n, r in res if cm.split_of(n, "even") for g in r.get(port, [])]
+        te = [g for n, r in res if not cm.split_of(n, "even") for g in r.get(port, [])]
         if not tr:
             log.info("%s: no LAB with 2 lines", port)
             continue

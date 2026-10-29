@@ -15,7 +15,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
+import cycloneiv_common as cm  # noqa: E402
 import db  # noqa: E402
 import schema  # noqa: E402
 from provenance import corpus as C  # noqa: E402
@@ -25,7 +25,7 @@ log = logging.getLogger("cycloneiv_declare_gate")
 
 
 def declare(conn, commit):
-    names = [n for n in cc.designs("gx150_rb*") if rl.split_of(n, "odd")]
+    names = [n for n in cc.designs("gx150_rb*") if cm.split_of(n, "odd")]
     for n in names:
         C.ensure_member(conn, "cycloneiv", n, "oracle-build", commit, device="EP4CGX150",
                         source_ref=f"corpus/cycloneiv/{n}", gate_script="scripts/cycloneiv_ddb_trace.py",

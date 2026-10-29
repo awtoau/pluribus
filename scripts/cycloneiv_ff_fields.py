@@ -26,7 +26,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_corpus as cc  # noqa: E402
 import cycloneiv_le_features as lf  # noqa: E402
 import cycloneiv_le_locate as ll  # noqa: E402
-import cycloneiv_route_learn as rl  # noqa: E402
+import cycloneiv_common as cm  # noqa: E402
 
 log = logging.getLogger("cycloneiv_ff_fields")
 LABELS = ["d_direct", "sload", "sclr", "clrn", "ena", "clk_inv",
@@ -80,7 +80,7 @@ def main():
         h.setFormatter(logging.Formatter("%(message)s"))
         log.addHandler(h)
     names = cc.designs(a.designs)
-    geom = rl.one_geom(names)
+    geom = cm.one_geom(names)
     res = [collect(n, geom) for n in names]
     nvv = 2 * lf.WIN_V + 1
     pos = [(lf.WIN_F[0] + i // nvv, i % nvv - lf.WIN_V) for i in range(len(lf.WIN_F) * 0 + (lf.WIN_F[1] - lf.WIN_F[0]) * nvv)]
@@ -88,8 +88,8 @@ def main():
     cand = [i for i, p in enumerate(pos) if p not in maskpos]
     out = {}
     for par in (0, 1):
-        tr = [r for r in res if rl.split_of(r[0], "even")]
-        te = [r for r in res if not rl.split_of(r[0], "even")]
+        tr = [r for r in res if cm.split_of(r[0], "even")]
+        te = [r for r in res if not cm.split_of(r[0], "even")]
 
         def stack(rs, k):
             xs = np.concatenate([r[1] for r in rs])
