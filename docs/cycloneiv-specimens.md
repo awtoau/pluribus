@@ -3,7 +3,7 @@
 What the minimal specimen designs are, what question each answers, and the sweep that counts as
 complete. Companion to [recovery-process.md](recovery-process.md) (the method) and #141 (the
 pivot). Raw-diff tools (the method): `scripts/cycloneiv_forced.py`.
-`scripts/cycloneiv_specimens.py` is LEGACY (decoder in the loop).
+The decoder-in-the-loop matcher (`cycloneiv_specimens.py`) is retired (#165, `docs/cycloneiv-retired-coordinate-model.md`); raw diffs stay.
 
 ## Anatomy of a specimen (LEGACY: decoder-in-the-loop; superseded by the raw-diff tools above)
 
@@ -12,15 +12,11 @@ pivot). Raw-diff tools (the method): `scripts/cycloneiv_forced.py`.
   groups, so the fired-block diff is the path alone.  Implemented: interior rows = l2 reads the
   input pin in the base; pin row 6 = constant-LUT base; pin row 7 = base drives the pin from a
   second LAB (the exit mux then differs and survives the diff).
-- Precondition found by the first specimen: the asm→plane frame map needed per-column asm bases
-  (`afx_map`, cycloneiv_asm_decode) — 7 LAB columns sat inside the plane's M9K spans and decoded
-  to nothing; see cycloneiv-ddb-format.md "Coordinates".
 - Oracle per specimen: the post-fit RCF path.  Chip Planner probed 2026-10-28 and REJECTED:
   `routing_path` internal-errors in 25.1std Lite (`dump_routing_path` → `get_delay` →
   `CDB_ATOM_NODE::get_instance_name`, on specimen and corpus builds alike); `get_nodes` returns
   used atoms only (no device-wide dump); node ids are atom indices, not routing.ddb record ids.
-- Answer format: exact (tile_class, block key) → output record / pin, provenance `specimen`, into
-  `lifters/data/cycloneiv_ep4cgx150_phys_map.json`.
+- Answer format: raw diff rows (evidence); the derived phys_map is retired (#165).
 - One feature per DIFF. A specimen whose answer is ambiguous is split into narrower specimens,
   never voted over.
 

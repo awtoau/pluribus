@@ -6,7 +6,7 @@ Tool: `scripts/cycloneiv_bit_inventory.py --image <path> --record` (run with `--
 
 - Universe = 6,191 frames x 6,368 bits (frame 0 header, 36 periphery, 6,154 CRAM) + 728 preamble/postamble bits = 39,425,016 bits (= handbook figure).
 - Every cell gets ONE class, first match wins, order 1 -> 6. Claims lost to an earlier class are listed in the log (`claim overlaps`).
-- Existing decoders only: `cycloneiv_geom` anchors + `cycloneiv_le_locate.DK` (cells), `cycloneiv_asm_decode.Dec.active` (routing), `tmp/cycloneiv_forced_lab*.json` (specimens), `cycloneiv_corpus.cram_plane` (image plane).
+- Existing decoders only: `cycloneiv_geom` anchors + `cycloneiv_le_locate.DK` (cells), `tmp/cycloneiv_forced_lab*.json` (specimens), `cycloneiv_corpus.cram_plane` (image plane).
 - Image = the third-party EP4CGX150 image, 2,178,780 set bits in the plane (+6,280 header, +52,338 CRC bytes, +728 pre/post = 2,238,126).
 - Run 2026-10-29, interpreter `the free-threaded interpreter` (the default 3.15t env had no numpy at the time).
 

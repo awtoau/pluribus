@@ -95,7 +95,8 @@ const $=id=>document.getElementById(id);
 const fmt=n=>n.toLocaleString("en-US");
 const pc=(a,b,d=2)=>b?(100*a/b).toFixed(d)+"%":"–";
 const css=n=>"var(--"+n+")";
-// types: grouped classes; flag marks classes backed only by the routing decode (decoded, untested)
+// types: grouped classes; flag marks classes backed only by the routing decode (decoded, untested).
+// asm (2a, 2b) exists in history rows only: classes retired 2026-10-30 (#165, docs/cycloneiv-retired-coordinate-model.md)
 const TYPES=[
  {k:"lut",n:"LUT INIT",ids:["1a"]},
  {k:"leu",n:"LE-used bit",ids:["1b"]},

@@ -120,7 +120,7 @@ Applies to every phase below: lifters, decoders, specimen solvers, gates, invent
 The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
 
 - **Specimen = base build + specimen build, differing in ONE thing.** Answer = raw config-bit
-  difference between the two. No decoder (`Dec.active`, asm firing, learnt maps) in the loop.
+  difference between the two. No decoder or learnt map in the loop.
 - **Smallest first.** Tier 0: one hand-placed LUT, one net (output fed to its own input), base has
   the input unconnected. Tier 1: two LUTs, same LAB, one net. Only then scale.
 - **Same cells, same placement, same lut_mask in base and specimen** — the diff is routing only.

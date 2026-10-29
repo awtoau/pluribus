@@ -60,7 +60,7 @@ one of them does not hold.
 | IP blocks need combinations | M9K mode x width x port x clocking is a product space (~5 x 9 x 2 x 8); DSP similar | measure each axis alone (the checklist), predict the product | axis entries `measured`; cross terms `pattern-predicted` by `m9k-axes-independent` until a factorial sample confirms |
 | options only settable by stream options | header frame 0 option bits (159 unknown), compression flags — set by `quartus_cpf`, not by the design | separate option-sweep specimens (one option per pair) | `measured` with `subject_kind = stream-option` |
 | unobservable bits | bits no legal design sets (redundancy, test, factory) | none; they cannot be measured | `never-exercised` after evidence of absence (next subsection); counted in the inventory, never predicted, never "understood" |
-| coordinate map between sources | asm frame axis != plane frame axis near M9K/DSP columns (AFX != FX on 7 LAB columns; vendor x not a pure mirror, +1 after each M9K/DSP pair, 24/104 columns) | per-column anchor specimen (one LE_BUFFER fan-out per column) | the map itself is a claim: `pattern-predicted` per column until that column has an anchor |
+| coordinate map between sources | asm frame axis != plane frame axis near M9K/DSP columns (the layered coordinate model is retired: `docs/cycloneiv-retired-coordinate-model.md`) | per-column anchor specimen (one LE_BUFFER fan-out per column) | the map itself is a claim: `pattern-predicted` per column until that column has an anchor |
 
 ### Never-exercised bits (Dan, 2026-10-29)
 
@@ -177,16 +177,16 @@ else rests on a pattern, so the pattern must carry its evidence and be audited (
 |---|---|---|
 | `measured` | raw diff of a specimen pair; same tool version; rebuild identical | `wires_tile` / `lis_tile` phys-map entries; M9K p0 cell (frame 1111, v 2805) |
 | `vendor-decoded` | read from the vendor device DB through a decoder whose own correctness is a claim | asm.ddb group bits; routing.ddb fan-out graph; `group k == edge k` rule |
-| `pattern-predicted` | a law fitted to measured parents and applied beyond them | LOCAL_LINE translation to 9,356 LABs; class-wide `specimen` entries; LUT INIT anchor law; `afx_map` mirror |
-| `statistical` | voted / learnt over many builds; no single build proves it | phys-map `wires` / `lis` / `defaults` / `cells` votes; `asm_names` alias sets; 1c clock-polarity fit |
+| `pattern-predicted` | a law fitted to measured parents and applied beyond them | LOCAL_LINE translation to 9,356 LABs; class-wide `specimen` entries; LUT INIT anchor law |
+| `statistical` | voted / learnt over many builds; no single build proves it | 1c clock-polarity fit |
 | `eliminated` | the only remaining candidate after every other meaning in a finite set is measured | not used yet (M9K residual bits will be the first) |
 | `never-exercised` | believed unreachable by the vendor fitter: an absence row (N builds, K refused forcings, settings, zero image-corpus hits, static residue) — section 1; not verified, not understood, not predicted from | none assigned yet (needs the absence rows) |
 | `unknown` | nothing attributes a meaning; carries a `reason` (`unasked`, `unforceable`, `seen-in-image`, `orphan`, `conflict`) | inventory classes 4a–4e, 5c, 6 |
 
 A derived claim's tier is the WEAKEST tier in its evidence chain: asm bits are `vendor-decoded`,
-but placing them needs `afx_map` (`statistical`), so the placed asm claim is `statistical` until the
-column has a measured anchor. Today's inventory counts 2a/2b as "evidence"; under this rule most of
-it is `statistical`.
+but placing them needs a coordinate map that is itself `statistical` (e.g. fitted per column), so the placed claim is `statistical` until the
+column has a measured anchor. Under this rule a placed claim resting on a fitted map is
+`statistical` (the 2a / 2b classes this applied to are retired, #165).
 
 ### Status (moves; this is where promotion/demotion lives)
 
@@ -209,7 +209,7 @@ headlines report tier x status, never a single word, and two coverage ratios: ov
 | field | content |
 |---|---|
 | claim | subject kind + key: `bit-meaning (frame,v) = "LI 7 select for src LE3"`, `mux-input (block, group) -> wire`, `cell-field (M9K, word w, bit b) -> (frame, v)` |
-| pattern_id | the law applied (`ll-translate-v1`, `lut-anchor-v2`, `afx-mirror-v1`); NULL for `measured` / `vendor-decoded` |
+| pattern_id | the law applied (`ll-translate-v1`, `lut-anchor-v2`); NULL for `measured` / `vendor-decoded` |
 | parents | evidence ids of the measured specimens the pattern was fitted to |
 | scope | where it is applied: `{class, x_range, y_range, columns, widths, context}`; per-tile override = scope of one tile |
 | confidence_basis | why we believe it here: `"3 positions agree; interior only"`, `"vote 317/318 over 410 builds"` |
@@ -220,14 +220,9 @@ headlines report tier x status, never a single word, and two coverage ratios: ov
 
 | artefact | tier | status | note |
 |---|---|---|---|
-| phys_map `provenance: specimen`, class-wide (`wires`, `lis`) | `pattern-predicted` by `class-generalise-v1` | `confirmed(2–3)` | the string says `specimen`; the CLAIM is class-wide from 2–3 positions — the tier belongs to the claim, not the source |
-| phys_map `wires_tile` / `lis_tile` | `measured` | `open` | scope = one tile; the per-tile overrides of the model |
-| phys_map voted `wires` / `lis` / `defaults` / `cells` (no provenance string) | `statistical` | `open` | 4/4 agree with specimens where they overlap; the other ~2,900 never checked |
-| `li_map.json` | `statistical` | `open` | 540 resolved of 3,750 |
 | inventory 1a LUT INIT | `pattern-predicted` by `lut-anchor` | `oracle-verified` (301 designs) | never `measured`: the anchor law came from fuzz builds |
 | 1b LE-used bit | `pattern-predicted` | `suspect` | 14/1,018 misses on one design = refutations nobody acted on |
 | 1c clock polarity | `statistical` | `open` | Jaccard 0.85 |
-| 2a / 2b asm cells | `statistical` (weakest link = `afx_map`) | `open` | bits themselves `vendor-decoded`; 83 % learner agreement is a triage number, not a confirmation |
 | 3 LOCAL_LINE translated | `pattern-predicted` by `ll-translate-v1` | `confirmed(4)`: X10Y10 parent + 3 held-out | edge rows y1/y90 and M9K-adjacent columns are OUTSIDE the parent scope and must be flagged as such |
 | ddb_map (`group k == edge k`) | `vendor-decoded` | `confirmed` on wires (3,479/3,490), `suspect` on LI (1,073 wrong) | one rule, two statuses by subject kind |
 | LI band: ddb vs specimen on 6 class keys | both `suspect` | `conflict` | two exact-claimed sources disagree; neither counts as known until adjudicated |
@@ -393,7 +388,7 @@ lift_provenance = Table("lift_provenance", metadata,
 1. Add `evidence`, `claim_patterns`, `claims`, `claim_events` to `schema.py` (section 4; `lift_provenance` waits).
 2. `scripts/claims_register.py --family cycloneiv`: full rebuild (delete + reinsert) from today's artefacts:
    - forced / M9K raw-diff JSONs -> `evidence(specimen-pair)`;
-   - phys_map `*_tile` -> `measured` claims; class-wide `specimen` entries -> `pattern-predicted` (`class-generalise-v1`); voted maps -> `statistical`; LOCAL_LINE translation -> `pattern-predicted` (`ll-translate-v1`, parents = 4 LABs, scope = interior rows/columns only);
+   - LOCAL_LINE translation -> `pattern-predicted` (`ll-translate-v1`, parents = 4 LABs, scope = interior rows/columns only);
    - inventory classes -> claims with the tier from the mapping table in section 2 (1b `suspect`, LI band `conflict`).
 3. Two queries as script subcommands: `by-pattern P`, `by-specimen S` (blast radius).
 4. `cycloneiv_bit_inventory.py --record` reads tiers from `claims` instead of `LEDGER_TIER`; the ledger line gains the tier x status breakdown. Expect verified coverage to stay ~6.3 % and "evidence" to split into predicted / statistical / suspect / conflict.
@@ -409,8 +404,4 @@ lift_provenance = Table("lift_provenance", metadata,
 
 | open item | how the model surfaces it |
 |---|---|
-| phys_map voted entries vs specimen exact | voted entries are `statistical/open` with an audit queue; the merge becomes supersession events; the "4/4 agree" check becomes 4 confirmations against ~2,900 unaudited, visible as a ratio instead of a sentence |
-| ddb-vs-specimen LI band (6 class keys, 1,073 wrong) | both sources `suspect`, status `conflict`, 219 blocks listed by `by-pattern`; coverage drops for the LI band instead of counting under 2a/2b "evidence" |
-| column coordinate anomaly (AFX != FX on 7 LAB columns; +1 after each M9K/DSP pair) | `afx-mirror-v1` has parents at interior LAB columns only; the 7 + 24 columns are outside `verified_scope`, so they are `pattern-predicted/open` with an audit queued BEFORE the 5,022-build sweep, not discovered by it decoding to nothing |
 | 1b LE-used bit, 14/1,018 misses | the misses are refutation events; pattern `suspect`; the inventory shows 149,760 bits as suspect rather than "partial" |
-| 2a counted as evidence while resting on vote peaks | weakest-link rule classes it `statistical`; the ceiling math in recovery-process.md would have been forced at the first ledger line |
