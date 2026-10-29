@@ -116,3 +116,6 @@ sources/haltech
 
 # generated local reports
 reports/*.html
+
+# raw vendor-binary analysis (Ghidra projects, decompiles, notes): never committed
+vendor-analysis/
