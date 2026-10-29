@@ -548,7 +548,7 @@ def register_cycloneiv(conn, device, commit):
         hdr = next(c for c in led["classes"] if c["id"] == "5a")
         R.claim("stream-option", "header:sync+crc16", R.scope("stream-option", "keys", {"keys": ["header:sync", "header:crc16"]}, n=hdr["verified"]),
                 {"meaning": "sync word + CRC-16"}, "measured", "oracle-verified", cls="5a", basis="recomputed")
-        R.claim("stream-option", "header:constant", R.scope("stream-option", "keys", {"keys": ["header:flag", "header:length", "header:family", "header:lanes5-7", "header:0xff-fill"]}, n=hdr["evidence"]),
+        R.claim("stream-option", "header:constant", R.scope("stream-option", "keys", {"keys": ["header:flag", "header:length", "header:family", "header:lanes5-7", "header:0xff-fill"]}, n=hdr.get("measured", hdr.get("evidence"))),
                 {"meaning": "flag/length/family/lanes/fill"}, "vendor-decoded", "confirmed", cls="5a", basis="docs/cycloneiv-bitstream.md Format")
         R.unknown("stream-option", R.scope("stream-option", "keys", {"keys": ["header:option-bits"]}, n=hdr["unknown"]), "unasked",
                   subject="header:option-bits", cls="5a", note="159 option bits set by quartus_cpf; option sweep not done")
