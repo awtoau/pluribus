@@ -22,13 +22,14 @@ method affordable, and the rolling audit is the price of using them.
 |---|---|---|---|
 | verified | `verified` | compared claim-for-claim against a vendor oracle | `provenance/tiering.py` |
 | measured | `measured` | raw diff or observation at that cell or site | exact evidence rows, no pattern |
-| sampled (= verified-by-sampling) | `sampled` | a pattern confirmed at >= N distinct scopes (N = 3 for 1-D, 5 for 2-D, extremes of every axis included), zero refutations | `tiering.sampling_bar`; N and misses on the row; shown beside `measured`, never merged |
+| sampled (= verified-by-sampling) | `sampled` | a pattern confirmed at >= N distinct scopes (N = 3 for 1-D, 5 for 2-D, extremes of every axis included), zero refutations | `tiering.sampling_bar`; N and misses on the row; its OWN line beneath the headline, labelled 'rule verified by sampling (not exact per cell)'; never added into the headline (#157 decision 4) |
 | pattern-predicted | `predicted` | a rule fitted to measured parents and applied beyond them, below the sampling bar | revocable by one miss |
 | decoded (= decoded-untested) | `decoded` | read from the vendor decode; nothing tested at the cell | |
 | statistical | `statistical` | last-resort fit/vote where no exact route exists; unverified | its own tier, never merged into counts above; replaced when an exact source covers it |
 | suspect | `suspect` | a pattern or claim with a recorded miss or a conflict | revoked from verified tiers until audited |
 | refuted | `refuted` | contradicted by a specimen inside its scope | |
 | unknown | `unknown` | nothing attributes a meaning (the headline) | |
+| headline exact | `die_headline_exact` (ledger metric) | verified + measured only: exact evidence per cell; the one coverage number on the page tiles, progress table and ledger summary line | derived from tier keys when absent in old rows; `sampled` never added |
 | projected unused | `unknown_projected` | SUB-LINE of unknown: unknown cells set in none of the n held bitstreams | triage by frequency; not a claim, not a tier, never pattern-predicted, never subtracted from unknown |
 
 - Claim `tier` (how obtained: measured, vendor-decoded, eliminated, pattern-predicted, statistical, ...) and claim `status` (open, confirmed, verified-by-sampling, suspect, refuted, ...) are the DB vocabulary (section 2); the names above are the coverage tiers computed from them.

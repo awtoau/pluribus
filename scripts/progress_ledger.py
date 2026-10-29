@@ -45,11 +45,18 @@ METRICS = {
     "claims_confirmed": ("claims: measured, confirmed", True), "claims_open": ("claims: open", False),
     "claims_statistical": ("claims: statistical tier", False), "claims_suspect": ("claims: suspect or refuted", False), "expectations": ("expectations (predictions)", None),
     "unknowns": ("seriously-unknown rows", False),     "die_verified": ("die bits verified (oracle)", True), "die_measured": ("die bits measured", True),
-    "die_sampled": ("die bits verified-by-sampling", True), "die_predicted": ("die bits pattern-predicted", None),
+    "die_headline_exact": ("die bits HEADLINE: verified + measured (exact evidence)", True),
+    "die_sampled": ("  rule verified by sampling (not exact per cell; not in headline)", True), "die_predicted": ("die bits pattern-predicted", None),
     "die_statistical": ("die bits statistical (own tier)", None), "die_decoded": ("die bits decoded-untested", None), "die_suspect": ("die bits suspect", False),
-    "die_refuted": ("die bits refuted", False), "die_unknown": ("die bits unknown (headline)", False),
+    "die_refuted": ("die bits refuted", False), "die_unknown": ("die bits unknown", False),
     "die_projected": ("  of which projected unused (never set in any held design)", None),
 }
+
+
+def headline_exact(row):
+    """Headline = verified + measured (exact evidence). Works on a coverage row (verified/measured) or a ledger
+    metric dict (die_verified/die_measured); `sampled` is never added (#157 decision 4)."""
+    return sum(row.get(p + k, 0) for k in ("verified", "measured") for p in ("", "die_") if (p + k) in row)
 
 
 def log(msg):
@@ -123,6 +130,7 @@ def measure():
     if rows:
         for k in ("verified", "measured", "sampled", "predicted", "statistical", "decoded", "suspect", "refuted", "unknown"):
             m["die_" + k] = rows[-1].get(k, 0)    # older ledger rows lack the split tiers: 0
+        m["die_headline_exact"] = headline_exact(rows[-1])
         m["die_projected"] = rows[-1].get("unknown_projected", 0)    # triage sub-line of unknown, never a tier
     return m
 

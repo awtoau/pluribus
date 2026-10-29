@@ -55,7 +55,7 @@ td.mono,.mono{font-family:var(--mono)}
 <main>
 <header style="display:flex;flex-direction:column;gap:6px">
   <h1>Cyclone IV EP4CGX150 coverage</h1>
-  <p class="sub">Share of the reference die's 39,425,016 configuration bits with a meaning attached, split by tier (definitions in the legend). Source: the coverage ledger, one line per inventory run. Tiers are never merged.</p>
+  <p class="sub">Share of the reference die's 39,425,016 configuration bits with a meaning attached, split by tier (definitions in the legend). Source: the coverage ledger, one line per inventory run. Tiers are never merged. Headline = verified + measured only; sampled is its own line beneath it.</p>
   <div class="legend" id="tierlegend"></div>
 </header>
 <div class="tiles" id="tiles"></div>
@@ -112,7 +112,7 @@ const TYPES=[
  {k:"unc",n:"Unclassified LAB cells",ids:["6"]}];
 const TIERS=[["ver","verified","oracle-verified: compared claim-for-claim against a vendor oracle"],
  ["mea","measured","raw diff or observation at that cell or site"],
- ["sam","sampled (verified-by-sampling)","a pattern with confirmations at >= N distinct scopes incl. extremes and zero refutations (docs/recovery-process.md); stated sample n and misses on the class row"],
+ ["sam","sampled (rule verified by sampling; not exact per cell, never in the headline)","a pattern with confirmations at >= N distinct scopes incl. extremes and zero refutations (docs/recovery-process.md); stated sample n and misses on the class row"],
  ["pre","pattern-predicted","a rule fitted to measured parents, applied beyond them, below the sampling bar"],
  ["sta","statistical","last-resort fit, unverified: its own tier, never merged into pattern-predicted or measured"],
  ["dec","decoded","read from the vendor decode; nothing tested at the cell"],
@@ -145,8 +145,10 @@ const D=live.die_bits;
 const IS={};K.forEach(k=>IS[k]=0);let img=0,ih=0;
 live.classes.forEach(c=>{img+=c.image_set;if(c.id==="5a")ih+=c.image_set;else IS[ckey(c)]+=c.image_set});
 const meta=`${live.commit.slice(0,9)} · ${date(live.ts)}${live.dirty?" · tree dirty":""}`;
+const HX=val(live,"ver")+val(live,"mea");   // headline = verified + measured; sampled never added (#157 decision 4)
 $("tiles").innerHTML=[
- ...K.filter(k=>val(live,k)>0||k==="sus"||k==="ref").map(k=>["Die "+KN[k],k,pc(val(live,k),D),`${fmt(val(live,k))} bits`+(k==="unk"?`<br><i class="sw pro"></i> of which projected unused ${pc(proj(live),D)} (${fmt(proj(live))} bits, never set in ${PROJ_N} designs)`:"")])
+ ["Die coverage HEADLINE: verified + measured (exact evidence)","ver",pc(HX,D),`${fmt(HX)} bits<br><i class="sw sam"></i> <b>rule verified by sampling (not exact per cell)</b>: ${pc(val(live,"sam"),D)} (${fmt(val(live,"sam"))} bits), not in the headline`],
+ ...K.filter(k=>(val(live,k)>0||k==="sus"||k==="ref")&&k!=="sam").map(k=>["Die "+KN[k],k,pc(val(live,k),D),`${fmt(val(live,k))} bits`+(k==="unk"?`<br><i class="sw pro"></i> of which projected unused ${pc(proj(live),D)} (${fmt(proj(live))} bits, never set in ${PROJ_N} designs)`:"")])
 ].map(t=>`<div class="tile"><div class="k">${t[0]}</div><div class="v"><i class="sw ${t[1]}"></i>${t[2]}</div><div class="m">${t[3]}<br>${meta}</div></div>`).join("")+
 `<div class="tile"><div class="k">Image set bits (${fmt(img)})</div><div class="v" style="font-size:18px;flex-wrap:wrap">${K.filter(k=>IS[k]>0).map(k=>`<span><i class="sw ${k}"></i> ${pc(IS[k],img,1)}</span>`).join("")}<span><i class="sw mix"></i> ${pc(ih,img,1)}</span></div><div class="m">by tier, then header<br>${meta}</div></div>`;
 
@@ -249,8 +251,9 @@ function hbars(svg,items,total,tierKeys,tipFn,pcOf){
   const y=d.yield==null?"n/a":d.yield.toFixed(2),f=d.floor==null?"no floor":d.floor;
   return `${y} / ${f} (${fmt(d.features)} feat, ${fmt(d.builds)} builds)`+(d.below?` <b style="color:#c0392b">BELOW FLOOR</b>`:"")};
  $("t0").innerHTML=`<tr><th class="l">Metric</th><th>Now</th><th>Change vs previous row</th><th>First row</th><th>Yield / floor</th></tr>`+P.metrics.map(m=>{
-  const n=last.m[m.k]||0,d=prev&&prev.m[m.k]!=null?n-prev.m[m.k]:0;
-  return `<tr><td class="l">${m.label}</td><td>${fmt(n)}</td><td>${d?(d>0?"+":"")+fmt(d):"0"}</td><td>${first.m[m.k]==null?"–":fmt(first.m[m.k])}</td><td>${yc(m.k)}</td></tr>`}).join("")+
+  const g=(r,k)=>r.m[k]!=null?r.m[k]:(k==="die_headline_exact"&&r.m.die_verified!=null?(r.m.die_verified||0)+(r.m.die_measured||0):null);   // old rows: derive from tier keys
+  const n=g(last,m.k)||0,d=prev&&g(prev,m.k)!=null?n-g(prev,m.k):0;
+  return `<tr><td class="l">${m.label}</td><td>${fmt(n)}</td><td>${d?(d>0?"+":"")+fmt(d):"0"}</td><td>${g(first,m.k)==null?"–":fmt(g(first,m.k))}</td><td>${yc(m.k)}</td></tr>`}).join("")+
   `<tr><td class="l" colspan="5">Last row ${last.ts.slice(0,16)}, commit ${last.commit}; ${R.length} rows.</td></tr>`;
 })();
 })();

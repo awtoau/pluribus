@@ -558,6 +558,9 @@ def run(a):
     for r in rows:
         P("%-4s %-58s %-9s %12d %12d %6.2f%%", r["id"], r["name"], LEDGER_TIER.get(r["id"], r["tier"]), r["total"], r["set"], r["pct_die"])
     P("2c   asm bits with no plane cell (outside partition): %d distinct, %d entries", len(dpos), n_drop)
+    P("HEADLINE exact (verified + measured) %d = %.2f%%; rule verified by sampling (not exact per cell, not in headline) %d = %.2f%%",
+      tot_t["verified"] + tot_t["measured"], 100 * (tot_t["verified"] + tot_t["measured"]) / die_bits,
+      tot_t["sampled"], 100 * tot_t["sampled"] / die_bits)
     P("tiers: " + "; ".join(f"{k} {v} = {100 * v / die_bits:.2f}%" for k, v in tot_t.items())
       + f"; of which unknown projected unused (never set in {ever_n} designs) {tot_proj} = {100 * tot_proj / die_bits:.2f}%")
     P("(B) image set bits: plane %d + header %d + crc %d + pre/post %d = %d", len(keys), hdr_set, crc_set, sum(PRE_POST_BITS), set_all)
