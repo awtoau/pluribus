@@ -17,11 +17,11 @@ import numpy as np
 import pytest
 
 from conftest import REPO, report
-from lifters.cycloneiv_clean import ddb
+from lifters.cycloneiv_clean import ddb, names
 from lifters.cycloneiv_clean import plane as P
 
 NV = 6368
-LB, R4 = 45, 268            # element enums (seeds, see test_o4_names)
+LB, R4 = names.enum_of("LE_BUFFER"), names.enum_of("R4")   # names_table.json
 CHUNK = 4_000_000
 
 

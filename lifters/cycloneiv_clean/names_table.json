@@ -1,0 +1,1958 @@
+{
+ "types": [
+  {
+   "type": "BLK_CLK_BUF",
+   "enum": 568,
+   "status": "derived",
+   "edges": 3757,
+   "edges_ok": 3757,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 43,
+    "edges_ok": 0
+   },
+   "names": 3680,
+   "unique_cands": 7,
+   "hdr_offset": 25190,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "BLK_CLK_LIM",
+   "enum": 665,
+   "status": "consistent-few-edges",
+   "edges": 77,
+   "edges_ok": 77,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 43,
+    "edges_ok": 0
+   },
+   "names": 77,
+   "unique_cands": 7,
+   "hdr_offset": 26874,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "BLOCK_INPUT_MUX",
+   "enum": null,
+   "status": "unmapped",
+   "edges": 0,
+   "edges_ok": 0,
+   "unique_pct": null,
+   "runner_up": null,
+   "names": 253,
+   "unique_cands": 2,
+   "hdr_offset": 26176,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "C16",
+   "enum": 281,
+   "status": "derived",
+   "edges": 7247,
+   "edges_ok": 7247,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 275,
+    "edges_ok": 83
+   },
+   "names": 2770,
+   "unique_cands": 3,
+   "hdr_offset": 23689,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "C4",
+   "enum": 275,
+   "status": "derived",
+   "edges": 85166,
+   "edges_ok": 85166,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 45,
+    "edges_ok": 495
+   },
+   "names": 42943,
+   "unique_cands": 3,
+   "hdr_offset": 28530,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "CLKBUF_IN",
+   "enum": 521,
+   "status": "consistent-few-edges",
+   "edges": 18,
+   "edges_ok": 18,
+   "unique_pct": 100.0,
+   "runner_up": null,
+   "names": 18,
+   "unique_cands": 1,
+   "hdr_offset": 25944,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "CLKBUF_OUT",
+   "enum": 523,
+   "status": "consistent-few-edges",
+   "edges": 18,
+   "edges_ok": 18,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 521,
+    "edges_ok": 0
+   },
+   "names": 18,
+   "unique_cands": 2,
+   "hdr_offset": 23816,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "CLK_BUFFER",
+   "enum": 295,
+   "status": "consistent-few-edges",
+   "edges": 23,
+   "edges_ok": 23,
+   "unique_pct": 100.0,
+   "runner_up": null,
+   "names": 12,
+   "unique_cands": 1,
+   "hdr_offset": 26738,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "GEN_CORE_BUF",
+   "enum": 541,
+   "status": "consistent-few-edges",
+   "edges": 100,
+   "edges_ok": 100,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 528,
+    "edges_ok": 11
+   },
+   "names": 11,
+   "unique_cands": 6,
+   "hdr_offset": 24260,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "GLOBAL_CLK_H",
+   "enum": 298,
+   "status": "consistent-few-edges",
+   "edges": 90,
+   "edges_ok": 90,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 268,
+    "edges_ok": 0
+   },
+   "names": 18,
+   "unique_cands": 4,
+   "hdr_offset": 24512,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "GLOBAL_CLK_V",
+   "enum": 299,
+   "status": "derived",
+   "edges": 1287,
+   "edges_ok": 1287,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 667,
+    "edges_ok": 0
+   },
+   "names": 72,
+   "unique_cands": 2,
+   "hdr_offset": 24715,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "IO_DATAIN",
+   "enum": 307,
+   "status": "consistent-few-edges",
+   "edges": 437,
+   "edges_ok": 437,
+   "unique_pct": 100.0,
+   "runner_up": null,
+   "names": 312,
+   "unique_cands": 1,
+   "hdr_offset": 25927,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "IO_RAW_DATAIN",
+   "enum": 308,
+   "status": "consistent-few-edges",
+   "edges": 6,
+   "edges_ok": 6,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 307,
+    "edges_ok": 0
+   },
+   "names": 6,
+   "unique_cands": 2,
+   "hdr_offset": 27094,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "LAB_CLK",
+   "enum": 300,
+   "status": "derived",
+   "edges": 5157,
+   "edges_ok": 5157,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 268,
+    "edges_ok": 0
+   },
+   "names": 919,
+   "unique_cands": 6,
+   "hdr_offset": 28046,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "LAB_CONTROL_MUX",
+   "enum": null,
+   "status": "unmapped",
+   "edges": 0,
+   "edges_ok": 0,
+   "unique_pct": null,
+   "runner_up": null,
+   "names": 555,
+   "unique_cands": 8,
+   "hdr_offset": 28579,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "LE_BUFFER",
+   "enum": 45,
+   "status": "derived",
+   "edges": 29543,
+   "edges_ok": 29543,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 268,
+    "edges_ok": 690
+   },
+   "names": 21916,
+   "unique_cands": 3,
+   "hdr_offset": 24455,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "LOCAL_INTERCONNECT",
+   "enum": 282,
+   "status": "derived",
+   "edges": 62022,
+   "edges_ok": 62022,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 275,
+    "edges_ok": 386
+   },
+   "names": 49336,
+   "unique_cands": 1,
+   "hdr_offset": 27068,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "LOCAL_LINE",
+   "enum": null,
+   "status": "unmapped",
+   "edges": 0,
+   "edges_ok": 0,
+   "unique_pct": null,
+   "runner_up": null,
+   "names": 11537,
+   "unique_cands": 5,
+   "hdr_offset": 28687,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "M4K_BUFFER",
+   "enum": 284,
+   "status": "consistent-few-edges",
+   "edges": 16,
+   "edges_ok": 16,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 275,
+    "edges_ok": 1
+   },
+   "names": 16,
+   "unique_cands": 4,
+   "hdr_offset": 23798,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "M4K_LEFT_CONTROL_INPUT",
+   "enum": null,
+   "status": "unmapped",
+   "edges": 0,
+   "edges_ok": 0,
+   "unique_pct": null,
+   "runner_up": null,
+   "names": 2,
+   "unique_cands": 5,
+   "hdr_offset": 23972,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "R24",
+   "enum": 273,
+   "status": "derived",
+   "edges": 6550,
+   "edges_ok": 6550,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 268,
+    "edges_ok": 86
+   },
+   "names": 2218,
+   "unique_cands": 4,
+   "hdr_offset": 27394,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "R4",
+   "enum": 268,
+   "status": "derived",
+   "edges": 93487,
+   "edges_ok": 93487,
+   "unique_pct": 100.0,
+   "runner_up": {
+    "enum": 45,
+    "edges_ok": 449
+   },
+   "names": 50553,
+   "unique_cands": 2,
+   "hdr_offset": 25032,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  },
+  {
+   "type": "SCLK_TO_ROWCLK_BUF",
+   "enum": 667,
+   "status": "derived",
+   "edges": 2692,
+   "edges_ok": 2692,
+   "unique_pct": 100.0,
+   "runner_up": null,
+   "names": 1215,
+   "unique_cands": 1,
+   "hdr_offset": 25488,
+   "source": "enum: routing.ddb element enum, edge consistency over corpus RCF trees (cycloneiv_clean_names_search.py); name: ddb_stingray4_hdr.ddb body offset"
+  }
+ ],
+ "hdr_names": [
+  {
+   "name": "Z coordinate",
+   "offset": 23508,
+   "hdr_int": 2,
+   "source": "ddb_stingray4_hdr.ddb body offset 23508"
+  },
+  {
+   "name": "X",
+   "offset": 23528,
+   "hdr_int": -10,
+   "source": "ddb_stingray4_hdr.ddb body offset 23528"
+  },
+  {
+   "name": "Y",
+   "offset": 23537,
+   "hdr_int": 6,
+   "source": "ddb_stingray4_hdr.ddb body offset 23537"
+  },
+  {
+   "name": "SUB_LOC",
+   "offset": 23546,
+   "hdr_int": 14,
+   "source": "ddb_stingray4_hdr.ddb body offset 23546"
+  },
+  {
+   "name": "Z",
+   "offset": 23561,
+   "hdr_int": -2,
+   "source": "ddb_stingray4_hdr.ddb body offset 23561"
+  },
+  {
+   "name": "I/O bank",
+   "offset": 23570,
+   "hdr_int": 10,
+   "source": "ddb_stingray4_hdr.ddb body offset 23570"
+  },
+  {
+   "name": "X coordinate",
+   "offset": 23586,
+   "hdr_int": -18,
+   "source": "ddb_stingray4_hdr.ddb body offset 23586"
+  },
+  {
+   "name": "INDEX",
+   "offset": 23606,
+   "hdr_int": 10,
+   "source": "ddb_stingray4_hdr.ddb body offset 23606"
+  },
+  {
+   "name": "IQ_PCSTX_OUT",
+   "offset": 23623,
+   "hdr_int": 534,
+   "source": "ddb_stingray4_hdr.ddb body offset 23623"
+  },
+  {
+   "name": "PLL_TESTCLEARLOCK",
+   "offset": 23643,
+   "hdr_int": -230,
+   "source": "ddb_stingray4_hdr.ddb body offset 23643"
+  },
+  {
+   "name": "CLKDLY_CLKOUT",
+   "offset": 23668,
+   "hdr_int": 66,
+   "source": "ddb_stingray4_hdr.ddb body offset 23668"
+  },
+  {
+   "name": "C16",
+   "offset": 23689,
+   "hdr_int": -218,
+   "source": "ddb_stingray4_hdr.ddb body offset 23689"
+  },
+  {
+   "name": "CLKOUT",
+   "offset": 23700,
+   "hdr_int": 358,
+   "source": "ddb_stingray4_hdr.ddb body offset 23700"
+  },
+  {
+   "name": "CLKPIN_TO_PLLCLKIN_MUX",
+   "offset": 23714,
+   "hdr_int": -238,
+   "source": "ddb_stingray4_hdr.ddb body offset 23714"
+  },
+  {
+   "name": "CRC_ERROR",
+   "offset": 23744,
+   "hdr_int": 210,
+   "source": "ddb_stingray4_hdr.ddb body offset 23744"
+  },
+  {
+   "name": "CRC_REGOUT_PIN",
+   "offset": 23761,
+   "hdr_int": -2,
+   "source": "ddb_stingray4_hdr.ddb body offset 23761"
+  },
+  {
+   "name": "ASMI_OE",
+   "offset": 23783,
+   "hdr_int": -18,
+   "source": "ddb_stingray4_hdr.ddb body offset 23783"
+  },
+  {
+   "name": "M4K_BUFFER",
+   "offset": 23798,
+   "hdr_int": -322,
+   "source": "ddb_stingray4_hdr.ddb body offset 23798"
+  },
+  {
+   "name": "CLKBUF_OUT",
+   "offset": 23816,
+   "hdr_int": 118,
+   "source": "ddb_stingray4_hdr.ddb body offset 23816"
+  },
+  {
+   "name": "DDIOOECELL",
+   "offset": 23834,
+   "hdr_int": -126,
+   "source": "ddb_stingray4_hdr.ddb body offset 23834"
+  },
+  {
+   "name": "PLL_SCANDATAOUT",
+   "offset": 23852,
+   "hdr_int": 202,
+   "source": "ddb_stingray4_hdr.ddb body offset 23852"
+  },
+  {
+   "name": "IQPCSRXOUT",
+   "offset": 23875,
+   "hdr_int": 222,
+   "source": "ddb_stingray4_hdr.ddb body offset 23875"
+  },
+  {
+   "name": "PLL_BUFFER",
+   "offset": 23893,
+   "hdr_int": -274,
+   "source": "ddb_stingray4_hdr.ddb body offset 23893"
+  },
+  {
+   "name": "H4",
+   "offset": 23911,
+   "hdr_int": -118,
+   "source": "ddb_stingray4_hdr.ddb body offset 23911"
+  },
+  {
+   "name": "HSSI_CMU",
+   "offset": 23921,
+   "hdr_int": -74,
+   "source": "ddb_stingray4_hdr.ddb body offset 23921"
+  },
+  {
+   "name": "SPI_OE",
+   "offset": 23937,
+   "hdr_int": 390,
+   "source": "ddb_stingray4_hdr.ddb body offset 23937"
+  },
+  {
+   "name": "CRC_LDSRC_PIN",
+   "offset": 23951,
+   "hdr_int": 18,
+   "source": "ddb_stingray4_hdr.ddb body offset 23951"
+  },
+  {
+   "name": "M4K_LEFT_CONTROL_INPUT",
+   "offset": 23972,
+   "hdr_int": -214,
+   "source": "ddb_stingray4_hdr.ddb body offset 23972"
+  },
+  {
+   "name": "HSSI_TX_PMA",
+   "offset": 24002,
+   "hdr_int": -174,
+   "source": "ddb_stingray4_hdr.ddb body offset 24002"
+  },
+  {
+   "name": "PLL_TESTCLRLOCK",
+   "offset": 24021,
+   "hdr_int": 234,
+   "source": "ddb_stingray4_hdr.ddb body offset 24021"
+  },
+  {
+   "name": "CRC_REGOUT",
+   "offset": 24044,
+   "hdr_int": 166,
+   "source": "ddb_stingray4_hdr.ddb body offset 24044"
+  },
+  {
+   "name": "Oscillator block",
+   "offset": 24062,
+   "hdr_int": -422,
+   "source": "ddb_stingray4_hdr.ddb body offset 24062"
+  },
+  {
+   "name": "I/O bank",
+   "offset": 24086,
+   "hdr_int": 518,
+   "source": "ddb_stingray4_hdr.ddb body offset 24086"
+  },
+  {
+   "name": "IO_RAWDATAIN",
+   "offset": 24102,
+   "hdr_int": -370,
+   "source": "ddb_stingray4_hdr.ddb body offset 24102"
+  },
+  {
+   "name": "MP_DDIO_OE",
+   "offset": 24122,
+   "hdr_int": -74,
+   "source": "ddb_stingray4_hdr.ddb body offset 24122"
+  },
+  {
+   "name": "TERMINATION_CALIBRATIONDONE",
+   "offset": 24140,
+   "hdr_int": 390,
+   "source": "ddb_stingray4_hdr.ddb body offset 24140"
+  },
+  {
+   "name": "HSSI_STRIP",
+   "offset": 24175,
+   "hdr_int": -410,
+   "source": "ddb_stingray4_hdr.ddb body offset 24175"
+  },
+  {
+   "name": "MAC_MULT",
+   "offset": 24193,
+   "hdr_int": -74,
+   "source": "ddb_stingray4_hdr.ddb body offset 24193"
+  },
+  {
+   "name": "INTERQUAD_REFCLK_OUT",
+   "offset": 24209,
+   "hdr_int": 518,
+   "source": "ddb_stingray4_hdr.ddb body offset 24209"
+  },
+  {
+   "name": "Signal Splitter",
+   "offset": 24237,
+   "hdr_int": -474,
+   "source": "ddb_stingray4_hdr.ddb body offset 24237"
+  },
+  {
+   "name": "GEN_CORE_BUF",
+   "offset": 24260,
+   "hdr_int": 470,
+   "source": "ddb_stingray4_hdr.ddb body offset 24260"
+  },
+  {
+   "name": "PLL_SCANCLK",
+   "offset": 24280,
+   "hdr_int": -210,
+   "source": "ddb_stingray4_hdr.ddb body offset 24280"
+  },
+  {
+   "name": "PSEUDO_DIFF_OUT",
+   "offset": 24299,
+   "hdr_int": -254,
+   "source": "ddb_stingray4_hdr.ddb body offset 24299"
+  },
+  {
+   "name": "CLKDLY_DISABLECAL",
+   "offset": 24322,
+   "hdr_int": 314,
+   "source": "ddb_stingray4_hdr.ddb body offset 24322"
+  },
+  {
+   "name": "CONTROLLER",
+   "offset": 24347,
+   "hdr_int": -314,
+   "source": "ddb_stingray4_hdr.ddb body offset 24347"
+  },
+  {
+   "name": "PLL_PHASEDONE",
+   "offset": 24365,
+   "hdr_int": 274,
+   "source": "ddb_stingray4_hdr.ddb body offset 24365"
+  },
+  {
+   "name": "MEAB_SEC_LEFT_INPUT",
+   "offset": 24386,
+   "hdr_int": -70,
+   "source": "ddb_stingray4_hdr.ddb body offset 24386"
+  },
+  {
+   "name": "PLL_ACTIVECLK_PIN",
+   "offset": 24413,
+   "hdr_int": 94,
+   "source": "ddb_stingray4_hdr.ddb body offset 24413"
+  },
+  {
+   "name": "CRC_LDSRC",
+   "offset": 24438,
+   "hdr_int": 126,
+   "source": "ddb_stingray4_hdr.ddb body offset 24438"
+  },
+  {
+   "name": "LE_BUFFER",
+   "offset": 24455,
+   "hdr_int": -346,
+   "source": "ddb_stingray4_hdr.ddb body offset 24455"
+  },
+  {
+   "name": "ASMIBLOCK",
+   "offset": 24472,
+   "hdr_int": -82,
+   "source": "ddb_stingray4_hdr.ddb body offset 24472"
+  },
+  {
+   "name": "JTAG_UPDATEUSER",
+   "offset": 24489,
+   "hdr_int": 394,
+   "source": "ddb_stingray4_hdr.ddb body offset 24489"
+  },
+  {
+   "name": "GLOBAL_CLK_H",
+   "offset": 24512,
+   "hdr_int": -266,
+   "source": "ddb_stingray4_hdr.ddb body offset 24512"
+  },
+  {
+   "name": "JTAG_CLKDRUSER",
+   "offset": 24532,
+   "hdr_int": 266,
+   "source": "ddb_stingray4_hdr.ddb body offset 24532"
+  },
+  {
+   "name": "LAB_LINE",
+   "offset": 24554,
+   "hdr_int": -286,
+   "source": "ddb_stingray4_hdr.ddb body offset 24554"
+  },
+  {
+   "name": "SPI_DCLKIN",
+   "offset": 24570,
+   "hdr_int": 306,
+   "source": "ddb_stingray4_hdr.ddb body offset 24570"
+  },
+  {
+   "name": "IO_INPUT_BUFFER",
+   "offset": 24588,
+   "hdr_int": -442,
+   "source": "ddb_stingray4_hdr.ddb body offset 24588"
+  },
+  {
+   "name": "GXB Receiver channel PCS",
+   "offset": 24611,
+   "hdr_int": 78,
+   "source": "ddb_stingray4_hdr.ddb body offset 24611"
+  },
+  {
+   "name": "Embedded multiplier block",
+   "offset": 24643,
+   "hdr_int": -54,
+   "source": "ddb_stingray4_hdr.ddb body offset 24643"
+  },
+  {
+   "name": "LE_COMB",
+   "offset": 24676,
+   "hdr_int": -30,
+   "source": "ddb_stingray4_hdr.ddb body offset 24676"
+  },
+  {
+   "name": "CLKDLY_DELAYCTRL",
+   "offset": 24691,
+   "hdr_int": 382,
+   "source": "ddb_stingray4_hdr.ddb body offset 24691"
+  },
+  {
+   "name": "GLOBAL_CLK_V",
+   "offset": 24715,
+   "hdr_int": -198,
+   "source": "ddb_stingray4_hdr.ddb body offset 24715"
+  },
+  {
+   "name": "IO_BANK",
+   "offset": 24735,
+   "hdr_int": 402,
+   "source": "ddb_stingray4_hdr.ddb body offset 24735"
+  },
+  {
+   "name": "CLKDLYCAL_DISABLECAL",
+   "offset": 24750,
+   "hdr_int": -170,
+   "source": "ddb_stingray4_hdr.ddb body offset 24750"
+  },
+  {
+   "name": "SPI_DATAOUT",
+   "offset": 24778,
+   "hdr_int": 66,
+   "source": "ddb_stingray4_hdr.ddb body offset 24778"
+  },
+  {
+   "name": "PLL_PFD_ENA_PIN",
+   "offset": 24797,
+   "hdr_int": -150,
+   "source": "ddb_stingray4_hdr.ddb body offset 24797"
+  },
+  {
+   "name": "HSSI_RX_PCS",
+   "offset": 24820,
+   "hdr_int": -230,
+   "source": "ddb_stingray4_hdr.ddb body offset 24820"
+  },
+  {
+   "name": "FF",
+   "offset": 24839,
+   "hdr_int": -82,
+   "source": "ddb_stingray4_hdr.ddb body offset 24839"
+  },
+  {
+   "name": "TERMINATION_COMPARATORPROBE",
+   "offset": 24849,
+   "hdr_int": 514,
+   "source": "ddb_stingray4_hdr.ddb body offset 24849"
+  },
+  {
+   "name": "PLL_TESTUPOUT",
+   "offset": 24884,
+   "hdr_int": -206,
+   "source": "ddb_stingray4_hdr.ddb body offset 24884"
+  },
+  {
+   "name": "PLL_ENABLE_PIN",
+   "offset": 24905,
+   "hdr_int": -14,
+   "source": "ddb_stingray4_hdr.ddb body offset 24905"
+  },
+  {
+   "name": "IO_CEOUT_PIN",
+   "offset": 24927,
+   "hdr_int": -66,
+   "source": "ddb_stingray4_hdr.ddb body offset 24927"
+  },
+  {
+   "name": "CLK_TO_PLL_MUX",
+   "offset": 24947,
+   "hdr_int": 58,
+   "source": "ddb_stingray4_hdr.ddb body offset 24947"
+  },
+  {
+   "name": "TXPMA",
+   "offset": 24969,
+   "hdr_int": -186,
+   "source": "ddb_stingray4_hdr.ddb body offset 24969"
+  },
+  {
+   "name": "PLL_SCANDATAOUT_PIN",
+   "offset": 24982,
+   "hdr_int": 242,
+   "source": "ddb_stingray4_hdr.ddb body offset 24982"
+  },
+  {
+   "name": "PLL_FEEDBACK_IN",
+   "offset": 25009,
+   "hdr_int": -26,
+   "source": "ddb_stingray4_hdr.ddb body offset 25009"
+  },
+  {
+   "name": "R4",
+   "offset": 25032,
+   "hdr_int": -146,
+   "source": "ddb_stingray4_hdr.ddb body offset 25032"
+  },
+  {
+   "name": "R24_C16_INTERCONNECT_DRIVER",
+   "offset": 25042,
+   "hdr_int": 18,
+   "source": "ddb_stingray4_hdr.ddb body offset 25042"
+  },
+  {
+   "name": "IO_CCLK",
+   "offset": 25077,
+   "hdr_int": 50,
+   "source": "ddb_stingray4_hdr.ddb body offset 25077"
+  },
+  {
+   "name": "JTAG_TCKUTAP",
+   "offset": 25092,
+   "hdr_int": 210,
+   "source": "ddb_stingray4_hdr.ddb body offset 25092"
+  },
+  {
+   "name": "STRIP",
+   "offset": 25112,
+   "hdr_int": -318,
+   "source": "ddb_stingray4_hdr.ddb body offset 25112"
+  },
+  {
+   "name": "INTERQUAD_TXRX_CLK",
+   "offset": 25125,
+   "hdr_int": 438,
+   "source": "ddb_stingray4_hdr.ddb body offset 25125"
+  },
+  {
+   "name": "IO_PAD",
+   "offset": 25151,
+   "hdr_int": -534,
+   "source": "ddb_stingray4_hdr.ddb body offset 25151"
+  },
+  {
+   "name": "JTAG_USR1USER_PIN",
+   "offset": 25165,
+   "hdr_int": 446,
+   "source": "ddb_stingray4_hdr.ddb body offset 25165"
+  },
+  {
+   "name": "BLK_CLK_BUF",
+   "offset": 25190,
+   "hdr_int": 50,
+   "source": "ddb_stingray4_hdr.ddb body offset 25190"
+  },
+  {
+   "name": "HSSI_TX_PCS",
+   "offset": 25209,
+   "hdr_int": -402,
+   "source": "ddb_stingray4_hdr.ddb body offset 25209"
+  },
+  {
+   "name": "CLKBUF_SELECT",
+   "offset": 25228,
+   "hdr_int": 162,
+   "source": "ddb_stingray4_hdr.ddb body offset 25228"
+  },
+  {
+   "name": "Double Data Rate I/O output circuitry",
+   "offset": 25249,
+   "hdr_int": -126,
+   "source": "ddb_stingray4_hdr.ddb body offset 25249"
+  },
+  {
+   "name": "PLL_CLKSWITCH",
+   "offset": 25294,
+   "hdr_int": 170,
+   "source": "ddb_stingray4_hdr.ddb body offset 25294"
+  },
+  {
+   "name": "DDIOOE",
+   "offset": 25315,
+   "hdr_int": -270,
+   "source": "ddb_stingray4_hdr.ddb body offset 25315"
+  },
+  {
+   "name": "LOCAL",
+   "offset": 25329,
+   "hdr_int": 126,
+   "source": "ddb_stingray4_hdr.ddb body offset 25329"
+  },
+  {
+   "name": "PLL_SCANDONE",
+   "offset": 25342,
+   "hdr_int": 190,
+   "source": "ddb_stingray4_hdr.ddb body offset 25342"
+  },
+  {
+   "name": "Edge",
+   "offset": 25362,
+   "hdr_int": 250,
+   "source": "ddb_stingray4_hdr.ddb body offset 25362"
+  },
+  {
+   "name": "JTAG_SHIFTUSER_PIN",
+   "offset": 25374,
+   "hdr_int": -146,
+   "source": "ddb_stingray4_hdr.ddb body offset 25374"
+  },
+  {
+   "name": "IO_ACLR_PIN",
+   "offset": 25400,
+   "hdr_int": -202,
+   "source": "ddb_stingray4_hdr.ddb body offset 25400"
+  },
+  {
+   "name": "TB_IO_CLK",
+   "offset": 25419,
+   "hdr_int": -34,
+   "source": "ddb_stingray4_hdr.ddb body offset 25419"
+  },
+  {
+   "name": "LAB",
+   "offset": 25436,
+   "hdr_int": -82,
+   "source": "ddb_stingray4_hdr.ddb body offset 25436"
+  },
+  {
+   "name": "CLKDLYCAL_CALCLKIN",
+   "offset": 25447,
+   "hdr_int": 282,
+   "source": "ddb_stingray4_hdr.ddb body offset 25447"
+  },
+  {
+   "name": "IO_IBUF",
+   "offset": 25473,
+   "hdr_int": -378,
+   "source": "ddb_stingray4_hdr.ddb body offset 25473"
+  },
+  {
+   "name": "SCLK_TO_ROWCLK_BUF",
+   "offset": 25488,
+   "hdr_int": 174,
+   "source": "ddb_stingray4_hdr.ddb body offset 25488"
+  },
+  {
+   "name": "IOOBUF",
+   "offset": 25514,
+   "hdr_int": -166,
+   "source": "ddb_stingray4_hdr.ddb body offset 25514"
+  },
+  {
+   "name": "JTAG_RUNIDLEUSER",
+   "offset": 25528,
+   "hdr_int": 434,
+   "source": "ddb_stingray4_hdr.ddb body offset 25528"
+  },
+  {
+   "name": "IO_CACLR",
+   "offset": 25552,
+   "hdr_int": -214,
+   "source": "ddb_stingray4_hdr.ddb body offset 25552"
+  },
+  {
+   "name": "GXB Receiver channel PMA",
+   "offset": 25568,
+   "hdr_int": -146,
+   "source": "ddb_stingray4_hdr.ddb body offset 25568"
+  },
+  {
+   "name": "HSSI_RX_PMA",
+   "offset": 25600,
+   "hdr_int": 2,
+   "source": "ddb_stingray4_hdr.ddb body offset 25600"
+  },
+  {
+   "name": "RU_REGOUT",
+   "offset": 25619,
+   "hdr_int": 414,
+   "source": "ddb_stingray4_hdr.ddb body offset 25619"
+  },
+  {
+   "name": "IO_OUTPUT_BUFFER",
+   "offset": 25636,
+   "hdr_int": -478,
+   "source": "ddb_stingray4_hdr.ddb body offset 25636"
+  },
+  {
+   "name": "DDIO_OE",
+   "offset": 25660,
+   "hdr_int": 10,
+   "source": "ddb_stingray4_hdr.ddb body offset 25660"
+  },
+  {
+   "name": "PLL_LOCKED",
+   "offset": 25675,
+   "hdr_int": 294,
+   "source": "ddb_stingray4_hdr.ddb body offset 25675"
+  },
+  {
+   "name": "OSCILLATOR_CLKOUT",
+   "offset": 25693,
+   "hdr_int": 210,
+   "source": "ddb_stingray4_hdr.ddb body offset 25693"
+  },
+  {
+   "name": "ASMI_DATAOUT",
+   "offset": 25718,
+   "hdr_int": -50,
+   "source": "ddb_stingray4_hdr.ddb body offset 25718"
+  },
+  {
+   "name": "JTAG_TDOUTAP_PIN",
+   "offset": 25738,
+   "hdr_int": -54,
+   "source": "ddb_stingray4_hdr.ddb body offset 25738"
+  },
+  {
+   "name": "IOIBUF",
+   "offset": 25762,
+   "hdr_int": -402,
+   "source": "ddb_stingray4_hdr.ddb body offset 25762"
+  },
+  {
+   "name": "JTAG_TDIUTAP_PIN",
+   "offset": 25776,
+   "hdr_int": 422,
+   "source": "ddb_stingray4_hdr.ddb body offset 25776"
+  },
+  {
+   "name": "LR_IO_CLK",
+   "offset": 25800,
+   "hdr_int": -238,
+   "source": "ddb_stingray4_hdr.ddb body offset 25800"
+  },
+  {
+   "name": "DDIO_OUT",
+   "offset": 25817,
+   "hdr_int": -170,
+   "source": "ddb_stingray4_hdr.ddb body offset 25817"
+  },
+  {
+   "name": "QUAD",
+   "offset": 25833,
+   "hdr_int": 86,
+   "source": "ddb_stingray4_hdr.ddb body offset 25833"
+  },
+  {
+   "name": "IO_OBUF",
+   "offset": 25845,
+   "hdr_int": -86,
+   "source": "ddb_stingray4_hdr.ddb body offset 25845"
+  },
+  {
+   "name": "SB_DATA_OUT",
+   "offset": 25860,
+   "hdr_int": 350,
+   "source": "ddb_stingray4_hdr.ddb body offset 25860"
+  },
+  {
+   "name": "PLLBUF",
+   "offset": 25879,
+   "hdr_int": -86,
+   "source": "ddb_stingray4_hdr.ddb body offset 25879"
+  },
+  {
+   "name": "PLL_CLKBAD_PIN",
+   "offset": 25893,
+   "hdr_int": 82,
+   "source": "ddb_stingray4_hdr.ddb body offset 25893"
+  },
+  {
+   "name": "JTAG",
+   "offset": 25915,
+   "hdr_int": -306,
+   "source": "ddb_stingray4_hdr.ddb body offset 25915"
+  },
+  {
+   "name": "IO_DATAIN",
+   "offset": 25927,
+   "hdr_int": 154,
+   "source": "ddb_stingray4_hdr.ddb body offset 25927"
+  },
+  {
+   "name": "CLKBUF_IN",
+   "offset": 25944,
+   "hdr_int": 54,
+   "source": "ddb_stingray4_hdr.ddb body offset 25944"
+  },
+  {
+   "name": "DQS_SNEAK",
+   "offset": 25961,
+   "hdr_int": 286,
+   "source": "ddb_stingray4_hdr.ddb body offset 25961"
+  },
+  {
+   "name": "CRC_SHIFTNLD_PIN",
+   "offset": 25978,
+   "hdr_int": -54,
+   "source": "ddb_stingray4_hdr.ddb body offset 25978"
+  },
+  {
+   "name": "GXB Central control unit",
+   "offset": 26002,
+   "hdr_int": -398,
+   "source": "ddb_stingray4_hdr.ddb body offset 26002"
+  },
+  {
+   "name": "VREF group",
+   "offset": 26034,
+   "hdr_int": 510,
+   "source": "ddb_stingray4_hdr.ddb body offset 26034"
+  },
+  {
+   "name": "MAC",
+   "offset": 26052,
+   "hdr_int": -462,
+   "source": "ddb_stingray4_hdr.ddb body offset 26052"
+  },
+  {
+   "name": "GXB Transmitter channel PCS",
+   "offset": 26063,
+   "hdr_int": -26,
+   "source": "ddb_stingray4_hdr.ddb body offset 26063"
+  },
+  {
+   "name": "IO_SCLR_PIN",
+   "offset": 26098,
+   "hdr_int": 142,
+   "source": "ddb_stingray4_hdr.ddb body offset 26098"
+  },
+  {
+   "name": "IO_CCE_IN",
+   "offset": 26117,
+   "hdr_int": -6,
+   "source": "ddb_stingray4_hdr.ddb body offset 26117"
+  },
+  {
+   "name": "CALIBRATIONBLOCK",
+   "offset": 26134,
+   "hdr_int": -150,
+   "source": "ddb_stingray4_hdr.ddb body offset 26134"
+  },
+  {
+   "name": "IQPCSTXOUT",
+   "offset": 26158,
+   "hdr_int": 482,
+   "source": "ddb_stingray4_hdr.ddb body offset 26158"
+  },
+  {
+   "name": "BLOCK_INPUT_MUX",
+   "offset": 26176,
+   "hdr_int": -182,
+   "source": "ddb_stingray4_hdr.ddb body offset 26176"
+  },
+  {
+   "name": "TERMINATION_CTRLPROBE",
+   "offset": 26199,
+   "hdr_int": 142,
+   "source": "ddb_stingray4_hdr.ddb body offset 26199"
+  },
+  {
+   "name": "MEDIUM_EAB_BUFFER",
+   "offset": 26228,
+   "hdr_int": -366,
+   "source": "ddb_stingray4_hdr.ddb body offset 26228"
+  },
+  {
+   "name": "CRCBLOCK",
+   "offset": 26253,
+   "hdr_int": -86,
+   "source": "ddb_stingray4_hdr.ddb body offset 26253"
+  },
+  {
+   "name": "JTAG_CLKDRUSER_PIN",
+   "offset": 26269,
+   "hdr_int": 386,
+   "source": "ddb_stingray4_hdr.ddb body offset 26269"
+  },
+  {
+   "name": "IO_CLK_PIN",
+   "offset": 26295,
+   "hdr_int": -218,
+   "source": "ddb_stingray4_hdr.ddb body offset 26295"
+  },
+  {
+   "name": "PLLENABL",
+   "offset": 26313,
+   "hdr_int": 74,
+   "source": "ddb_stingray4_hdr.ddb body offset 26313"
+  },
+  {
+   "name": "M9K",
+   "offset": 26329,
+   "hdr_int": -170,
+   "source": "ddb_stingray4_hdr.ddb body offset 26329"
+  },
+  {
+   "name": "V16",
+   "offset": 26340,
+   "hdr_int": 50,
+   "source": "ddb_stingray4_hdr.ddb body offset 26340"
+  },
+  {
+   "name": "Controller block",
+   "offset": 26351,
+   "hdr_int": -98,
+   "source": "ddb_stingray4_hdr.ddb body offset 26351"
+  },
+  {
+   "name": "IQ_REFCLK_OUT",
+   "offset": 26375,
+   "hdr_int": 482,
+   "source": "ddb_stingray4_hdr.ddb body offset 26375"
+  },
+  {
+   "name": "RUBLOCK",
+   "offset": 26396,
+   "hdr_int": -494,
+   "source": "ddb_stingray4_hdr.ddb body offset 26396"
+  },
+  {
+   "name": "IO",
+   "offset": 26411,
+   "hdr_int": 66,
+   "source": "ddb_stingray4_hdr.ddb body offset 26411"
+  },
+  {
+   "name": "CRC_SHIFTNLD",
+   "offset": 26421,
+   "hdr_int": 366,
+   "source": "ddb_stingray4_hdr.ddb body offset 26421"
+  },
+  {
+   "name": "CRC_CLOCK",
+   "offset": 26441,
+   "hdr_int": -2,
+   "source": "ddb_stingray4_hdr.ddb body offset 26441"
+  },
+  {
+   "name": "CONTROLLER_NCEOUT",
+   "offset": 26458,
+   "hdr_int": 58,
+   "source": "ddb_stingray4_hdr.ddb body offset 26458"
+  },
+  {
+   "name": "CRC_ERROR_PIN",
+   "offset": 26483,
+   "hdr_int": -38,
+   "source": "ddb_stingray4_hdr.ddb body offset 26483"
+  },
+  {
+   "name": "INTERQUAD_TXRX_PCSRX_OUT",
+   "offset": 26504,
+   "hdr_int": 62,
+   "source": "ddb_stingray4_hdr.ddb body offset 26504"
+  },
+  {
+   "name": "INTERQUAD_TXRX_PCSTX_OUT",
+   "offset": 26536,
+   "hdr_int": 6,
+   "source": "ddb_stingray4_hdr.ddb body offset 26536"
+  },
+  {
+   "name": "GXB Transmitter channel PMA",
+   "offset": 26568,
+   "hdr_int": -462,
+   "source": "ddb_stingray4_hdr.ddb body offset 26568"
+  },
+  {
+   "name": "HSSI_GEN_OUT",
+   "offset": 26603,
+   "hdr_int": 470,
+   "source": "ddb_stingray4_hdr.ddb body offset 26603"
+  },
+  {
+   "name": "TERMINATION",
+   "offset": 26623,
+   "hdr_int": -498,
+   "source": "ddb_stingray4_hdr.ddb body offset 26623"
+  },
+  {
+   "name": "DQSPIN_TO_CLKDLY_MUX",
+   "offset": 26642,
+   "hdr_int": 354,
+   "source": "ddb_stingray4_hdr.ddb body offset 26642"
+  },
+  {
+   "name": "JTAG_TDIUTAP",
+   "offset": 26670,
+   "hdr_int": 22,
+   "source": "ddb_stingray4_hdr.ddb body offset 26670"
+  },
+  {
+   "name": "JTAG_TDOUSER",
+   "offset": 26690,
+   "hdr_int": -10,
+   "source": "ddb_stingray4_hdr.ddb body offset 26690"
+  },
+  {
+   "name": "ASMI_SDOIN",
+   "offset": 26710,
+   "hdr_int": 46,
+   "source": "ddb_stingray4_hdr.ddb body offset 26710"
+  },
+  {
+   "name": "V4",
+   "offset": 26728,
+   "hdr_int": -298,
+   "source": "ddb_stingray4_hdr.ddb body offset 26728"
+  },
+  {
+   "name": "CLK_BUFFER",
+   "offset": 26738,
+   "hdr_int": 42,
+   "source": "ddb_stingray4_hdr.ddb body offset 26738"
+  },
+  {
+   "name": "PCI Express hard IP",
+   "offset": 26756,
+   "hdr_int": -102,
+   "source": "ddb_stingray4_hdr.ddb body offset 26756"
+  },
+  {
+   "name": "DDIOOUTCELL",
+   "offset": 26783,
+   "hdr_int": 30,
+   "source": "ddb_stingray4_hdr.ddb body offset 26783"
+  },
+  {
+   "name": "PLL_ARESET_PIN",
+   "offset": 26802,
+   "hdr_int": 174,
+   "source": "ddb_stingray4_hdr.ddb body offset 26802"
+  },
+  {
+   "name": "MAC_BUFFER",
+   "offset": 26824,
+   "hdr_int": -158,
+   "source": "ddb_stingray4_hdr.ddb body offset 26824"
+  },
+  {
+   "name": "IOPAD",
+   "offset": 26842,
+   "hdr_int": -130,
+   "source": "ddb_stingray4_hdr.ddb body offset 26842"
+  },
+  {
+   "name": "LAB_SEC_MUX",
+   "offset": 26855,
+   "hdr_int": 258,
+   "source": "ddb_stingray4_hdr.ddb body offset 26855"
+  },
+  {
+   "name": "BLK_CLK_LIM",
+   "offset": 26874,
+   "hdr_int": 242,
+   "source": "ddb_stingray4_hdr.ddb body offset 26874"
+  },
+  {
+   "name": "CMU",
+   "offset": 26893,
+   "hdr_int": -422,
+   "source": "ddb_stingray4_hdr.ddb body offset 26893"
+  },
+  {
+   "name": "Register cell",
+   "offset": 26904,
+   "hdr_int": -74,
+   "source": "ddb_stingray4_hdr.ddb body offset 26904"
+  },
+  {
+   "name": "TXPCS",
+   "offset": 26925,
+   "hdr_int": 94,
+   "source": "ddb_stingray4_hdr.ddb body offset 26925"
+  },
+  {
+   "name": "IQ_PCSRX_OUT",
+   "offset": 26938,
+   "hdr_int": 458,
+   "source": "ddb_stingray4_hdr.ddb body offset 26938"
+  },
+  {
+   "name": "MAC_OUT",
+   "offset": 26958,
+   "hdr_int": -514,
+   "source": "ddb_stingray4_hdr.ddb body offset 26958"
+  },
+  {
+   "name": "IO_CSCLR",
+   "offset": 26973,
+   "hdr_int": 202,
+   "source": "ddb_stingray4_hdr.ddb body offset 26973"
+  },
+  {
+   "name": "MP_DDIO_OUT",
+   "offset": 26989,
+   "hdr_int": -106,
+   "source": "ddb_stingray4_hdr.ddb body offset 26989"
+  },
+  {
+   "name": "IQTXRX",
+   "offset": 27008,
+   "hdr_int": 418,
+   "source": "ddb_stingray4_hdr.ddb body offset 27008"
+  },
+  {
+   "name": "WIRE_MUX",
+   "offset": 27022,
+   "hdr_int": -370,
+   "source": "ddb_stingray4_hdr.ddb body offset 27022"
+  },
+  {
+   "name": "HSSI_CALIBRATION_BLOCK",
+   "offset": 27038,
+   "hdr_int": -94,
+   "source": "ddb_stingray4_hdr.ddb body offset 27038"
+  },
+  {
+   "name": "LOCAL_INTERCONNECT",
+   "offset": 27068,
+   "hdr_int": 78,
+   "source": "ddb_stingray4_hdr.ddb body offset 27068"
+  },
+  {
+   "name": "IO_RAW_DATAIN",
+   "offset": 27094,
+   "hdr_int": 58,
+   "source": "ddb_stingray4_hdr.ddb body offset 27094"
+  },
+  {
+   "name": "IO_CEIN_PIN",
+   "offset": 27115,
+   "hdr_int": 22,
+   "source": "ddb_stingray4_hdr.ddb body offset 27115"
+  },
+  {
+   "name": "CRC_CLOCK_PIN",
+   "offset": 27134,
+   "hdr_int": 250,
+   "source": "ddb_stingray4_hdr.ddb body offset 27134"
+  },
+  {
+   "name": "IO_CCE_OUT",
+   "offset": 27155,
+   "hdr_int": -250,
+   "source": "ddb_stingray4_hdr.ddb body offset 27155"
+  },
+  {
+   "name": "Double Data Rate I/O output enable circuitry",
+   "offset": 27173,
+   "hdr_int": -90,
+   "source": "ddb_stingray4_hdr.ddb body offset 27173"
+  },
+  {
+   "name": "CLKDLY_CLKIN",
+   "offset": 27225,
+   "hdr_int": 246,
+   "source": "ddb_stingray4_hdr.ddb body offset 27225"
+  },
+  {
+   "name": "CLKDLYCAL_DELAYCTRL",
+   "offset": 27245,
+   "hdr_int": 26,
+   "source": "ddb_stingray4_hdr.ddb body offset 27245"
+  },
+  {
+   "name": "IO_OE_PIN",
+   "offset": 27272,
+   "hdr_int": -182,
+   "source": "ddb_stingray4_hdr.ddb body offset 27272"
+  },
+  {
+   "name": "DSP",
+   "offset": 27289,
+   "hdr_int": -90,
+   "source": "ddb_stingray4_hdr.ddb body offset 27289"
+  },
+  {
+   "name": "PLL_ACTIVECLK",
+   "offset": 27300,
+   "hdr_int": 238,
+   "source": "ddb_stingray4_hdr.ddb body offset 27300"
+  },
+  {
+   "name": "IO_DATAOUT",
+   "offset": 27321,
+   "hdr_int": -118,
+   "source": "ddb_stingray4_hdr.ddb body offset 27321"
+  },
+  {
+   "name": "PLL_CLKSWITCH_PIN",
+   "offset": 27339,
+   "hdr_int": 58,
+   "source": "ddb_stingray4_hdr.ddb body offset 27339"
+  },
+  {
+   "name": "RXPMA",
+   "offset": 27364,
+   "hdr_int": -210,
+   "source": "ddb_stingray4_hdr.ddb body offset 27364"
+  },
+  {
+   "name": "VREFGROUP",
+   "offset": 27377,
+   "hdr_int": 506,
+   "source": "ddb_stingray4_hdr.ddb body offset 27377"
+  },
+  {
+   "name": "R24",
+   "offset": 27394,
+   "hdr_int": -426,
+   "source": "ddb_stingray4_hdr.ddb body offset 27394"
+  },
+  {
+   "name": "RU_REGOUT_PIN",
+   "offset": 27405,
+   "hdr_int": 338,
+   "source": "ddb_stingray4_hdr.ddb body offset 27405"
+  },
+  {
+   "name": "DDIOOUT",
+   "offset": 27426,
+   "hdr_int": -474,
+   "source": "ddb_stingray4_hdr.ddb body offset 27426"
+  },
+  {
+   "name": "PLL_TESTDOWNOUT",
+   "offset": 27441,
+   "hdr_int": 294,
+   "source": "ddb_stingray4_hdr.ddb body offset 27441"
+  },
+  {
+   "name": "SB_DATA_IN_PIN",
+   "offset": 27464,
+   "hdr_int": 58,
+   "source": "ddb_stingray4_hdr.ddb body offset 27464"
+  },
+  {
+   "name": "JTAG_TMSUTAP_PIN",
+   "offset": 27486,
+   "hdr_int": 58,
+   "source": "ddb_stingray4_hdr.ddb body offset 27486"
+  },
+  {
+   "name": "CLKBUFBLOCK",
+   "offset": 27510,
+   "hdr_int": -378,
+   "source": "ddb_stingray4_hdr.ddb body offset 27510"
+  },
+  {
+   "name": "Comb. cell",
+   "offset": 27529,
+   "hdr_int": -42,
+   "source": "ddb_stingray4_hdr.ddb body offset 27529"
+  },
+  {
+   "name": "HSSI_PCIE_HIP",
+   "offset": 27547,
+   "hdr_int": 102,
+   "source": "ddb_stingray4_hdr.ddb body offset 27547"
+  },
+  {
+   "name": "DSPMULT",
+   "offset": 27568,
+   "hdr_int": -66,
+   "source": "ddb_stingray4_hdr.ddb body offset 27568"
+  },
+  {
+   "name": "Clock control block",
+   "offset": 27583,
+   "hdr_int": 14,
+   "source": "ddb_stingray4_hdr.ddb body offset 27583"
+  },
+  {
+   "name": "EDGE",
+   "offset": 27610,
+   "hdr_int": 542,
+   "source": "ddb_stingray4_hdr.ddb body offset 27610"
+  },
+  {
+   "name": "CONTROLLER_USERMODE",
+   "offset": 27622,
+   "hdr_int": -54,
+   "source": "ddb_stingray4_hdr.ddb body offset 27622"
+  },
+  {
+   "name": "DEDICATED_BUF",
+   "offset": 27649,
+   "hdr_int": -18,
+   "source": "ddb_stingray4_hdr.ddb body offset 27649"
+  },
+  {
+   "name": "DSPOUT",
+   "offset": 27670,
+   "hdr_int": -470,
+   "source": "ddb_stingray4_hdr.ddb body offset 27670"
+  },
+  {
+   "name": "REFCLKINPULSE",
+   "offset": 27684,
+   "hdr_int": 538,
+   "source": "ddb_stingray4_hdr.ddb body offset 27684"
+  },
+  {
+   "name": "IOBANK",
+   "offset": 27705,
+   "hdr_int": 10,
+   "source": "ddb_stingray4_hdr.ddb body offset 27705"
+  },
+  {
+   "name": "DSP_CONTROL_INPUT",
+   "offset": 27719,
+   "hdr_int": -306,
+   "source": "ddb_stingray4_hdr.ddb body offset 27719"
+  },
+  {
+   "name": "EC",
+   "offset": 27744,
+   "hdr_int": -242,
+   "source": "ddb_stingray4_hdr.ddb body offset 27744"
+  },
+  {
+   "name": "PSEUDODIFFOUT",
+   "offset": 27754,
+   "hdr_int": 46,
+   "source": "ddb_stingray4_hdr.ddb body offset 27754"
+  },
+  {
+   "name": "PLL_ARESET",
+   "offset": 27775,
+   "hdr_int": 230,
+   "source": "ddb_stingray4_hdr.ddb body offset 27775"
+  },
+  {
+   "name": "CLKBUF_ENABLE",
+   "offset": 27793,
+   "hdr_int": -50,
+   "source": "ddb_stingray4_hdr.ddb body offset 27793"
+  },
+  {
+   "name": "HSSI_QUAD",
+   "offset": 27814,
+   "hdr_int": -142,
+   "source": "ddb_stingray4_hdr.ddb body offset 27814"
+  },
+  {
+   "name": "PLL",
+   "offset": 27831,
+   "hdr_int": -62,
+   "source": "ddb_stingray4_hdr.ddb body offset 27831"
+  },
+  {
+   "name": "JTAG_TMSUTAP",
+   "offset": 27842,
+   "hdr_int": 386,
+   "source": "ddb_stingray4_hdr.ddb body offset 27842"
+  },
+  {
+   "name": "PLL_LOCKED_PIN",
+   "offset": 27862,
+   "hdr_int": -106,
+   "source": "ddb_stingray4_hdr.ddb body offset 27862"
+  },
+  {
+   "name": "LCCOMB",
+   "offset": 27884,
+   "hdr_int": -314,
+   "source": "ddb_stingray4_hdr.ddb body offset 27884"
+  },
+  {
+   "name": "H24",
+   "offset": 27898,
+   "hdr_int": 162,
+   "source": "ddb_stingray4_hdr.ddb body offset 27898"
+  },
+  {
+   "name": "PLL_PFD_ENA",
+   "offset": 27909,
+   "hdr_int": 162,
+   "source": "ddb_stingray4_hdr.ddb body offset 27909"
+  },
+  {
+   "name": "IO_RAWDATAOUT",
+   "offset": 27928,
+   "hdr_int": -106,
+   "source": "ddb_stingray4_hdr.ddb body offset 27928"
+  },
+  {
+   "name": "CLKCTRL",
+   "offset": 27949,
+   "hdr_int": -166,
+   "source": "ddb_stingray4_hdr.ddb body offset 27949"
+  },
+  {
+   "name": "PLL_FBOUT",
+   "offset": 27964,
+   "hdr_int": 310,
+   "source": "ddb_stingray4_hdr.ddb body offset 27964"
+  },
+  {
+   "name": "IOC",
+   "offset": 27981,
+   "hdr_int": -234,
+   "source": "ddb_stingray4_hdr.ddb body offset 27981"
+  },
+  {
+   "name": "CLKDLYCAL_DATACLKIN",
+   "offset": 27992,
+   "hdr_int": 282,
+   "source": "ddb_stingray4_hdr.ddb body offset 27992"
+  },
+  {
+   "name": "JTAG_UPDATEUSER_PIN",
+   "offset": 28019,
+   "hdr_int": 50,
+   "source": "ddb_stingray4_hdr.ddb body offset 28019"
+  },
+  {
+   "name": "LAB_CLK",
+   "offset": 28046,
+   "hdr_int": -254,
+   "source": "ddb_stingray4_hdr.ddb body offset 28046"
+  },
+  {
+   "name": "JTAG_SHIFTUSER",
+   "offset": 28061,
+   "hdr_int": 250,
+   "source": "ddb_stingray4_hdr.ddb body offset 28061"
+  },
+  {
+   "name": "Calibration block",
+   "offset": 28083,
+   "hdr_int": -358,
+   "source": "ddb_stingray4_hdr.ddb body offset 28083"
+  },
+  {
+   "name": "JTAG_TCKUTAP_PIN",
+   "offset": 28108,
+   "hdr_int": 354,
+   "source": "ddb_stingray4_hdr.ddb body offset 28108"
+  },
+  {
+   "name": "IO_COE",
+   "offset": 28132,
+   "hdr_int": -210,
+   "source": "ddb_stingray4_hdr.ddb body offset 28132"
+  },
+  {
+   "name": "PLL_CLKBAD",
+   "offset": 28146,
+   "hdr_int": 142,
+   "source": "ddb_stingray4_hdr.ddb body offset 28146"
+  },
+  {
+   "name": "FASTREFCLKIN",
+   "offset": 28164,
+   "hdr_int": 214,
+   "source": "ddb_stingray4_hdr.ddb body offset 28164"
+  },
+  {
+   "name": "MAC_SEC_INPUT",
+   "offset": 28184,
+   "hdr_int": -294,
+   "source": "ddb_stingray4_hdr.ddb body offset 28184"
+  },
+  {
+   "name": "DSP block",
+   "offset": 28205,
+   "hdr_int": -146,
+   "source": "ddb_stingray4_hdr.ddb body offset 28205"
+  },
+  {
+   "name": "PLL_CLKIN",
+   "offset": 28222,
+   "hdr_int": 166,
+   "source": "ddb_stingray4_hdr.ddb body offset 28222"
+  },
+  {
+   "name": "IO_FEEDBACK_OUT",
+   "offset": 28239,
+   "hdr_int": -42,
+   "source": "ddb_stingray4_hdr.ddb body offset 28239"
+  },
+  {
+   "name": "SPI_SDOIN",
+   "offset": 28262,
+   "hdr_int": 222,
+   "source": "ddb_stingray4_hdr.ddb body offset 28262"
+  },
+  {
+   "name": "SPI_SCEIN",
+   "offset": 28279,
+   "hdr_int": -2,
+   "source": "ddb_stingray4_hdr.ddb body offset 28279"
+  },
+  {
+   "name": "JTAG_TDOUSER_PIN",
+   "offset": 28296,
+   "hdr_int": -38,
+   "source": "ddb_stingray4_hdr.ddb body offset 28296"
+  },
+  {
+   "name": "IO_RAW_DATAOUT",
+   "offset": 28320,
+   "hdr_int": -206,
+   "source": "ddb_stingray4_hdr.ddb body offset 28320"
+  },
+  {
+   "name": "Impedance control block",
+   "offset": 28342,
+   "hdr_int": -150,
+   "source": "ddb_stingray4_hdr.ddb body offset 28342"
+  },
+  {
+   "name": "SB_DATA_IN",
+   "offset": 28373,
+   "hdr_int": 310,
+   "source": "ddb_stingray4_hdr.ddb body offset 28373"
+  },
+  {
+   "name": "REFCLKIN",
+   "offset": 28391,
+   "hdr_int": 198,
+   "source": "ddb_stingray4_hdr.ddb body offset 28391"
+  },
+  {
+   "name": "PLLREFCLKMUX",
+   "offset": 28407,
+   "hdr_int": 14,
+   "source": "ddb_stingray4_hdr.ddb body offset 28407"
+  },
+  {
+   "name": "DSP_BUFFER",
+   "offset": 28427,
+   "hdr_int": -434,
+   "source": "ddb_stingray4_hdr.ddb body offset 28427"
+  },
+  {
+   "name": "PLL_VCOOVERRANGE",
+   "offset": 28445,
+   "hdr_int": 206,
+   "source": "ddb_stingray4_hdr.ddb body offset 28445"
+  },
+  {
+   "name": "VREF_GROUP",
+   "offset": 28469,
+   "hdr_int": 246,
+   "source": "ddb_stingray4_hdr.ddb body offset 28469"
+  },
+  {
+   "name": "PCIEHIP",
+   "offset": 28487,
+   "hdr_int": -486,
+   "source": "ddb_stingray4_hdr.ddb body offset 28487"
+  },
+  {
+   "name": "JTAG_RUNIDLEUSER_PIN",
+   "offset": 28502,
+   "hdr_int": 350,
+   "source": "ddb_stingray4_hdr.ddb body offset 28502"
+  },
+  {
+   "name": "C4",
+   "offset": 28530,
+   "hdr_int": -282,
+   "source": "ddb_stingray4_hdr.ddb body offset 28530"
+  },
+  {
+   "name": "ASMI_DCLKIN",
+   "offset": 28540,
+   "hdr_int": 294,
+   "source": "ddb_stingray4_hdr.ddb body offset 28540"
+  },
+  {
+   "name": "JTAG_TDOUTAP",
+   "offset": 28559,
+   "hdr_int": -38,
+   "source": "ddb_stingray4_hdr.ddb body offset 28559"
+  },
+  {
+   "name": "LAB_CONTROL_MUX",
+   "offset": 28579,
+   "hdr_int": -150,
+   "source": "ddb_stingray4_hdr.ddb body offset 28579"
+  },
+  {
+   "name": "PLL_SCANCLK_PIN",
+   "offset": 28602,
+   "hdr_int": 66,
+   "source": "ddb_stingray4_hdr.ddb body offset 28602"
+  },
+  {
+   "name": "SB_DATA_OUT_PIN",
+   "offset": 28625,
+   "hdr_int": 38,
+   "source": "ddb_stingray4_hdr.ddb body offset 28625"
+  },
+  {
+   "name": "JTAG_USR1USER",
+   "offset": 28648,
+   "hdr_int": 90,
+   "source": "ddb_stingray4_hdr.ddb body offset 28648"
+  },
+  {
+   "name": "MEDIUM_EAB",
+   "offset": 28669,
+   "hdr_int": -330,
+   "source": "ddb_stingray4_hdr.ddb body offset 28669"
+  },
+  {
+   "name": "LOCAL_LINE",
+   "offset": 28687,
+   "hdr_int": 30,
+   "source": "ddb_stingray4_hdr.ddb body offset 28687"
+  },
+  {
+   "name": "CLKDLYCAL_CALDATA",
+   "offset": 28705,
+   "hdr_int": 258,
+   "source": "ddb_stingray4_hdr.ddb body offset 28705"
+  },
+  {
+   "name": "LEIM",
+   "offset": 28730,
+   "hdr_int": -30,
+   "source": "ddb_stingray4_hdr.ddb body offset 28730"
+  },
+  {
+   "name": "ASMI_SCEIN",
+   "offset": 28742,
+   "hdr_int": 90,
+   "source": "ddb_stingray4_hdr.ddb body offset 28742"
+  },
+  {
+   "name": "PLL_VCOUNDERRANGE",
+   "offset": 28760,
+   "hdr_int": -110,
+   "source": "ddb_stingray4_hdr.ddb body offset 28760"
+  },
+  {
+   "name": "RXPCS",
+   "offset": 28785,
+   "hdr_int": -258,
+   "source": "ddb_stingray4_hdr.ddb body offset 28785"
+  },
+  {
+   "name": "OSCILLATOR",
+   "offset": 28798,
+   "hdr_int": -22,
+   "source": "ddb_stingray4_hdr.ddb body offset 28798"
+  }
+ ]
+}

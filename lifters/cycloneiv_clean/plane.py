@@ -11,13 +11,13 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TABLES_PATH = os.path.join(REPO, "databases", "cycloneiv", "sof2rbf_mask.npz")
 
-# A6 geometry (EP4CGX150)
+# source: A6 geometry (EP4CGX150) = sof tag-17 section length + pcf/hdr frame_bits (docs/cycloneiv-bitstream.md)
 FRAMES = 6154                   # CRAM frames
 ROWS = 793                      # data bytes per frame and lane
 LANES = 8
 BITS_PER_FRAME = ROWS * LANES   # 6344
 N_BITS = FRAMES * BITS_PER_FRAME  # 39,040,976
-# rbf file layout: header bytes, frames before the CRAM, bytes per frame (pad + 793 data + 2 crc)
+# source: A4 rbf layout read from quartus_cpf output (header bytes, frames before CRAM, bytes/frame = pad + 793 data + 2 crc)
 RBF_HEADER = 32
 RBF_PRE_FRAMES = 37
 RBF_FRAME_BYTES = 796
