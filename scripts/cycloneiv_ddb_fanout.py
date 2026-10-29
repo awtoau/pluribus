@@ -5,10 +5,9 @@ STATUS (2026-10-28): the node -> template assignment and the template-delta sema
 OPEN - docs/cycloneiv-ddb-format.md "Open: node -> connectivity expansion" lists every tested and
 rejected interpretation (this script is the harness that rejected them).  What stands:
 - observe: corpus RCF wire arcs (2,984 designs, 1.6 M arcs) -> tmp/ddb/<die>_obs.npz.
-- gt: exact LE_BUFFER sources (base[I] + 90*colrank(X) + Y) + subset-test machinery.  With
+- gt: LE_BUFFER sources + subset-test machinery (gt/check unavailable: the learned base[I] table is retired, #165).  With
   position-window dest candidates (pos_cands - the true record is always included) NO expansion
-  rule tested so far yields unique (record, template) matches; with learnt-alias candidates it
-  yields FALSE uniques (do not reuse that path).
+  rule tested so far yields unique (record, template) matches.
 - solve: per-record exhaustive search under the r+cumsum rule - rejected (kept as the harness for
   the next rule candidate).
 
@@ -40,7 +39,6 @@ DIE = "stingray4"
 TMP = A.TMP
 WT = ("R4", "C4", "C16", "R24")          # wire types with records (H4/V4/H24/V16 families)
 TYPI = {t: i for i, t in enumerate(("LE_BUFFER",) + WT)}
-NAMES_JSON = os.path.join(REPO, "lifters", "data", "cycloneiv_ep4cgx150_asm_names.json")
 
 
 def die(msg):
@@ -81,9 +79,6 @@ class Ddb:
         self.ng = np.bincount(grec, minlength=self.N)
         self.names = pickle.load(open(os.path.join(TMP, f"{DIE}_dec_names.pkl"), "rb"))
         self.byname = {v: k for k, v in self.names.items()}
-        t = json.load(open(NAMES_JSON))
-        self.unnamed = {tuple(k.split("|")): v for k, v in t["unnamed"].items()}
-        self.alias = {tuple(k.split("|")): [tuple(f) for f in v] for k, v in t["alias"].items()}
         g = cg.load("ep4cgx150")
         labcols = sorted(x for x, k in g.kind.items() if k == "LAB")
         self.colrank = {x: i for i, x in enumerate(reversed(labcols))}
@@ -98,10 +93,8 @@ class Ddb:
         return r + self.C[self.coff[t]:self.coff[t] + self.nd[t]]
 
     def leb_rec(self, i, x, y):
-        base = self.unnamed.get(("LE_BUFFER", str(i)))
-        if base is None or x not in self.colrank:
-            return -1
-        return base + 90 * self.colrank[x] + y
+        # base[I] was a learned table (asm_names.json, retired #165); pending the A7 exact-name resolver (clean P2).
+        raise SystemExit("cycloneiv_ddb_fanout: LE_BUFFER record lookup unavailable, pending clean P2 name resolver (#165)")
 
     def fam_setup(self):
         """Family bounds (tile-lex id runs), per-family class from the name prefix, and the

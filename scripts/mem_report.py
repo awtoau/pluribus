@@ -2,7 +2,7 @@
 """Peak memory of one profile_stages in-process stage, split by kind, plus top allocations (#149).
 
   python3.15t scripts/mem_report.py STAGE [--tracemalloc] [--top 15] [--json OUT]
-  python3.15t scripts/mem_report.py --script scripts/cycloneiv_ddb_trace.py [--tracemalloc] -- score --designs 'gx150_rb*' --limit 3
+  python3.15t scripts/mem_report.py --script scripts/cycloneiv_bit_inventory.py [--tracemalloc] -- --image PATH
   python3.15t scripts/mem_report.py --list
 
 Reports (child process, /proc/self/status sampled every 50 ms):

@@ -108,12 +108,12 @@ def test_weakest_link_through_pattern_parents():
     with eng().begin() as conn:
         s = seed(conn)
         assert F.effective_tier(conn, s["pred"][1]) == "pattern-predicted"
-        # a statistical claim also rests directly on the parent evidence (e.g. afx_map placement)
+        # a statistical claim also rests directly on the parent evidence (e.g. a fitted placement map)
         from provenance import scopes as SC
         sid = conn.execute(insert(S.scopes).values(family="fam", device="dev", space="coord-map", kind="keys",
                                                    scope_key=SC.canonical("coord-map", "keys", {"keys": ["x1"]}),
                                                    definition={"keys": ["x1"]}, n_objects=1)).inserted_primary_key[0]
-        stat = conn.execute(insert(S.claims).values(family="fam", device="dev", space="coord-map", subject_key="afx", scope_id=sid,
+        stat = conn.execute(insert(S.claims).values(family="fam", device="dev", space="coord-map", subject_key="fitted-map", scope_id=sid,
                                                     meaning={}, tier="statistical", status="open", n_objects=1,
                                                     created_commit=COMMIT)).inserted_primary_key[0]
         conn.execute(insert(S.claim_evidence).values(claim_id=stat, evidence_id=s["ev"], role="direct"))

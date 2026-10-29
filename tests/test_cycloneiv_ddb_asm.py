@@ -19,13 +19,6 @@ def test_group_sizes_last_group_implicit():
     assert gstart.tolist() == [0, 3, 6, 8]
 
 
-def test_asm_to_plane_mirrors_inside_the_lab_column():
-    fxs = np.array([100, 135, 170])
-    pf, pv = D.asm_to_plane([135 + 7, 135 + 2, 135 + 12], [10, 6344 - 20, 0], fxs)
-    assert pf.tolist() == [135 + 10, 135 + 15, 135 + 5]       # offset k -> 17 - k
-    assert pv.tolist() == [6334, 20, 6344]                     # v -> 6344 - v
-
-
 def test_programmed_bits_follow_the_roles():
     b0 = [1, -1, 0, 1, -1, 0, 0, -1, 0]
     b1 = [0, -1, 1, 1, 0, -1, 0, 0, 0]

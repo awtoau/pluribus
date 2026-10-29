@@ -217,55 +217,6 @@ def validate_design(R, name):
                 skipped=dict(skipped), cand_sinks=len(cand), multi=sum(1 for s in cand.values() if len(s) > 1))
 
 
-# -- tracer option (not in the default lift path) -----------------------------------------------------
-def make_localline_view(ddb_unit_view, resolver=None):
-    """UnitView whose tracers answer an LCCOMB pin from a UNIQUE present LOCAL_LINE pip first (source tag
-    SRC_TAG in tracer.why), else defer to the ddb tracer.  tracer.ll_stats counts agree / differ / gain."""
-    import cycloneiv_ddb_trace as dt
-
-    class LLTracer(dt.DdbTracer):
-        def __init__(self, *args, cand, **kw):
-            super().__init__(*args, **kw)
-            self.cand = cand
-            self.ll_stats = collections.Counter()
-
-        def _trace(self, key, x, y):
-            kind, n, port = key
-            base = super()._trace(key, x, y)
-            if kind != "LCCOMB":
-                return base
-            S = self.cand.get((x, y, n, port))
-            if not S:
-                return base
-            if len(S) > 1:
-                self.ll_stats["ambiguous"] += 1
-                return base
-            g, _w = self.driver(x, y, S[0], None)
-            if g is None:
-                self.ll_stats["unique_but_cell_unreadable"] += 1
-                return base
-            if base[0] is None:
-                self.ll_stats["gain (base unresolved)"] += 1
-            elif base[0] == g:
-                self.ll_stats["agree"] += 1
-            else:
-                self.ll_stats["differ"] += 1
-            return g, SRC_TAG
-
-    class LLView(type(ddb_unit_view)):
-        def __init__(self, D):
-            super().__init__(D)
-            self.res = resolver or Resolver(D.P.g)
-            self.tracer = None
-
-        def make_tracer(self, plane, geom, learner, terminals):
-            cand = self.res.candidates(plane)
-            self.tracer = LLTracer(self.D, self, plane, geom, learner, None, terminals, cand=cand)
-            return self.tracer
-
-    return LLView(ddb_unit_view.D)
-
-
 def cmd_table(a):
     import cycloneiv_geom as cg
     g = cg.load(cg.die_of(DIE_NAME))

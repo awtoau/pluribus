@@ -39,7 +39,7 @@ NCLS = len(CLS) + 1                           # 0 = none
 # tile accounting tiers (class number -> tier): 5b (CRC) is overhead, excluded from the known fraction
 TIER = {}
 for i, (cid, _n, _t) in enumerate(CLS):
-    TIER[i + 1] = ("V" if cid == "1a" else "E" if cid in ("1b", "1c", "2a", "2b", "3")
+    TIER[i + 1] = ("V" if cid == "1a" else "E" if cid in ("1b", "1c", "3")
                    else "O" if cid in ("5a", "5b") else "U")
 YROWS = 92                                    # y = 0..91
 VBAND_LO = 48                                 # tile row band of y = [70 y - 48, 70 y + 21] = [VY-68, VY+1]
@@ -107,8 +107,8 @@ class Cells:
         return int(free.sum()), len(u)
 
 
-def classify(g, plane, nfr, nper, dec):
-    """cls (uint8, class number per cell), ocol/orow (owner tile per cell), fired mask."""
+def classify(g, plane, nfr, nper):
+    """cls (uint8, class number per cell), ocol/orow (owner tile per cell)."""
     from cycloneiv_le_locate import DK
     C = Cells(g, nfr, nper)
     tiles = bi.lab_tiles(g)
@@ -122,27 +122,7 @@ def classify(g, plane, nfr, nper, dec):
     fx = np.array([g.FX[int(x)] for x in tcol], np.int64)
     vy = g.vy0 + g.vpitch * trow
     C.claim((fx - 6) * NV + vy - 30, "1c", tcol, trow)
-    # 2: asm routing; owner column = column whose FX is the largest <= frame (asm band is FX..FX+17)
-    gids, _grec, _blk = dec.active(plane)
-    fg = np.zeros(len(dec.gsize), bool)
-    fg[gids] = True
-    pf, pvv, gid = np.asarray(dec.pf), np.asarray(dec.pv), np.asarray(dec.gid)
-    asm_any = np.zeros(nfr * NV, bool)
-    fired = np.zeros(nfr * NV, bool)
-    for s in range(0, len(pf), 5_000_000):
-        p, q = pf[s:s + 5_000_000].astype(np.int64), pvv[s:s + 5_000_000].astype(np.int64)
-        ok = (p >= 0) & (p < nfr) & (q >= 0) & (q < NV)
-        flat = p[ok] * NV + q[ok]
-        asm_any[flat] = True
-        fired[flat[fg[gid[s:s + 5_000_000]][ok]]] = True
-    fxs = np.array(sorted(g.FX.values()), np.int64)
-    xs_by_fx = np.array(sorted(g.FX, key=lambda x: g.FX[x]), np.int64)
-    for nm, m in (("2a", fired), ("2b", asm_any & ~fired)):
-        flat = np.flatnonzero(m)
-        fr = flat // NV
-        col = xs_by_fx[np.clip(np.searchsorted(fxs, fr, "right") - 1, 0, len(fxs) - 1)]
-        C.claim(flat, nm, col, C.orow[flat])
-    del pf, pvv, gid
+    # class 2 (asm routing) removed with the coordinate model (#165)
     # 3: specimens
     pats, rel = [], None
     for fp, (lx, ly) in zip(bi.FORCED, bi.FORCED_LAB):
@@ -181,7 +161,7 @@ def classify(g, plane, nfr, nper, dec):
     C.ocol[:nper * NV] = -1                           # periphery frames: no tile
     log.info("claimed cells per class %s", {IDS[i - 1]: int(n) for i, n in enumerate(np.bincount(C.cls, minlength=NCLS)) if i})
     log.info("duplicate claims within a class (cell asked for by 2 tiles): %s", dict(C.dups))
-    return C, tiles, fired, asm_any
+    return C, tiles
 
 
 # ---------------------------------------------------------------------------------------------
@@ -261,9 +241,7 @@ def tile_rects(C, g, nper, nfr):
 
 def pack_bitmaps(C, sm, g, rows, nper, nfr):
     rects = tile_rects(C, g, nper, nfr)
-    cmerged = C.cls.copy()
-    cmerged[cmerged == CID["2a"]] = CID["2b"]
-    cm2 = cmerged.reshape(nfr, NV)
+    cm2 = C.cls.reshape(nfr, NV)
     sm2 = sm.reshape(nfr, NV)
     oc2, or2 = C.ocol.reshape(nfr, NV), C.orow.reshape(nfr, NV)
     tm, tmpl_index, sbytes, outside = {}, [], [], 0
@@ -323,36 +301,6 @@ def evidence_polarity():
     return res
 
 
-def routing_blocks(dec, plane):
-    """Blocks = asm muxes.  How many are all-zero, one-hot (fired), partially set; groups whose predicted pattern is empty."""
-    s = np.flatnonzero(plane.has(np.asarray(dec.pf), np.asarray(dec.pv)))
-    uk = np.unique(np.asarray(dec.e_ukey)[s])
-    bset = np.bincount(dec.ukey_block[uk], minlength=dec.nblocks)
-    btot = np.bincount(dec.ukey_block, minlength=dec.nblocks)
-    gids, _r, blk = dec.active(plane)
-    fired_blocks = np.zeros(dec.nblocks, bool)
-    fired_blocks[blk] = True
-    placed = btot > 0
-    gid = np.asarray(dec.gid)
-    z = dec.npred == 0
-    npred0 = int(z.sum())
-    ze = np.bincount(np.asarray(dec.block)[z], minlength=dec.nblocks)       # empty-pattern groups per block
-    allz = (bset == 0) & placed
-    split = dict(placed_blocks_with_empty_group=int((placed & (ze > 0)).sum()), of_which_all_zero=int((allz & (ze > 0)).sum()),
-                 placed_blocks_without_empty_group=int((placed & (ze == 0)).sum()), without_all_zero=int((allz & (ze == 0)).sum()),
-                 blocks_with_exactly_one_empty_group=int((ze == 1).sum()), blocks_with_2plus_empty_groups=int((ze > 1).sum()))
-    return dict(**split, blocks=int(dec.nblocks), blocks_with_placed_cells=int(placed.sum()),
-                blocks_all_zero=int(((bset == 0) & placed).sum()),
-                blocks_some_set=int(((bset > 0) & placed).sum()),
-                blocks_fired_one_group=int(fired_blocks.sum()),
-                blocks_set_not_fired=int(((bset > 0) & placed & ~fired_blocks).sum()),
-                blocks_all_cells_set=int(((bset == btot) & placed).sum()),
-                groups=int(len(dec.gsize)), groups_with_empty_predicted_pattern=npred0,
-                fired_groups=int(len(gids)),
-                set_cells_in_fired_blocks=int(bset[fired_blocks].sum()),
-                set_cells_in_unfired_blocks=int(bset[~fired_blocks].sum()))
-
-
 def le_stats(g, sm, tiles):
     from cycloneiv_le_locate import DK
     f0, v0, sg = bi.le_grid(g, tiles)
@@ -389,14 +337,14 @@ def rel_freq(C, sm, g, mask_tile):
     return cnt, int(good.sum())
 
 
-def encoding(C, sm, plane, dec, g, tiles, meta, H, Hs, fired):
+def encoding(C, sm, plane, g, tiles, meta, H, Hs):
     out = {}
     nfr, nper = meta["nfr"], meta["nper"]
     tot_cells = nfr * NV
     out["image"] = dict(plane_set=meta["plane_set"], header_set=meta["hdr_set"], crc_set=meta["crc_set"],
                         set_bits_incl_header_crc_prepost=meta["plane_set"] + meta["hdr_set"] + meta["crc_set"] + 728,
                         frames=nfr, periphery_frames=nper - 1, bits_per_frame=NV)
-    # (a) set fraction overall and per class (2a/2b separate)
+    # (a) set fraction overall and per class
     cnt = np.bincount(C.cls, minlength=NCLS)
     st = np.bincount(C.cls[sm], minlength=NCLS)
     rows = []
@@ -424,7 +372,7 @@ def encoding(C, sm, plane, dec, g, tiles, meta, H, Hs, fired):
     out["le"] = les
     tcol, trow = tiles[:, 0], tiles[:, 1]
     c = lambda name: Hs[:, :, CID[name]]
-    idle = (c("1b") == 0) & (c("1c") == 0) & (c("2a") == 0)           # nothing that decodes as used
+    idle = (c("1b") == 0) & (c("1c") == 0)           # nothing that decodes as used
     labtile = np.zeros_like(idle)
     labtile[tcol, trow] = True
     idle &= labtile
@@ -455,8 +403,6 @@ def encoding(C, sm, plane, dec, g, tiles, meta, H, Hs, fired):
                                       idle_set_bits_in_these_cells=int(sum(cnt_idle[c["frame_off"] + 19, c["v_row"]] for c in cells if c["freq_idle"] > .5)),
                                       idle_set_bits_total=int(cnt_idle.sum()))
     # cells set in every one of the 6 GX150 images are added in other_images()
-    # (d) routing blocks
-    out["routing"] = routing_blocks(dec, plane)
     out["evidence_polarity"] = evidence_polarity()
     # (e) M9K and multiplier tiles
     nx = g.xmax + 1
@@ -493,7 +439,7 @@ def encoding(C, sm, plane, dec, g, tiles, meta, H, Hs, fired):
 
 
 def other_images(C, g, nper, meta_img, sm_img):
-    """Per-class set fractions + idle stats for the other GX150 corpus images (class layout shared, 2a/2b merged)."""
+    """Per-class set fractions + idle stats for the other GX150 corpus images (class layout shared)."""
     res = {}
     allset = sm_img.copy()
     for p in sorted(glob.glob(str(REPO / "sources/cycloneiv-corpus/*/*.rbf"))):
@@ -506,11 +452,10 @@ def other_images(C, g, nper, meta_img, sm_img):
         if meta["nfr"] != meta_img["nfr"]:
             continue
         allset &= sm
-        cm = C.cls.copy()
-        cm[cm == CID["2a"]] = CID["2b"]
+        cm = C.cls
         cnt, st = np.bincount(cm, minlength=NCLS), np.bincount(cm[sm], minlength=NCLS)
         res[name] = dict(plane_set=meta["plane_set"], plane_set_frac=meta["plane_set"] / ((meta["nfr"] - 1) * NV),
-                         per_class={IDS[i - 1]: round(float(st[i] / cnt[i]), 4) for i in range(1, NCLS) if cnt[i] and IDS[i - 1] not in ("2a", "5a")},
+                         per_class={IDS[i - 1]: round(float(st[i] / cnt[i]), 4) for i in range(1, NCLS) if cnt[i] and IDS[i - 1] != "5a"},
                          header_set=meta["hdr_set"], crc_frac=meta["crc_set"] / ((meta["nfr"] - nper) * 16))
         log.info("other GX150 image %s: %d set bits (%.3f)", name, meta["plane_set"], res[name]["plane_set_frac"])
     k = np.flatnonzero(allset)
@@ -552,7 +497,7 @@ def ce_images():
 def emit_cache(rows, blobs, g, cls_info):
     kidx = {k: i for i, k in enumerate(KINDS)}
     t = [[r["x"], r["y"], kidx[r["kind"]], r["cells"], r["set"], r["set_ver"], r["set_evi"], r["set_unk"], r["set_ovh"],
-          r["cap_ver"], r["cap_evi"], r["cls_set"].get("2a", 0), r["fa"], r["w"], r["tmpl"]] for r in rows]
+          r["cap_ver"], r["cap_evi"], 0, r["fa"], r["w"], r["tmpl"]] for r in rows]
     data = dict(nx=g.xmax + 1, ny=YROWS, kinds=KINDS, t=t, cls=cls_info, **blobs)
     (GEO / "image_overlay_data.json").write_text(json.dumps(data, separators=(",", ":")))
     log.info("wrote image_overlay_data.json; build the page with scripts/geo_explorer.py")
@@ -580,14 +525,12 @@ def main():
     bi.need_ram(20)
     blobs = None
     with heavy_guard.lease(4.0, "image_overlay", log):
-        import cycloneiv_asm_decode as ad
         import cycloneiv_geom as cg
         g = cg.load(cg.die_of("EP4CGX150"))
         plane, sm, meta = load_image(Path(a.image).read_bytes(), g)
         nfr, nper = meta["nfr"], meta["nper"]
         log.info("image: %d frames, %d plane set bits, header %d, crc %d", nfr, meta["plane_set"], meta["hdr_set"], meta["crc_set"])
-        dec = ad.Dec()
-        C, tiles, fired, asm_any = classify(g, plane, nfr, nper, dec)
+        C, tiles = classify(g, plane, nfr, nper)
         H, Hs = tile_hist(C, sm, g)
         rows = build_table(H, Hs, g)
         write_tables(rows, g.xmax + 1)
@@ -602,7 +545,7 @@ def main():
             cls_info = [[cid, TIER[i + 1], name] for i, (cid, name, _t) in enumerate(CLS)]
             # emit_cache runs after the lease is released
         if a.stage in ("all", "encoding"):
-            enc = encoding(C, sm, plane, dec, g, tiles, meta, H, Hs, fired)
+            enc = encoding(C, sm, plane, g, tiles, meta, H, Hs)
             enc["outside_tiles"] = extra
             enc["other_gx150_images"] = other_images(C, g, nper, meta, sm)
             enc["other_die_images"] = ce_images()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.15t
 """Profile pluribus pipeline stages on real inputs (issue #144: what would Rust clearly speed up).
 
-  python3.15t scripts/profile_stages.py [--stages decode,asm_active,...] [--cprofile] [--list]
+  python3.15t scripts/profile_stages.py [--stages decode,ddb_fanout,...] [--cprofile] [--list]
 
 Each stage runs as a child process: wall from perf_counter, CPU (user+sys) and peak RSS from
 os.wait4 rusage.  In-process stages print `PROFILE_JSON {...}` with per-phase wall times; with
@@ -67,23 +67,6 @@ def stage_decode(ph):
     plane, _g = _plane()
     ph["cram_plane_total"] = time.perf_counter() - t
     return dict(in_bytes=len(raw), out_bytes=len(u), set_bits=int(len(plane.keys)), frames=plane.shape[0])
-
-
-def stage_asm_active(ph):
-    """Dec() load + Dec.active(plane): 51.6 M asm entries vs the plane (numpy searchsorted/bincount)."""
-    plane, _g = _plane()
-    sys.path.insert(0, str(REPO / "scripts"))
-    import cycloneiv_asm_decode as ad
-    t = time.perf_counter()
-    dec = ad.Dec()
-    ph["dec_load"] = time.perf_counter() - t
-    t = time.perf_counter()
-    gids, _recs, blk = dec.active(plane)
-    ph["active"] = time.perf_counter() - t
-    t = time.perf_counter()
-    gids2, _r2, _b2 = dec.active(plane)
-    ph["active_2nd"] = time.perf_counter() - t
-    return dict(entries=int(len(dec.pf)), groups=int(len(dec.gsize)), fired=int(len(gids)), blocks=int(len(set(blk.tolist()))))
 
 
 def stage_ddb_fanout(ph):
@@ -198,7 +181,6 @@ def stage_lift_ecp5(ph):
 
 INPROC = {
     "decode": stage_decode,
-    "asm_active": stage_asm_active,
     "ddb_fanout": stage_ddb_fanout,
     "ddb_fanout_loops": stage_ddb_fanout_loops,
     "forced_diff": stage_forced_diff,
@@ -243,8 +225,6 @@ def external(stage):
             for p, b in saved.items():
                 p.write_bytes(b)
         return [PY, f"{S}/cycloneiv_bit_inventory.py", "--image", str(POSEIDON)], dict(os.environ), restore
-    if stage == "ddb_trace":
-        return [PY, f"{S}/cycloneiv_ddb_trace.py", "score", "--designs", "gx150_rb*", "--split", "odd", "--limit", "3"], dict(os.environ), None
     if stage == "tests_lifters":
         return [PY, "-m", "pytest", "-q", "--durations=12", "tests/test_machxo2_lift.py", "tests/test_gowin_lift.py",
                 "tests/test_ecp5_gate.py", "tests/test_ecp5_clock_tree.py", "tests/test_cyclonev_lift.py",
@@ -261,7 +241,7 @@ def external(stage):
 
 EXTERNAL = ["reach@repl", "reach2@repl", "reach3@repl", "reach4@repl", "report@repl",
             "reach@fnirsi", "reach3@fnirsi",
-            "bit_inventory", "ddb_trace", "tests_lifters", "corpus_register", "ledger_page"]
+            "bit_inventory", "tests_lifters", "corpus_register", "ledger_page"]
 ALL = list(INPROC) + EXTERNAL
 
 
@@ -358,9 +338,9 @@ def summarise_prof(pf):
 
 
 # Declared lease per stage (GB): measured peaks rounded up; unlisted stages lease 4.
-LEASE_GB = {"decode": 0.5, "asm_active": 1.2, "ddb_fanout": 1.0, "ddb_fanout_loops": 0.5, "forced_diff": 0.5,
+LEASE_GB = {"decode": 0.5, "ddb_fanout": 1.0, "ddb_fanout_loops": 0.5, "forced_diff": 0.5,
             "lift_machxo2": 0.5, "lift_ecp5": 0.5, "reach": 0.5, "reach2": 0.7, "reach3": 0.5, "reach4": 0.5,
-            "report": 0.5, "bit_inventory": 2.6, "ddb_trace": 2.6, "tests_lifters": 0.5,
+            "report": 0.5, "bit_inventory": 2.6, "tests_lifters": 0.5,
             "corpus_register": 0.5, "ledger_page": 0.5}
 
 

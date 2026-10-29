@@ -4,7 +4,7 @@
   PLURIBUS_SQLITE_PATH=databases/cycloneiv/gx150.db python3.15t scripts/cycloneiv_declare_gate.py
 
 Set = `gx150_rb*` designs of the odd crc32 split, same selection as
-`cycloneiv_ddb_trace.py score --designs 'gx150_rb*' --split odd`. Idempotent; claims_register.py calls declare() because it rebuilds corpus_members every run.
+the 76-design gate (clean P3 gate, pending #165). Idempotent; claims_register.py calls declare() because it rebuilds corpus_members every run.
 Log: tmp/logs/cycloneiv_declare_gate.log
 """
 import logging
@@ -23,12 +23,15 @@ from provenance import evidence_io as E  # noqa: E402
 
 log = logging.getLogger("cycloneiv_declare_gate")
 
+# TODO(#165): point at the clean P3 gate script once it exists; the old ddb_trace score gate is retired.
+GATE_SCRIPT = "TODO: clean P3 gate (docs/cycloneiv-clean-pipeline.md)"
+
 
 def declare(conn, commit):
     names = [n for n in cc.designs("gx150_rb*") if cm.split_of(n, "odd")]
     for n in names:
         C.ensure_member(conn, "cycloneiv", n, "oracle-build", commit, device="EP4CGX150",
-                        source_ref=f"corpus/cycloneiv/{n}", gate_script="scripts/cycloneiv_ddb_trace.py",
+                        source_ref=f"corpus/cycloneiv/{n}", gate_script=GATE_SCRIPT,
                         required=True)
     return len(names)
 
