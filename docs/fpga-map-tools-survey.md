@@ -26,7 +26,7 @@ Most important Part A finding: **Quartus ships its own Cyclone V routing/assembl
   - `ddb_cyclonev_e50f_icname.ddb` 2.5 MB → 17,981,908 B
   - `ddb_cyclonev_e50f_place.ddb` 125 KB → 3,246,003 B
   - `ddb_cyclonev_e50f_timing.ddb` 644 KB → 11,989,346 B
-  - also `_asmdb.ddb`, `_asmdb_dirt.ddb` (different layout, no zlib at 0x73), `_pad`, `_hdr`, `*_pkg`, `*.dmf.ddb` / `*_fdi.ddb` (per speed/temp corner), `zb{8,16}_mtm_cff_mapping.csv.enc` (encrypted)
+  - also `_asmdb.ddb`, `_asmdb_dirt.ddb` (different layout, no zlib at 0x73), `_pad`, `_hdr`, `*_pkg`, `*.dmf.ddb` / `*_fdi.ddb` (per speed/temp corner), `zb{8,16}_mtm_cff_mapping.csv.enc` (zlib after an 8-byte header, plain CSV of named periphery bits: docs/cyclonev-vendor-data.md)
 - Header: `u32 0x14`, `u32 0x10bad`, version string `Version 25.1std.0 Build 1129 ... SC Standard Edition`, then u64 inflated size, u64 compressed size, zlib stream at 0x73 (`78 01`).
 - Inflate: stock `zlib` gets ~99.4–99.95% then `invalid stored block lengths` near the end. Probably a second chunk or trailer; not chased. Script: `tmp/survey/ddb_inflate.py`, `ddb_probe.py`.
 - Contents (string histogram, `tmp/survey/ddb_strings.py`):
