@@ -184,3 +184,8 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Fragmentation: (block, dest) units 1,616,526 -> 1,641,236; dest records with > 1 block 186,723 -> 186,746.
 - Rise: pins missing (+22,842); pin tracing still uses learned tables from the old convention.
 - LUT INIT cells (asmdb `lut_asm_addr`, 2,396,160 addresses; frame law = geometry FX[X] + df[k], order column rank, row, LE, k): "asm frame + 43" equals the law for 2,396,160 / 2,396,160 with columns paired right-to-left. v6 (plane frame = 6190 - asm frame) equals the law in 299,520 (12.5 %) with columns paired left-to-right (asm column rank c at plane X = c-th from the left); 0 under right-to-left; all v6 frames within 10 of the law (in-column order reversed). plane v matches 6344 - asm v for all.
+
+### v6 probe, v7 stopped (2026-10-30)
+- Probe (`PLURIBUS_PROBE_SET=1`, 10 odd designs, v6): programmed cells of the group of every uniquely resolved hop that are set in the design plane: C4 / R4 / LI / C16 / R24 on LAB, LAB next to M9K/MUL, M9K, MUL destination columns: 99.7-100 % of hops with all cells set (R24 at MUL 2 of 3, 1 M9K and 1 IOL hop with no programmed cell); resolved hops only (C16 57, R24 53 hops).
+- Pins path artifacts keyed by block-key strings of the plane positions (`phys_map.json` defaults / wires / lis, `li_map.json`) and by the old-convention colrank base (`asm_names.json`): v6 shares 1,248 of 3,514 key strings with the old blocks, so those maps are stale under v6 (pins missing +22,842).
+- v7 (in-column order kept: `plane = asm + 43`, or mirrored columns with order kept) stopped, refuted by clean oracle O2 (lut_law_preserved 0 / 399 strict, 1 / 399 tile; sof_identity_reversed 398 / 399 strict, 399 / 399 tile). No gate run.

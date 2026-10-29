@@ -76,6 +76,7 @@ class Ddb:
         self.V, self.tpl, self.cnt, self.eoff, self.offs = (z["V"].astype(np.int64), z["tpl"], z["cnt"], z["eoff"],
                                                            z["offs"].astype(np.int64))
         self.T = AT.Tables(P.dec)
+        self.gfirst = np.concatenate([[0], np.cumsum(ge["ng"])[:-1]])
         # EXACT fitter LAB column -> vendor tile x: LE_BUFFER record = base[I] + 90 * colrank(X) + Y
         base = self.T.unnamed[("LE_BUFFER", "0")]
         self.cm = {}
@@ -206,6 +207,32 @@ def count_unreached(children, node, P, hops, why, reason, self_too=True):
 
 
 CUR = [None]
+PROBE = os.environ.get("PLURIBUS_PROBE_SET") == "1"      # diagnostic: per resolved hop, fraction of the group's programmed cells set in the design plane
+PROBE_PLANE = [None]
+SETFRAC = collections.defaultdict(lambda: [0, 0, 0, 0])   # (class, dest column kind) -> hops, hops with all cells set, cells, cells set
+
+
+def probe_hop(D, cls, rs, rd, X):
+    dec = D.P.dec
+    fan = D.fan_of(rs)
+    w = np.flatnonzero(fan == rd)
+    if not len(w):
+        return
+    gi = int(D.gfirst[rs]) + int(w[0])
+    a, b = int(dec.gstart[gi]), int(dec.gstart[gi]) + int(dec.gsize[gi])
+    sel = np.asarray(dec.pred[a:b])
+    pl = PROBE_PLANE[0]
+    flat = pl.flat_index(np.asarray(dec.pf[a:b])[sel], np.asarray(dec.pv[a:b])[sel])
+    on = pl.dense()[flat]
+    g = D.P.g
+    kd = g.kind.get(X, "IO")
+    if kd == "LAB" and (g.kind.get(X - 1) in ("M9K", "MUL") or g.kind.get(X + 1) in ("M9K", "MUL")):
+        kd = "LAB-next-to-M9K/MUL"
+    c = SETFRAC[(cls, kd)]
+    c[0] += 1
+    c[1] += int(on.all()) if len(on) else 0
+    c[2] += len(on)
+    c[3] += int(on.sum())
 DUMP = os.environ.get("PLURIBUS_DUMP_HOPS")
 
 
@@ -302,6 +329,8 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
             else:
                 continue
             resolved.add(rd)
+            if PROBE and PROBE_PLANE[0] is not None:
+                probe_hop(D, cls, rs, rd, dn[3])
             h = hops[cls]
             if not D.has_units[rd]:
                 h["missing"] += 1
@@ -354,6 +383,7 @@ def score(names):
         d = cc.load(name)
         plane = d["plane"]
         used, _m = lift.scan(plane, tiles)
+        PROBE_PLANE[0] = plane
 
         def valid(kind, x, y, n):
             i = tidx.get((x, y))
@@ -430,6 +460,9 @@ def score(names):
         log.info("  R4 column table: hops without a cell by (dest X, rel): total %d; by rel %s", sum(CT.NOCELL.values()),
                  dict(sorted(collections.Counter({r: sum(n for (x, rr), n in CT.NOCELL.items() if rr == r) for r in {k[1] for k in CT.NOCELL}}.items()))))
         log.info("  R4 column table NOCELL %s", json.dumps({f"{x},{r}": n for (x, r), n in CT.NOCELL.most_common()}))
+    for (cls, kd), (nh, na, nc, ns) in sorted(SETFRAC.items()):
+        log.info("  probe set-fraction %-3s dest column %-22s hops %7d, all cells set %7d (%.1f %%), cells %8d set %8d (%.1f %%)",
+                 cls, kd, nh, na, 100 * na / max(1, nh), nc, ns, 100 * ns / max(1, nc))
     log.info("  ambiguous hops (>1 candidate in window; counted missing): %s", dict(hamb))
     log.info("  fired wire units not on any resolved path (upper bound on extra: includes pad/clock-driven nets and unreached hops): %s", dict(unattr))
     log.info("  extra detail %s; fired %s", dict(li_x), dict(fired_stats))
