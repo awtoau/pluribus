@@ -137,3 +137,15 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
   - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 65,173 / 172,409 / 0 / 21,502
 - Flag stays OFF: matched and missing rise in every class except R4 matched (+18), wrong rises in LI, C4 and ALL. (block, dest) units 1,616,526 -> 4,103,695; dest records with >1 block 186,723 -> 964,872: the blocks (muxes) fragment, so F3 is not valid for every record class. Cause not isolated (candidate: apply F3 to LE_BUFFER sources only).
 - Steps 4 (confirmation builds) not run: no gain to confirm.
+
+### v2b: F3 for LE_BUFFER-sourced records only (`PLURIBUS_COORD_V2=2`, 2026-10-29, gate_run 8 off / 9 on)
+- Prediction (before the run): R4 matched >= 3,000, C4/LI matched do not fall, no fault category rises. REFUTED.
+- Model: relabelled bases afx[115 - vx]; F3 mirror only for enum-45 sources; other records band placement; shift table EXC4 `{(27,4):+4, (28,-1):-4, (29,-1):+4, (30,4):-4, (85,4):+4, (86,-1):-4, (87,-1):+4, (88,4):-4}` on 13,680 LE_BUFFER -> R4 groups (explicit table from the 16 arcs, not a rule).
+- Gate, off -> on, matched / missing / extra / wrong:
+  - LI: 10,199 / 133,630 / 0 / 4,304 -> 6,678 / 137,184 / 0 / 4,271
+  - R4: 902 / 148,831 / 0 / 4,085 -> 998 / 148,505 / 0 / 4,315
+  - C4: 13,012 / 118,305 / 0 / 1,964 -> 8,479 / 122,438 / 0 / 2,364
+  - ALL: 24,113 / 410,403 / 0 / 10,353 (5.420 %) -> 16,155 / 417,764 / 0 / 10,950 (3.631 %)
+  - LCCOMB pins: 69,672 / 157,397 / 0 / 32,025 -> 65,351 / 168,265 / 0 / 25,464
+- Fragmentation: (block, dest) units 1,616,526 -> 2,305,331; dest records with >1 block 186,723 -> 786,697 (v2: 4,103,695 / 964,872). Still far from baseline with F3 limited to LE_BUFFER sources.
+- Flag stays OFF. Per the coordinator, no further extension of the source-mirror model until the assembler address -> frame map (lane padding) is reconstructed.
