@@ -41,7 +41,7 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Resolver and override default unchanged (override OFF); the override re-run under the corrected scoring was not made.
 
 ## LB -> R4 (dx, df) vs source column (#162, `scripts/cycloneiv_r4_relcol.py`; 2026-10-29, 0 new builds)
-- Pool of 59 existing set-level arcs (results_r4map_*, r4df_*), 4 destination tiles (X30Y50, X47Y45, X63Y32, X89Y44), rigid-shift window |df| <= 80 (140 for the rel +4 re-read).
+- Pool of 62 existing set-level arcs (results_r4map_*, r4df_*), 4 destination tiles (X30Y50, X47Y45, X63Y32, X89Y44), rigid-shift window |df| <= 80 (140 for the rel +4 re-read).
 - P1 as written ((dx, df) = f(source X - destination X, destination pitch)): REFUTED. X63Y32 rel +3 (source X66) = (-5, 0) against (-7, -35) in 18/18 arcs at X47Y45/X89Y44 (same rel, pitch 35).
 - Cause visible in the geometry: X66 is 363 frames from X63 (M9K column X65 between); X47->X50 is 105. Keyed by source-minus-destination frame distance `FX[src]-FX[dst]` instead of X, no key has two outcomes (n small, one key per scope pair):
 
