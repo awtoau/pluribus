@@ -56,3 +56,23 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 - Corpus fit: IOIBUF = value 0 (1 CFF bit), IOOBUF = value 1 (9 bits); consistent, not yet bit-exact.
 - Not done: asmdb block/group walk for the IV die. The Cyclone V `block_infos` reader finds 0 CFF block records in the IV asmdb body (record layout differs); group -> CFF vectors, instance bases, pad -> pin, field decode all still 0.
 - Decompile outputs: gitignored `vendor-analysis/altera/analysis/io/`.
+
+## IV asmdb layout (2026-10-30, static decompile of libdb_asmdb `ASMDB_DIE` / `ASMDB_BLOCK_INFO` / `ASMDB_ARCH_GROUP_*::operator<<`)
+
+- Cyclone V reader (`block_infos`) finds 0 records on IV: IV asmdb is the binary PDB stream (no `a : b : c` space strings, names stripped), same layer as routing.ddb (docs/cycloneiv-ddb-format.md).
+- Main stream, walked by `io.asmdb_main_stream` (ends at body offset 38,044 of 5,350,270; rest is deferred per-class object pools):
+  - 8 block types in `m_block_info_map` (keys 5, 6, 18, 39, 41, 60, 61, 227).
+  - `m_arch_group_list` 6,087 pointers: classes 5 / 6 / 7 / 8 = 277 / 4,893 / 913 / 4 (class id = tag >> 2; ids from the stream, class names not yet bound).
+  - `m_default_group_list` 580 (classes 10 / 11 = 572 / 8); `m_default_bit_list` 2,518 addresses: CRAM 2,319, CFF 104, OPTION 95; `m_forced_bit_list` 35; `m_labeled_simple_mux_list` 4; local default / arch groups 25 / 225; `m_hc_*` 0.
+- Group object fields (pool content): `ARCH_GROUP_BASE` = `m_group_index`, `m_type`, `m_group_block_type`; `STD` / `CALC` add `m_mux_path_list`, `m_mux_data_list` (`MUX_DATA` = arch_value, aux_mux, next_mux_selection); `DUMB` adds `m_arch_value`, `m_bits`; `ASMDB_MUX` = `m_mux_bits`; `BLOCK_INFO` = 3 strings, `m_block_lists`, `m_block_type`, `m_num_ram_cols`, `m_simple_block_lists`, `m_export_port_to_bit_map`, `m_block_bit_to_avalon_bit_map`, `m_avalon_name_to_size_map`.
+- Pool order / class-id -> class binding not yet resolved: first pool (body 0x949c) is 16-element offset vectors; the one `m_export_port_to_bit_map` entry (LE block) sits at 0x9b8a0. CFF instance bases per IO site: 0 decoded.
+
+## Pad -> package pin (partial, 0 pins decided)
+
+- `ddb_stingray4fbga896_pkg.ddb`: 896 pin records, ball names in a length-prefixed run, then one record per pin (name, function string such as supply name / DQ role, numeric fields). IO balls have an empty function string (342).
+- `ddb_stingray4_pad.ddb`: 520 pad records; each carries `X<x>Y<y>SUB_LOC<n>` (= IOBUF site x, y, n), a pad class string, a function name.
+- Pin record carries no field equal to the pad index; ball index minus pad ordinal drifts 25 -> 31 over the oracle balls (96 joined, oracle `build.pin` x `postfit.vo`). The link is not an ordinal and not yet found (needs the DEV_PIN / DEV_PAD serializers).
+
+## Drive / slew / pull
+
+- Not reached: `process_atom` paths for drive strength and slew have not been located; only the pin-mode and standard-class paths are decompiled.

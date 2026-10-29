@@ -132,3 +132,19 @@ def test_io_site_signatures_in_cff_space(cff):
 
 def test_pin_mode_mux_values():
     assert sorted(IO.PIN_MODE_MUX.values()) == list(range(7))      # direction mux: 7 selectable states, 0 = input
+
+
+def test_asmdb_main_stream():
+    from lifters.cycloneiv_clean import sofio
+    try:
+        b = IO.asmdb_body()
+    except sofio.VendorMissing as e:
+        pytest.skip(str(e))
+    s = IO.asmdb_main_stream(b)
+    sp = collections.Counter(IO.classify(np.array(s["m_default_bit_list"]))[0].tolist())
+    report("io_asmdb_main_stream", block_types=s["block_types"], arch_groups=s["m_arch_group_list"],
+           default_groups=s["m_default_group_list"], default_bits=dict(sp), forced_bits=len(s["m_forced_bit_list"]),
+           end=s["end"], body=len(b))
+    assert len(s["block_types"]) == 8 and sum(s["m_arch_group_list"].values()) == 6087
+    assert s["m_hc_wires"] == 0 and s["end"] < len(b)
+    assert sp["CFF"] > 0 and sp["OPTION"] > 0                  # default bits exist in both peripheral spaces

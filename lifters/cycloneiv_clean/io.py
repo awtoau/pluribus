@@ -135,3 +135,63 @@ PIN_MODE_MUX = {
     "output_oe_registered": 5,
     "open_drain_oe_registered": 6,
 }
+
+
+# source: libdb_asmdb ASMDB_DIE::operator<< @ 0x19d8f0 (static decompile): field order after the 4 counts
+DIE_STREAM_FIELDS = (
+    "m_summary_block_rba_version_string", "m_mcf_sch_version_string", "m_rba_version_string", "m_bvp_version_string",
+    "m_block_info_map", "m_arch_group_list", "m_default_group_list", "m_default_bit_list", "m_forced_bit_list",
+    "m_labeled_simple_mux_list", "m_local_default_group_list", "m_local_arch_group_list", "m_hc_base_nodes",
+    "m_hc_fringe_nodes", "m_hc_wires",
+)
+
+
+def asmdb_body(path=None):
+    """Inflated asmdb body bytes (IV die)."""
+    import sys
+    sys.path.insert(0, os.path.join(P.REPO, "scripts"))
+    import cyclonev_ddb_decode as dd
+    from . import sofio
+    if path is None:
+        path = os.path.normpath(os.path.join(sofio.quartus_bin(), "..", "common", "devinfo", "cycloneivgx", ASMDB_NAME))
+    if not os.path.exists(path):
+        raise sofio.VendorMissing(path)
+    return b"".join(dd.iter_body(path))
+
+
+def asmdb_main_stream(b):
+    """Walk the non-deferred part of the ASMDB_DIE record (PDB layer: docs/cycloneiv-ddb-format.md).
+
+    Containers are `u32 count` + count elements; pointer elements are one u32 tag each (class id = tag >> 2,
+    object content is deferred to per-class pools after the main stream); default / forced bit lists are
+    delta-coded u32 (running sum mod 2^32).  -> dict with block-type keys, tag histograms, bit lists, end offset.
+    """
+    import struct
+    u = lambda o: struct.unpack_from("<I", b, o)[0]
+    o = 4 + 17                                      # root tag, arch byte + 4 counts (die_head), then 4 strings
+    for _ in range(4):
+        o += 4 + u(o)
+    out = {}
+    n = u(o)
+    out["block_types"] = [u(o + 4 + 8 * i) for i in range(n)]
+    out["block_tags"] = [u(o + 8 + 8 * i) for i in range(n)]
+    o += 4 + 8 * n
+    for name in ("m_arch_group_list", "m_default_group_list"):
+        n = u(o)
+        tags = struct.unpack_from(f"<{n}I", b, o + 4)
+        out[name] = {t >> 2: tags.count(t) for t in sorted(set(tags))}
+        o += 4 + 4 * n
+    for name in ("m_default_bit_list", "m_forced_bit_list"):
+        n = u(o)
+        acc, vals = 0, []
+        for d in struct.unpack_from(f"<{n}I", b, o + 4):
+            acc = (acc + d) & 0xFFFFFFFF
+            vals.append(acc)
+        out[name] = vals
+        o += 4 + 4 * n
+    for name in DIE_STREAM_FIELDS[9:]:
+        n = u(o)
+        out[name] = n
+        o += 4 + 4 * n
+    out["end"] = o
+    return out
