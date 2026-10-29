@@ -163,3 +163,9 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - Rises: R4 wrong +407, pins missing +887; pins matched -387.
 - Fragmentation near baseline: (block, dest) units 1,616,526 -> 1,610,801; dest records with >1 block 186,723 -> 191,143.
 - Flag stays OFF.
+
+### v4: exact sof -> rbf map (mirror mask) on top of the v3 relabel (2026-10-29, `scripts/cycloneiv_coordv4_dropped.py`; no new flag, no gate run)
+- Check: `sof2rbf.rbf_of_sof` (vendor-analysis, untracked) applied to every v3 placed entry (44,922,400): 0 entries move; 0 v3 entries lie in the 8 mirrored M9K blocks (rbf frames r0..r0+255, r0 in 266, 1074, 1791, 2599, 3312, 4120, 4837, 5645). v4 = v3 (identical pf/pv, blocks, fragmentation), so gate_run 11 is the v4 result; refutation clause (any fault category rising) already met by v3: R4 wrong +407, pins missing +887.
+- The 88 double-offset frames were the old labelling putting 8 non-LAB bands' frames into LAB planes, not the mirror; the relabel alone removes them (v3 collapse check).
+- Entries dropped by v3 (real pf under the old placement -> DROP): 5,136,452 (172 distinct asm frames; the 151 of the 400,000-entry sample), all previously placed in LAB planes, 0 gained. They sit in 12 asm bands, old afx bases 233, 731, 1041, 1758, 2256, 2566, 3279, 3847, 4087, 4804, 5372, 5612: the vendor columns with no LAB column (8 M9K + 4 MUL). Feeding record classes (source enum): R4 2,148,570; C4 1,555,486; LE_BUFFER 413,856; LI 291,456; enums 284 / 286 / 307 / 665: 295,632 / 147,816 / 1,044 / 12,672; R24 164,848; C16 105,072.
+- v4 keeps them dropped: placing them needs the per-band sof offsets of those 12 columns (the LAB ladder 6173 - FX - afx gives 6057, 5987, 5917, ... per LAB band, not these) and their plane columns; not derived here.
