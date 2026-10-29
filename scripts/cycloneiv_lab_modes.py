@@ -67,6 +67,21 @@ def verilog(src_mask, snk_mask, conn):
             + "endmodule\n")
 
 
+def rcf_multi(lab, ll, dests):
+    """dests [(cell, port)]: one LOCAL_LINE element, one dest line pair per sink."""
+    body = "".join(f"\tdest = ( {c}, DATA{p} ), route_port = DATA{p};\n" for c, p in dests)
+    return ("section global_data {\n\trcf_written_by = \"Quartus Prime 25.1 Build 1129\";\n"
+            f"\tdevice = {DEVICE};\n}}\n\nsignal_name = u0_o {{\n\tLOCAL_LINE:X{lab[0]}Y{lab[1]}S0I{ll};\n{body}}}\n")
+
+
+def verilog_multi(sinks):
+    """u0 -> sinks [(cell, port)]; u1 combout is y, other sinks dangle (dont_touch keeps them)."""
+    v = "module top(output y);\n  wire u0_o;\n" + CELL.format(mask="0000", name="u0", ports=".combout(u0_o)")
+    for c, p in sinks:
+        v += CELL.format(mask="FFFF", name=c, ports=f".data{p.lower()}(u0_o), " + (".combout(y)" if c == "u1" else ".combout()"))
+    return v + "endmodule\n"
+
+
 def lc(lab, n):
     return cf.lc(lab[0], lab[1], n)
 
@@ -96,10 +111,59 @@ def legal_ports():
     return out
 
 
+def multi_pair(tag, lab, src, spec_sinks, base_sinks, meta):
+    """spec drives spec_sinks [(cell, snk N, port)], base base_sinks; both forced onto the source's LL.
+    Cells in both builds are identical: every sink cell is placed in both, un-driven ones just float."""
+    ll = ll_of_src()[src]
+    cells = sorted({(c, k) for c, k, _ in spec_sinks + base_sinks})
+    allv = lambda sk: verilog_multi_all(cells, sk)   # noqa: E731
+    q = [f"set_location_assignment {lc(lab, src)} -to u0", "set_location_assignment PIN_B9 -to y"] + [
+        f"set_location_assignment {lc(lab, k)} -to {c}" for c, k in cells]
+    name = f"gxlm_{tag}_{lab[0]}x{lab[1]}_{src:02d}_" + "_".join(f"{c}{k:02d}{p}" for c, k, p in spec_sinks) + f"_i{ll:02d}"
+    meta = {**meta, "lab": list(lab), "src": src, "ll": ll, "spec_dests": [[c, k, p] for c, k, p in spec_sinks],
+            "base_dests": [[c, k, p] for c, k, p in base_sinks]}
+    rb = rcf_multi(lab, ll, [(c, p) for c, _, p in base_sinks]) if base_sinks else None
+    meta["rcf_base"] = rb
+    return (name, allv(spec_sinks), allv(base_sinks), q, rcf_multi(lab, ll, [(c, p) for c, _, p in spec_sinks]), meta)
+
+
+def verilog_multi_all(cells, driven):
+    v = "module top(output y);\n  wire u0_o;\n" + CELL.format(mask="0000", name="u0", ports=".combout(u0_o)")
+    dm = {c: p for c, _, p in driven}
+    for c, _k in cells:
+        conn = f".data{dm[c].lower()}(u0_o), " if c in dm else ""
+        v += CELL.format(mask="FFFF", name=c, ports=conn + (".combout(y)" if c == "u1" else ".combout()"))
+    return v + "endmodule\n"
+
+
+def lp_ports():
+    lp = legal_ports()
+    return {s: sorted(v) for s, v in lp.items()}
+
+
 def group_pairs(group):
+    if group == "fan":       # source cells: base S->K1, spec S->K1 and S->K2 (second sink added)
+        lab, lp, out = LABS[0], lp_ports(), []
+        for s in range(0, 32, 2):
+            p = lp[s][0]
+            k1 = 30 if s != 30 else 28
+            for k2 in [k for k in (0, 10, 20) if k != s]:
+                out.append(multi_pair("fan", lab, s, [("u1", k1, p), ("u2", k2, p)], [("u1", k1, p)], {"group": "fan"}))
+        return out
+    if group == "pswap":     # port-only: same (source, sink), port p1 vs p2 (both legal for the LL)
+        lab, lp, out = LABS[0], lp_ports(), []
+        for s in range(0, 32, 2):
+            for k in [k for k in (0, 10, 20) if k != s]:
+                p1, p2 = lp[s][:2]
+                out.append(multi_pair("psw", lab, s, [("u1", k, p2)], [("u1", k, p1)], {"group": "pswap", "ports": [p1, p2]}))
+        return out
     if group == "pprobe":     # legality: every (LL I, port) once, sink fixed at N2 (N4 for source N2)
         lab = LABS[0]
         return [port_pair(lab, s, 4 if s == 2 else 2, p) for s in range(0, 32, 2) for p in "ABCD"]
+    if group.endswith("s") and group.startswith("ports"):   # seeded 10% sample of the full grid
+        import random
+        full = group_pairs(group[:-1])
+        return sorted(random.Random(20261029).sample(full, max(1, len(full) // 10)), key=lambda p: p[0])
     if group.startswith("ports"):   # portsX10Y10 etc: all src x snk x port at one LAB (src != snk)
         m = re.fullmatch(r"ports(\d+)x(\d+)", group)
         lab = (int(m.group(1)), int(m.group(2)))
@@ -115,8 +179,9 @@ def write_pair(pr):
         (d / "src").mkdir(parents=True, exist_ok=True)
         (d / "src" / "top.v").write_text(v)
         qq = list(q)
-        if kind == "s" and rcf:
-            (d / "src" / "force.rcf").write_text(rcf)
+        use = rcf if kind == "s" else meta.get("rcf_base")
+        if use:
+            (d / "src" / "force.rcf").write_text(use)
             qq = ["set_global_assignment -name ROUTING_BACK_ANNOTATION_MODE NORMAL",
                   "set_global_assignment -name ROUTING_BACK_ANNOTATION_FILE ../src/force.rcf"] + qq
         qq += ["set_global_assignment -name SEED 1", 'set_global_assignment -name FITTER_EFFORT "FAST FIT"']
@@ -144,11 +209,25 @@ def rcf_hop_of(name):
     return None if not m else [m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4)), m.group(5)]
 
 
+def dests_ok(name, kind, ll, want):
+    """RCF of build `kind` routes u0_o over LOCAL_LINE I=ll to exactly the wanted (cell, port)s."""
+    p = CORPUS / f"{name}_{kind}" / "routing.rcf"
+    if not p.exists():
+        return False
+    m = re.search(r"signal_name = u0_o \{\n(.*?)\n\}", p.read_text(), re.S)
+    if not m:
+        return not want
+    lls = re.findall(r"LOCAL_LINE:X\d+Y\d+S0I(\d+)", m.group(1))
+    got = sorted((d, r) for d, r in re.findall(r"dest = \( (\w+), DATA\w \), route_port = DATA(\w)", m.group(1)))
+    return sorted((c, p_) for c, _, p_ in want) == got and set(lls) <= {str(ll)}
+
+
 def build_diff_record(pr, idx, record=True):
     """Build base + specimen, raw-diff, record the evidence row, prune.  Returns the meta."""
     from provenance import evidence_io as E
     import db
     name, _vs, _vb, _q, _rcf, meta = pr
+    meta = {k: v for k, v in meta.items() if k != "rcf_base"} | ({"rcf_base_set": True} if meta.get("rcf_base") else {})
     full = idx < KEEP_FULL
     for k in ("b", "s"):
         f = fz.build_one(f"{name}_{k}")
@@ -157,7 +236,10 @@ def build_diff_record(pr, idx, record=True):
             return {**meta, "status": "build-fail", "step": f}
     on, off = cf.diff(f"{name}_s", f"{name}_b")
     hop = rcf_hop_of(name)
-    honoured = bool(hop and hop[3] == meta.get("ll") and hop[4] == f"DATA{meta.get('port')}") if "port" in meta else None
+    if "spec_dests" in meta:
+        honoured = all(dests_ok(name, k, meta["ll"], meta[f"{k2}_dests"]) for k, k2 in (("s", "spec"), ("b", "base")))
+    else:
+        honoured = bool(hop and hop[3] == meta.get("ll") and hop[4] == f"DATA{meta.get('port')}") if "port" in meta else None
     meta = {**meta, "hop": hop, "forced_honoured": honoured, "status": "ok"}
     nv = cc.load_plane_only(f"{name}_b").shape[1]
     for k in ("s", "b"):
@@ -226,9 +308,59 @@ def compare(labs, nv=6368):
             log.info("  NOMATCH %s: %s vs %s", k, fv(cur[k]["on"]), fv(ref[k]["on"]) if k in ref else None)
 
 
+def additive(tab):
+    """tab {(a, b): int}: solve v = fa[a] + fb[b] by propagation over the (a, b) graph; hits = cells it reproduces."""
+    adj_a, adj_b = {}, {}
+    for (a, b), v in tab.items():
+        adj_a.setdefault(a, []).append((b, v))
+        adj_b.setdefault(b, []).append((a, v))
+    fa, fb = {}, {}
+    for a0 in sorted(adj_a):
+        if a0 in fa:
+            continue
+        fa[a0] = 0
+        todo = [("a", a0)]
+        while todo:
+            k, x = todo.pop()
+            if k == "a":
+                for b, v in adj_a[x]:
+                    if b not in fb:
+                        fb[b] = v - fa[x]
+                        todo.append(("b", b))
+            else:
+                for a, v in adj_b[x]:
+                    if a not in fa:
+                        fa[a] = v - fb[x]
+                        todo.append(("a", a))
+    hits = sum(1 for (a, b), v in tab.items() if fa[a] + fb[b] == v)
+    return 0, fa, fb, hits, len(tab)
+
+
+def fit(group_ref="lab_modes:ports", lab=(10, 10)):
+    """Per port: bit sets by (src, snk); every component classified src-only / snk-only / additive / other."""
+    import collections
+    t = [m for m in rows(group_ref).values() if m["lab"] == list(lab) and m.get("forced_honoured")]
+    byport = collections.defaultdict(dict)
+    for m in t:
+        byport[m["port"]][(m["src"], m["snk"])] = sorted(m["on"])
+    out = {}
+    for port, tab in sorted(byport.items()):
+        sizes = collections.Counter(len(v) for v in tab.values())
+        k = sizes.most_common(1)[0][0]
+        for j in range(k):
+            comp = {key: v[j] for key, v in tab.items() if len(v) == k}
+            srconly = len({(a, v) for (a, b), v in comp.items()}) == len({a for a, _ in comp})
+            snkonly = len({(b, v) for (a, b), v in comp.items()}) == len({b for _, b in comp})
+            base, fa, fb, hits, n = additive(comp)
+            kind = "src-only" if srconly else "snk-only" if snkonly else ("additive" if hits == n else "other")
+            out[(port, j)] = (kind, hits, n)
+            log.info("port %s component %d: %s (additive hits %d / %d), sizes %s", port, j, kind, hits, n, dict(sizes))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("gen", "run", "show", "compare"))
+    ap.add_argument("cmd", choices=("gen", "run", "show", "compare", "fit"))
     ap.add_argument("group")
     ap.add_argument("--jobs", type=int, default=0)
     a = ap.parse_args()
@@ -241,6 +373,8 @@ def main():
     if a.cmd == "gen":
         for p in group_pairs(a.group):
             write_pair(p)
+    elif a.cmd == "fit":
+        fit()
     elif a.cmd == "compare":
         compare([tuple(int(v) for v in x.split("x")) for x in a.group.split(",")])
     elif a.cmd == "run":
