@@ -117,7 +117,7 @@ M9K checklist (one M9K, pinned site, one change per pair, raw diff; tick each):
 Mark each box with the commit that verified it; unticked boxes appear in the inventory top-10.
 
 LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58Y30 / X37Y60 / X100Y75; raw cram diff, evidence rows `cycloneiv_ctrl:<set>:<lab>`):
-- [x] clk, clkpin, ena, aclr, sclr, sload, asdata: 17 pairs x 4 labs built and diffed, 6 rebuilt (10%), 0 unstable (COMMIT)
+- [x] clk, clkpin, ena, aclr, sclr, sload, asdata: 17 pairs x 4 labs built and diffed, 6 rebuilt (10%), 0 unstable (536a7b312)
 - [ ] pos, pos2 (LE position), idle: sweep paused; held-out TileClassTranslate prediction pending
 - Cross-lab: a single (frame, v) offset per lab (b +2438/+1400, c +1455/+3500, d +4676/+4550) explains only 5-34% of the bits per set; the diffs carry routing bits of the new connection, so lab-to-lab laws need the routing part separated first.
 
