@@ -13,11 +13,19 @@ Ground truth = RCF-named record: fan-out records of the source whose vendor wire
 learnt alias set of the RCF destination form (Tables.src_matches); vendor output, not our decoder.
 Convention (a) exact tile, (b) +-3/+-1 window unique, (c) nearest (L1, ties ambiguous).
 
+PREDICTION 2 (written before the held-out run; refuted if it fails): the R4 destination dx
+  (record tile x - RCF x; dy = 0) is a function of (RCF wire index, column pitch class). Fit by
+  majority on the first 3 designs; on the other 73 designs, against alias-named records, the
+  candidate at (RCF x + dx[index, pitch], RCF y) is unique and equals the named record in >= 99 %
+  of covered hops with 0 wrong picks. Hops whose (index, pitch) is not in the fit are reported
+  as uncovered (a fault when scored), never dropped.
+
   python3.15t scripts/cycloneiv_r4_convention.py [--designs 'gx150_rb*'] [--split odd] [--limit N]
 Log tmp/logs/cycloneiv_r4_convention.log.
 """
 import argparse
 import collections
+import json
 import logging
 import os
 import sys
@@ -59,6 +67,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--designs", default="gx150_rb*")
     ap.add_argument("--split", default="odd")
+    ap.add_argument("--nfit", type=int, default=3)
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
@@ -74,6 +83,7 @@ def main():
     tally = collections.defaultdict(collections.Counter)
     truth_n = collections.defaultdict(collections.Counter)
     offs = collections.defaultdict(collections.Counter)
+    obs = []   # (design idx, wire index, pitch, truth (dx,dy), [candidate offsets])
     for di, name in enumerate(names):
         d = cc.load(name)
         pips, _ = AT.oracle(name, d, geom)
@@ -105,6 +115,9 @@ def main():
                 rd = tr[0]
                 tx, ty = DT.XM - dn[3], dn[4]
                 offs[key][(int(P.vx[rd]) - tx, int(P.vy[rd]) - ty)] += 1
+                if typ == "R4":
+                    obs.append((di, dn[2], key[1], (int(P.vx[rd]) - tx, int(P.vy[rd]) - ty),
+                                [(int(P.vx[r]) - tx, int(P.vy[r]) - ty) for r in cand]))
                 dvx, dvy = DT.WIN_OF[typ]
                 for cv, got in convs(D, fan, enum, tx, ty, dvx, dvy).items():
                     if len(got) == 0:
@@ -128,6 +141,26 @@ def main():
     log.info("== (record - RCF coordinate) offsets of the RCF-named record, top 6 ==")
     for k in sorted(offs):
         log.info("  %s pitch %d: %s", k[0], k[1], offs[k].most_common(6))
+
+    # fit on the first NFIT designs, verify on the rest
+    fit = collections.defaultdict(collections.Counter)
+    for di, i, pit, t, _c in obs:
+        if di < a.nfit:
+            fit[(i, pit)][t] += 1
+    table = {k: c.most_common(1)[0][0] for k, c in fit.items()}
+    res = collections.Counter()
+    for di, i, pit, t, cands in obs:
+        if di < a.nfit:
+            continue
+        if (i, pit) not in table:
+            res["uncovered"] += 1
+            continue
+        got = [c for c in cands if c == table[(i, pit)]]
+        res["agree" if len(got) == 1 and got[0] == t else "wrong" if len(got) == 1 else "ambig" if got else "none"] += 1
+    cov = res["agree"] + res["wrong"] + res["ambig"] + res["none"]
+    log.info("== held-out fit (fit %d designs, %d table keys; verify %d hops) == %s", a.nfit, len(table), sum(res.values()), dict(res))
+    log.info("  covered agreement %.3f%% of %d, wrong %d", 100 * res["agree"] / max(1, cov), cov, res["wrong"])
+    json.dump({f"{k[0]}|{k[1]}": list(v) for k, v in table.items()}, open(os.path.join(REPO, "tmp", "r4_dx_table.json"), "w"))
 
 
 if __name__ == "__main__":

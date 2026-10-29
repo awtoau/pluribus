@@ -171,6 +171,25 @@ WIN_OF = {"R4": (3, 1), "C4": (1, 3), "R24": (9, 1), "C16": (1, 9)}  # |dvx|, |d
 #                                                                 tile vs the RCF driver tile (span + 1)
 
 
+def count_unreached(children, node, P, hops, why, reason, self_too=True):
+    """Scoring: a hop that cannot be resolved (ambiguous / no candidate) and every RCF hop below it is
+    MISSING (CLAUDE.md 'Scoring faults'); dropping them from the denominator hid them. scoring=ambiguous_as_missing"""
+    st = [(node, self_too)]
+    while st:
+        n, cnt = st.pop()
+        if cnt:
+            cls = "LI" if n[0] == LI_T and P.g.kind.get(n[3]) == "LAB" else (n[0] if n[0] in WIRE_T else None)
+            if cls:
+                hops[cls]["missing"] += 1
+                why[cls][reason] += 1
+        for c in children.get(n, ()):
+            if c[0] in WIRE_T:
+                st.append((c, True))
+            elif c[0] == LI_T and P.g.kind.get(c[3]) == "LAB":
+                hops["LI"]["missing"] += 1
+                why["LI"][reason] += 1
+
+
 def hop_forward(D, T, pips, fired, hops, why, amb):
     """Per-hop outcomes, alias-free: roots are exact LE_BUFFER / LOCAL_LINE records; every RCF hop
     (S -> D) with S's record known resolves D from the EXACT fan-out of S (LI: tile + index;
@@ -188,6 +207,8 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
         base = T.unnamed.get((sn[0], str(sn[2]))) if sn[0] == "LE_BUFFER" else None
         if base is not None and sn[3] in colrank:
             stack.append((sn, base + 90 * colrank[sn[3]] + sn[4]))
+        elif sn[0] == "LE_BUFFER":
+            count_unreached(children, sn, P, hops, why, "LE_BUFFER root not resolvable", self_too=False)
     while stack:
         sn, rs = stack.pop()
         if not 0 <= rs < D.N:
@@ -208,6 +229,8 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
                     continue
                 if len(c) > 1:
                     amb[cls] += 1
+                    hops[cls]["missing"] += 1
+                    why[cls]["ambiguous: >1 candidate (counted missing)"] += 1
                     continue
                 rd = int(c[0])
             elif typ in WIRE_T:
@@ -220,9 +243,13 @@ def hop_forward(D, T, pips, fired, hops, why, amb):
                 if len(c) == 0:
                     hops[cls]["missing"] += 1
                     why[cls]["no fan-out edge of the source in the dest window"] += 1
+                    count_unreached(children, dn, P, hops, why, "below an unresolved hop", self_too=False)
                     continue
                 if len(c) > 1:
                     amb[cls] += 1
+                    hops[cls]["missing"] += 1
+                    why[cls]["ambiguous: >1 candidate (counted missing)"] += 1
+                    count_unreached(children, dn, P, hops, why, "below an unresolved hop", self_too=False)
                     continue
                 rd = int(c[0])
             else:
@@ -344,7 +371,7 @@ def score(names):
     den = tm["matched"] + tm["missing"] + tm["extra"] + tm["wrong"]
     log.info("  ALL   matched %d / (matched %d + missing %d + extra %d + wrong %d) = %.3f%%", tm["matched"], tm["matched"],
              tm["missing"], tm["extra"], tm["wrong"], 100 * tm["matched"] / max(1, den))
-    log.info("  ambiguous hops (>1 candidate in window; not scored): %s", dict(hamb))
+    log.info("  ambiguous hops (>1 candidate in window; counted missing): %s", dict(hamb))
     log.info("  fired wire units not on any resolved path (upper bound on extra: includes pad/clock-driven nets and unreached hops): %s", dict(unattr))
     log.info("  extra detail %s; fired %s", dict(li_x), dict(fired_stats))
     return dres
@@ -364,7 +391,8 @@ def record(dres):
     with db.engine().begin() as conn:
         return C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_ddb_trace.py", E.git_head(REPO), results,
                                  params={"tracer": "ddb", "hop_override": os.environ.get("PLURIBUS_HOP_OVERRIDE", "0"),
-                                         "relax_active": os.environ.get("PLURIBUS_RELAX_ACTIVE", "0")})
+                                         "relax_active": os.environ.get("PLURIBUS_RELAX_ACTIVE", "0"),
+                                         "scoring": "ambiguous_as_missing"})
 
 
 def main():
