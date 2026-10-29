@@ -188,7 +188,7 @@ def trim_memory():
 
 
 @contextlib.contextmanager
-def lease(gb, name, log, budget_gb=None, on_blocked=None):
+def lease(gb, name, log, budget_gb=None, on_blocked=None, max_same_name=None):
     """Hold `gb` GB of the shared memory budget while the body runs, and MEASURE what it really used.
 
     Admitted when sum(live leases) + gb <= budget, AVAILABLE RAM - gb >= MIN_AVAILABLE_GB, and no lease
@@ -218,6 +218,8 @@ def lease(gb, name, log, budget_gb=None, on_blocked=None):
             used = sum(v["gb"] for v in data.values())
             now = time.time()
             fits = (used + gb <= budget) or not data
+            if max_same_name is not None and sum(1 for v in data.values() if v['name'] == name) >= max_same_name:
+                fits = False   # global concurrency cap for this kind of job (CPU headroom), across every process
             ramp_ok = all(now - v["t"] >= LEASE_RAMP_S for v in data.values())
             ram_ok = available_gb() - gb >= MIN_AVAILABLE_GB
             ok = fits and ramp_ok and ram_ok

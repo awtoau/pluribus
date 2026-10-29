@@ -30,6 +30,7 @@ log = logging.getLogger("build_pool")
 
 POLL_S = 0.5            # admission re-check; MemAvailable moves on a ~second scale
 STAGGER_S = 0.25        # was 2.0: capped starts at 0.5/s, i.e. ~10 concurrent 20 s chains; the lease and the RAM floor bound memory now
+MAX_BUILD_JOBS = int(os.environ.get("PLURIBUS_MAX_BUILD_JOBS") or max(1, (os.cpu_count() or 8) - 4))  # box-wide cap on concurrent build jobs: leaves ~4 cores for the desktop and other work (Dan 2026-10-29)
 ADMIT_ANYWAY_S = 60.0   # idle pool + short RAM this long = foreign RAM hog, run one job anyway
 
 
@@ -72,7 +73,7 @@ def map_adaptive(fn, items, per_job_gb=1.2, reserve_gb=10.0, max_workers=None, d
     def run(item):
         admit()
         try:
-            with heavy_guard.lease(per_job_gb, "build_pool", log):
+            with heavy_guard.lease(per_job_gb, "build_pool", log, max_same_name=MAX_BUILD_JOBS):
                 return fn(item)
         finally:
             with cv:
