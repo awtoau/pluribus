@@ -112,3 +112,12 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 - So drive strength = the pull-up / pull-down strength muxes (MIO_SET_PULLUP_STRENGTH, MIO_SET_PULLDOWN_STRENGTH), not a separate group; slew = MIO_SET_SLEW_RATE; pull = MIO_USE_PULL_UP; direction = MIO_PIN_MODE; standard = MIO_SELECT_IOST_DIRT (3 CFF bits).
 - Site order: sites run along an edge (HIO: X=117 column by increasing Y, two to four sub-locations per Y; VIO: Y=91 row by decreasing X). A constant offset from the pad-ddb order does not hold (offsets 0 and -4 seen): some pads are not IO sites, so pad -> pin still needs the DEV_PAD type flags.
 - Not decoded: value -> bit pattern of each mux (needs the mux data / arch values), site index -> pad -> pin, DEV_PIN field stream (QTL_BOOL_VECTOR).
+
+## Pad -> IO site -> package pin (2026-10-30, #168; code `lifters/cycloneiv_clean/pkgpad.py`, test `test_pkgpad.py`)
+
+- pkg ddb = DEV_PKG_INFO_BODY root (23-bit bool data, 20 ints, 12 strings, 11 vector<vector<int>>, 5 vector<double>) followed by 896 DEV_PIN objects; the run start is found by exact consumption (all 896 parse, body ends at the last byte). The earlier "second record kind with 11 ints" is the root's 11 `m_2d_int_data` vectors.
+- pad ddb = 520 DEV_PAD_BODY objects the same way (exact consumption). `QTL_BOOL_VECTOR` = u32 nbits + ceil(nbits/32) i32 deltas.
+- Pad classes (strs[3]): Column I/O 324, Row I/O 131, Dedicated Transceiver 32, Dedicated Clock 20, Dedicated Programming 8, JTAG 4, UDCLK 1; strs[1] = site `X<x>Y<y>SUB_LOC<n>`; pad ids are 1..520 in pad order.
+- Pin -> pad: 520 of 896 pins carry one pad id; raw `m_pad_id_list` deltas are 0, 1, 2, ... so the k-th pad-bearing pin links pad k. Oracle (postfit.vo `Location: PIN_` x IOBUF site): 400 / 400 balls land on the pad whose site string equals the placed IOBUF (matched 400, wrong 0, missing 0).
+- IO site -> pad: HIO sites (block type 5) = the 131 Row I/O pads in pad order, VIO sites (type 6) = the Column I/O pads in pad order; 381 / 381 sites placed by the CFF signatures agree (0 wrong). The earlier 0 / 4 offset came from sorting by geometry; the pad order itself is the site order. VIO has 325 sites for 324 Column I/O pads, so one VIO site has no pad (not assigned).
+- Chain ball -> pad -> site -> CFF field bits: 455 IO pins carry a site; 392 of the 400 oracle balls reach the field table (the other 8 are not Row / Column I/O pads).

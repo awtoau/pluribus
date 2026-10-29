@@ -165,3 +165,9 @@ libdb_asmdb	ASMDB_DECISION_MUX	40	0x20	m_lower_setting	byte		#168 walk, lifters/
 libdb_asmdb	ASMDB_DECISION_MUX	40	0x21	m_upper_setting	byte		#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
 libdb_asmdb	ASMDB_ENCODED_BANK_MUX	40	0x20	m_mux_size	int		#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
 libdb_asmdb	ASMDB_ENCODED_BANK_MUX	40	0x24	m_bank_size	int		#168 walk, lifters/cycloneiv_clean/asmdb_walk.py
+libddb_dev	DEV_PKG_INFO_BODY	656	0x0	m_pins	byte[24]	vector<DEV_PIN*>; then hash<string,DEV_PKG_NET*>, bool data @0x38 (23 bits), 20 ints @0x48, 12 strings @0x98, 11 vector<vector<int>> @0xf8, 5 vector<double> @0x200, vector<int> @0x278	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
+libddb_dev	DEV_PIN	584	0x240	m_pad_id_list	byte[8]	one id for pad-bearing pins; raw deltas 0,1,2,... = ordinal of the pad (k-th pad-bearing pin <-> pad k)	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
+libddb_dev	DEV_PIN	584	0xe8	m_string_data	byte[104]	13 strings: [0] ball name, [1] function (empty for IO balls, supply name otherwise), [3..5] timing text	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
+libddb_dev	DEV_PAD_BODY	968	0x0	m_id	int	pad ids are 1..520 in pad order	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
+libddb_dev	DEV_PAD_BODY	968	0x100	m_string_data	byte[208]	26 strings: [1] site X<x>Y<y>SUB_LOC<n>, [3] pad class (Row I/O 131, Column I/O 324, Dedicated Transceiver 32, Dedicated Clock 20, Dedicated Programming 8, JTAG 4, UDCLK 1), [4] function name	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
+libddb_dev	DEV_PAD_BODY	968	0x3c0	m_default_io_standards_by_enum	byte[8]	125 pointer slots up to 0x7a8; 125 tags (xfr_ptr), pooled DEV_IO_STANDARD_DESC	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
