@@ -95,8 +95,8 @@ JOB_GB = {
     "unknown_bits_census": 0.05,     # per worker thread, MachXO2 decode: 8 threads peak 0.08 GB PSS total (#149)
     "validate_fuzz_target": 0.1,     # per worker thread: 4 threads + ecpunpack/load.py children peak 0.35 GB PSS total (#149)
     "native_corpus_parity": 0.05,    # per worker thread: 8 threads peak 0.10 GB PSS total (#149)
-    "cyc4_clean_gate_base": 2.6,     # static edge table + routing + resolver + asmdb walk; peak 3.4-4.05 GB at 3 workers (2026-10-30, tmp/logs/lease_telemetry.jsonl)
-    "cyc4_clean_gate_worker": 0.6,   # per concurrent design (plane + fire temporaries + RCF)
+    "cyc4_clean_gate_base": 2.6,     # static edge table + routing + resolver + asmdb walk; peak 3.4-4.05 GB at 3 workers, 5.12 GB at 4 workers (2026-10-30, tmp/logs/lease_telemetry.jsonl)
+    "cyc4_clean_gate_worker": 0.65,  # per concurrent design (plane + fire temporaries + RCF)
     "bench_reach_sql": 3.0,          # scripts/bench_reach_sql.py: reach + reach2 children on one DB copy
 }
 BATCH_FILL = 0.8   # fraction of BATCH_MAX_GB planned for workers; the rest is headroom for peaks

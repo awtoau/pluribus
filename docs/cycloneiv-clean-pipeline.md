@@ -31,8 +31,8 @@ Rebuild of the placement/lift stack from vendor-derived facts only. The layered 
 ## Plan and exit criteria
 
 1. P1 address engine: pure function (source element, destination element) to rbf cells. Tests: A3 LUT cells 2,396,160 / 2,396,160; A8 arcs 354 / 354 at tile level; `sfl` sofs bit-exact.
-2. P2 tracer: RCF name to element (A7), to group, to address, to rbf cells; score per `recovery-process.md` (ambiguous = missing).
-3. P3 gate: 76 designs, corrected scoring. Exit: no fault category above the current baseline.
+2. P2 tracer (done, `lifters/cycloneiv_clean/tracer.py`): RCF name to element (A7), to group, to address, to rbf cells; score per `recovery-process.md` (ambiguous = missing).
+3. P3 gate (`scripts/cycloneiv_clean_gate.py`, baseline in `gate_runs`): rb_000..009 + corpus-rebuild sample, corrected scoring. Exit: no fault category above the current baseline.
 4. P4 retire the old coordinate code in one commit once P3 passes.
 
 ## Retirement progress (move order; rollback = tag `pre-clean-cycloneiv`)
