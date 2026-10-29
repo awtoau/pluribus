@@ -144,7 +144,7 @@ class Phys:
         egrp = np.repeat(np.arange(nb), gz)
         ent = np.repeat(gs.astype(np.int64), gz) + (np.arange(total) - np.repeat(starts, gz))
         b0 = np.asarray(dec.b0)[ent]
-        pf = np.asarray(dec.pf)[ent].astype(np.int64)
+        pf = np.asarray(dec.pf_raw)[ent].astype(np.int64)
         pv = np.asarray(dec.pv)[ent].astype(np.int64)
         lin = pf * NV + pv
         isA = b0 != 1
@@ -185,7 +185,8 @@ class Phys:
     # -- per-design firing ---------------------------------------------------------------
     def active(self, name, plane=None):
         """Fired group ids of a design (select-only groups dropped), cached per design name."""
-        sub = "active_relax" if os.environ.get("PLURIBUS_RELAX_ACTIVE", "0") == "1" else "active"   # cache keyed by rule
+        sub = ("active_relax" if os.environ.get("PLURIBUS_RELAX_ACTIVE", "0") == "1" else "active") \
+            + ("_hop" + self.dec.hop_mode if self.dec.hop_override else "")   # cache keyed by rule and hop override
         os.makedirs(os.path.join(WORK, sub), exist_ok=True)
         path = os.path.join(WORK, sub, f"{name}.npy") if name else None
         if path and os.path.exists(path):

@@ -363,7 +363,8 @@ def record(dres):
     schema.init()
     with db.engine().begin() as conn:
         return C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_ddb_trace.py", E.git_head(REPO), results,
-                                 params={"tracer": "ddb"})
+                                 params={"tracer": "ddb", "hop_override": os.environ.get("PLURIBUS_HOP_OVERRIDE", "0"),
+                                         "relax_active": os.environ.get("PLURIBUS_RELAX_ACTIVE", "0")})
 
 
 def main():

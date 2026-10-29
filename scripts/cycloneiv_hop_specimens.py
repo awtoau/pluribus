@@ -19,7 +19,26 @@ Raw diff of the cram planes; no Dec.active.  Honoured = the spec's post-fit u0_o
   python3.15t scripts/cycloneiv_hop_specimens.py build [--only null|arcs]
   python3.15t scripts/cycloneiv_hop_specimens.py analyse   # diff vs asm groups -> results.json, metrics
   python3.15t scripts/cycloneiv_hop_specimens.py record    # evidence rows (specimen-pair, build_base set)
+  python3.15t scripts/cycloneiv_hop_specimens.py sample    # seeded LAB sampling plan -> tmp/hop_specimens/sample.json
+  python3.15t scripts/cycloneiv_hop_specimens.py plan-set --set p1|p2 [--labs X,Y;X,Y]   # plan_<set>.json
+  python3.15t scripts/cycloneiv_hop_specimens.py build|analyse --plan tmp/hop_specimens/plan_<set>.json [--only arcs]
+  python3.15t scripts/cycloneiv_hop_specimens.py summary   # P1 / P2 verdict tables over every results_*.json
 Log tmp/logs/cycloneiv_hop_specimens.log.
+
+SWEEP 2 (issue #157, hop-specimen follow-up; predictions written before any sweep-2 build, 2026-10-29)
+Observed at LAB X54Y61: LB->R4 group displaced -70 frames (same rows) in 3/3 arcs; inside the LI input mux the
+C4->LI edge order is permuted (4 of 6) or shifted -1 frame (2 of 6); R4->LI 0/3 rigid fit; C4 and LB->C4 exact.
+ P1  every LB->R4 group in asm.ddb is displaced by -70 frames for horizontal (R4) wires in all interior LAB columns.
+     REFUTED by any honoured R4 arc at another interior LAB that fits at 0 or at a different shift.
+ P2  the LI-mux input order is a fixed permutation per mux type, identical across LABs.
+     REFUTED by two LABs giving different outcomes for the same (LI index, source class/index, edge k).
+Edge and corner LABs are their own class (never pooled with the interior); sampled, not assumed.
+Sampling: R4 = 4 corner LABs (+ nearest forceable as 'near-corner' when the corner has none), 2 points per side, seeded
+interior sample (SEED); LI = ALL forceable inputs of one LI mux at 2 interior LABs, then corner + centre LABs.
+Forcing is honoured only along edges seen in a corpus RCF: only tier-A arcs are built; others are data rows.
+Cap 150 builds in sweep 2; stop at the first prediction miss and enumerate that scope instead of generalising;
+yield floor 1 answered feature (an R4 shift value or an LI permutation entry) per 10 builds, stop and report if
+below over the last 60.
 """
 import argparse
 import collections
@@ -247,6 +266,28 @@ def down_li(G, rev, obs, m):
             and nm_m in obs.get(rcf_name_of(G, r, rev), ())]
 
 
+def mux_entry(G, rev, obs, kind, idx, m, lab):
+    """Plan entry of one mux record m: (mux dict, arc rows).  Arcs: planned (a chain exists) or not-forceable."""
+    dl = down_li(G, rev, obs, m) if kind != "LI" else []
+    L = dl[0] if dl else None
+    srcs, _ks = G.fanin(m)
+    nm_m = rcf_name_of(G, m, rev)
+    mx = {"kind": kind, "idx": idx, "mux": m, "mux_name": nm_m, "down": L, "lab": list(lab),
+          "down_name": rcf_name_of(G, L, rev) if L else None,
+          "fanin": [{"src": int(s), "class": G.klass(int(s)), "name": rcf_name_of(G, int(s), rev)} for s in srcs]}
+    arcs = []
+    for s in sorted(srcs.tolist()):
+        ch, tier = src_ok(G, rev, obs, s, nm_m) or (None, None)
+        base = {"mux": m, "kind": kind, "src": s, "class": G.klass(s), "lab": list(lab), "src_idx": int(G.Q.index[s]), "mux_idx": idx}
+        if ch:
+            arcs.append(dict(base, status="planned", chain=ch, tier=tier, chain_names=[rcf_name_of(G, r, rev) for r in ch]))
+        else:
+            why = ("hop never seen in a corpus RCF (name unknown or edge unobserved)" if G.klass(s) in WIRE + ("LB",)
+                   else f"source class {G.klass(s)}")
+            arcs.append(dict(base, status="not-forceable", why=why))
+    return mx, arcs
+
+
 def cmd_plan(a):
     G = Graph()
     rev = load_names()
@@ -289,25 +330,11 @@ def cmd_plan(a):
     plan = {"lab": lab, "muxes": [], "arcs": []}
     for kind in ("R4", "C4", "LI"):
         n, idx, m = full[lab][kind]
-        dl = down_li(G, rev, obs, m) if kind != "LI" else []
-        L = dl[0] if dl else None
-        srcs, ks = G.fanin(m)
-        nm_m = rcf_name_of(G, m, rev)
-        mx = {"kind": kind, "idx": idx, "mux": m, "mux_name": nm_m, "down": L,
-              "down_name": rcf_name_of(G, L, rev) if L else None,
-              "fanin": [{"src": int(s), "class": G.klass(int(s)), "name": rcf_name_of(G, int(s), rev)} for s in srcs]}
+        mx, arcs = mux_entry(G, rev, obs, kind, idx, m, lab)
         plan["muxes"].append(mx)
-        for s in sorted(srcs.tolist()):
-            ch, tier = src_ok(G, rev, obs, s, nm_m) or (None, None)
-            if ch:
-                plan["arcs"].append({"mux": m, "kind": kind, "src": s, "class": G.klass(s), "status": "planned", "chain": ch, "tier": tier,
-                                     "chain_names": [rcf_name_of(G, r, rev) for r in ch]})
-            else:
-                why = ("hop never seen in a corpus RCF (name unknown or edge unobserved)" if G.klass(s) in WIRE + ("LB",)
-                       else f"source class {G.klass(s)}")
-                plan["arcs"].append({"mux": m, "kind": kind, "src": s, "class": G.klass(s), "status": "not-forceable", "why": why})
-        log.info("mux %s idx %d %s: fan-in %d, forceable tier A %d tier B %d, down %s", kind, idx, nm_m, len(srcs), n // 100, n % 100,
-                 mx["down_name"])
+        plan["arcs"] += arcs
+        log.info("mux %s idx %d %s: fan-in %d, forceable tier A %d tier B %d, down %s", kind, idx, mx["mux_name"], len(mx["fanin"]),
+                 n // 100, n % 100, mx["down_name"])
     (TMP / "plan.json").write_text(json.dumps(plan, indent=0, default=int))
     log.info("plan: LAB X%dY%d, %d arcs (%d forceable)", lab[0], lab[1], len(plan["arcs"]),
              sum(x["status"] == "planned" for x in plan["arcs"]))
@@ -429,8 +456,12 @@ def nm(arc):
     return f"{PFX}_{arc['kind'].lower()}_{arc['src']}"
 
 
+def load_plan(a):
+    return json.loads(Path(a.plan).read_text())
+
+
 def cmd_build(a):
-    plan = json.loads((TMP / "plan.json").read_text())
+    plan = load_plan(a)
     arcs = jobs_of(plan)
     jobs = min(a.jobs, 16)
     todo_b = []
@@ -546,11 +577,11 @@ def hop_fit(G_bits, flipped, spec_set=None):
 
 
 def cmd_analyse(a):
-    plan = json.loads((TMP / "plan.json").read_text())
+    plan = load_plan(a)
     G = Graph()
     res = []
     for arc in plan["arcs"]:
-        row = {k: arc[k] for k in ("mux", "kind", "src", "class", "status", "tier") if k in arc}
+        row = {k: arc[k] for k in ("mux", "kind", "src", "class", "status", "tier", "lab", "src_idx", "mux_idx") if k in arc}
         row["why"] = arc.get("why")
         if arc["status"] != "planned":
             res.append(row)
@@ -579,8 +610,12 @@ def cmd_analyse(a):
                     gt = G.group_bits(t, d_)
                     if t != s_ and gt and gt[0] and set(gt[0]) <= set(on) and set(gt[0]) != set(gb[0]):
                         sib.append({"sibling": t, "rec_diff": t - s_, "k_self": G.edge_k(s_, d_), "k_sib": G.edge_k(t, d_), "cells": len(gt[0])})
-            hops.append({"hop": [s_, d_], "bits": gb[0], "dropped": gb[1], "classes": [G.klass(s_), G.klass(d_)], "fit": fit,
-                         "shift": sh, "siblings": sib})
+            hp = {"hop": [s_, d_], "bits": gb[0], "dropped": gb[1], "classes": [G.klass(s_), G.klass(d_)], "fit": fit,
+                  "shift": sh, "siblings": sib, "k": G.edge_k(s_, d_)}
+            if fit == "shift" and sh and gb[0]:
+                f0 = gb[0][0] // NV
+                hp["cols"] = [G.dec.col_of(f0), G.dec.col_of(f0 + sh[0][0])]
+            hops.append(hp)
             P |= set(gb[0])
             dropped += gb[1]
         row.update(honoured=ok, why=why if not ok else None, on=on, off=off, hops=hops, n_pred=len(P), dropped=dropped,
@@ -606,7 +641,10 @@ def cmd_analyse(a):
                          h["classes"][1], [(x["sibling"], "rec%+d" % x["rec_diff"], "edge k %s->%s" % (x["k_self"], x["k_sib"])) for x in h["siblings"]])
     for k, c in sorted(hopstat.items()):
         log.info("HOP %s -> %s: %s", k[0], k[1], dict(c))
-    (TMP / "results.json").write_text(json.dumps({"plan_lab": plan["lab"], "rows": res, "muxes": plan["muxes"]}, default=int))
+    out = TMP / ("results.json" if Path(a.plan).name == "plan.json" else "results_" + Path(a.plan).stem.removeprefix("plan_") + ".json")
+    out.write_text(json.dumps({"plan_lab": plan["lab"], "rows": res, "muxes": plan["muxes"], "skipped": plan.get("skipped", [])},
+                              default=int))
+    log.info("results -> %s", out.name)
     for m in plan["muxes"]:
         rs = [r for r in res if r["mux"] == m["mux"]]
         pl = [r for r in rs if r["status"] != "not-forceable"]
@@ -627,6 +665,189 @@ def cmd_analyse(a):
         for r in pl:
             if r["status"] != "not-built" and not r.get("honoured"):
                 log.info("  src %d (%s) NOT honoured: %s", r["src"], r["class"], r["why"])
+
+
+# ---------------------------------------------------------------- sweep 2: sampling plan, plan sets, summary
+def r4_table(G, rev, obs):
+    """(X, Y) -> (n tier-A LB-sourced inputs, R4 index, mux record) over every corpus-named R4 record with a named LI below."""
+    best = {}
+    for r, nm_ in rev.items():
+        if nm_[0] != "R4" or nm_[1] not in G.D.cm or not down_li(G, rev, obs, r):
+            continue
+        srcs, _ = G.fanin(r)
+        n = 0
+        for s_ in srcs.tolist():
+            ch = src_ok(G, rev, obs, s_, nm_)
+            n += bool(ch and ch[1] == "A" and G.klass(s_) == "LB")
+        key = (nm_[1], nm_[2])
+        cand = (n, -nm_[3], r)
+        if n and (key not in best or cand > best[key]):
+            best[key] = cand
+    return {k: (v[0], -v[1], v[2]) for k, v in best.items()}
+
+
+def cmd_sample(a):
+    """Seeded LAB sampling plan for the R4 hop sweep (recovery-process.md sampling plan).  Classes never pooled."""
+    import random
+    G = Graph()
+    rev = load_names()
+    obs = observed_edges()
+    tab = r4_table(G, rev, obs)
+    g = G.D.P.g
+    xs = sorted(x for x in g.kind if g.kind[x] == "LAB")
+    X0, X1, Y0, Y1 = xs[0], xs[-1], 1, g.ymax - 1
+    rng = random.Random(SEED)
+    out = {"seed": SEED, "lab_columns": [X0, X1], "rows": [Y0, Y1], "table_labs": len(tab), "corner": [], "near_corner": [], "side": [],
+           "interior": [], "interior_extreme": [], "skipped": []}
+    for cx, cy in ((X0, Y0), (X0, Y1), (X1, Y0), (X1, Y1)):
+        if (cx, cy) in tab:
+            out["corner"].append([cx, cy])
+            continue
+        out["skipped"].append({"lab": [cx, cy], "class": "corner", "why": "no corpus-named R4 mux with a tier-A LB-sourced input (not forceable)"})
+        near = min(tab, key=lambda t: (max(abs(t[0] - cx), abs(t[1] - cy)), t))
+        out["near_corner"].append(list(near))
+    sides = {"left": [t for t in sorted(tab) if t[0] == X0 and Y0 < t[1] < Y1], "right": [t for t in sorted(tab) if t[0] == X1 and Y0 < t[1] < Y1],
+             "bottom": [t for t in sorted(tab) if t[1] == Y0 and X0 < t[0] < X1], "top": [t for t in sorted(tab) if t[1] == Y1 and X0 < t[0] < X1]}
+    for nm_, c in sides.items():
+        if c:
+            out["side"].append(list(rng.choice(c)))
+        else:
+            out["skipped"].append({"lab": None, "class": "side-" + nm_, "why": "no forceable LAB on this side"})
+    inner = sorted(t for t in tab if X0 < t[0] < X1 and Y0 < t[1] < Y1)
+    ext = {min(inner), max(inner), min(inner, key=lambda t: (t[1], t[0])), max(inner, key=lambda t: (t[1], t[0]))}
+    out["interior_extreme"] = [list(t) for t in sorted(ext)]
+    out["interior"] = [list(t) for t in rng.sample([t for t in inner if t not in ext], 8)]
+    (TMP / "sample.json").write_text(json.dumps(out))
+    log.info("sample: table %d forceable LABs (%d interior); corners %s near-corner %s sides %s interior-extreme %s interior %s; skipped %s",
+             len(tab), len(inner), out["corner"], out["near_corner"], out["side"], out["interior_extreme"], out["interior"], out["skipped"])
+
+
+def cmd_plan_set(a):
+    """Plan file plan_<set>.json.  p1: one tier-A LB-sourced arc into an R4 mux per sampled LAB.
+    p2: ALL tier-A inputs of one LI mux (--li-idx) per LAB in --labs."""
+    G = Graph()
+    rev = load_names()
+    obs = observed_edges()
+    plan = {"lab": None, "muxes": [], "arcs": [], "skipped": []}
+    if a.set == "p1":
+        tab = r4_table(G, rev, obs)
+        sm = json.loads((TMP / "sample.json").read_text())
+        labs = [tuple(t) for c in a.classes.split(",") for t in sm[c]] if a.labs is None else [tuple(map(int, t.split(","))) for t in a.labs.split(";")]
+        if a.cols:     # scope enumeration after a P1 miss: one seeded forceable LAB per listed fitter column
+            import random
+            rng = random.Random(SEED)
+            labs = []
+            for cx in (int(v) for v in a.cols.split(",")):
+                c = sorted(t for t in tab if t[0] == cx)
+                if c:
+                    labs.append(rng.choice(c))
+                else:
+                    plan["skipped"].append({"lab": None, "class": f"col-{cx}", "why": "no forceable LAB in this column"})
+        labs = list(dict.fromkeys(labs))
+        plan["skipped"] += [] if a.cols else list(sm["skipped"])
+        plan["lab"] = list(labs[0])
+        for lab in labs:
+            n, idx, m = tab[lab]
+            mx, arcs = mux_entry(G, rev, obs, "R4", idx, m, lab)
+            mx["class"] = "column_scope" if a.cols else next((c for c in ("corner", "near_corner", "side", "interior_extreme", "interior") if list(lab) in sm[c]), "explicit")
+            pick = next((x for x in arcs if x["status"] == "planned" and x["tier"] == "A" and x["class"] == "LB"), None)
+            for x in arcs:
+                if x is pick:
+                    continue
+                x["why"] = x.get("why") or "not selected (one LB-sourced arc per LAB)"
+                x["status"] = "not-forceable" if x["status"] != "planned" or x["tier"] != "A" else "not-selected"
+            plan["muxes"].append(mx)
+            plan["arcs"] += arcs
+    else:
+        if a.labs.startswith("auto:"):     # the n forceable LABs (R4 table) with most tier-A inputs into LI mux --li-idx
+            n_best = int(a.labs[5:])
+            score = {}
+            for lab in r4_table(G, rev, obs):
+                m = G.D.li_of.get((G.vx(lab[0]), lab[1], a.li_idx))
+                if m is not None and lab != (54, 61):
+                    score[lab] = sum(1 for x in mux_entry(G, rev, obs, "LI", a.li_idx, m, lab)[1] if x["status"] == "planned" and x["tier"] == "A")
+            labs = sorted(score, key=lambda t: (-score[t], t))[:n_best]
+            log.info("auto LABs %s", [(t, score[t]) for t in labs])
+        else:
+            labs = [tuple(map(int, t.split(","))) for t in a.labs.split(";")]
+        plan["lab"] = list(labs[0])
+        for lab in labs:
+            m = G.D.li_of.get((G.vx(lab[0]), lab[1], a.li_idx))
+            if m is None:
+                plan["skipped"].append({"lab": list(lab), "class": "LI", "why": f"no LI record idx {a.li_idx}"})
+                continue
+            mx, arcs = mux_entry(G, rev, obs, "LI", a.li_idx, m, lab)
+            for x in arcs:
+                if x["status"] == "planned" and x["tier"] != "A":
+                    x["status"], x["why"] = "not-forceable", "hop unseen in a corpus RCF (tier B; not built, not retried)"
+            plan["muxes"].append(mx)
+            plan["arcs"] += arcs
+    f = TMP / f"plan_{a.set}{'_' + a.classes.replace(',', '+') if a.set == 'p1' and a.labs is None and not a.cols else ''}{'_cols' if a.cols else ''}.json"
+    if a.set == "p2":
+        f = TMP / ("plan_p2_" + "_".join("X%dY%d" % tuple(l) for l in (m_["lab"] for m_ in plan["muxes"])) + ".json")
+    f.write_text(json.dumps(plan, default=int))
+    pl = [x for x in plan["arcs"] if x["status"] == "planned"]
+    log.info("plan-set %s -> %s: %d LABs, %d arcs to build (%d builds), %d data rows", a.set, f.name, len(plan["muxes"]), len(pl), 2 * len(pl),
+             len(plan["arcs"]) - len(pl))
+
+
+def outcome(r):
+    """One comparable outcome per honoured arc for the P1/P2 keys."""
+    out = {}
+    for h in r.get("hops", ()):
+        if "classes" not in h:
+            continue
+        cl = tuple(h["classes"])
+        if h["fit"] == "exact":
+            o = "exact"
+        elif h["fit"] == "shift":
+            o = ("shift", h["shift"][0][0], h["shift"][0][1])
+        elif h.get("siblings"):
+            o = ("perm",) + tuple(sorted((x["k_sib"]) for x in h["siblings"]))
+        else:
+            o = "none"
+        out[cl] = (o, h.get("k"), h.get("cols"))
+    return out
+
+
+def cmd_summary(a):
+    files = [TMP / "results.json"] + sorted(TMP.glob("results_*.json"))
+    rows = []
+    for f in files:
+        res = json.loads(f.read_text())
+        cls = {tuple(m["lab"]) if m.get("lab") else tuple(res["plan_lab"]): m.get("class", "interior") for m in res["muxes"]}
+        for r in res["rows"]:
+            lab = tuple(r["lab"]) if r.get("lab") else tuple(res["plan_lab"])
+            rows.append((f.name, lab, cls.get(lab, "interior"), r))
+    built = [x for x in rows if x[3]["status"] not in ("not-forceable", "not-built", "not-selected") and "on" in x[3]]
+    hon = [x for x in built if x[3].get("honoured")]
+    log.info("arcs: %d rows, %d built, %d honoured, %d not-honoured", len(rows), len(built), len(hon), len(built) - len(hon))
+    # P1: LB -> R4 hop outcome per LAB class
+    p1 = collections.defaultdict(list)
+    for fn, lab, c, r in hon:
+        if r["kind"] != "R4":
+            continue
+        o = outcome(r).get(("LB", "R4"))
+        if o:
+            p1[c].append((lab, r["src_idx"], r.get("mux_idx"), o))
+    for c, v in p1.items():
+        cnt = collections.Counter(str(o[0]) for *_x, o in v)
+        log.info("P1 class %-17s n=%d outcomes %s", c, len(v), dict(cnt))
+        for lab, si, mi, o in v:
+            log.info("   X%dY%d R4 idx %s from LB idx %s: %s k=%s cols %s", lab[0], lab[1], mi, si, o[0], o[1], o[2])
+    # P2: LI mux, C4 / R4 -> LI outcome keyed by (LI index, source class, source index, k)
+    p2 = collections.defaultdict(dict)
+    for fn, lab, c, r in hon:
+        if r["kind"] != "LI":
+            continue
+        o = outcome(r)
+        for cl in (("C4", "LI"), ("R4", "LI"), ("R24", "LI"), ("C16", "LI")):
+            if cl in o:
+                p2[(r["mux_idx"], r["class"], r["src_idx"], o[cl][1])][(lab, c)] = o[cl][0]
+    for key, d in sorted(p2.items(), key=str):
+        vals = collections.Counter(str(v) for v in d.values())
+        log.info("P2 key LI%s src %s idx %s k=%s: %s %s", key[0], key[1], key[2], key[3], dict(vals),
+                 "CONSISTENT" if len(vals) == 1 else "DIFFERS: " + "; ".join(f"X{l[0]}Y{l[1]}({c})={v}" for (l, c), v in d.items()))
 
 
 def register_build(conn, name, purpose):
@@ -657,32 +878,64 @@ def register_build(conn, name, purpose):
 def cmd_record(a):
     import db
     from provenance import evidence_io as E
-    res = json.loads((TMP / "results.json").read_text())
+    from sqlalchemy import select, update
+    import schema as S
     commit = E.git_head(REPO)
     n = 0
+    allrows = []
+    for f in sorted(TMP.glob("results*.json")):
+        res = json.loads(f.read_text())
+        allrows += [(res["plan_lab"], r, "confirm" if f.name == "results_p1_cols.json" else "parent") for r in res["rows"]]
+    import cycloneiv_geom as cg
+    geom = cg.load("ep4cgx150")
     with db.engine().begin() as conn:
         E.ensure_family(conn, "cycloneiv")
-        for r in res["rows"]:
+        for plan_lab, r, batch in allrows:
             if r["status"] not in ("planned",) or "on" not in r:
                 continue
             name = f"{PFX}_{r['kind'].lower()}_{r['src']}"
+            res = {"plan_lab": r.get("lab") or plan_lab}
             bid = register_build(conn, name + "_b", "hop specimen base")
             sid = register_build(conn, name + "_s", "hop specimen forced single path")
             meta = {"group": "hop_specimen", "lab": res["plan_lab"], "mux_kind": r["kind"], "mux_record": r["mux"],
                     "src_record": r["src"], "src_class": r["class"], "honoured": r["honoured"], "why": r["why"],
                     "n_asm_predicted": r["n_pred"], "predicted_not_flipped": len(r["pred_missing"]),
                     "flipped_beyond_asm": len(r["extra"]), "exact": r.get("exact"), "resid_equal": r.get("resid_equal"),
-                    "asm_dropped_out_of_band": r["dropped"], "plane_level": True}
-            E.record_specimen(conn, "cycloneiv", "EP4CGX150", name, name + "_b", r["on"], r["off"], meta,
-                              f"hop_specimen:{r['kind']}", "scripts/cycloneiv_hop_specimens.py", commit, NV,
-                              tool_version="25.1", build_base=bid, build_spec=sid)
+                    "asm_dropped_out_of_band": r["dropped"], "plane_level": True, "src_idx": r.get("src_idx"),
+                    "mux_idx": r.get("mux_idx"), "tier": r.get("tier"),
+                    "hops": [{k: h.get(k) for k in ("classes", "k", "fit", "shift", "cols")} | {"siblings": [(x["k_self"], x["k_sib"]) for x in h.get("siblings", ())]}
+                             for h in r["hops"] if "classes" in h]}
+            lab = r.get("lab") or plan_lab
+            meta["tile"] = list(lab)
+            meta["role"] = batch     # parent = rows the R4 rule was fitted on; confirm = rows planned after it (predicted before building)
+            lbr4 = next((h for h in meta["hops"] if h["classes"] == ["LB", "R4"]), None)
+            if r["kind"] == "R4" and r["honoured"] and lbr4:
+                # rule R4-shift-v1: plane frame -= w(c) + w(c-1), c = the column of the group's cells (asm_decode.Dec._hop_pf)
+                c = (lbr4.get("cols") or [None])[0]
+                w = lambda x: (geom.FX[x] - geom.FX[x - 1]) if geom.kind.get(x) == "LAB" and geom.kind.get(x - 1) == "LAB" else 35   # noqa: E731
+                meta["rule_shift"] = -(w(c) + w(c - 1)) if c else None
+                meta["observed_shift"] = lbr4["shift"][0][0] if lbr4.get("shift") else None
+                meta["consistent"] = meta["rule_shift"] == meta["observed_shift"]
+            eid = E.record_specimen(conn, "cycloneiv", "EP4CGX150", name, name + "_b", r["on"], r["off"], meta,
+                                    f"hop_specimen:{r['kind']}", "scripts/cycloneiv_hop_specimens.py", commit, NV,
+                                    tool_version="25.1", build_base=bid, build_spec=sid)
+            old = conn.execute(select(S.evidence.c.result).where(S.evidence.c.id == eid)).scalar()
+            if "tile" not in old.get("meta", {}):      # row written by the first run (one LAB, no scope tag): add the scope tags
+                conn.execute(update(S.evidence).where(S.evidence.c.id == eid).values(result=dict(old, meta=dict(old["meta"], **{
+                    k: meta[k] for k in ("tile", "role", "rule_shift", "observed_shift", "consistent", "hops", "src_idx", "mux_idx", "tier") if k in meta}))))
             n += 1
     log.info("recorded %d evidence rows (specimen-pair, build_base/build_spec set)", n)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("names", "plan", "build", "analyse", "record"))
+    ap.add_argument("cmd", choices=("names", "plan", "build", "analyse", "record", "sample", "plan-set", "summary"))
+    ap.add_argument("--plan", default=str(TMP / "plan.json"))
+    ap.add_argument("--set", default="p1")
+    ap.add_argument("--classes", default="interior,interior_extreme")
+    ap.add_argument("--li-idx", type=int, default=11)
+    ap.add_argument("--cols", default=None, help="plan-set p1: fitter columns, one seeded forceable LAB each")
+    ap.add_argument("--labs", default=None, help="explicit LABs 'X,Y;X,Y' for plan-set")
     ap.add_argument("--only", default="")
     ap.add_argument("--lab", default=None, help="override the planned LAB, X,Y")
     ap.add_argument("--jobs", type=int, default=16)
@@ -693,7 +946,7 @@ def main():
     for h in (logging.FileHandler(REPO / "tmp" / "logs" / "cycloneiv_hop_specimens.log"), logging.StreamHandler()):
         h.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         log.addHandler(h)
-    globals()["cmd_" + a.cmd](a)
+    globals()["cmd_" + a.cmd.replace("-", "_")](a)
 
 
 if __name__ == "__main__":

@@ -374,6 +374,32 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
                                generator="scripts/cycloneiv_ever_set.py", n_objects=es["n_designs"], kind="audit")
         class_claim("5b", "measured", None, [("direct", [e_crc])], "CRC-16 per CRAM frame")
         class_claim("5d", "measured", None, [("direct", [e_pp])], "constant 0xFF pre/postamble")
+    # LB -> R4 group displacement (hop specimens, issue #157): pattern R4-shift-v1 over the forceable core of the LAB array
+    hop = []
+    for eid, res in conn.execute(select(ev.c.id, ev.c.result).where(and_(ev.c.family == fam, ev.c.source_ref == "hop_specimen:R4"))):
+        m = res.get("meta", {})
+        if m.get("honoured") and m.get("consistent") is not None and m.get("tile"):
+            hop.append((eid, m))
+    if hop:
+        xs, ys = [m["tile"][0] for _, m in hop], [m["tile"][1] for _, m in hop]
+        R.matcher("hop-shift-v1", "deterministic", "R4-destined mux cells = asm cells - (w(c) + w(c-1)) plane frames", 1,
+                  "cycloneiv_asm_decode:Dec._hop_pf")
+        R.pattern("hop-shift-v1", "bit", "LB -> R4 asm group sits two asm columns left (-70 plane frames, -74 over the 39-frame columns)",
+                  {"dims": 2, "axes": {"x": [min(xs), max(xs)], "y": [min(ys), max(ys)]},
+                   "scope": "LABs reachable by forcing (corpus-named R4 muxes); corners and sides are not forceable"},
+                  matcher_id="hop-shift-v1", status="open")
+        e_gate = E.record_decode(conn, fam, device, "hop override vs the 76-design vendor-oracle gate: R4 hops matched 902 -> 715",
+                                 {"gate": "scripts/cycloneiv_ddb_trace.py score, gx150_rb odd split, 76 designs",
+                                  "flag_off": {"R4": [902, 5335, 0, 4085], "ALL": [24113, 17822, 0, 10353]},
+                                  "flag_on": {"R4": [715, 4784, 0, 4823], "ALL": [23926, 17271, 0, 11091]},
+                                  "order": "matched, missing, extra, wrong", "meta": {}}, commit,
+                                 "scripts/cycloneiv_ddb_trace.py", generator="scripts/cycloneiv_hop_specimens.py", n_objects=76,
+                                 kind="oracle-compare")
+        ok = [(e, m) for e, m in hop if m["consistent"]]
+        class_claim("2h", "pattern-predicted", "hop-shift-v1",
+                    [("parent", [e for e, m in ok if m["role"] == "parent"]), ("confirm", [e for e, m in ok if m["role"] == "confirm"]),
+                     ("refute", [e for e, m in hop if not m["consistent"]]), ("conflict", [e_gate])],
+                    "LB -> R4 group displacement; fitted on parent rows, confirm rows predicted before building; gate conflict stands")
     for cid in classes:
         if cid in ("4a", "4b", "4c", "4d", "4e", "5c", "6"):
             class_claim(cid, "unknown", None, [], "no attribution")

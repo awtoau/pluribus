@@ -127,6 +127,7 @@ def db_die(msg):
     raise SystemExit(msg)
 
 
+R4_ENUM = 268            # routing.ddb record class of horizontal R4 wires
 DROP_F = 30000           # plane frame for out-of-band entries: beyond any plane, never set, keys positive
 
 
@@ -207,7 +208,10 @@ class Dec:
 
     def __init__(self):
         mm = {"mmap_mode": "r"}
-        self.pf = np.load(f"{DEC}_pf.npy", **mm)
+        self.pf_raw = np.load(f"{DEC}_pf.npy", **mm)
+        self.hop_mode = os.environ.get("PLURIBUS_HOP_OVERRIDE", "0")      # "0" off (default) | "1" R4-destined muxes
+        self.hop_override = self.hop_mode != "0"                          # (#157, docs/cycloneiv-hop-override.md)
+        self.pf = self.pf_raw
         self.pv = np.load(f"{DEC}_pv.npy", **mm)
         self.pred = np.load(f"{DEC}_pred.npy", **mm)
         self.gid = np.load(f"{DEC}_gid.npy", **mm)
@@ -225,6 +229,52 @@ class Dec:
         self.e_ukey = np.load(f"{DEC}_e_ukey.npy", **mm)
         self.ukey_block = np.load(f"{DEC}_ukey_block.npy", **mm)
         self.nblocks = int(self.block.max()) + 1
+        if self.hop_override:
+            self.pf = self._hop_pf()
+
+    def _hop_pf(self):
+        """pf with the LB -> R4 column displacement applied (derived array, cached beside the tables, mmapped).
+        Rule (specimens hop_specimen:R4, scripts/cycloneiv_hop_specimens.py): every entry of a group whose destination is
+        an R4 record sits two columns to the left in asm space: plane frame -= w(c) + w(c-1) for the entry's band column
+        c, w(x) = FX[x] - FX[x-1] between two LAB columns, else 35 (-70 everywhere, -74 over the two 39-frame columns)."""
+        path = f"{DEC}_pf_hop{self.hop_mode}.npy"
+        if os.path.exists(path) and os.path.getmtime(path) >= os.path.getmtime(f"{DEC}_pf.npy"):
+            return np.load(path, mmap_mode="r")
+        import cycloneiv_ddb_blockmap as BM
+        ge = BM.group_edges()
+        z = np.load(os.path.join(A.TMP, f"{DIE}_rt_fanout.npz"))
+        enum = z["enum"][z["tpl"]]
+        gdest = np.where(ge["real"], ge["dest"], -1)
+        real = gdest >= 0
+        r4 = real & (enum[np.maximum(gdest, 0)] == R4_ENUM)
+        blk = np.asarray(self.block)
+        n_r4 = np.bincount(blk[r4], minlength=self.nblocks)
+        n_real = np.bincount(blk[real], minlength=self.nblocks)
+        # a mux (block) moves as a whole: every real group of it is R4-destined (select-only pseudo groups follow the block)
+        g_r4 = ((n_r4 > 0) & (n_r4 == n_real))[blk]
+        log.info("hop override: %d blocks with R4 groups, %d mixed (real groups of several dest classes) left in place",
+                 int((n_r4 > 0).sum()), int(((n_r4 > 0) & (n_r4 < n_real)).sum()))
+        gid = np.asarray(self.gid)
+        raw = np.asarray(self.pf_raw)
+        g = cg.load("ep4cgx150")
+        xs = sorted(g.FX)
+        fx = np.array([g.FX[x] for x in xs], np.int64)
+        w = {x: (g.FX[x] - g.FX[x - 1] if x - 1 in g.FX and g.kind[x] == "LAB" and g.kind[x - 1] == "LAB" else 35) for x in xs}
+        shift = np.zeros(len(raw), np.int64)
+        e = np.flatnonzero(g_r4[gid] & (raw != DROP_F))
+        i = np.searchsorted(fx, raw[e].astype(np.int64), "right") - 1
+        col = np.array(xs)[np.clip(i, 0, len(xs) - 1)]
+        ok = (raw[e] - fx[np.clip(i, 0, len(xs) - 1)] <= MAX_OFF) & (col >= 2)
+        sh = np.array([w[c] + w[c - 1] if c >= 2 else 0 for c in col.tolist()], np.int64)
+        shift[e[ok]] = sh[ok]
+        out = (raw.astype(np.int64) - shift).astype(np.int32)
+        log.info("hop override: %d entries of %d groups shifted (%d left in place: column < 2 or outside a band)",
+                 int(ok.sum()), int(g_r4.sum()), int((~ok).sum()))
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "wb") as fh:
+            np.save(fh, out)
+        os.replace(tmp, path)
+        return np.load(path, mmap_mode="r")
 
     @property
     def names(self):
@@ -239,7 +289,7 @@ class Dec:
         artifact cached beside the tables and mmapped (shared by all processes); built once per plane shape."""
         c = self.__dict__.get("_flat_cache")
         if c is None or c[0] != plane.shape:
-            path = f"{DEC}_flat_{plane.shape[0]}x{plane.shape[1]}.npy"
+            path = f"{DEC}_flat{'_hop' + self.hop_mode if self.hop_override else ''}_{plane.shape[0]}x{plane.shape[1]}.npy"
             try:
                 fl = np.load(path, mmap_mode="r")
                 if fl.shape != self.pf.shape:
