@@ -75,3 +75,24 @@ clock polarity 2/2; all others 0 (src LE 0/8, snk LE 0/14, port 0/1, tie 0/6, ff
   Constant ties are absorbed (tie 1 = absent) or restructure the FF (tie 0).
 - LOCAL_LINE select cells: a source or sink move always flips the LE-used and tied-port routing cells too.
 - Next: base with unconnected ports (needs masks that ignore them), fan-out splits (spec adds a second sink on the same LL).
+
+## Round 2 (2026-10-29)
+| item | result |
+|---|---|
+| LUT-INIT cells, 16 LEs x 16 bits x 4 LABs (X10Y10, X58Y30, X37Y60, X100Y75) | 1024 / 1024 pairs = exactly 1 cell |
+| clock-polarity cell (clk vs ~clk) at the 4 LABs | 4 / 4 single cells, all tile-relative (df -6, dv -30) |
+| distinct single cells now isolated | 1028 = 4 x (256 INIT + 1 clock polarity) |
+| INIT cell SET per LE vs X10Y10 | identical in 48 / 48 (LE, LAB) combinations |
+| INIT bit -> cell labelling vs X10Y10 | 15 of 16 LEs share one permutation per LAB; LE 0 differs |
+| connect a second sink port (unconnected -> LL I, port p) | 2 cells in 112 / 112 pairs |
+| adaptive splitting, budget 300, depth 1 | 0 new distinct cells; depth 2 had no candidates |
+
+- Translation law: the FX/vy translation is exact for the cell SET. The 9 "shifted" sink-INIT cells of round 1 are bit-label permutations, not position shifts.
+  - Permutations: X58Y30 and X37Y60 (0,8,2,10,4,12,6,14,1,9,...); X100Y75 swaps bit groups 4-7 and 8-11.
+  - Likely cause: all LUT ports are tied to the same net (`ina`), so the fitter may permute ports and rewrites the mask. Not yet proven; test = a design with a distinct net per port.
+- Use cell positions (not bit labels) when comparing LABs.
+- Second sink on the same LOCAL_LINE: connecting costs 2 cells, one depending on the local line (df -11..-17), one on the port (D: df -9, C: df -10), row set by the sink LE.
+  - Not split further: no unconnected -> 1-cell state exists for a port; other legal ports are re-routed by the fitter (B refused for the second sink).
+  - A dangling sink with no fan-out is swept by the fitter (also the earlier `lab_modes` fan group, 0/45 honoured): the second sink must drive a pin.
+- 448 second-sink variants honoured=False came from that sweep; rerun with the pin-driven sink: 336 ok, 112 refused (fitter picked another port).
+- Bare grid (unused ports unconnected, 480 variants): source move 6-8 cells, port change 4, sink move 10+; no distance-1 pair.

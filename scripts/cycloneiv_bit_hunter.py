@@ -83,11 +83,17 @@ def tied(tie):
 
 def verilog(p):
     if p["fam"] == "A":
+        bare = p.get("bare")      # bare: unused ports unconnected (mask must ignore them: constants only)
         t = tied(p["tie"])
-        sink = ", ".join(f".data{c.lower()}({'u0_o' if c == p['port'] else t[c]})" for c in PORTS) + ", .combout(y)"
-        src = ", ".join(f".data{c.lower()}(ina)" for c in PORTS) + ", .combout(u0_o)"
-        return ("module top(input ina, output y);\n  wire u0_o;\n" + CELL.format(m=p["smask"], c=p["slutc"], n="u0", ports=src)
-                + CELL.format(m=p["kmask"], c=p["klutc"], n="u1", ports=sink) + "endmodule\n")
+        sink = ", ".join([f".data{p['port'].lower()}(u0_o)"] + ([] if bare else [f".data{c.lower()}({t[c]})" for c in PORTS if c != p["port"]])) + ", .combout(y)"
+        src = ", ".join(([] if bare else [f".data{c.lower()}(ina)" for c in PORTS]) + [".combout(u0_o)"])
+        v = "module top(input ina, output y);\n  wire u0_o;\n" + CELL.format(m=p["smask"], c=p["slutc"], n="u0", ports=src)
+        v += CELL.format(m=p["kmask"], c=p["klutc"], n="u1", ports=sink)
+        if p.get("k2"):      # second sink drives pin y2 (a dangling cell is swept); port "" = placed but unconnected
+            p2 = p["k2"][1]
+            s2 = ", ".join(([f".data{p2.lower()}(u0_o)"] if p2 else []) + ([] if bare else [f".data{c.lower()}(ina)" for c in PORTS if c != p2]) + [".combout(y2)"])
+            v = v.replace("output y)", "output y, output y2)") + CELL.format(m="FFFF", c="datac", n="u2", ports=s2)
+        return v + "endmodule\n"
     t = tied(p["tie"])
     g = lambda k, d=None: p.get(k, d)   # noqa: E731  optional knobs: absent = default, so existing variant names stay valid
     nm = g("nm", "")
@@ -107,7 +113,7 @@ def verilog(p):
     else:
         v += "  assign t_o = ina;\n"
     if g("fan", 1) == 2:
-        v += CELL.format(m="0000", c="datac", n=f"ld{nm}", ports=".dataa(t_o), .datab(ina), .datac(ina), .datad(ina), .combout()")
+        v += CELL.format(m="FFFF", c="datac", n=f"ld{nm}", ports=".dataa(t_o), .datab(ina), .datac(ina), .datad(ina), .combout()")
     clk = "clkp" if p["clk"] == "PIN" else p["clk"]
     if p["ff"]:
         ctl = "".join(f", .{k}({p[kk]})" for k, kk in (("ena", "ena"), ("clrn", "clr"), ("sclr", "sclr"), ("sload", "sload"), ("asdata", "asdata")) if p[kk])
@@ -124,6 +130,8 @@ def qsf(p):
     lc = lambda n: f"LCCOMB_X{lab[0]}_Y{lab[1]}_N{n}"   # noqa: E731
     if p["fam"] == "A":
         q = [f"set_location_assignment {lc(p['src'])} -to u0", f"set_location_assignment {lc(p['snk'])} -to u1"]
+        if p.get("k2"):
+            q.append(f"set_location_assignment {lc(p['k2'][0])} -to u2")
     else:
         nm = p.get("nm", "")
         k = p.get("slot", 0)
@@ -135,6 +143,8 @@ def qsf(p):
         if p.get("fan", 1) == 2:
             q.append(f"set_location_assignment {lc(30)} -to ld{nm}")
     q += [f"set_location_assignment PIN_{v} -to {k}" for k, v in PINS.items()]
+    if p.get("k2"):
+        q.append("set_location_assignment PIN_A13 -to y2")
     if p.get("clk") == "PIN":
         q.append("set_location_assignment PIN_W15 -to clkp")
     if p.get("out") == "both":
@@ -156,7 +166,8 @@ def write_design(p):
     (d / "src").mkdir(parents=True, exist_ok=True)
     (d / "src" / "top.v").write_text(verilog(p))
     if p["fam"] == "A":
-        (d / "src" / "force.rcf").write_text(lm.rcf_for(tuple(p["lab"]), lm.ll_of_src()[p["src"]], p["port"]))
+        dests = [("u1", p["port"])] + ([("u2", p["k2"][1])] if p.get("k2") and p["k2"][1] else [])
+        (d / "src" / "force.rcf").write_text(lm.rcf_multi(tuple(p["lab"]), lm.ll_of_src()[p["src"]], dests))
     elif not p.get("boot"):
         (d / "src" / "force.rcf").write_text(base_rcf_path(p["lab"]).read_text())   # base routing pins every shared net
     (d / "design.toml").write_text(
@@ -178,7 +189,8 @@ def honoured(n, p):
         return False
     lls = set(re.findall(r"LOCAL_LINE:X\d+Y\d+S0I(\d+)", m.group(1)))
     dests = re.findall(r"dest = \( (\w+), DATA(\w) \)", m.group(1))
-    return lls == {str(lm.ll_of_src()[p["src"]])} and dests == [("u1", p["port"])]
+    want = sorted([("u1", p["port"])] + ([("u2", p["k2"][1])] if p.get("k2") and p["k2"][1] else []))
+    return lls == {str(lm.ll_of_src()[p["src"]])} and sorted(dests) == want
 
 
 def prune(n):
@@ -428,6 +440,92 @@ def batch3():
     return out
 
 
+ALL_LABS = [(10, 10), (58, 30), (37, 60), (100, 75)]
+
+
+def init_pairs(labs=ALL_LABS):
+    """(base, variant, meta): LUT-INIT bit b of every LE k per LAB.  LE 0 via the source mask (src 0), LE k >= 2 via the sink mask."""
+    out = []
+    for lab in labs:
+        b = {**base_params(), "lab": list(lab)}
+        for bit in range(16):
+            out.append((b, {**b, "smask": f"{1 << bit:04X}"}, {"lab": lab, "le": 0, "bit": bit}))
+        for k in range(2, 32, 2):
+            bk = {**b, "snk": k}
+            for bit in range(16):
+                out.append((bk, {**bk, "kmask": f"{1 << bit:04X}"}, {"lab": lab, "le": k // 2, "bit": bit}))
+    return out
+
+
+def clk_pairs(labs=ALL_LABS):
+    out = []
+    for lab in labs:
+        c = {**base_b(lab), "ff": 1}
+        out.append((c, {**c, "clk": "~KA"}, {"lab": lab, "what": "clk_polarity"}))
+    return out
+
+
+def round2a():
+    return [p for pr in init_pairs() + clk_pairs() for p in pr[:2]]
+
+
+def round2b():
+    """LOCAL_LINE with unconnected ports (bare) + a second sink on the same local line."""
+    b = {**base_params(), "bare": 1, "kmask": "0000"}
+    lp = lm.legal_ports()
+    out = []
+    for s in range(0, 32, 2):
+        for k in range(0, 32, 2):
+            if s != k:
+                for pt in sorted(lp.get(s, ())):
+                    out.append({**b, "src": s, "snk": k, "port": pt})
+    for s in range(0, 32, 4):
+        pt = sorted(lp.get(s, ()))[0]
+        k1 = 30 if s != 30 else 28
+        base = {**b, "src": s, "snk": k1, "port": pt}
+        for k2 in range(0, 32, 2):
+            if k2 not in (s, k1):
+                for p2 in [""] + sorted(lp.get(s, ())):
+                    out.append({**base, "k2": [k2, p2]})
+    return out
+
+
+def law():
+    """LUT-INIT cell position per (LAB, LE, bit) vs X10Y10 after the naive FX/vy translation; mismatches grouped."""
+    import cycloneiv_geom as cg
+    g = cg.load(cg.die_of(cf.DEVICE))
+    ok = okvars()
+    cell = {}
+    for pb, pv, m in init_pairs():
+        nb, nv = pname(pb), pname(pv)
+        if nb in ok and nv in ok:
+            cs = pair_cells(tagged(nv), tagged(nb))
+            if len(cs) == 1:
+                fr, v = divmod(cs[0][0], NV)
+                x, y, df, dv = tile_of(g, fr, v)
+                cell[(tuple(m["lab"]), m["le"], m["bit"])] = (fr, v, x, y, df, dv)
+            else:
+                cell[(tuple(m["lab"]), m["le"], m["bit"])] = ("n=%d" % len(cs),)
+    ref = {(le, bit): c for (lab, le, bit), c in cell.items() if lab == (10, 10) and len(c) == 6}
+    rows, c1 = [], collections.Counter()
+    for (lab, le, bit), c in sorted(cell.items()):
+        if lab == (10, 10):
+            continue
+        r = ref.get((le, bit))
+        if len(c) != 6 or r is None:
+            c1["not1cell" if len(c) != 6 else "noref"] += 1
+            continue
+        d = (c[4] - r[4], c[5] - r[5])
+        c1[(lab, d)] += 1
+        if d != (0, 0):
+            rows.append({"lab": lab, "le": le, "bit": bit, "ref": r[4:], "here": c[4:], "delta": d})
+    log.info("LUT-INIT cells: %d single, %d total pairs", sum(1 for c in cell.values() if len(c) == 6), len(cell))
+    for k, v in sorted(c1.items(), key=str):
+        log.info("  %s: %d", k, v)
+    (TMP / "law.json").write_text(json.dumps({"mismatch": rows, "n": len(cell), "single": sum(1 for c in cell.values() if len(c) == 6)}, indent=1, default=list))
+    return cell
+
+
 def nulls():
     """Null controls: same design renamed, other fitter seed, all else pinned.  Diff vs the plain build must be empty."""
     c, b = base_b(), base_params()
@@ -656,7 +754,7 @@ def record_pairs(cells, D, par, g):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("calib", "batch1", "batch2", "batch3", "adapt", "report", "record", "replicate"))
+    ap.add_argument("cmd", choices=("calib", "batch1", "batch2", "batch3", "round2a", "round2b", "law", "adapt", "report", "record", "replicate"))
     ap.add_argument("--jobs", type=int, default=0)
     ap.add_argument("--budget", type=int, default=100)
     ap.add_argument("--depth", type=int, default=3)
@@ -677,6 +775,14 @@ def main():
         null_gate(a.jobs)
         run_variants(batch1(), a.jobs)
         report()
+    elif a.cmd == "round2a":
+        run_variants(round2a(), a.jobs)
+        law()
+    elif a.cmd == "round2b":
+        run_variants(round2b(), a.jobs)
+        report()
+    elif a.cmd == "law":
+        law()
     elif a.cmd == "batch3":
         run_variants(batch3(), a.jobs)
         report()
