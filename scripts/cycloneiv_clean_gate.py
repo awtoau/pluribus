@@ -314,6 +314,7 @@ def discover(args):
         except (OSError, ValueError):
             continue
         ds.append(d)
+    ds = ds[:: args.stride]
     return ds[: args.limit] if args.limit else ds
 
 
@@ -322,6 +323,7 @@ def main():
     ap.add_argument("--set", choices=("rb10", "corpus"), required=True)
     ap.add_argument("--root", help="corpus-rebuild stamp directory (read only)")
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--stride", type=int, default=1, help="every n-th complete design in name order (deterministic sample)")
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--record", action="store_true", help="write gate_runs / gate_results (PLURIBUS_SQLITE_PATH)")
     ap.add_argument("--tag", default="")
