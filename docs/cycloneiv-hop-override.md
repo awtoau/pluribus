@@ -58,3 +58,15 @@ Tool: `scripts/cycloneiv_hop_specimens.py` (sample / plan-set / build / analyse 
 - P2 (rel +4 sources unmatched only because of the window): window to 140 resolves 1 of 3 (X30Y50, df -105, one arc); X47Y45 still no fit (2 arcs). Not supported.
 - Corpus RCF edges LB -> R4 only have source X offsets -1, 0, +3, +4 (+1, +2 never seen, so cannot be forced).
 - 5-scope sampling plan (corners + seeded interior) not built: first prediction miss stops the sweep (Yield rule).
+
+## Frame-distance law P1' sweep (#162, 2026-10-29, `scripts/cycloneiv_r4_relcol.py`, claim class `2h-fd`)
+- Prediction: (dx, df) = f(d = FX[src]-FX[dst], destination pitch w). Refuted by two arcs at one (d, w) with different (dx, df).
+- Null controls (rename, seed; base and spec): 0 differing cells. Builds 34 of cap 45 (4 nulls, 15 bases, 15 specs); 15 arcs honoured and resolved; 15 answered features = 44 per 100 builds (floor 10).
+- New scopes (dest tiles): X25Y77, X31Y22, X87Y6, X87Y66 (corner-most forceable LABs), X88Y40 (pitch 39), X21Y29 (source across the X23 M9K column). X87Y6 rel +3: no corpus-seen chain (data row).
+- P1' REFUTED, 3 keys, 3 scopes (scored against the 4 earlier tiles):
+  - (d -35, w 35): (+2, -4) at X87Y6 and X87Y66 vs (+2, 0) in 11 arcs.
+  - (d 0, w 35): (0, -74) at X87Y6 and X87Y66 vs (0, -70) in 18 arcs.
+  - (d 105, w 35): (-6, 0) at X25Y77 vs (-7, -35) in 19 arcs.
+- Held: X88Y40 (w 39) equals X30Y50 at all three keys ((+2,+4), (0,-70), (-6,0)); X31Y22 equals X47Y45 at all three; X21Y29 d 109 (-6, 0) equals X63Y32 d 363 pattern only by dx/df, different d.
+- Post-hoc, not tested: X87 sits left of the 39-frame column X88 (df -74/-4 = the 39-frame span, as in R4-shift-v1); X25 is two columns right of the X23 M9K column (as X63 left of X65). Pitch class of the destination alone is too coarse; neighbouring column widths/kinds enter. Next: enumerate by (neighbour widths) as a prediction.
+- `claims_register.py` run regenerates derived tables including `gate_runs` (wiped every run by design); the #160 gate_run row is gone from the DB and must be re-run, numbers stay in this doc.

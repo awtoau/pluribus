@@ -10,6 +10,8 @@ PREDICTION (before any run):
  P2: sources one column right of the group (rel +4; rel +1/+2 never occur in any corpus RCF) fit no candidate only because
      the rigid-shift window (|df| <= 80) excludes them.
      REFUTED if a window up to 140 finds no record, or finds records that differ between two arcs of the same (rel, w).
+PREDICTION P1' (frame-distance form, written after the P1 miss at X63Y32, before the sweep): (dx, df) is a function of
+ d = FX[src] - FX[dst] and the destination pitch w only.  REFUTED by any two arcs with the same (d, w) giving different (dx, df).
 Evidence level SET (rigid-shift fits of 2-cell groups; weak).  Rows with no fit are data rows, never retried.
 
   scripts/cycloneiv_r4_relcol.py pool [--rng 80]        # re-read existing results, 0 builds
@@ -156,26 +158,49 @@ def cmd_table(a):
     log.info("resolved scopes (dest tiles): %d %s; total misses %d", len(tiles), sorted(tiles), misses)
 
 
+PARENT_TILES = {(47, 45), (30, 50), (89, 44), (63, 32)}      # rows that existed when P1' was written; the rest are confirm rows
+
+
 def cmd_record(a):
+    """Evidence rows (source_ref r4_relcol:R4) for every honoured arc; meta.pred = modal (dx, df) of the PARENT rows at the same
+    (d, w), meta.consistent = observed == pred (None = no parent at that key / unresolved).  The claim is built by claims_register.py."""
+    import cycloneiv_geom as cg
     import db
     from provenance import evidence_io as E
+    g = cg.load("ep4cgx150")
+    seen = {}
+    for r in load_rows():
+        seen[(r["tile"][0], r["tile"][1], r["I"], tuple(r["lb"]))] = r
+    key = lambda r: (g.FX[r["lb"][1]] - g.FX[r["tile"][0]], pitch(g, r["tile"][0]))   # noqa: E731
+    model = collections.defaultdict(collections.Counter)
+    for r in seen.values():
+        if tuple(r["tile"]) in PARENT_TILES and r["status"] == "resolved":
+            model[key(r)][(r["resolved"]["dx"], r["resolved"]["fits"][0])] += 1
     commit = E.git_head(REPO)
     n = 0
     with db.engine().begin() as conn:
         E.ensure_family(conn, "cycloneiv")
-        for f in a.plans:
-            for r in json.loads(Path(f).read_text())["rows"]:
-                if "on" not in r or not r.get("honoured") or not (r.get("status") == "resolved" or r.get("status", "").startswith("unresolved")):
-                    continue
-                nme = spec_name(r)
-                bid = H.register_build(conn, N.base_name(r), "r4 relcol base")
-                sid = H.register_build(conn, nme, "r4 relcol forced single path")
-                meta = {"group": "r4_relcol", "tile": r["tile"], "I": r["I"], "lb": r["lb"], "rel": r["lb"][1] - r["tile"][0],
-                        "honoured": r["honoured"], "status": r["status"], "plane_level": True, "evidence_level": "set",
-                        "fits": [(c["dx"], c["idx"], c["fits"]) for c in r.get("cands", ()) if c["fits"]]}
-                E.record_specimen(conn, "cycloneiv", "EP4CGX150", nme, N.base_name(r), r["on"], r["off"], meta, "r4_relcol:R4",
-                                  "scripts/cycloneiv_r4_relcol.py", commit, H.NV, tool_version="25.1", build_base=bid, build_spec=sid)
-                n += 1
+        for r in seen.values():
+            if "on" not in r or not r.get("honoured"):
+                continue
+            nme = (map_spec_name(r) if r["_file"].startswith("results_r4map") else spec_name(r))
+            if not (H.CORPUS / nme / "design.toml").exists():
+                continue
+            obs = (r["resolved"]["dx"], r["resolved"]["fits"][0]) if r["status"] == "resolved" else None
+            pred = model[key(r)].most_common(1)[0][0] if model.get(key(r)) else None
+            bnm = N.base_name(r).replace("gxr4df_", "gxr4_", 1) if r["_file"].startswith("results_r4map") else N.base_name(r)
+            if not (H.CORPUS / bnm / "design.toml").exists():
+                continue
+            bid = H.register_build(conn, bnm, "r4 relcol base")
+            sid = H.register_build(conn, nme, "r4 relcol forced single path")
+            meta = {"group": "r4_relcol", "tile": r["tile"], "I": r["I"], "lb": r["lb"], "d": key(r)[0], "w": key(r)[1],
+                    "role": "parent" if tuple(r["tile"]) in PARENT_TILES else "confirm", "observed": obs, "pred": pred,
+                    "consistent": (obs == pred) if (obs and pred) else None, "honoured": True, "status": r["status"],
+                    "plane_level": True, "evidence_level": "set",
+                    "fits": [(c["dx"], c["idx"], c["fits"]) for c in r.get("cands", ()) if c["fits"]]}
+            E.record_specimen(conn, "cycloneiv", "EP4CGX150", nme, bnm, r["on"], r["off"], meta, "r4_relcol:R4",
+                              "scripts/cycloneiv_r4_relcol.py", commit, H.NV, tool_version="25.1", build_base=bid, build_spec=sid)
+            n += 1
     log.info("recorded %d evidence rows", n)
 
 

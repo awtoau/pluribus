@@ -415,6 +415,23 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
                     [("parent", [e for e, m in ok if m["role"] == "parent"]), ("confirm", [e for e, m in ok if m["role"] == "confirm"]),
                      ("refute", [e for e, m in hop if not m["consistent"]]), ("conflict", [e_gate])],
                     "LB -> R4 group displacement; fitted on parent rows, confirm rows predicted before building; gate conflict stands")
+    # LB -> R4 (dx, df) = f(frame distance FX[src]-FX[dst], destination pitch) (#162): P1' predicted from the parent rows
+    rc = []
+    for eid, res in conn.execute(select(ev.c.id, ev.c.result).where(and_(ev.c.family == fam, ev.c.source_ref == "r4_relcol:R4"))):
+        m = res.get("meta", {})
+        if m.get("consistent") is not None and m.get("tile"):
+            rc.append((eid, m))
+    if rc:
+        R.matcher("r4-framedist-v1", "deterministic", "R4 (dx, df) = f(FX[src]-FX[dst], dest pitch) tabulated from parent rows", 1,
+                  "scripts/cycloneiv_r4_relcol.py")
+        R.pattern("r4-framedist-v1", "bit", "LB -> R4 record dx and group shift df are a function of source-destination frame distance and destination pitch",
+                  {"dims": 2, "axes": {"x": [15, 89], "y": [6, 77]}, "scope": "forceable core; corners/sides not forceable"},
+                  matcher_id="r4-framedist-v1", status="open")
+        class_claim("2h-fd", "pattern-predicted", "r4-framedist-v1",
+                    [("parent", [e for e, m in rc if m["role"] == "parent" and m["consistent"]]),
+                     ("confirm", [e for e, m in rc if m["role"] == "confirm" and m["consistent"]]),
+                     ("refute", [e for e, m in rc if not m["consistent"]])],
+                    "P1' frame-distance law; parent rows fitted, confirm rows predicted before building")
     for cid in classes:
         if cid in ("4a", "4b", "4c", "4d", "4e", "5c", "6"):
             class_claim(cid, "unknown", None, [], "no attribution")
