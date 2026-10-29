@@ -21,8 +21,8 @@ SFL / SFL-enhanced / PFL `.sof` files shipped in `quartus/common/devinfo/program
   - Before that, Lite had Cyclone V only and nothing EP4C could be fitted.
 - `quartus_cpf` needs no device package: it converts every Cyclone III/IV vendor `.sof` (70 `.sof`, 13 dies).
 - Install-side Cyclone IV data: only `programmer/ep4c*_pcf.ddb` and `ep3c*_pcf.ddb` (about 1 KB each).
-  - Each holds a zlib-packed type schema (`PGMIO_PCF_ENTRY`, `PGMIO_JTAG_CONSTANTS`, `PGMIO_ERAM_LOCATIONS`, ...) and a payload that does not inflate.
-  - They are programmer constants. They carry no fabric or routing data, unlike the Cyclone V device DB.
+  - Each holds a zlib-packed type schema (`PGMIO_PCF_ENTRY`, `PGMIO_JTAG_CONSTANTS`, `PGMIO_ERAM_LOCATIONS`, ...) and a second zlib payload that does inflate (`ep4cgx150_pcf.ddb`: zlib at byte 117, up to the `00 00 ff ff` marker at 746; 3,160 bytes = 790 little-endian words, among them 2048, 262144, 6344 and 6506) [V 2026-10-29]. The words are not yet matched to fields.
+  - They are programmer constants; whether they carry the lane/padding table for the image-to-`.rbf` map is open (#165). They carry no fabric or routing data, unlike the Cyclone V device DB.
 
 ## Prior art
 
