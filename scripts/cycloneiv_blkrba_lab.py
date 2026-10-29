@@ -59,11 +59,18 @@ def lut_table(names):
     return t
 
 
+CONTROL = re.compile(r"^L:(RSCNT|RSMUX|LABCLK)")
+
+
 def nonlut_positions(path=DEFAULT_CSV):
-    """[(dx, dy)] of every named non-LUT bit; [] when the local (gitignored) table is absent."""
+    """({'a': [(dx, dy)] REG/OUT/IN, 'b': [(dx, dy)] RSCNT/RSMUX/ROWCLK}); empty when the local (gitignored) table is absent."""
+    out = {"a": [], "b": []}
     if not Path(path).exists():
-        return []
-    return [xy for n, xy in load_csv(path).items() if not LUT.match(n)]
+        return out
+    for n, xy in load_csv(path).items():
+        if not LUT.match(n):
+            out["b" if CONTROL.match(n) else "a"].append(xy)
+    return out
 
 
 def law_cells(geom, tiles):

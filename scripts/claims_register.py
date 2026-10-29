@@ -335,8 +335,8 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
     if b1.exists():
         t1 = json.loads(b1.read_text())
         ev_map = E.record_decode(conn, fam, device, "blkrba LAB bit-position table (vendor ddb decode)",
-                                 {"entries": 443, "lut_bits": 256, "non_lut_bits": 187, "tile_dx": 70, "tile_dy": 35,
-                                  "law": "frame = FX[X] + dy - 15; v = vy0 + 70*Y + 2 - dx", "meta": {}},
+                                 {"file": {"entries": 443, "lut_bits": 256, "non_lut_bits": 187, "tile_dx": 70, "tile_dy": 35,
+                                           "law": "frame = FX[X] + dy - 15; v = vy0 + 70*Y + 2 - dx"}, "meta": {}},
                                  commit, "vendor-analysis/altera/inventory/s1", generator="scripts/cycloneiv_blkrba_lab.py",
                                  n_objects=443, kind="derived-table")
         ev_bl = E.record_decode(conn, fam, device, "blkrba LUT cells vs LUT-mask law and .vo read-back",
@@ -347,8 +347,17 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
                                 n_objects=t1["bits_matched"], kind="oracle-compare")
         c1a = conn.execute(select(S.claims.c.id).where(S.claims.c.subject_key == "CLASS:1a")).scalar()
         conn.execute(insert(S.claim_evidence).values(claim_id=c1a, evidence_id=ev_bl, role="confirm"))
-        class_claim("1d", "vendor-decoded", None, [("parent", [ev_map])],
-                    f"vendor ddb decode validated on LUT INIT cells n={t1['bits_matched']:,} bits; non-LUT names have no exact evidence")
+        class_claim("1d-a", "vendor-decoded", None, [("parent", [ev_map])],
+                    f"vendor ddb decode validated on LUT INIT cells n={t1['bits_matched']:,} bits; REG/OUT/IN names have no exact evidence")
+        t2 = REPO / "vendor-analysis/altera/inventory/s1b/test2.json"
+        ev_ctl = E.record_decode(conn, fam, device, "blkrba control names vs measured LAB control cells",
+                                 {"names": 43, "measured_cells": 8, "on_a_name": 0,
+                                  "cells": "clock polarity, ena, aclr, sclr port cells (bit hunter, X10Y10 / X58Y30)",
+                                  "nearest": "1 v-row off at the same frame", "meta": {}},
+                                 commit, "scripts/cycloneiv_blkrba_named.py", generator="scripts/cycloneiv_blkrba_named.py",
+                                 n_objects=8, kind="audit")
+        class_claim("1d-b", "vendor-decoded", None, [("parent", [ev_map]), ("refute", [ev_ctl])],
+                    "RSCNT/RSMUX/ROWCLK names at H2 positions: 0 of 8 measured control cells land on a name")
     ev_miss = [E.record_decode(conn, fam, device, "le-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)",
                                {"n_les": 1018, "misses": 14, "design": "one corpus design", "meta": {},
                                 "note": "figures from the earlier analysis (docs/cycloneiv-bit-inventory.md 1b); not recomputed in this run"},
@@ -754,9 +763,10 @@ def register_cycloneiv(conn, device, commit):
                 cls="1b", basis="14/1,018 misses on one design = unacted refutations")
         R.claim("bit", "LAB:clock-polarity", cls_scope("1c", cls["1c"]["name"]), {"fit": "greedy"}, "statistical", "open", cls="1c",
                 basis="Jaccard 0.85 over 5,442 clock lines")
-        if "1d" in cls:   # present once a ledger line with the blkrba class has been recorded (inventory --record)
-            R.claim("bit", "LAB:blkrba:non-lut", cls_scope("1d", cls["1d"]["name"]), {"source": "blkrba.ddb", "law": "frame = FX + dy - 15; v = vy0 + 70*Y + 2 - dx"},
-                    "vendor-decoded", "open", cls="1d", basis="vendor ddb positions; law validated on the LUT cells only")
+        for k_ in ("1d-a", "1d-b"):   # present once a ledger line with the blkrba classes has been recorded
+            if k_ in cls:
+                R.claim("bit", f"LAB:blkrba:{k_}", cls_scope(k_, cls[k_]["name"]), {"source": "blkrba.ddb"},
+                        "vendor-decoded", "refuted" if k_ == "1d-b" else "open", cls=k_, basis="vendor ddb positions; law validated on the LUT cells only")
         afx_claim = R.claim("coord-map", "asm->plane:columns", R.scope("coord-map", "keys", {"keys": [f"asm->plane:x{x}" for x in range(118)]}, n=118),
                             {"source": "afx_map"}, "statistical", "open", pattern=p_afx, cls="2a", basis="vote peaks; 32 columns differ from FX")
         for k in ("2a", "2b"):
