@@ -212,22 +212,7 @@ Every Cyclone IV rule here comes from Cyclone IV oracle runs. No Cyclone V bit p
 - Corpus: `rnd_*` (`scripts/cycloneiv_rnd_designs.py`): random 4-LUT networks + registers with random enable / sync clear / async clear / sync load, adders, XOR-group outputs, fitter SEED per design. Tiers s 40 (20-120 nodes), m 40 (300-700), l 40 (900-1500).
   - First attempt (up to 2600 nodes, global random wiring) did not route in 10 min; sources now 85% from the last 60 nodes. Worst fit after that 65 s (4 jobs).
 - Tools: `cycloneiv_corpus.py` (RCF parser, CRAM as a (frame, v) plane), `cycloneiv_geom.py` (device-driven tile anchors, `lifters/data/cycloneiv_<die>_geom.json`). The learned-table decoder and scorer are retired (#165, `docs/cycloneiv-retired-coordinate-model.md`).
-- Findings:
-  - LOCAL_INTERCONNECT mux = 2 levels in 2 v rows: level A = 2 bits in one frame (or none), level B = one-hot over 6 bits in the next 3 frames; 18 inputs. Patterns with only a B bit exist (A = none).
-  - Mux input order differs per LAB column (not X parity); tables are keyed per column.
-  - R4 / LE_BUFFER sources: same pattern for every row of a column.
-  - C4 sources: naming depends on Y. Per (column, LI, pattern), source is a function of Y mod 4 in 20,295 / 21,191 cases (Y mod 1: 6,692 / 9,214). Not yet modelled.
-- Held-out score (train `rnd_l*` crc32-even 20 designs, score the odd 20), 2026-10-26:
-
-| dst type | matched | missing | wrong | extra | headline |
-|---|---|---|---|---|---|
-| LE_BUFFER (LE comb/FF -> buffer) | 37,847 | 1,179 | 10 | not scored | 97.0% |
-| LOCAL_INTERCONNECT | 65,851 | 40,871 | 1,596 | not scored | 60.8% |
-| R4 | 35 | 129,794 | 3,215 | not scored | 0.0% |
-| all RCF edges | 103,733 | 488,931 | 4,821 | not scored | 17.4% |
-
-  - LI missing = 38,006 ambiguous patterns (C4 Y-naming) + unknown/untabled. R4: mux bits not found by the tile-relative rule (R4 mux probably sits at the driving end, outside the window or keyed wrong). C4, C16, R24, LE inputs, LAB controls, clocks, IO: not learnt yet (`no table`).
-  - `extra` not implemented in the scorer yet; not a pass.
+- Learned-table findings and held-out scores of the EP4CE6 learner (per-column tables, Y mod 4 naming) are removed: fitted model, retired (#165, `docs/reversing-errata.md` E-C1).
 - Resume: `cycloneiv_fuzz.py --build --match 'rnd_*' --jobs 4` (needs `--generate` first), `--rcf-only` for older designs.
 - Left for EP4CE6: C4 Y-rule, R4/C4/C16/R24 mux location, LE input and FF control sinks, LAB-wide controls and inversion, carry (`sum_lutc_input`, cin), clocks, IO, lifter + emitter, sim gate.
 
@@ -254,8 +239,8 @@ Every Cyclone IV rule here comes from Cyclone IV oracle runs. No Cyclone V bit p
 | C16 / R24 | 1,833 / 1,756 | 1,207 / 889 | 96 / 34 | 58.5 / 65.6 |
 | LAB_CONTROL_MUX | 200 | 1,217 | 33 | 13.8 |
 
-- More training data is the main lever (same learner reached 84.7% overall with 150 training designs); memory is the limit: a plane is 38 MiB per GX150 design.
-- Method findings (hold on both dies): mux bits sit at the wire's driving end (R4 dx, C4 dx 0..1 / dy, per-group search); R4 / C4 indices rotate with Y mod 4; LI input order repeats per X mod 8; FF CLK / ENA / CLRN pins pick a LAB line with a per-LE select bit (EP4CE6 held-out 1117 / 1117 and 277 / 277 LABs).
+- Learner training-set size and memory notes removed with the learner (E-C1).
+- Method findings of the learner (mux bits at the driving end, index rotation per Y, LI order per X) are removed: fitted, not vendor-derived (E-C1). FF CLK / ENA / CLRN pins pick a LAB line with a per-LE select bit (EP4CE6 held-out 1117 / 1117 and 277 / 277 LABs).
 - Not done on GX150: connection-level trace score, FF / LAB-control / IO / carry decode, lifter + emitter, sim gate, M9K / multipliers / PLL.
 - EP4CE6 LUT decode: 996 wrong bits of 1,780,540 + 996 in `rnd_*` (all LEs crossing the bit-lane boundary at v 1241 and 206); the GX150 lane model has no such case. EP4CE6 lane fix pending.
 
@@ -279,14 +264,9 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 
 ## EP4CGX150 routing tables from the corpus (2026-10-26, replaces the 80.6% figure)
 
-- Learner now streams per source (AND / OR of windows) instead of stacking windows (1.5 GB for the large LE-input groups), so all 150 crc32-even designs fit in a 2.5 GB cgroup; planes are sparse (`SparsePlane`, ~1 MB per design, was 38 MiB).
-- Held-out (20 designs of the odd half), pooled tables (X mod 8, Y mod 4): pips matched 272,070 / (matched 272,070 + missing 21,492 + extra 1,644 + wrong 195) = 92.10%; nets with every pip matched 13,210 / 22,407 = 58.95%.
-  - extra counted on touched tiles + 60 random untouched LABs per design; an unused mux whose bits read as one known source.
-  - per type, matched / missing / wrong: LE inputs 74,574 / 2,571 / 3 (96.7%), LOCAL_INTERCONNECT 52,137 / 2,858 / 40 (94.7%), C4 48,444 / 2,798 / 17 (94.5%), R4 53,888 / 5,986 / 63 (89.9%), LE_BUFFER 20,823 / 7 / 0 (99.97%), FF pins 5,580 / 515 / 25 (91.2%), LAB_CONTROL_MUX 1,234 / 209 / 7 (85.1%), C16 1,877 / 1,238 / 21 (59.9%), R24 1,681 / 989 / 9 (62.8%).
-  - not covered (zero / no table): clock tree (BLK_CLK_BUF 1 / 2,440, LAB_CLK 93 / 445, SCLK_TO_ROWCLK_BUF 7 / 478, GLOBAL_CLK_*), IO (IO_DATAIN 195 / 327, IOOBUF 5 / 379, BLOCK_INPUT_MUX 307 / 80). Most of the remaining misses are 'ambiguous pattern' (two sources share a pooled pattern): per-column tables resolve those.
+- Learned-table scores (pooled X mod 8 / Y mod 4 tables, per-type pip counts) are removed: fitted model, retired (#165, `docs/reversing-errata.md` E-C1). Current numbers: `docs/cycloneiv-clean-pipeline.md` and the gate runs.
 - IO sites (`cycloneiv_io_bits.py`, no geometry needed): each used IOOBUF site has a 36-bit configuration signature (set in >= 95% of designs using the site, in <= 3% of the others), in clusters of 4 consecutive v. Top-row (Y91) and bottom-row (Y0) IO config sits in the periphery frames (e.g. X26/X30/X32/X34 -> frames 26..29), v falls by 136 per IO step of 7 in N (N2, N9, N16, N23). The LAB-column anchor model does not apply to IO rows, so IO-row routing tables (IO_DATAIN, BLOCK_INPUT_MUX, IOOBUF.I) need their own anchors.
 - IO input sites: every used IOIBUF site has a 4-bit signature (4 consecutive v in one periphery frame), set in all designs using the site and in <= 3% of the others (249 sites with >= 12 uses; e.g. X26 Y91 N1 frame 26 v 380..383, N8 244..247, N15 108..111: v falls by 136 per N step of 7; left/right IO columns X117 carry the same pattern with frames 20..34). Some sites also show a bit beyond the lane model (v 6344+, the lane-tail columns).
-- Memory: a per-column learner (104 columns instead of 8 classes) needs a larger cgroup than 2.5 GB.
 
 ## Lifter, emitter and functional gate (EP4CGX150, 2026-10-26)
 
@@ -301,11 +281,10 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 - Gate method: both netlists simulated with iverilog on the vendor cell models; stimulus: data first, clocks left X for 100 ps (an inverted clock goes X -> 1 and captures once with settled data), then one clock pulsed at a time (pulsing two clocks together races the register updates of one domain against the other); every LUT combout / cout and FF q of the post-fit netlist is compared by location. Boundary nets (pads, clock wires) are named from the RCF (naming only; no logic comes from the .vo).
 - Race exclusion: a register whose asynchronous clear is driven by logic glitches at the clock edge in zero-delay simulation, differently in two correct models; `race_taint` excludes such registers and everything downstream and prints the count. The random generator now draws async clears from input pins only (`gx150_rb_*`, 150 designs, 0 excluded).
 - Results with routing taken from the .vo (`--oracle`, isolates everything except routing decode): `gx150_rb_*` 8 / 8 designs PASS, points matched 7,773 / (7,773 + missing 0 + extra 0 + wrong 0) = 100%; `gx150_ffc_001` 74 / 74. These do not test the routing decode.
-- Results with routing from the bitstream (pooled X mod 8 tables, 150 + 61 training designs): `gx150_rb_*` odd, 8 designs: 0 PASS, points matched 324 / (324 + missing 6,509 + extra 51 + wrong 940) = 4.1%. The cause is routing: 1,600-1,800 unresolved cell inputs per design, 'ambiguous driver' (a pooled pattern names more than one source; a few percent per hop compounds over 4-6 hops).
 
 ## Third-party image test pass (2026-10-26)
 
-`scripts/cycloneiv_image_pass.py` (log `tmp/logs/cycloneiv_image_pass.log`): a third-party compressed GX150 image (read only, never copied) against 6 held-out Quartus corpus designs and a control (the image with its set bits shuffled inside every frame: same bits per frame, random v). Tables: pooled X mod 8 learner tables from 150 training designs. Image: 2,178,780 set bits of 39.4 M positions (5.5%).
+`scripts/cycloneiv_image_pass.py` (log `tmp/logs/cycloneiv_image_pass.log`): a third-party compressed GX150 image (read only, never copied) against 6 held-out Quartus corpus designs and a control (the image with its set bits shuffled inside every frame: same bits per frame, random v). Routing tables were the retired learner's (E-C1); the routing numbers below are not current. Image: 2,178,780 set bits of 39.4 M positions (5.5%).
 
 | measure | image | control (shuffled) | corpus designs (6) |
 |---|---|---|---|

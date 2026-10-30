@@ -8,7 +8,7 @@ Related: [cycloneiv-clean-io.md](cycloneiv-clean-io.md) (#168), [cycloneiv-clean
 ## 1. Answers
 
 - Config = 5 address spaces named by the assembler, 3 populated on this die: CRAM 39,040,976, CFF 31,060, option register 160. UNVM = 0. DPRIO has no size of its own (writes alias the CFF buffer, section 2.1).
-- Sections not covered by any decoder: option register (0 of 160 bits decoded to a function), CFF fields (0 of 31,060), all CRAM outside LUT INIT and asm.ddb routing.
+- Sections not fully decoded: option register (30 of 160 bits decoded to a function, `cycloneiv-clean-options.md`), CFF fields (0 of 31,060), all CRAM outside LUT INIT and asm.ddb routing.
 - JTAG: no address space, no sof section, no rbf region of its own. The TAP state machine is not configurable by any bit the assembler knows. The assembler writes only the user-logic interface of one JTAG block (15 classes) plus 2 option-register bits plus the 32-bit USERCODE (section 4).
 - Present in the device model but claimed by no decoded record: 29,023,893 of 39,040,976 CRAM bits (74.34 %), counted by region in section 5. These are NOT shown to be reserved: the asmdb group vectors that would claim most of them (M9K / MUL / IO / clock / PLL / transceiver blocks, LAB non-LUT) are not decoded.
 - Nothing in the vendor files labels any CRAM / CFF bit reserved, spare, redundancy or test for IV GX (symbol and field-name search, section 5.4). Absence of a label is not evidence of absence.
@@ -25,7 +25,7 @@ Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, Ghidra 0x
 | CRAM | bit 31 clear | a | 39,040,976 = 6,154 x 6,344; asmdb body +5, pcf payload word 38, hdr `frame_bits` 6,344 | tag 17: 12 + 4,880,122 = 4,880,134 B | CRAM frames 37..6190, data bytes 1..793, LSB first; A5 mirror blocks | fabric (LAB / LE / routing), M9K, MUL, IO routing, clocks, PLL, transceiver, block setup |
 | CFF | `0xA0000000` | a & `0x5fffffff` | 31,060; asmdb body +9 | tag 21: 12 + 3,883 = 3,895 B | periphery frames 1..36, 4 replica cells per bit | IO pin config (IOE), 104 default bits; field map undecoded |
 | UNVM | `0x90000000` | a & `0x6fffffff` | 0; asmdb body +13 | none (no such tag in the 3 EP4CGX150 sofs examined) | none | not applicable; "UNVM bits don't exist for this device family" error path |
-| option register | `0x88000000` | a & `0x77ffffff` | 160; asmdb body +17 | tag 18: 40 B = 320 bits (160 values + 160 flags, section 3) | frame 0 (header), 35 bits reach 51 cells | config control / security-adjacent options: start-up, nCE, JTAG sharing, CRC, SPI (section 3) |
+| option register | `0x88000000` | a & `0x77ffffff` | 160; asmdb body +17 | tag 18: 40 B = 320 bits (160 values + 160 flags, section 3) | frame 0 (header), 35 bits reach 51 cells | config control / security-adjacent options: start-up, nCE, CRC, SPI (section 3) |
 | DPRIO | `0x84000000` | a & `0x7bffffff` | no field in the die record | none | none of its own | transceiver dynamic-reconfig space; written into the CFF buffer |
 
 - DPRIO branch of `silent_set_bits` tests the CFF base pointer for null ("DPRIO bits don't exist for this device family") and bounds-checks and stores through the CFF buffer, not a fifth buffer. So DPRIO addresses, if any exist for a die, occupy the CFF bit range.
@@ -97,7 +97,7 @@ Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, Ghidra 0x
   - lanes 1..4 equal tag-18 bits 0..159 in order (lane = 1 + k div 40, bit = k mod 40), 124 / 160 match; `quartus_cpf` overlays die-variant, length and flag bits (lane 1 bits 19, 20, 22-26; lane 2: 21 positions incl. the length field; lane 3 bits 1-6, 8, 10).
   - lanes 5..7 = 120 constant ones in every file; tag-18 bits 160..319 never reach the rbf.
   - Only 35 of the 160 value bits propagate (bit-plane flip test, 51 header cells, `option` table in `cff2rbf.npz`): indices 0, 2-10, 12-18, 27-34, 38, 71, 91-94, 106, 112, 128, 130. Of these, 28 are in the unclaimed-by-lists set, 4 default (71, 106, 112, 130), 3 forced (7, 38, 94). Unclaimed and not propagated: 11, 129.
-- Function of any option bit: not decoded (0 of 160).
+- Function of the option bits: 30 of 160 decoded (`docs/cycloneiv-clean-options.md`).
 
 ## 4. JTAG and USERCODE
 
@@ -105,8 +105,8 @@ Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, Ghidra 0x
   - TAP state machine, IR / DR: no address space, no sof tag, no rbf region. No assembler class writes TAP behaviour. Treat as hardened logic (inference from absence: 51.6 M asm entries, 2,553 asmdb default / forced addresses, and the 776 `process_atom` / `process_end_of_phase` classes of libcomp_asm, all families, none named for TAP state).
   - JTAG block = one fabric-visible node: `ASM_MODEL::s_jtag_node_index` / `s_jtag_pad_index`; every JTAG class returns at once when the index is -1 (`ASM_JTAG_PIA::process_atom` 0x288b78 checked).
   - 15 JTAG classes (libcomp_asm): `ASM_JTAG_PIA`, `_PIA_TO_CORE_CTL`, `_PIA_TO_TCKCORE`, `_PIA_TO_TDICORE`, `_PIA_TO_TMSCORE`, `_PIA_TO_TDOUSER`, `_PIA_TO_TDOUTAP`, five `_*_INVERT` (TCKCORE, TDICORE, TMSCORE, TDOUSER, TDOUTAP) plus `_CORECTL_INVERT`, `_ENABLE_BST_SUPPORT`, `_WRITE_USER_CODE`. They select the core-side routing of tck / tdi / tms / tdo-user / tdo-tap and polarity through `mux_select`.
-  - Plus 2 option bits: JTAG core access, JTAG pin share. Plus BST support = field 7 of the 21-field logical register.
-  - Address space (CRAM vs CFF) of the PIA / invert bits is NOT established: the asmdb groups of the JTAG block are not decoded.
+  - No option bits: `OPTION_REG_JTAG_CORE_ACCESS` and `OPTION_REG_USE_JTAG_PIN_SHARE` have no asmdb group on this die (E-A1). BST support = field 7 of the 21-field logical register.
+  - Address space of the JTAG interface bits: CRAM, 4 of 15 classes have a group (`docs/cycloneiv-clean-options.md` section 5).
   - Also present for fabric-reachable config blocks, same style: CRC (6 classes), remote update RU (12), SPI (8), OSC (4), OPREG (4), TSD (7), UFM (1).
 - Programmer side (host, not config): `ep4cgx150_pcf.ddb` type table lists `PGMIO_PCF_ENTRY`, `PGMIO_PCF_FILE_INFO`, `PGMIO_PCF_FIELD`, `PGMIO_F2P_CONSTANTS`, `PGMIO_JTAG_CONSTANTS` (with two `PGM_BIT_ARRAY`), `PGMIO_DEVICE_CONSTANTS`, `PGMIO_PCF_OPTIONS`, `PGMIO_ERAM_LOCATIONS`, `PGMIO_PRESERVATION_INFO`. Payload (3,160 B inflated, 790 words) tied so far: word 11 = 6,344 (frame bits), 25 = 59 (postamble bytes), 32 = 793 (bytes per lane), 37 = 6,154 (CRAM frames), 38 = 39,040,976 (CRAM bits), 33 = ASCII `EPCS`. Others (e.g. 24 = 6,506; 67 entries of 32 at words 46..112) not matched to fields.
 - USERCODE (JTAG user code, 32 bit):
@@ -125,7 +125,7 @@ Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, Ghidra 0x
   - asmdb default-bit list, CRAM part: 2,319 addresses; 2,304 already in asm.ddb, 0 in the LUT run, so 15 new.
   - Union 7,620,908 + 2,396,160 + 15 = 10,017,083 claimed; 29,023,893 not claimed.
 - Not claimed here (decoder gap, not an absence in the vendor data): asmdb group bit vectors other than the LUT run; the 277 calc groups, 1,032 dumb groups and std muxes were not associated to block types or instances. The pool run parsed so far (5,315 vectors, 131,730 elements) is all CRAM.
-- Regions: asm frame s = address mod 6,154 split at the column anchors (`lifters/data/cycloneiv_ep4cgx150_geom.json`: anchor = FX - 61, the asmdb instance cell `lo` for LAB / M9K / MUL); rows by v: tile rows = asm v 23..6322 (90 rows x 70), IO-row bands = v 0..22 and 6323..6343. Frame-to-rbf: sof identity then A5 (rbf CRAM frame = 6,153 - s, except mask cells in mirror blocks).
+- Regions: asm frame s = address mod 6,154 split at the column anchors (the asmdb instance cell `lo` for LAB / M9K / MUL; the old FX - 61 anchor table is removed, E-C2); rows by v: tile rows = asm v 23..6322 (90 rows x 70), IO-row bands = v 0..22 and 6323..6343. Frame-to-rbf: sof identity then A5 (rbf CRAM frame = 6,153 - s, except mask cells in mirror blocks).
 
 ### 5.2 Per region (bits)
 
@@ -195,7 +195,6 @@ Tier names: [cycloneiv-bit-inventory.md](cycloneiv-bit-inventory.md). "Claimed" 
 ## 7. Open
 
 - asmdb group decode (block type per group, instance cell vectors for IO / clock / PLL / transceiver, calc groups) would turn most of the 29 M "unclaimed" into claimed or genuinely unused.
-- Option-register bit to function map (30 atom-driven bits; 130 always-on).
-- Address space of the JTAG-block interface bits.
+- Function of the 130 forced / default option bits (`docs/cycloneiv-clean-options.md` section 9).
 - Tag 19 constants, tag 17 / 21 header bytes 10..11.
 - Numbers here were produced by throwaway analysis (not committed); regenerate before relying on a count after any decoder change.

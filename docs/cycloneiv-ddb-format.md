@@ -20,23 +20,20 @@ Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](cyclonev-ddb-fo
   - The Cyclone V reader's framing (`u16 max_n, u16 max_nb` in the header, per-record i32 *trailer*, "< 8-byte stub" at the end) is this same stream shifted by 4 bytes; both parse to the same bits.
 - Position = running sum of `delta` over ALL records (empty records add nothing) = `frame + 6154 * v` in a CRAM address space of 6154 frames x 6344 rows (8 bit-lanes x 793 bytes); max 39,037,932, no wrap. 7,620,908 distinct positions.
 - Groups: `vals[0]` is a flag (1 on 7,963 records); `vals[1:]` = sizes of the first n-1 fanout groups, the last group's size is implicit (`nb - sum`). Sizes: 3 (14.1 M), 2 (1.4 M), 4 (713 k), 6 (345 k), 1 (232 k), 12 (68 k), 16 (21 k), 10, 8, 0.
-- `flag` = two signed bytes `(b0, b1)`, each in {-1, 0, +1}; upper bytes 0.
+- `flag` = two signed bytes `(b0, b1)`, each in {-1, 0, +1}: i8 DELTAS of the 1-bit fields F0 (use-encoded) and F1 (encoded-high) vs the previous bit; value = running sum over all entries & 1 (DYGR_ROUTE_ASM_BIT::operator<<, libddb_dygr 0x2caf80). Upper bytes 0 (variant / tag fields constant).
 
 ### Coordinates (asm -> bitstream plane)
 
-Retired: the AFX / per-column mirror model (`plane_frame = FX + 17 - (asm_frame - AFX)`, `plane_v = 6344 - asm_v`) was refuted and removed (#165, `docs/cycloneiv-retired-coordinate-model.md`). Current rule: `docs/cycloneiv-clean-pipeline.md` A3-A5.
+Retired: the AFX / per-column mirror model (frame and row mirror formulas) was refuted and removed (#165, `docs/cycloneiv-retired-coordinate-model.md`). Current rule: `docs/cycloneiv-clean-pipeline.md` A3-A5.
 
-- `plane_frame = FX[x] + 17 - (asm_frame - AFX[x])`: the frame axis is mirrored inside every column band.  **AFX ≠ FX near special columns**: the asm frame axis lays columns out differently around M9K / MUL — on EP4CGX150 seven LAB columns (22, 35, 51, 64, 80, 93, 109 region) sit inside the plane's M9K frame spans and the plain-FX mirror decoded them to nothing (found by the first #141 specimen).  `cycloneiv_asm_decode.afx_map` derives AFX per column from the data: V4/V16-record entries vote their column (vendor C = fitter x + 2), the per-column fa-histogram peak sits at a fixed band offset (die-wide mode), AFX = peak − offset.  Valid band offsets 0..17; out-of-band entries (M9K bulk / interface, 1.5 M of 51.5 M) are dropped, never fire.
-- `plane_v = 6344 - asm_v`: the row axis is mirrored over the whole die (vendor row R runs opposite to the fitter Y; R = 91 - Y for H4 wires).
-- Evidence: learner mux patterns (LI / R4 / C4 / C16 / R24, 2-bit) land inside one asm group 83 % with this map (46 % with identity, < 25 % with any plain shift / global mirror); asm routing bands sit at plane offsets 5..15 of the column (LI muxes at 6..8 / 9..11 / 12..15, C4 drivers at 12..15) and the sparse bands at -2..5 (C16 at +5, LOCAL_LINE +2, LE_BUFFER +1) and -10..-17 (LE input muxes); the 24 empty asm frames cover the LUT masks (-7..0) and FF config.
-- Non-LAB columns (M9K, multiplier, IO) use the same formula with their synthetic FX; not verified there.
+- Removed: the AFX / per-column mirror formulas and their evidence (fitted, refuted; E-C2).
 
 ### Record / group semantics
 
 - Record = one physical routing wire (source). Vendor name from icname (`H4R32C60RT[3]` = horizontal 4-LAB wire, row 32, column 60, right-going, index 3). Its groups = the destination muxes it feeds (H4: 5 columns, 18-22 groups; V4: 5 rows). Records 0..149,759 are empty (one per LE); 149,760.. are the LE_BUFFER outputs (`rec = base[I] + 90 * colrank(X) + Y`, colrank = LAB columns right-to-left, base learnt per I); H4 names start at 449,321.
-- Group = one input of a two-level mux. Entry roles by `b0`: `+1` = the one-hot select bit of this input (always programmed 1); `-1` and `0` = the two second-level bits shared by the 12 inputs of the mux; a second-level bit is programmed 1 iff its `b1 == -1`. States of the `(b1(-1), b1(0))` pair: `(-1,+1)`, `(0,-1)`, `(0,0)` = the three second-level choices. `b1` of the select entry (0 or 1) carries no bit.
-- A mux ("block", `cycloneiv_asm_prep.py prepare`) = the groups sharing the same second-level positions: 2,620,817 blocks. The plane selects input g iff g's programmed bits are all set and every other bit of the block is clear; 31.7 k groups fire in a corpus design, 99.9 % one per block.
-- Groups whose entries are all `b0 = 0` except one select bit (the 4-groups listing a mux's four select bits) fire alongside the real input group and carry no source; the decode skips them. 2 / 6 / 12 / 16-groups (clock / IO / wide muxes) follow the same bit rule but are not yet attributed.
+- Group = bits that make one edge conduct (vendor `get_bits_from_source_to_dest`, libddb_dygr 0x23bfe0): entry value = 1 if F0 clear (one-hot select), else F1.
+  - The destination's exclusion groups (the last groups of its record, no edge) list every mux bit of the destination; those not in the edge's list must be 0.
+  - Replaces the earlier reading "b0 == +1 select, b1 == -1 set" (delta bytes taken as values; fitted, see docs/reversing-errata.md).
 - The RCF names a wire by the column (R4) / row (C4) it is driven from, so one asm record has several RCF names (`H4R32C60RT[3]` = `R4:X55Y59I3` = `X57` = `X59`, driver dependent; LT/RT and the index also change with the driver column). Scoring therefore uses a learnt alias set per RCF `(type, I)` (`lifters/data/cycloneiv_ep4cgx150_asm_names.json`).
 
 ## icname body
@@ -166,10 +163,7 @@ Field order from `DYGR_ROUTE_INFO_BODY::operator<<` (run `symdump` for the full 
     (LI 31, 219 blocks) and `6,-1|6,0` / `6,29|6,30` / `6,-13|6,-12` (LI 0 / 9 / 3, 12-23 blocks each)
     where ddb names an H4 / V4 wire or another LI; all tile entries at tile row 0 (block tile clipped
     to the IO row). Not adjudicated: both sides are exact-claimed, they cannot both be right.
-- LI element = `enum 282`, template index 0..37 per LAB tile; (vendor x, y, index) is unique. The vendor
-  x of a LAB column is NOT a pure `115 - X` mirror around M9K/DSP columns (LE_BUFFER records: +1 after
-  each pair, 24 of 104 LAB columns), and LE_BUFFER -> LI arcs land at `115 - X` or `115 - X + 2` for the
-  same RCF column: the RCF LI column / vendor LI tile relation is unresolved.
+- LI element = `enum 282`, template index 0..37 per LAB tile; (vendor x, y, index) is unique. Vendor x = fitter X (A8, `docs/cycloneiv-clean-pipeline.md`); the earlier "115 - X" mirror and "RCF LI column vs vendor LI tile unresolved" statements are removed (E-C2).
 
 ### Open
 
@@ -182,7 +176,7 @@ Field order from `DYGR_ROUTE_INFO_BODY::operator<<` (run `symdump` for the full 
 ## Naming quirks found while scoring
 
 - The RCF type of a source is not always the wire's physical class: at LI muxes ~6 % of 2-bit codes that the asm attributes to an `H4` record are named `C4:...` by the RCF (and vice versa), consistently per tile class; `H24` records appear as RCF `C16` and `V16` as `R24`. These are driver-mux names, so the alias sets carry cross-type forms.
-- ~3 % of 3-groups carry `b0 = 0` on the select entry (first entry of the group); it is still the programmed select bit.
+- A select entry with `b0 = 0` is F0 unchanged from the previous entry (still clear = one-hot).
 
 ## asmdb (settings database; partly decoded 2026-10-30, #165)
 
@@ -191,13 +185,10 @@ Same container and stream layer as routing.ddb (type id << 2 = NEW pointer tag, 
 - Die head: total bits 39,040,976, 31,060 cff bits, 160 option bits; 8 block types; 6,087 + 225 group pointers (277 calc / 4,893 + 103 std / 913 + 119 dumb / 4 + 3 map classes); 2,518 + 35 forced-bit words; main stream ends at body offset 0x949c, then pools to EOF.
 - Address model (per block instance, "traditional" style): `addr = (q + hi) * 6154 + (r + lo)` for a block-local bit `q * 6154 + r`; `(hi << 16) | lo` is a per-instance u32 cell in a vector.
   - Bits with top bits `11` are literal flags, `101` are offset by a second per-instance vector (not decoded).
-- Instance cells found: LAB 9,360 (104 columns x 90 rows), M9K 720 (8 x 90), MUL 360 (4 x 90).  Instance order = column rank right-to-left (same order as the LE_BUFFER records: record `149760 + 90 c + r` has its entries at frames `lo[c] .. +9`, v around `hi[r]`), rows = Y ascending.
-  - `hi[r] = 6252 - 70 r`; plane `v0 = vy0 + 70 Y` with `Y = r + 1`: `hi + v0 + 2 = 6344` for all 9,360 LABs.
-  - `lo[c] = FX[X] - 61` for all 104 LAB, 8 M9K and 4 MUL columns (X = column of rank c from the right).  Neighbour spacing 35, 60, 39 or 328 follows FX exactly: asm frames are laid out in plane column order, no column-specific AFX.
-- LUT INIT bits: the 16 LEs are 16 pure-vector muxes of 16 bits; local bit of `(LE, k)` = `dx * 6154 + dy + 3` with `(dx, dy)` = the blkrba `(x_cum, y_cum)` of `RBLUT{k}`, all 256 cells exact (blkrba order and shape reproduced, absolute value after the full pool chain).  One local table serves all 9,360 LABs.
-  - asm address = `(hi[r] + dx) * 6154 + lo[c] + dy + 3`; 2,396,160 addresses, all distinct.
-  - Against the LUT law (plane frame `FX + dy - 15`, `v = v0 + 2 - dx`): asm v == 6344 - plane v for 2,396,160 / 2,396,160; plane frame - asm frame = +43 for 2,396,160 / 2,396,160 (one offset, in-band order preserved, band order the same as the plane).
-  - The 8 LUT frames per column (asm offsets 11..18 from `lo`) lie in the 18-frame run (offsets 8..25) that asm.ddb leaves empty, 823 / 832 column-frames (the 9 exceptions sit in the two columns with cell lo 137 and 102).
+- Instance cells found: LAB 9,360 (104 columns x 90 rows), M9K 720 (8 x 90), MUL 360 (4 x 90). Row r = Y - 1; LAB columns paired with the instance cell vector ascending with X (rank 0 = lowest X; A3, `docs/cycloneiv-clean-pipeline.md`).
+  - `hi[r] = 6252 - 70 r`.
+- LUT INIT bits: address = `(hi[r] + dx) * 6154 + lo[c] + dy` as the vendor formula reads (`ASMDB_BLOCK_INFO::calculate_bits_traditional` @ libdb_asmdb 0x8e8a4, key 1 cell = `hi << 16 | lo`), `(dx, dy)` = blkrba `(x_cum, y_cum)` of `RBLUT{k}`; 1,023 / 1,023 sites match the oracle with no sign flip and no constant. One local table serves all 9,360 LABs.
+  - Earlier local-bit, frame-offset and column-anchor statements are removed (fitted to the retired model; the pool vectors' extra 3 frames are not in the oracle, E-A3 in `docs/reversing-errata.md`).
 - Open: IO column cells, the second per-instance vector, calc-group to block association and the mux class pools other than the LAB LUT run are not decoded.  The 88 double-offset frames next to M9K / MUL are expected where two instances' local ranges overlap (not yet shown).
 - Dirt file (3 KB): 3 small classes (string / integer / inner), not decoded.
 

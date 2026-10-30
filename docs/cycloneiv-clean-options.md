@@ -23,7 +23,7 @@ Builders: `scripts/cycloneiv_clean_options_build.py` (table), `scripts/cycloneiv
   - flag 0 <=> default-list bit (95); flag 1 <=> forced-list or group bit (65). Vendor sof: 95 / 95 match (`test_flag_half_is_default_list`).
 - Value half: 1 for every forced and default bit in all 197 builds and all vendor GX sofs.
 - rbf: option cells only in rbf frame 0 (`cff2rbf.npz` `option` table); flag half never reaches the rbf. 35 value bits have cells; 125 do not.
-  - With cells: group 28 (0, 2-10, 12-18, 27-34, 91-93, 128), forced 3 (7, 38, 94), default 4 (71, 106, 112, 130). Total 35.
+  - With cells: group 28 (0, 2-6, 8-10, 12-18, 27-34, 91-93, 128), forced 3 (7, 38, 94), default 4 (71, 106, 112, 130). Total 35.
   - Cell counts > 1: bit 8 = 15 cells, bits 29 and 93 = 2 cells each (the table in the json has every cell).
 - Polarity rule (8 dumb groups): `arch` byte 0 -> bit = NOT setting (7 groups: 0, 2, 3, 4, 5, 91, 93); `arch` 1 -> bit = setting (bit 6). 8 / 8 consistent with pairs.
 

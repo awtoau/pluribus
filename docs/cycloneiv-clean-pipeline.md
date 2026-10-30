@@ -8,7 +8,7 @@ Rebuild of the placement/lift stack from vendor-derived facts only. The layered 
 |---|---|---|---|
 | A1 | Routing graph: dests = V(first-dest) + template offsets | `routing.ddb` decode | 14,862,095 edges; fan-in inversion passes; corpus check 99.899 % on 15,474 designs |
 | A2 | Asm group bits: flat 31-bit addresses, group = destination's position in the source's fan-out | `asm.ddb` parse + static read of the assembler lookup | 51,565,365 entries; lookup is a pure function of (source id, destination id), no base |
-| A3 | LAB LUT-bit address = (hi[r] + dx) * 6154 + lo[c] - dy + 23; hi[r] = 6252 - 70 r; lo[c] = cell of column rank c, paired with LAB columns ascending (rank 0 = lowest X); (dx, dy) = blkrba (x_cum, y_cum) of `RBLUT{k}` | `asmdb` decode; sign of dy and pairing from the oracle | 2,396,160 / 2,396,160 LUT cells vs the oracle-verified LUT law under `address_to_plane` (A4 + A5); constant fitted from one cell, hits on the other 2,396,159 (#165) |
+| A3 | LAB LUT-bit address = `(hi[r] + dx) * 6154 + lo[c] + dy` (vendor formula as read, no sign flip, no constant); hi[r] = 6252 - 70 r; lo[c] = cell of column rank c, paired with LAB columns ascending (rank 0 = lowest X); (dx, dy) = blkrba (x_cum, y_cum) of `RBLUT{k}`; RBLUT index = 15 - INIT bit order | `asmdb` decode; `ASMDB_BLOCK_INFO::calculate_bits_traditional` (libdb_asmdb 0x8e8a4) | 1,023 / 1,023 sites (16,368 cells) vs the blkrba csv; all 16 sign / pairing variants scored, next best 74 / 1,023 (#165) |
 | A4 | Address to image: byte = addr >> 3, bit = addr & 7; no base, band or reversal | static read of `silent_set_bits` | two independent static analyses |
 | A5 | sof data bit i to rbf: frame 6153 - (i mod 6154), byte 793 - ((i div 6154) mod 793), bit (i div 6154) div 793; per-die mirror blocks | measured with `quartus_cpf` | bit-exact on vendor and random-plane sofs, 7 GX dies |
 | A6 | Geometry: 6344 bits/frame, 8 lanes x 793 rows, 6154 CRAM frames, 39,040,976 bits | `*_pcf.ddb` | matches rbf and sof section length |
@@ -23,7 +23,7 @@ Rebuild of the placement/lift stack from vendor-derived facts only. The layered 
 
 ## Open (not assumed)
 
-- A3 sign of dy and the `+ 23` constant rest on the oracle fit (one cell), not on a static read of the decode; the decode's own sign convention for `y_cum` is not re-derived.
+- A3: decode's own `y_cum` convention and the +3 between the decoded pool vectors and the model (`y_cum + 3`) are not derived statically (E-A3).
 - Address cells for M9K, MUL, IO; second per-instance vector; exclusion bit group; the 277 calc groups.
 - Legacy `.sof` writer not decompiled (identity unverified there).
 - No Quartus-built `.sof` with content inside the mirror blocks.

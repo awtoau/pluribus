@@ -19,7 +19,7 @@ Cyclone IV GX (EP4CGX150) address engine rebuilt from vendor-derived facts only.
 |---|---|---|
 | A1 | routing graph from `routing.ddb` | `ddb.Routing` |
 | A2 | asm group bits, group = destination position in the source fan-out | `ddb.Asm` |
-| A3 | LAB LUT address law (asmdb), dy negated, columns ascending | oracle O1 (`test_o1_sign_variants`), not code |
+| A3 | LAB LUT address law (asmdb), vendor formula as read (no sign flip, no constant), columns ascending | oracle O1 (`test_o1_sign_variants`), not code |
 | A4 | address -> image byte/bit | `plane.address_to_plane` |
 | A5 | sof bit -> rbf closed form + mirrored blocks | `plane.sof_to_rbf`, oracle O3 |
 | A6 | geometry | `plane` constants |
@@ -48,9 +48,8 @@ AFX ladder, descending-x mirror, any (dx, df) / per-column / per-source table or
 ## Tracer facts (asm.ddb flags, measured on corpus rb_000..009; numbers live in gate_runs)
 
 - Edge k of record r = group k; the last (groups - edges) groups are select-bit pseudo-groups (no edge). 14,862,095 real groups, 43,944,457 entries, all inside the die.
-- Entry roles: expected 1 iff `b0 == +1` (select) or `b1 == -1`; with exclusion, every other entry of the group is expected 0. Variants: `lit` / `lit_x` (literal rule, set-only / with exclusion), `sel` / `sel_x` (first entry always the select). Headline variant `lit_x`, fixed before the first GT comparison.
+- Entry value (vendor, `DYGR_ROUTE_ASM_INFO_BODY::get_bits_from_source_to_dest` libddb_dygr 0x23bfe0): F0 (use-encoded) clear -> bit must be 1; F0 set -> bit must equal F1 (encoded-high); F0 / F1 = running sum of the i8 flag deltas, 1 bit. Exclusion bits of the destination not in the source's list must be 0. The earlier literal `b0 == +1 or b1 == -1` rule (`lit` / `sel` variants) was fitted to the corpus and is replaced (E-L1).
 - Set-only over-fires: the three inputs sharing one select bit differ only in the second-level bits, so exclusion is required (rb_000..009, 2026-10-30: set-only extras 42,425, with exclusion 2,585).
-- Not decided by the flags: 3-groups with `b0 = 0` on the select entry (no expected-1 entry under `lit`); 2-groups (R24 / C16 / wide muxes) whose second entry is set with `b0 = b1 = 0`.
 - Clock network (`clocks.py`, #165): fan-in is a tree CLKBUF_OUT -> GLOBAL_CLK_H -> GLOBAL_CLK_V -> SCLK_TO_ROWCLK_BUF -> LAB_CLK (fan-in 30, the mux) -> BLK_CLK_BUF.
   - SCLK -> LAB_CLK: 12-entry groups, literal rule (already matched). H -> V: 1-entry group, flags 0 / 0, address in the asmdb DEFAULT-bit list (blank = 1): programmed iff the bit is CLEARED (all 120 such edges of the device).
   - Empty-group edges with fan-in 1 (145,283, all clock) are structural: they conduct when their destination is used; demand propagates up the unique parent from used SCLK and from the LAB-selected BLK_CLK_BUF.
