@@ -280,6 +280,49 @@ def io_sites(cx, plane_path):
     return res
 
 
+def hardblocks(cx, plane_path):
+    """PLL (CFF), M9K content / control, MAC control: counts only (#169).  Undecoded = MISSING."""
+    from lifters.cycloneiv_clean import asmdb_walk as W, fields as F, m9k, mac, pll, plane as P
+    import cycloneiv_clean_dirt as D
+    w = W.Walk()
+    flds = F.fields(w, D.enum_tables())
+    tab = P.load_tables()
+    bits = cx.T.plane_bits(plane_path)
+    res = {}
+    cff = cx.io.cff.read(plane_path)[0]
+    pm = pll.PllMap(flds)
+    used = pm.used(cff)
+    res["pll"] = {"enabled": len(used), "sites_decoded": [k for k, _, _ in used],
+                  "params": {f"PLL_{k}": {kk: (list(v) if isinstance(v, tuple) else v) for kk, v in pm.params(cff, bt, p).items()} for k, bt, p in used},
+                  "other_enabled_paths_MISSING": sum(1 for (bt, nm, gi), ps in pm.g.items() if nm == "PLL_ENABLE_PLL" for i, pa in enumerate(ps)
+                                                      if pa is not None and (bt, i) not in pll.PLL_SITE.values() and cff[pa[0]])}
+
+    def cell(a):
+        r, j, k = P.sof_to_rbf(a.ravel(), tab)
+        return (r * P.BITS_PER_FRAME + (j - 1) * P.LANES + k).reshape(a.shape)
+    off = m9k.content_offsets(flds)
+    cc = cell(F.absolute(F.bases(w, 39), off))
+    v = bits[cc]
+    per = v.sum(1)
+    ctl = collections.Counter()
+    for f in flds:
+        if f.btype == 39 and f.name in ("RAM_USE_TRUE_DUAL_PORT_MODE", "RAM_USE_PACKED_MODE", "RAM_REG_DATA_OUT", "RAM_REG_DATA_OUT_B", "RAM_NEW_DATA_MODE"):
+            c = cell(F.absolute(F.bases(w, 39), np.asarray(f.sites[0][0], np.int64)))
+            ctl[f.name] = int(bits[c].any(axis=1).sum())
+    res["m9k"] = {"instances": int(len(per)), "content_bits": int(v.size), "content_bits_set": int(per.sum()), "instances_with_content": int((per > 0).sum()),
+                  "instances_with_any_control": ctl.most_common() and dict(ctl), "content_unmapped_MISSING": 0}
+    ma = 0
+    mc = 0
+    mflds = [f for f in flds if f.btype == 41 and not f.name.startswith(("MAC_ROW_DATA_INPUT", "MAC_PIA_"))]
+    anyset = np.zeros(len(F.bases(w, 41)), bool)
+    for f in mflds:
+        for site in f.sites:
+            for o in site:
+                anyset |= bits[cell(F.absolute(F.bases(w, 41), o))].any(axis=1)
+    res["mac"] = {"instances": int(len(anyset)), "instances_with_set_control_bits": int(anyset.sum()), "mode_decode": "MISSING (unsigned / 9-bit / registers decoded only as signature bits)"}
+    return res
+
+
 def analyse(cx, path):
     bits = cx.T.plane_bits(path)
     res = {"set_cram_bits": int(bits.sum())}
@@ -289,6 +332,7 @@ def analyse(cx, path):
     res["logic"] = logic(cx, bits, head, g)
     res["blocks"] = blocks(cx, head)
     res["io"] = io_sites(cx, path)
+    res["hardblocks"] = hardblocks(cx, path)
     return res
 
 
@@ -321,7 +365,7 @@ def _analyse_all(cx_args, t0):
     with heavy_guard.lease(gb, "cyc4_clean_image", log):
         cx = Ctx()
         res.update(analyse(cx, PLANE))
-        for k in ("routing", "logic", "blocks", "io"):
+        for k in ("routing", "logic", "blocks", "io", "hardblocks"):
             log.info("%s %s", k, json.dumps(res[k]))
         res["control"] = {}
         for i in range(control):
