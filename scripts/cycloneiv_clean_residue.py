@@ -26,6 +26,7 @@ OUT = os.path.join(REPO, "tmp", "cycloneiv_clean", "residue.json")
 EVER = os.path.join(REPO, "databases", "cycloneiv", "ever_set.npy")
 GEOM = os.path.join(REPO, "lifters", "data", "cycloneiv_ep4cgx150_geom.json")
 CHUNK = 4_000_000
+_EVER = None
 
 
 def dbc_mask(w):
@@ -44,6 +45,66 @@ def plane_flat_ordered(addr, nv, vmap, tab):
     """sof data bit index -> rbf-plane flat cell (A4 + A5), order preserved."""
     r, j, k = P.sof_to_rbf(addr, tab)
     return P.plane_frame(r) * nv + vmap[j * 8 + k]
+
+
+def image_report(path, log, claimed, st, flat, kcol, tile, col, s, v, fx, nv, vmap, geo):
+    """Residue / option / periphery cells set in one third-party GX150 image (path from the environment only; counts logged, no path)."""
+    plane = cc.cram_plane(open(path, "rb").read(), geo)
+    img = np.zeros(6191 * nv, bool)
+    img[plane.keys] = True
+    log.info("image: %d plane cells set", img.sum())
+    ist = img[flat]
+    unc = ~claimed
+    out = {"set_cells": int(img.sum()), "regions": {}, "clusters": []}
+    for k in ("LAB", "M9K", "MUL", "IOL", "IOR", "pre"):
+        for name, sel in (("tile", tile), ("band", ~tile)):
+            m = (kcol == k) & sel & unc
+            if m.sum():
+                r = dict(residue=int(m.sum()), image_set=int((m & ist).sum()), image_set_also_in_corpus=int((m & ist & st).sum()),
+                         image_set_new=int((m & ist & ~st).sum()))
+                out["regions"][f"{k}:{name}"] = r
+                log.info("image %-10s residue %10d set %8d (in corpus %8d, new %8d)", f"{k}:{name}", *r.values())
+    m = unc & ist
+    log.info("image residue total set %d of %d; claimed bits set %d of %d", m.sum(), unc.sum(), (ist & claimed).sum(), claimed.sum())
+    out["residue_set_total"], out["claimed_set"] = int(m.sum()), int((ist & claimed).sum())
+    # clusters: (column, kind, tile/band) with counts and frame / v ranges, largest first
+    idx = np.nonzero(m)[0]
+    key = col[idx] * 2 + tile[idx]
+    for kk in np.unique(key):
+        sel = idx[key == kk]
+        out["clusters"].append(dict(column=int(kk // 2), kind=str(kcol[sel[0]]), tile=bool(kk % 2), n=int(len(sel)), in_corpus=int(st[sel].sum()),
+                                    frames=[int(s[sel].min()), int(s[sel].max())], v=[int(v[sel].min()), int(v[sel].max())]))
+    out["clusters"].sort(key=lambda c: -c["n"])
+    for c in out["clusters"][:25]:
+        log.info("image cluster %s", c)
+    log.info("image residue clusters: %d columns/bands", len(out["clusters"]))
+    # option register header cells (frame 0, byte j at file offset 32 + j, LSB first): image value vs the vendor sof value (1 for all 130
+    # forced / default bits)
+    from lifters.cycloneiv_clean import options as O
+    raw = np.frombuffer(open(path, "rb").read(32 + 800), np.uint8)
+    cnt = {}
+    for e in O.entries():
+        for fr, j, k in e["rbf_cells"]:
+            if fr == 0:
+                c = cnt.setdefault(e["klass"], [0, 0, 0])
+                bit = (int(raw[32 + j]) >> k) & 1
+                c[0] += 1
+                c[1] += bit == 1
+                c[2] += bit == e["vendor_value"]
+    out["option_header_cells"] = {k: dict(cells=v[0], image_is_1=v[1], equals_vendor_sof_value=v[2]) for k, v in cnt.items()}
+    log.info("image option header cells by class (cells, image=1, image=vendor sof value) %s", cnt)
+    # periphery: cells that carry a CFF bit vs template cells carrying none
+    z = np.load(os.path.join(REPO, "databases", "cycloneiv", "cff2rbf.npz"))
+    cff = z["cff"]
+    fr_, j_, k_ = np.meshgrid(np.arange(37), np.arange(796), np.arange(8), indexing="ij")
+    pf = fr_ * nv + vmap[j_ * 8 + k_]
+    carry = cff >= 0
+    for name, msk in (("CFF-carrying", carry), ("no CFF bit (template)", ~carry)):
+        c = pf[msk]
+        out[f"periphery_{name}"] = dict(cells=int(msk.sum()), image_set=int(img[c].sum()), ever_set=int(_EVER[c].sum()),
+                                        image_set_new=int((img[c] & ~_EVER[c]).sum()))
+        log.info("image periphery %-22s cells %7d image-set %7d corpus-ever-set %7d image-only %6d", name, *out[f"periphery_{name}"].values())
+    return out
 
 
 def main():
@@ -72,6 +133,8 @@ def main():
     unc = ~claimed
     ever_packed = np.load(ever_path)
     ever = np.unpackbits(ever_packed)[:6191 * 6368].astype(bool)
+    global _EVER
+    _EVER = ever
     import cycloneiv_geom as cg
     geo = cg.load(cg.die_of("EP4CGX150"))
     vmap = cc.vmap_for(P.RBF_FRAME_BYTES, tuple(geo.lane_bytes), tuple(map(tuple, geo.lane_swaps)))
@@ -150,6 +213,8 @@ def main():
         for r in rows:
             log.info("%s tile %-38s bits %10d ever-set %10d", kind, *r)
     res["tile_partition"] = out
+    if os.environ.get("PLURIBUS_DJI_IMAGE"):
+        res["image"] = image_report(os.environ["PLURIBUS_DJI_IMAGE"], log, claimed, st, flat, kcol, tile, col, s, v, fx, nv, vmap, geo)
     json.dump(res, open(OUT, "w"), indent=1)
     return 0
 

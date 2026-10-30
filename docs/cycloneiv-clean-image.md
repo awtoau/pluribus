@@ -59,3 +59,22 @@
 
 - Used LEs 89,283 (mask != 0 or LE-used bit), LUTs 89,283, FFs 25,835, active LABs 7,077.
 - Clean count: LUTs 89,280, LABs 7,077 (equal), FFs 34,112 (register-used decode differs from the old lifter's FF trace).
+
+## Explained-set-bit rate (ground-truth-free lift metric, #165 #169)
+
+Script `scripts/cycloneiv_clean_setbits.py` (counts only; third-party image read from the environment, never named). Measured 2026-10-30, EP4CGX150, class sets from `cycloneiv_clean_classes.build`, plane cells set in frames 1.. (header excluded).
+Tiers (a set cell is in exactly one): A = placed by a gate-scored class (LUT INIT, routing pips under the vendor rule, clock network, IO pair-measured); B = decoded, no oracle (clock select, register-used, IO sampled / decoded); C = address-only group (other LAB groups, M9K, MAC); D = no class, inside a column tile; E = no class, pre-column frames / IO bands / periphery.
+
+| design | set cells | A | B | C | D | E | explained A+B+C | validated A | gate pips / LUT INIT |
+|---|---|---|---|---|---|---|---|---|---|
+| rb_000..009 (10 Quartus-built, ground truth) | 259,675..274,843 | 13,747..24,722 | 5,227..6,214 | 220,769..224,141 | 11,124 each | 8,778..8,829 | 92.32..92.76 % | 5.29..8.99 % | 99.53..99.82 % / 100 % |
+| rb_010..019 (no gate rows) | 258,696..278,201 | 13,274..27,126 | 4,945..6,336 | 220,536..224,876 | 11,124 each | 8,775..8,844 | 92.29..92.84 % | 5.13..9.75 % | not scored |
+| third-party image | 2,178,780 | 1,230,328 | 127,400 | 800,357 | 11,140 | 9,555 | 99.05 % | 56.47 % | not scored |
+
+- Reading:
+  - Corpus builds are small designs: C (address-only) is 85 % of their set bits and is nearly design-independent (220.5 k..224.9 k) = default / off-state bits of placed groups. Their explained rate (92.5 %) measures the background, not decoding.
+  - D (11,124) is identical in all 20 corpus designs and 16 higher in the image: constant default-state cells (hard-block absolute groups and DEFAULT_BIT_CALC cells are placed by vendor records but not in these class sets). E = 8.8 k in the corpus, 9.6 k in the image (+0.8 k).
+  - The image is where the metric separates: A = 56.5 % of its set bits, B 5.8 %, C 36.7 %, D+E 0.9 %.
+- Calibration against truth (rb_000..009): the A tier's gate rates are pips 99.5..99.8 %, nets 95.8..98.3 %, LUT INIT 100 %, register-clock 99.1..100 %. So an A-tier set bit is placed by a decoder whose pip output is ~99.7 % right; "placed" is not "correct": gaps are missing pips (gate `missing` > 0), nets (pins 72 %), and any bit that a decoder places but the gate does not score (all of C, most of B).
+  - Image estimate: validated-correct set bits ~ 56.5 % x ~0.997 = ~56 % (pips) with LUT INIT exact; the 36.7 % in C is placed, meaning unknown; the proxy cannot see decoded-but-wrong bits in tiers B and C.
+- Limits: set-bit counts weight every bit equally (a routing mux spends 2-3 bits per pip, a LUT 16 bits); D / E are not the 12.5 M vendor-residue (that counts unset cells too).
