@@ -27,7 +27,12 @@ UNC = "1'b1"                              # emit.UNCONNECTED
 CONSTV = {"1'b1": 1, "1'b0": 0}
 MAXL = 6                                  # decision: cone leaf cap = 6 (64-bit truth table; readable SOP); counts per design in the stats
 SOP_LIT_MAX = 16                          # decision: SOP above this many literals prints as an indexed truth table (rule TT)
-FSM_STATE_MAX = 6                         # decision: <= 64 states printed exactly
+FSM_STATE_MAX = 24                        # decision: state register width cap (one-hot FSMs up to 24 states)
+FSM_REACH_MAX = 64                        # decision: reachable-state cap
+FSM_STATE_INPUT_MAX = 10                  # decision: inputs one state's next-state cone may depend on (2^10 vectors)
+FSM_SUP_CAP = 96                          # decision: cap on the leaf support of a state FF's D cone
+FSM_EVAL_MAX = 300000                     # decision: next-state evaluations per machine
+_FSM_OLD = 6                         # decision: <= 64 states printed exactly
 FSM_INPUT_MAX = 5                         # decision: <= 32 input vectors per state
 SUP_CAP = FSM_STATE_MAX + FSM_INPUT_MAX + 1
 LINE_MAX = 2000                           # decision: block lines longer than this are split at statement boundaries (verilator token cap)
@@ -284,6 +289,8 @@ class Lift:
         self.nl, self.prefix, self.module = nl, prefix, module
         self.stats = collections.Counter()
         self.adder_widths = []
+        self.muxn = []
+        self.counters = {}
         self.flat_text = flat_text
 
     # ---- indices ------------------------------------------------------------------------------------------------------------------
@@ -344,7 +351,7 @@ class Lift:
                 src = self.co_of[L["cin"]]
                 nxt[src["name"]] = L["name"]
                 prev[L["name"]] = src["name"]
-        self.chain_of, self.chain_list = {}, []
+        self.chain_of, self.chain_list, self.tail_free = {}, [], set()
         heads = [n for n in nxt if n not in prev]
         for h in sorted(heads):
             seq, cur = [h], h
@@ -355,8 +362,10 @@ class Lift:
             ch = dict(k=k, luts=[self.lut[n] for n in seq], ok=False)
             self.analyse_chain(ch)
             self.chain_list.append(ch)
-            for i, n in enumerate(seq):
-                self.chain_of[n] = (ch, i)
+            for i, L_ in enumerate(ch["luts"]):
+                self.chain_of[L_["name"]] = (ch, i)
+            if ch.get("tail_free"):
+                self.tail_free.add(ch["tail"]["name"])
         # cin-mode LUTs not in a chain with a head (unresolved carry-in, loops): opaque
         self.opaque = set()
         for L in nl.luts:
@@ -365,7 +374,7 @@ class Lift:
                 ch = self.chain_of[n][0]
                 if not ch["ok"]:
                     self.opaque.add(n)
-            elif L["mode"] == "cin":
+            elif L["mode"] == "cin" and n not in self.tail_free:
                 self.opaque.add(n)
 
     @staticmethod
@@ -373,60 +382,109 @@ class Lift:
         return (a & b) | (a & c) | (b & c)
 
     def analyse_chain(self, ch):
+        """Try the whole chain; if the last LE fits no adder form (a comparator's result LUT, or an adder's final gating LUT), analyse the chain
+        without it: its carry-in is then the chain's carry out and the LE is ordinary logic (`tail_free`)."""
+        full = list(ch["luts"])
+        ch["tail_free"] = False
+        self._analyse(ch, len(full), True)
+        if not ch["ok"] and len(full) >= 3 and ch.get("why") == "no_operand_form" and ch.get("fail_at") == len(full) - 1:
+            for k in ("why", "fail_at"):
+                ch.pop(k, None)
+            ch["luts"] = full[:-1]
+            self._analyse(ch, len(full) - 1, False)
+            if ch["ok"]:
+                ch["tail_free"] = True
+                ch["tail"] = full[-1]
+            else:
+                ch["luts"] = full
+
+    def _analyse(self, ch, n_eff, exempt_last):
         """Per bit (X, Y) operand forms such that sum = X ^ Y ^ c and cout = maj(X, Y, c) ^ po (carry signal polarity po per stage, as stored
         by the fitter); incoming signal polarity of stage i = po of stage i - 1.  Head: constant carry-in c0 (signal 0 into cout)."""
         bits, pols, c0, pin = [], [], None, None
+        ch["free_head"] = False
         forms = [("s", 0), ("s", 1), ("c", 0), ("c", 1)]
-        for i, L in enumerate(ch["luts"]):
-            pa, pb, pc, pd = L["pins"]
-            if pd not in CONSTV or L.get("und"):
+        ev = lambda f, v: (v ^ f[1]) if f[0] == "s" else f[1]
+        nl_ = n_eff + (0 if exempt_last else 1)          # cout of the last analysed LE is checked unless it is the real last LE
+        for i, L in enumerate(ch["luts"][:n_eff]):
+            pins, init = L["pins"], L["init"]
+            sumfree = self.fan[L["name"]] == 0
+            if L.get("und"):
                 ch.setdefault('why', 'R1'); return
-            dv = CONSTV[pd]
-            ia, ib = pa in CONSTV, pb in CONSTV
-            init = L["init"]
-            if i == 0 and (L["mode"] == "cin" or pc not in CONSTV):
+            if i == 0 and L["mode"] == "cin":
                 ch.setdefault('why', 'R2'); return
-            cv = CONSTV[pc] if i == 0 else None
-            ev = lambda f, v: (v ^ f[1]) if f[0] == "s" else f[1]
-
-            def sum_fn(a, b, c):
-                return (init >> ((CONSTV[pa] if ia else a) | ((CONSTV[pb] if ib else b) << 1) | (c << 2) | (dv << 3))) & 1
-
-            def cout_fn(a, b, c):
-                return (init >> ((CONSTV[pa] if ia else a) | ((CONSTV[pb] if ib else b) << 1) | (c << 2))) & 1
+            # operand pin pairs: the two non-constant (or constant) inputs read as X, Y; the remaining pin must be a constant (datad of the last LE may carry a control)
+            pairs = [(0, 1)] if pins[3] in CONSTV else [(0, 3), (3, 0), (1, 3), (3, 1)]
             found = None
-            for fx in forms:
-                if fx[0] == "s" and ia:
+            for px, py in pairs:
+                other = ({0, 1, 3} - {px, py}).pop()
+                if pins[other] not in CONSTV:
                     continue
-                for fy in forms:
-                    if fy[0] == "s" and ib:
+
+                def idx(x, y, c, dc=None):
+                    v = {px: x, py: y, other: CONSTV[pins[other]]}
+                    return (v[0] | (v[1] << 1) | (c << 2) | (v[3] << 3)) if dc is None else (v[0] | (v[1] << 1) | (c << 2) | (dc << 3))
+                sx, sy = pins[px], pins[py]
+
+                def sum_fn(x, y, c):
+                    return (init >> idx(x, y, c)) & 1
+
+                def cout_fn(x, y, c):
+                    return (init >> (idx(x, y, c) & 7)) & 1                 # emit semantics: cout reads INIT[{0, c, b, a}]
+                for fx in forms:
+                    if fx[0] == "s" and sx in CONSTV:
                         continue
-                    for po in ((0, 1) if i < len(ch["luts"]) - 1 else (0,)):
-                        if i == 0:
-                            okc = [cc for cc in (0, 1) if all(sum_fn(a, b, cv) == ev(fx, a) ^ ev(fy, b) ^ cc and
-                                                              cout_fn(a, b, 0) == self.maj(ev(fx, a), ev(fy, b), cc) ^ po for a in (0, 1) for b in (0, 1))]
-                            if okc:
-                                found = (fx, fy, po, okc[0])
-                        elif all(sum_fn(a, b, c) == ev(fx, a) ^ ev(fy, b) ^ c ^ pin and
-                                 (i == len(ch["luts"]) - 1 or cout_fn(a, b, c) == self.maj(ev(fx, a), ev(fy, b), c ^ pin) ^ po)
-                                 for a in (0, 1) for b in (0, 1) for c in (0, 1)):
-                            found = (fx, fy, po, None)
-                        if found:
+                    for fy in forms:
+                        if fy[0] == "s" and sy in CONSTV:
+                            continue
+                        for po in ((0, 1) if i < nl_ - 1 else (0,)):
+                            if i == 0:
+                                cc_ok = [cc for cc in (0, 1) if all(cout_fn(x, y, 0) == self.maj(ev(fx, x), ev(fy, y), cc) ^ po for x in (0, 1) for y in (0, 1))]
+                                if not cc_ok:
+                                    continue
+                                cv = CONSTV[pins[2]] if pins[2] in CONSTV else None
+                                good = [cc for cc in cc_ok if cv is not None and all(sum_fn(x, y, cv) == ev(fx, x) ^ ev(fy, y) ^ cc for x in (0, 1) for y in (0, 1))]
+                                cand = (fx, fy, po, (good or cc_ok[:1])[0], sx, sy, not good)
+                                if good or found is None:
+                                    found = cand
+                            elif all((sumfree or sum_fn(x, y, c) == ev(fx, x) ^ ev(fy, y) ^ c ^ pin) and
+                                     (i == nl_ - 1 or cout_fn(x, y, c) == self.maj(ev(fx, x), ev(fy, y), c ^ pin) ^ po)
+                                     for x in (0, 1) for y in (0, 1) for c in (0, 1)):
+                                found = (fx, fy, po, None, sx, sy, False)
+                            if found and (i > 0 or not found[6]):
+                                break
+                        if found and (i > 0 or not found[6]):
                             break
-                    if found:
+                    if found and (i > 0 or not found[6]):
                         break
-                if found:
+                if found and (i > 0 or not found[6]):
                     break
             if not found:
                 ch['why'] = 'no_operand_form'
-                ch.setdefault('why', 'R3'); return
+                ch['fail_at'] = i
+                return
             if i == 0:
                 c0 = found[3]
+                ch["free_head"] = found[6]
             pin = found[2]
             pols.append(pin)
-            bits.append((found[0], found[1], pa, pb))
+            bits.append((found[0], found[1], found[4], found[5]))
         if c0 is None:
             ch.setdefault('why', 'R4'); return
+        # orientation: the fitter swaps which pin carries which operand between bits; the signal read by most bits is the shared (B) operand
+        cnt = collections.Counter(s for fx_, fy_, sx_, sy_ in bits for f_, s_ in ((fx_, sx_), (fy_, sy_)) if f_[0] == "s" for s in (s_,))
+        ob = []
+        for fx_, fy_, sx_, sy_ in bits:
+            xs, ys = fx_[0] == "s", fy_[0] == "s"
+            if (ys and not xs) or (xs and ys and (cnt[sx_] > cnt[sy_] or (cnt[sx_] == cnt[sy_] and fx_[1] > fy_[1]))):
+                fx_, fy_, sx_, sy_ = fy_, fx_, sy_, sx_             # shared signal -> B; on a tie the inverted operand -> B (compare / subtract chains)
+            ob.append((fx_, fy_, sx_, sy_))
+        bits = ob
+        # last LE: cout is unused, so (X inverted, Y inverted) and (X, Y) give the same sum; follow the previous bit's polarities
+        if len(bits) >= 2:
+            (lx, ly, lsx, lsy), (px_, py_, _a, _b) = bits[-1], bits[-2]
+            if (lx[0], ly[0]) == (px_[0], py_[0]) and lx[1] ^ ly[1] == px_[1] ^ py_[1]:
+                bits[-1] = (px_, py_, lsx, lsy)
         ch["bits"], ch["c0"], ch["po"] = bits, c0, pols
         # trailing collector LE (both operands constant 0): its sum is the carry out
         n = len(bits)
@@ -474,8 +532,13 @@ class Lift:
         return raw(ch["A"], 0), raw(ch["B"], ch["pol"])
 
     # ---- cones --------------------------------------------------------------------------------------------------------------------
+    def free_head(self, n):
+        """LUT n is the first LE of a recognised chain whose sum is not an adder bit (a pure carry generator): its sum output is ordinary logic."""
+        c = self.chain_of.get(n)
+        return bool(c and c[0]["ok"] and c[0].get("free_head") and c[1] == 0)
+
     def normal(self, n):
-        return n in self.lut and n not in self.chain_of and n not in self.opaque
+        return n in self.lut and (n not in self.chain_of or self.free_head(n)) and n not in self.opaque
 
     def inl_ok(self, n, consumer_kinds):
         """LUT n can be inlined into its single consumer of one of the kinds."""
@@ -606,7 +669,7 @@ class Lift:
     # ---- registers ----------------------------------------------------------------------------------------------------------------
     def ctl_key(self, F):
         return tuple((F.get(k), bool(F.get(k + "_inv"))) if F.get(k) is not None else None for k in ("ena", "aclr", "sclr", "sload")) + \
-            (F.get("clk"), bool(F.get("clk_inv")), F.get("sload_vcc"))
+            (F.get("clk"), bool(F.get("clk_inv")))
 
     def registers(self):
         nl = self.nl
@@ -622,14 +685,17 @@ class Lift:
         for F in clocked:
             groups[self.ctl_key(F)].append(F)
         self.bundles = []                                    # dict(kind, ffs(list in bit order), key)
+        self.counter_bundles(groups, used)
         # fed-by-chain registers: ordered by chain bit
         for key, fs in groups.items():
             byc = collections.defaultdict(list)
             for F in fs:
+                if F["name"] in used:
+                    continue
                 sp = self.dsimp[F["name"]]
                 if sp[0] == "lit" and not sp[1]:
                     c = self.chain_of.get(sp[2][0])
-                    if c and c[0]["ok"] and not F.get("sload") and not F.get("sload_vcc"):
+                    if c and c[0]["ok"] and not self.free_head(sp[2][0]) and not F.get("sload") and not F.get("sload_vcc"):
                         byc[c[0]["k"]].append((c[1], F))
             for k, lst in byc.items():
                 if len(lst) >= 2:
@@ -637,74 +703,219 @@ class Lift:
                     ffs = [F for _, F in lst]
                     self.bundles.append(dict(kind="REG_CHAIN", ffs=ffs, key=key, chain=k, pos=[p for p, _ in lst]))
                     used.update(F["name"] for F in ffs)
-        # shift registers: D is the plain Q of another FF of the same control set
+        # shift registers: D is the plain Q of another FF of the same control set (taps and loads do not break a path: longest-path decomposition of the
+        # D-copy forest; a stage with several copies continues with its deepest child, the others head their own paths; loads = sload/asdata per bit)
         for key, fs in groups.items():
             names = {F["name"] for F in fs if F["name"] not in used}
             succ = collections.defaultdict(list)
             pred = {}
-            leafuse = self.leafuse
             for F in fs:
-                if F["name"] in used or F.get("sload") or F.get("sload_vcc"):
+                if F["name"] in used:
                     continue
                 sp = self.dsimp[F["name"]]
                 if sp[0] == "lit" and not sp[1] and sp[2][0] in names and sp[2][0] != F["name"]:
                     succ[sp[2][0]].append(F["name"])
                     pred[F["name"]] = sp[2][0]
-            starts = [n for n in names if n not in pred and len(succ.get(n, [])) >= 1]
-            for s in sorted(starts):
-                path, cur = [s], s
-                while len(succ.get(cur, [])) == 1 and leafuse[cur] == 1 and succ[cur][0] not in path:
-                    cur = succ[cur][0]
-                    path.append(cur)
-                if len(path) >= SHIFT_MIN:
-                    self.bundles.append(dict(kind="SHIFT", ffs=[self.ffd[n] for n in path], key=key))
-                    used.update(path)
+            # loadable shift: D = load ? data : previous stage (mux with two distinct data leaves and one shared select set across the stages)
+            mux_of = {}
+            for F in fs:
+                sp = self.dsimp[F["name"]]
+                if F["name"] not in used and sp[0] == "mux":
+                    sel, cof = sp[1]
+                    dl = {self.res(sp[2][d]) for d, _ in cof}
+                    if len(dl) == 2 and all(not ng for _d, ng in cof):
+                        mux_of[F["name"]] = (frozenset(self.res(sp[2][j]) for j in sel), dl)
+            for n_, (sels, dl) in mux_of.items():
+                pc = [x for x in dl if x in mux_of and x != n_ and mux_of[x][0] == sels]
+                if len(pc) == 1:
+                    succ[pc[0]].append(n_)
+                    pred[n_] = pc[0]
+            depth = {}
+
+            def dep(n, guard=()):
+                if n in depth:
+                    return depth[n]
+                if n in guard:
+                    return 0
+                depth[n] = 1 + max([dep(c, guard + (n,)) for c in succ.get(n, [])] or [0])
+                return depth[n]
+            for n in sorted(names):
+                dep(n)
+            taken = set()
+            progress = True
+            while progress:
+                progress = False
+                cand = sorted((n for n in names if n not in taken and n in succ and (n not in pred or pred[n] in taken or pred[n] not in names)), key=lambda n: (-depth[n], n))
+                if not cand:      # cycles (rotating registers): break at the deepest member
+                    cand = sorted((n for n in names if n not in taken and n in succ), key=lambda n: (-depth[n], n))[:1]
+                for s in cand:
+                    if s in taken:
+                        continue
+                    path, cur = [s], s
+                    while True:
+                        nx = [c for c in succ.get(cur, []) if c not in taken and c not in path]
+                        if not nx:
+                            break
+                        cur = max(nx, key=lambda c: (depth[c], c))
+                        path.append(cur)
+                    taken.update(path)               # short paths are consumed too (a stage is not offered twice)
+                    progress = True
+                    if len(path) >= SHIFT_MIN:
+                        self.bundles.append(dict(kind="SHIFT", ffs=[self.ffd[n] for n in path], key=key))
+                        used.update(path)
+        self.lut_counter_bundles(groups, used)
         # remaining: by control set in location order
         for key, fs in groups.items():
             rest = sorted((F for F in fs if F["name"] not in used), key=lambda F: (F["x"], F["y"], F["le"]))
             for i in range(0, len(rest), BUS_MAX):
                 self.bundles.append(dict(kind="REG", ffs=rest[i:i + BUS_MAX], key=key))
 
+    def lut_counter_bundles(self, groups, used):
+        """Binary counters built from plain LUTs (patterns.lut_counters: nested FF supports, exact count / hold / clear check per bit).  The bundle keeps
+        the per-bit statements (exact), only the register is labelled."""
+        from . import patterns
+        D = patterns.Design(self.nl)
+        known = set(used)
+        clocked = {F["name"] for fs in groups.values() for F in fs}
+        for c in patterns.lut_counters(D, known):
+            names = c["ffs"]
+            if any(n in used or n not in clocked for n in names) or len({self.ctl_key(self.ffd[n]) for n in names}) != 1:
+                continue
+            self.bundles.append(dict(kind="CNTL", ffs=[self.ffd[n] for n in names], key=self.ctl_key(self.ffd[names[0]])))
+            used.update(names)
+
+    def counter_bundles(self, groups, used):
+        """Recognised carry chain whose bit i is the register FF fed by sum i (its own Q is an operand of the LE: self feedback) and whose other
+        operand is a constant or one shared signal s: the register is a counter, next = R + K(s) (K from the operand constants and c0).
+        A free head's bit 0 is the FF toggled by the head's constant operand; a shared signal that is itself a toggling FF of the same control
+        set is the register's bit 0 (carry-in merged into the first LE).  Controls (enable, clears, load) are the bundle's FF control set, so
+        the statement is the chain arithmetic and equivalence holds by construction."""
+        clocked = {F["name"] for fs in groups.values() for F in fs}
+        fed = {}
+        for n in clocked:
+            sp = self.dsimp[n]
+            if sp[0] == "lit" and not sp[1]:
+                fed.setdefault(self.res(sp[2][0]), n)
+        for ch in self.chain_list:
+            if not ch["ok"] or ch["W"] < 2:
+                continue
+            W, M = ch["W"], 1 << ch["W"]
+            Fs, Bf, sigs, ok = [], [], set(), True
+            for i in range(W):
+                (fx, fy, sx, sy) = ch["bits"][i]
+                sx, sy = self.res(sx), self.res(sy)
+                if i == 0 and ch.get("free_head"):
+                    cand = [(f, s, o, fo) for (f, s, o, fo) in ((fx, sx, sy, fy), (fy, sy, sx, fx)) if f[0] == "s" and s in self.ffd and fo[0] == "c" and f[1] == 0]
+                    if not cand:
+                        ok = False
+                        break
+                    f, s, o, fo = cand[0]
+                    Fs.append(self.ffd[s])
+                    Bf.append(fo)
+                    continue
+                n = fed.get(ch["luts"][i]["name"])
+                if n is None:
+                    ok = False
+                    break
+                pair = [(fx, sx, fy, sy), (fy, sy, fx, sx)]
+                pick = [(f, s, fo, so) for (f, s, fo, so) in pair if f[0] == "s" and s == n and f[1] == 0]
+                if not pick:
+                    ok = False
+                    break
+                f, s, fo, so = pick[0]
+                Fs.append(self.ffd[n])
+                Bf.append(fo)
+                if fo[0] == "s":
+                    if so in CONSTV or so == n:
+                        ok = False
+                        break
+                    sigs.add(so)
+            if not ok or len(sigs) > 1 or len({F["name"] for F in Fs}) != W or any(F["name"] in used for F in Fs):
+                continue
+            rest_keys = {self.ctl_key(F) for F in Fs[1:]}
+            if len(rest_keys) != 1:
+                continue
+            k0, kr = self.ctl_key(Fs[0]), next(iter(rest_keys))
+            enable_in_lut = ch.get("free_head") and k0 != kr and k0[0] is None and kr[0] is not None and k0[1:] == kr[1:]
+            if k0 != kr and not enable_in_lut:
+                continue
+            if ch.get("free_head"):
+                fy0 = ch["bits"][0]
+                sp = self.dsimp[Fs[0]["name"]]
+                par = (Bf[0][1] ^ ch["c0"])
+                if enable_in_lut:
+                    ok = par == 1 and sp[0] == "xor" and {self.res(x) for x in sp[2]} == {Fs[0]["name"], self.res(kr[0][0])} and sp[1] == bool(kr[0][1])
+                else:
+                    ok = sp[0] == "lit" and self.res(sp[2][0]) == Fs[0]["name"] and sp[1] == bool(par)
+                if not ok:
+                    continue
+
+            def K(sv):
+                return (sum(((sv ^ f[1]) if f[0] == "s" else f[1]) << i for i, f in enumerate(Bf)) + ch["c0"]) % M
+            sig = next(iter(sigs)) if sigs else None
+            ks = (K(0), K(1)) if sig else (K(0),)
+            ffs, ctl = list(Fs), (Fs[1] if enable_in_lut else None)
+            if sig and ks == (0, 1) and sig in self.ffd and sig in clocked and sig not in used and self.ctl_key(self.ffd[sig]) == kr:
+                sp = self.dsimp[sig]
+                if sp[0] == "lit" and sp[1] and self.res(sp[2][0]) == sig:          # the shared signal is the register's bit 0 (toggles every enabled clock)
+                    ffs, ks, sig = [self.ffd[sig]] + ffs, (1,), None
+            self.bundles.append(dict(kind="CNT", ffs=ffs, key=kr, chain=ch["k"], sig=sig, ks=ks, ctl=ctl))
+            used.update(F["name"] for F in ffs)
+            self.counters[id(self.bundles[-1])] = True
+
     # ---- FSM ----------------------------------------------------------------------------------------------------------------------
     def fsm(self):
-        """Strongly connected FF groups with a small support, none part of a shift path or fed by a carry chain."""
-        in_bundle_kind = {}
-        for b in self.bundles:
-            for F in b["ffs"]:
-                in_bundle_kind[F["name"]] = b["kind"]
+        """State machines: strongly connected groups of register FFs (2..FSM_STATE_MAX bits, one control set, no load) whose reachable state set
+        from power-up 0 stays small (<= FSM_REACH_MAX).  The next-state function is enumerated per reachable state over the inputs that cone
+        actually depends on after constant propagation (<= FSM_STATE_INPUT_MAX), so the number of distinct inputs overall is unbounded; any
+        binary / gray / one-hot encoding is covered.  The case lists reachable states only (closed under all inputs, so the machine is exact
+        from reset)."""
+        cand = {F["name"]: b for b in self.bundles if b["kind"] == "REG" for F in b["ffs"]}
         sup_memo = {}
 
         def sup(sig):
-            """frozenset of boundary leaves (FF / pad / ext / chain) under sig, or None above the cap."""
             sig = self.res(sig)
             if sig in CONSTV:
                 return frozenset()
             if sig in sup_memo:
                 return sup_memo[sig]
-            if not self.normal(sig):
-                return frozenset([sig])
-            sup_memo[sig] = None                             # loop guard
-            acc = set()
-            for p in self.lut[sig]["pins"]:
-                s = sup(p)
-                if s is None:
-                    return None
-                acc |= s
-                if len(acc) > SUP_CAP:
-                    return None
-            sup_memo[sig] = frozenset(acc)
-            return sup_memo[sig]
-        cand = [F for b in self.bundles if b["kind"] == "REG" for F in b["ffs"]]
-        dep = {}
-        for F in cand:
-            s = sup(F["d"])
-            dep[F["name"]] = s
-        cn = {F["name"] for F in cand}
-        # tarjan (iterative) over FF -> FF edges
+            stack, order = [sig], []
+            while stack:
+                s = stack[-1]
+                if s in sup_memo:
+                    stack.pop()
+                    continue
+                if not self.normal(s):
+                    sup_memo[s] = frozenset([s])
+                    stack.pop()
+                    continue
+                pend = [self.res(q) for q in self.lut[s]["pins"] if self.res(q) not in CONSTV and self.res(q) not in sup_memo]
+                if pend and not all(q in order for q in pend):
+                    order.append(s)
+                    stack.extend(q for q in pend if q not in order)
+                    if len(order) > 100000:
+                        return None
+                    continue
+                acc, over = set(), False
+                for q in self.lut[s]["pins"]:
+                    q = self.res(q)
+                    if q not in CONSTV:
+                        sq = sup_memo.get(q, frozenset([q]))
+                        if sq is None:
+                            over = True
+                            break
+                        acc |= sq
+                sup_memo[s] = frozenset(acc) if not over and len(acc) <= FSM_SUP_CAP else None
+                if s in order:
+                    order.remove(s)
+                stack.pop()
+            return sup_memo.get(sig)
+        dep = {n: sup(self.ffd[n]["d"]) for n in cand}
+        cn = set(cand)
         idx, low, onst, st, comps, counter = {}, {}, set(), [], [], [0]
+
         def edges(n):
-            s = dep.get(n)
-            return [m for m in (s or ()) if m in cn]
+            return [m for m in (dep.get(n) or ()) if m in cn]
         for root in sorted(cn):
             if root in idx:
                 continue
@@ -746,8 +957,7 @@ class Lift:
         for comp in comps:
             if not (2 <= len(comp) <= FSM_STATE_MAX):
                 continue
-            keys = {self.ctl_key(self.ffd[n]) for n in comp}
-            if len(keys) != 1:
+            if len({self.ctl_key(self.ffd[n]) for n in comp}) != 1 or any(self.ffd[n].get("sload") for n in comp):
                 continue
             S = sorted(comp)
             Sset = set(S)
@@ -756,37 +966,72 @@ class Lift:
             inputs = set()
             for n in S:
                 inputs |= dep[n] - Sset
-            if len(inputs) > FSM_INPUT_MAX or any(i in self.chain_of or i in self.opaque for i in inputs):
+            if any(i in self.lut for i in inputs):         # carry chain / opaque LUT in the cone: not evaluated here
                 continue
-            # shift paths (LFSR-like) are not state machines
-            if any(self.dsimp[n][0] == "lit" and not self.dsimp[n][1] and self.dsimp[n][2][0] in Sset for n in S):
+            res = self.explore(S, Sset)
+            if res is None:
                 continue
-            I = sorted(inputs)
-            table = self.transition_table(S, I)
-            reach, frontier = {0}, [0]
-            while frontier:
-                s = frontier.pop()
-                for iv in range(1 << len(I)):
-                    t = table[(s, iv)]
-                    if t not in reach:
-                        reach.add(t)
-                        frontier.append(t)
-            if len(reach) < 3:
-                continue
-            self.fsms.append(dict(S=[self.ffd[n] for n in S], I=I, table=table, reach=len(reach), key=next(iter(keys))))
+            rows, reach = res
+            allin = sorted({x for r_ in rows.values() for x in r_[0]})
+            self.fsms.append(dict(S=[self.ffd[n] for n in S], I=allin, rows=rows, reach=len(reach), key=self.ctl_key(self.ffd[S[0]])))
             taken.update(S)
         for b in self.bundles:
             b["ffs"] = [F for F in b["ffs"] if F["name"] not in taken]
         self.bundles = [b for b in self.bundles if b["ffs"]]
 
-    def transition_table(self, S, I):
-        """(state, input vector) -> next state, by evaluating each state FF's D cone through the LUT graph."""
-        table = {}
+    def explore(self, S, Sset):
+        """BFS over reachable states from 0; rows[state] = (input names, next-state list over the 2^k input vectors) or None on a cap."""
         sidx = {n: i for i, n in enumerate(S)}
-        iidx = {n: i for i, n in enumerate(I)}
-        for s in range(1 << len(S)):
-            for iv in range(1 << len(I)):
-                memo = {}
+        rows, seen, frontier, evals = {}, {0}, [0], 0
+        while frontier:
+            s = frontier.pop()
+            memo = {}
+
+            def free(sig):
+                """('c', v) or ('f', frozenset leaves) of sig with the state fixed to s."""
+                sig = self.res(sig)
+                if sig in CONSTV:
+                    return ("c", CONSTV[sig])
+                if sig in sidx:
+                    return ("c", (s >> sidx[sig]) & 1)
+                got = memo.get(sig)
+                if got is not None:
+                    return got
+                if not self.normal(sig):
+                    memo[sig] = ("f", frozenset([sig]))
+                    return memo[sig]
+                L = self.lut[sig]
+                pv = [free(q) for q in L["pins"]]
+                fp = [i for i, v in enumerate(pv) if v[0] == "f"]
+                if not fp:
+                    li = sum(pv[i][1] << i for i in range(4))
+                    memo[sig] = ("c", (L["init"] >> li) & 1)
+                    return memo[sig]
+                rel = []
+                for i in fp:                           # a free pin matters if flipping it changes the restricted function somewhere
+                    for a in range(1 << len(fp)):
+                        li = sum(pv[j][1] << j for j in range(4) if pv[j][0] == "c") + sum(((a >> q) & 1) << fp[q] for q in range(len(fp)))
+                        if ((L["init"] >> li) & 1) != ((L["init"] >> (li ^ (1 << i))) & 1):
+                            rel.append(i)
+                            break
+                if not rel:
+                    li = sum(pv[j][1] << j for j in range(4) if pv[j][0] == "c")
+                    memo[sig] = ("c", (L["init"] >> li) & 1)
+                else:
+                    memo[sig] = ("f", frozenset().union(*[pv[i][1] for i in rel]))
+                return memo[sig]
+            Es = set()
+            for n in S:
+                v = free(self.ffd[n]["d"])
+                if v[0] == "f":
+                    Es |= v[1]
+            Es = sorted(Es)
+            if len(Es) > FSM_STATE_INPUT_MAX:
+                return None
+            tab = []
+            for iv in range(1 << len(Es)):
+                env = {x: (iv >> j) & 1 for j, x in enumerate(Es)}
+                m2 = {}
 
                 def val(sig):
                     sig = self.res(sig)
@@ -794,21 +1039,35 @@ class Lift:
                         return CONSTV[sig]
                     if sig in sidx:
                         return (s >> sidx[sig]) & 1
-                    if sig in iidx:
-                        return (iv >> iidx[sig]) & 1
-                    if sig in memo:
-                        return memo[sig]
+                    if sig in env:
+                        return env[sig]
+                    got = m2.get(sig)
+                    if got is not None:
+                        return got
+                    if not self.normal(sig):
+                        return 0                           # a leaf outside Es: proven irrelevant to the result by the restriction above
                     L = self.lut[sig]
                     li = 0
-                    for q, p in enumerate(L["pins"]):
-                        li |= val(p) << q
-                    memo[sig] = (L["init"] >> li) & 1
-                    return memo[sig]
-                nxt = 0
+                    for q, pn in enumerate(L["pins"]):
+                        li |= val(pn) << q
+                    m2[sig] = (L["init"] >> li) & 1
+                    return m2[sig]
+                nx = 0
                 for n in S:
-                    nxt |= val(self.ffd[n]["d"]) << sidx[n]
-                table[(s, iv)] = nxt
-        return table
+                    nx |= val(self.ffd[n]["d"]) << sidx[n]
+                tab.append(nx)
+                evals += 1
+                if nx not in seen:
+                    seen.add(nx)
+                    frontier.append(nx)
+                    if len(seen) > FSM_REACH_MAX:
+                        return None
+            rows[s] = (Es, tab)
+            if evals > FSM_EVAL_MAX:
+                return None
+        if len(seen) < 3:
+            return None
+        return rows, seen
 
     # ---- driver -------------------------------------------------------------------------------------------------------------------
     def run(self):
@@ -863,12 +1122,6 @@ class Lift:
         self.need_w, self.need_chain, self.need_opaque = set(), collections.defaultdict(lambda: dict(sum=set(), co=set())), set()
         stack = []
         fsm_ff = {F["name"] for f in self.fsms for F in f["S"]}
-        self.counters = {}
-        for b in self.bundles:
-            if b["kind"] == "REG_CHAIN":
-                ch = self.chain_list[b["chain"]]
-                if self.is_counter(b, ch):
-                    self.counters[id(b)] = True
         for b in self.bundles:
             for F in b["ffs"]:
                 stack += [F[k] for k in ("clk", "ena", "aclr", "sclr", "sload", "asdata") if F.get(k) is not None]
@@ -886,17 +1139,15 @@ class Lift:
                     stack += simp(*self.node_of(io[key], ("io",)))[2]
         stack += BLOCK_NAME.findall(self.blk_text)
         for b in self.bundles:
-            if id(b) in self.counters:
-                ch = self.chain_list[b["chain"]]
-                A, B = self.chain_operand_sigs(ch)
-                stack += [s for s in A + B if s not in CONSTV]
+            if id(b) in self.counters and b["sig"]:
+                stack.append(b["sig"])
         seen = set()
         while stack:
             s = self.res(stack.pop())
             if s in seen or s in CONSTV:
                 continue
             seen.add(s)
-            if s in self.chain_of or s in self.co_of and self.co_of[s]["name"] in self.chain_of:
+            if (s in self.chain_of and not self.free_head(s)) or s in self.co_of and self.co_of[s]["name"] in self.chain_of:
                 L = self.lut.get(s) or self.co_of[s]
                 ch, i = self.chain_of[L["name"]]
                 if ch["ok"]:
@@ -919,15 +1170,6 @@ class Lift:
                 self.need_w.add(s)
                 stack += simp(*self.cone[s])[2]
         return fsm_ff
-
-    def is_counter(self, b, ch):
-        if not ch["ok"] or ch["pol"] or any(f[0] == "s" for f, _p in ch["B"]):
-            return False
-        W = ch["W"]
-        if b["pos"] != list(range(W)):
-            return False
-        A, _B = self.chain_operand_sigs(ch)
-        return all(self.res(A[i]) == b["ffs"][i]["name"] for i in range(W)) and W >= 2
 
     def always_block(self, F, name, body, tag):
         """always block with the control set of FF record F around `body` lines (list of statements)."""
@@ -960,6 +1202,48 @@ class Lift:
         out.append("end")
         return out
 
+    def mux_note(self, sp, out):
+        """Record a mux-shaped cone (select leaves, data leaves, output signal) for the structural mux count."""
+        if sp[0] != "mux":
+            return
+        sel, cof = sp[1]
+        self.muxn.append((out, frozenset(self.res(sp[2][j]) for j in sel), [self.res(sp[2][d]) for d, _ in cof]))
+
+    def count_muxes(self):
+        """A mux construct = a group of mux-shaped cones joined by data flow that either shares a select set between >= 2 cones (a bus mux)
+        or is a tree of >= 3 cones.  A lone mux-shaped cone is an expression, not a mux construct."""
+        par = list(range(len(self.muxn)))
+
+        def find(i):
+            while par[i] != i:
+                par[i] = par[par[i]]
+                i = par[i]
+            return i
+        by_out = {o: i for i, (o, _s, _d) in enumerate(self.muxn) if o is not None}
+        by_sel = {}
+        for i, (_o, s, d) in enumerate(self.muxn):
+            for x in d:
+                if x in by_out:
+                    par[find(i)] = find(by_out[x])
+            by_sel.setdefault(s, []).append(i)
+        comp = collections.defaultdict(list)
+        for i in range(len(self.muxn)):
+            comp[find(i)].append(i)
+        # cones sharing a select set (bus) are one construct even when they do not feed each other
+        for s, idx in by_sel.items():
+            for i in idx[1:]:
+                par[find(i)] = find(idx[0])
+        comp = collections.defaultdict(list)
+        for i in range(len(self.muxn)):
+            comp[find(i)].append(i)
+        n = 0
+        for idx in comp.values():
+            sels = collections.Counter(self.muxn[i][1] for i in idx)
+            if len(idx) >= 3 or max(sels.values()) >= 2:
+                n += 1
+        self.stats["mux_nodes"] = len(self.muxn)
+        self.stats["mux_constructs"] = n
+
     def num(self, v, w):
         return f"{w}'d{v}"
 
@@ -988,10 +1272,7 @@ class Lift:
             nd["vec"] = vec
         # ---- registers: names and homes
         for b in self.bundles:
-            if b["kind"] == "REG_CHAIN":
-                b["name"] = newname("cnt" if id(b) in self.counters else "r")
-            else:
-                b["name"] = newname({"SHIFT": "sr", "REG": "r"}[b["kind"]])
+            b["name"] = newname({"SHIFT": "sr", "REG": "r", "REG_CHAIN": "r", "CNT": "cnt", "CNTL": "cnt"}[b["kind"]])
             self.width[b["name"]] = len(b["ffs"])
             for j, F in enumerate(b["ffs"]):
                 self.home[F["name"]] = (b["name"], j)
@@ -1038,13 +1319,19 @@ class Lift:
                 cn = newname("cmp")
                 decl.append(f"wire {cn};")
                 op = ">=" if c0 else ">"
-                logic.append(f"assign {cn} = {ba} {op} {btxt}; // [R:CMP_{'GE' if c0 else 'GT'}] {W} bit unsigned compare (chain carry out)")
+                logic.append(f"assign `LUT_DELAY {cn} = {ba} {op} {btxt}; // [R:CMP_{'GE' if c0 else 'GT'}] {W} bit unsigned compare (chain carry out)")
                 st["rule:CMP_GE" if c0 else "rule:CMP_GT"] += 1
                 for i in nd["sum"]:
                     if i >= W:
                         self.home[ch["luts"][i]["name"]] = (cn, None)
                 lastco = f"co_{ch['luts'][W - 1]['x']}_{ch['luts'][W - 1]['y']}_{ch['luts'][W - 1]['le']}"
-                self.home[lastco] = (cn, None)
+                if ch["po"][W - 1]:
+                    cnn = newname("cn")
+                    decl.append(f"wire {cnn};")
+                    logic.append(f"assign `LUT_DELAY {cnn} = ~{cn}; // [R:CARRY] carry signal stored inverted by the fitter")
+                    self.home[lastco] = (cnn, None)
+                else:
+                    self.home[lastco] = (cn, None)
                 st["chains"] += 1
                 continue
             decl.append(f"wire [{W}:0] {vec};")
@@ -1053,19 +1340,21 @@ class Lift:
                 rule = "SUB"
                 nb = newname("nb")
                 decl.append(f"wire {nb};")
-                logic.append(f"assign {nb} = ~{vec}[{W}]; // carry out = no borrow")
+                logic.append(f"assign `LUT_DELAY {nb} = ~{vec}[{W}]; // carry out = no borrow")
                 top = (nb, None)
             else:
                 expr = f"{{1'b0, {ba}}} + {{1'b0, {btxt}}}" + (" + 1'b1" if c0 else "")
                 rule = "ADDC" if bconst else "ADD"
                 top = (vec, W)
-            logic.append(f"assign {vec} = {expr}; // [R:{rule}] {W} bit")
+            logic.append(f"assign `LUT_DELAY {vec} = {expr}; // [R:{rule}] {W} bit")
             st[f"rule:{rule}"] += 1
             st["chains"] += 1
             st["chain_bits"] += W
             if not sub:
                 self.adder_widths.append(W)
             for i, L in enumerate(ch["luts"]):
+                if i == 0 and ch.get("free_head"):
+                    continue
                 if i < W:
                     self.home[L["name"]] = (vec, i)
                 else:
@@ -1078,18 +1367,18 @@ class Lift:
                 elif i == W - 1:
                     cn = newname("cn")
                     decl.append(f"wire {cn};")
-                    logic.append(f"assign {cn} = ~{top[0]}{'' if top[1] is None else '[' + str(top[1]) + ']'}; // [R:CARRY] carry signal stored inverted by the fitter")
+                    logic.append(f"assign `LUT_DELAY {cn} = ~{top[0]}{'' if top[1] is None else '[' + str(top[1]) + ']'}; // [R:CARRY] carry signal stored inverted by the fitter")
                     self.home[co] = (cn, None)
                 elif i in nd["co"]:
                     cy = newname("cy")
                     decl.append(f"wire [{i + 1}:0] {cy};")
                     bsl = f"{btxt}[{i}:0]" if not bconst else f"{i + 1}'d{beff & ((1 << (i + 1)) - 1)}"
                     bsl = ("~" if sub else "") + bsl
-                    logic.append(f"assign {cy} = {{1'b0, {ba}[{i}:0]}} + {{1'b0, {bsl}}}{' + 1' + chr(39) + 'b1' if c0 else ''}; // [R:CARRY] carry into bit {i + 1}")
+                    logic.append(f"assign `LUT_DELAY {cy} = {{1'b0, {ba}[{i}:0]}} + {{1'b0, {bsl}}}{' + 1' + chr(39) + 'b1' if c0 else ''}; // [R:CARRY] carry into bit {i + 1}")
                     if ch["po"][i]:
                         cn = newname("cn")
                         decl.append(f"wire {cn};")
-                        logic.append(f"assign {cn} = ~{cy}[{i + 1}]; // [R:CARRY] carry signal stored inverted by the fitter")
+                        logic.append(f"assign `LUT_DELAY {cn} = ~{cy}[{i + 1}]; // [R:CARRY] carry signal stored inverted by the fitter")
                         self.home[co] = (cn, None)
                     else:
                         self.home[co] = (cy, i + 1)
@@ -1099,7 +1388,7 @@ class Lift:
                 co = f"co_{L['x']}_{L['y']}_{L['le']}"
                 if i in nd["co"]:
                     decl.append(f"wire {co};")
-                    logic.append(f"assign {co} = |((16'h{L['init']:04X} >> {{1'b0, {self.ref(L['pins'][2])}, 1'b1, 1'b1}}) & 16'd1); // [R:FLAT_LUT] collector carry-out")
+                    logic.append(f"assign `LUT_DELAY {co} = |((16'h{L['init']:04X} >> {{1'b0, {self.ref(L['pins'][2])}, 1'b1, 1'b1}}) & 16'd1); // [R:FLAT_LUT] collector carry-out")
         # ---- opaque LUTs
         for n in sorted(self.need_opaque):
             L = self.lut[n]
@@ -1107,16 +1396,17 @@ class Lift:
             co = f"co_{L['x']}_{L['y']}_{L['le']}"
             decl.append(f"wire {n}; wire {co};")
             logic.append(f"localparam [15:0] I_{n} = 16'h{L['init']:04X};")
-            logic.append(f"assign {n} = I_{n}[{{{d}, {c}, {b}, {a}}}]; // [R:FLAT_LUT]")
-            logic.append(f"assign {co} = I_{n}[{{1'b0, {c if L['mode'] == 'cin' else chr(49) + chr(39) + 'b0'}, {b}, {a}}}];")
+            logic.append(f"assign `LUT_DELAY {n} = I_{n}[{{{d}, {c}, {b}, {a}}}]; // [R:FLAT_LUT]")
+            logic.append(f"assign `LUT_DELAY {co} = I_{n}[{{1'b0, {c if L['mode'] == 'cin' else chr(49) + chr(39) + 'b0'}, {b}, {a}}}];")
             st["rule:FLAT_LUT"] += 1
         # ---- wires (materialised cones)
         for n in sorted(self.need_w):
             wname = self.home[n][0]
             sp = simp(*self.cone[n])
             text, rule = render(sp, [self.ref(x) for x in sp[2]])
+            self.mux_note(sp, n)
             decl.append(f"wire {wname};")
-            logic.append(f"assign {wname} = {text}; // [R:{rule}]")
+            logic.append(f"assign `LUT_DELAY {wname} = {text}; // [R:{rule}]")
             st[f"rule:{rule}"] += 1
         # ---- registers
         for b in self.bundles:
@@ -1124,21 +1414,33 @@ class Lift:
             w = len(ffs)
             decl.append(f"reg [{w - 1}:0] {name} = {w}'b0;")
             stm, j = [], 0
-            F0 = ffs[0]
+            F0 = b.get("ctl") or ffs[0]
             if id(b) in self.counters:
-                ch = self.chain_list[b["chain"]]
-                beff = sum(f[1] << i for i, (f, _p) in enumerate(ch["B"]))
-                kk = (beff + ch["c0"]) % (1 << ch["W"])
-                if kk < (1 << (ch["W"] - 1)):
-                    stm.append(f"{name} <= {name} + {self.num(kk, w)};")
-                    tag = "CNT_UP"
+                M = 1 << w
+
+                def step(k):
+                    return name if k == 0 else f"{name} + {self.num(k, w)}" if k < M // 2 else f"{name} - {self.num(M - k, w)}"
+                ks = b["ks"]
+                if len(ks) == 1:
+                    expr, tag = step(ks[0]), ("CNT_UP" if ks[0] < M // 2 else "CNT_DOWN")
                 else:
-                    stm.append(f"{name} <= {name} - {self.num((1 << ch['W']) - kk, w)};")
-                    tag = "CNT_DOWN"
+                    expr = f"{self.ref(b['sig'])} ? ({step(ks[1])}) : ({step(ks[0])})"
+                    tag = "CNT_UPDOWN" if (ks[0] + ks[1]) % M == 0 else "CNT_SEL"
+                if F0.get("sload"):
+                    sload_c = "!" + self.ref(F0["sload"]) if F0.get("sload_inv") else self.ref(F0["sload"])
+                    asd = self.concat([F.get("asdata") or "1'b0" for F in reversed(ffs)])
+                    stm.append(f"{name} <= {sload_c} ? {asd} : ({expr});")
+                else:
+                    stm.append(f"{name} <= {expr};")
                 st[f"rule:{tag}"] += 1
                 st["counters"] += 1
             else:
                 tag = b["kind"]
+                if tag == "SHIFT":                  # feedback: the head's D is a function of >= 2 stages of its own path
+                    hs = self.dsimp[ffs[0]["name"]]
+                    pn = {F["name"] for F in ffs}
+                    if hs[0] in ("xor", "sop", "tt") and sum(1 for x in hs[2] if self.res(x) in pn) >= 2:
+                        tag = "LFSR"
                 sl = bool(F0.get("sload"))
                 sload_c = None
                 if sl:
@@ -1169,11 +1471,13 @@ class Lift:
                         j = e + 1
                         continue
                     text, rule = render(sp, [self.ref(x) for x in sp[2]])
+                    if b["kind"] != "SHIFT":           # a load mux inside a shift register is part of that register
+                        self.mux_note(sp, None)
                     st[f"rule:{rule}"] += 1
                     stm.append(f"{name}[{j}] <= {text}; // [R:{rule}]")
                     j += 1
             logic += self.always_block(F0, name, stm, tag)
-            st[f"rule:{tag}"] += 1 if tag in ("REG", "REG_CHAIN", "SHIFT") else 0
+            st[f"rule:{tag}"] += 1 if tag in ("REG", "REG_CHAIN", "SHIFT", "LFSR", "CNTL") else 0
             st["reg_bits"] += w
             st["bundles"] += 1
         for F in self.unclocked:
@@ -1181,30 +1485,32 @@ class Lift:
             decl.append(f"reg {nm} = 1'b0; // UNDECODED: no clock or D source; register not clocked")
         # ---- FSMs
         for f in self.fsms:
-            S, I, name, table = f["S"], f["I"], f["name"], f["table"]
-            w, ni = len(S), len(I)
+            S, name = f["S"], f["name"]
+            w = len(S)
             decl.append(f"reg [{w - 1}:0] {name} = {w}'b0;")
-            names = [self.ref(x) for x in I]
-            stm = [f"case ({name}) // {f['reach']} of {1 << w} states reachable from reset"]
-            for s in range(1 << w):
+            stm = [f"case ({name}) // {f['reach']} states reachable from reset (power-up 0); other codes are unreachable"]
+            for s in sorted(f["rows"]):
+                Is, tab = f["rows"][s]
+                names = [self.ref(x) for x in Is]
                 row = collections.defaultdict(list)
-                for iv in range(1 << ni):
-                    row[table[(s, iv)]].append(iv)
+                for iv, nx in enumerate(tab):
+                    row[nx].append(iv)
                 if len(row) == 1:
                     stm.append(f"  {self.num(s, w)}: {name} <= {self.num(next(iter(row)), w)};")
                     continue
-                dflt = max(row, key=lambda t: len(row[t]))
+                dflt = max(row, key=lambda t_: len(row[t_]))
                 stm.append(f"  {self.num(s, w)}: begin")
                 first = True
-                for t in sorted(row):
-                    if t == dflt:
+                for tg in sorted(row):
+                    if tg == dflt:
                         continue
-                    imps = cover_min(row[t], ni)
-                    cond = render(("sop", (False, imps), I), names)[0]
-                    stm.append(f"    {'if' if first else 'else if'} ({cond}) {name} <= {self.num(t, w)};")
+                    imps = cover_min(row[tg], len(Is))
+                    cond = render(("sop", (False, imps), Is), names)[0]
+                    stm.append(f"    {'if' if first else 'else if'} ({cond}) {name} <= {self.num(tg, w)};")
                     first = False
                 stm.append(f"    else {name} <= {self.num(dflt, w)};")
                 stm.append("  end")
+            stm.append(f"  default: {name} <= {self.num(0, w)};")
             stm.append("endcase")
             logic += self.always_block(S[0], name, stm, "FSM")
             st["rule:FSM"] += 1
@@ -1219,6 +1525,7 @@ class Lift:
             if d in ("output", "bidir-or-tristate") and io.get("drv") is not None:
                 sp = simp(*self.node_of(io["drv"], ("io",)))
                 text, rule = render(sp, [self.ref(x) for x in sp[2]])
+                self.mux_note(sp, None)
                 st[f"rule:{rule}"] += 1
                 if d == "output":
                     io_lines.append(f"assign {pn} = {text}; // [R:IO]")
@@ -1241,7 +1548,9 @@ class Lift:
         hdr = [f"// pluribus cycloneiv_clean RTL lift: {nl.label}",
                "// structure-derived (no names in the bitstream): io_<ball> pads, generated r_/sr_/cnt_/st_/w_/bus_/add_/sub_/cmp_ names",
                "// FF model: async clear, then on the clock edge with enable: sync clear -> 0, sync load -> asdata, else D; power-up 0",
-               "// `[R:<id>]` tags the rule that recovered each construct; `// UNDECODED` lines are inherited from the flat emit"]
+               "// `[R:<id>]` tags the rule that recovered each construct; `// UNDECODED` lines are inherited from the flat emit",
+               "// combinational delay (empty = zero-delay); compile with -DLUT_DELAY=#1 for a hold-safe simulation (same macro as the flat emit)",
+               "`ifndef LUT_DELAY\n`define LUT_DELAY\n`endif"]
         for k, v in sorted(nl.und.items()):
             hdr.append(f"// UNDECODED count: {k}: {v}")
         out = hdr + [f"module {self.module} (", "  " + ",\n  ".join(ports) if ports else "", ");"] + decl
@@ -1249,6 +1558,7 @@ class Lift:
             out.append(blk)                                   # block declarations precede their readers
         out += [l() if callable(l) else l for l in logic] + io_lines
         out.append("endmodule")
+        self.count_muxes()
         self.stats["lines"] = len(out)
         return "\n".join(out) + "\n"
 
@@ -1257,8 +1567,8 @@ class Lift:
         return dict(
             flat_luts=len(self.nl.luts), flat_ffs=len(self.nl.ffs), chains=s["chains"], chain_bits=s["chain_bits"],
             adders=s["rule:ADD"] + s["rule:ADDC"], subtractors=s["rule:SUB"], comparators=s["rule:CMP_GE"] + s["rule:CMP_GT"],
-            counters=s["counters"], bundles=s["bundles"], reg_bits=s["reg_bits"], shift_registers=s["rule:SHIFT"], fsms=s["fsms"],
-            muxes=sum(v for k, v in s.items() if k.startswith("rule:MUX")), sop=s["rule:SOP"], xor=s["rule:XOR"], tt=s["rule:TT"],
+            counters=s["counters"] + s["rule:CNTL"], bundles=s["bundles"], reg_bits=s["reg_bits"], shift_registers=s["rule:SHIFT"] + s["rule:LFSR"], lfsrs=s["rule:LFSR"], fsms=s["fsms"],
+            muxes=s["mux_constructs"], mux_nodes=s["mux_nodes"], sop=s["rule:SOP"], xor=s["rule:XOR"], tt=s["rule:TT"],
             flat_lut_left=s["rule:FLAT_LUT"], m9k=len(self.nl.m9k), mac=len(self.nl.mac), cone_cut=s["cone_cut"], loop_luts=s["loop_luts"],
             rtl_lines=s["lines"], adder_widths=sorted(self.adder_widths), fsm_state_bits=s["fsm_state_bits"], rules={k[5:]: v for k, v in s.items() if k.startswith("rule:")})
 

@@ -31,6 +31,7 @@ log = logging.getLogger("cycloneiv_clean_rtl_check")
 LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_rtl_check.log")
 OUT = os.path.join(REPO, "tmp", "cycloneiv_clean")
 WORK = os.path.join(REPO, "tmp", "rtl")
+HOLD_STEP = 2000                           # ps compare spacing in hold-safe mode (1 ps per LUT level x depth << 2 ns)
 STEP = 10                                  # ps between stimulus and compare: zero-delay models settle in the same time step
 RUN_LIMIT_S = 120                          # 3x the cold worst case of a 5 k-cell iverilog compile + 400 steps (~1-2 s measured by emit_sim)
 
@@ -112,7 +113,7 @@ def clock_pads(nl):
     return pads
 
 
-def make_tb(nl, mod_a, mod_b, pa, pb, cycles, seed, wd, flat=""):
+def make_tb(nl, mod_a, mod_b, pa, pb, cycles, seed, wd, flat="", step=STEP):
     # inout pads: weak TB drive (a floating pad reads x in the flat model, which the minimised RTL can mask)
     undriven = [f"pad_{io['ball']}" for io in nl.ios if io["dir"] not in ("input", "output")]
     ins = [f"pad_{io['ball']}" for io in nl.ios if io["dir"] == "input"] + undriven + sorted(nl.srcs)
@@ -136,23 +137,23 @@ def make_tb(nl, mod_a, mod_b, pa, pb, cycles, seed, wd, flat=""):
     for n in ins:
         if n not in ckp:
             L.append(f"  i_{n} = $random(seed);")
-    L.append(f"  #{STEP};")
+    L.append(f"  #{step};")
     L.append("  " + " ".join(f"if (a_{n} !== b_{n}) bad = bad + 1;" for n in outs[:0]))
     cmp_ = "".join(f"if (a_{n} !== b_{n}) begin bad = bad + 1; if ($isunknown(a_{n})) badx = badx + 1; end " for n in outs)
     L.append("  " + cmp_)
     for n in sorted(ckp & set(ins)):
-        L.append(f"  i_{n} = ~i_{n}; #{STEP}; {cmp_}")
-        L.append(f"  i_{n} = ~i_{n}; #{STEP}; {cmp_}")
+        L.append(f"  i_{n} = ~i_{n}; #{step}; {cmp_}")
+        L.append(f"  i_{n} = ~i_{n}; #{step}; {cmp_}")
     L += ["end", f'$display("RESULT outputs={len(outs)} clocks={len(ckp & set(ins))} bad=%0d badx=%0d", bad, badx);', "$finish;", "end", "endmodule"]
     p = os.path.join(wd, "tb.v")
     open(p, "w").write("\n".join(L) + "\n")
     return p, len(outs)
 
 
-def run_iv(files, wd, tag):
+def run_iv(files, wd, tag, defs=()):
     vvp = os.path.join(wd, f"{tag}.vvp")
     try:
-        c = heavy_guard.guarded(["iverilog", "-g2012", "-o", vvp, *files], "iverilog", log, overall_s=RUN_LIMIT_S)
+        c = heavy_guard.guarded(["iverilog", "-g2012", "-o", vvp, *defs, *files], "iverilog", log, overall_s=RUN_LIMIT_S)
         if c.timed_out:
             return "timeout", f"iverilog exceeded the guard ({RUN_LIMIT_S}s overall / 60 s stall)"
         if c.returncode:
@@ -165,7 +166,7 @@ def run_iv(files, wd, tag):
     m = re.search(r"RESULT outputs=(\d+) clocks=(\d+) bad=(\d+) badx=(\d+)", r.stdout)
     if not m:
         return "no_result", (r.stdout + r.stderr)[-300:]
-    return ("none" if int(m[1]) == 0 else "pass" if int(m[3]) == 0 else "fail"), dict(outputs=int(m[1]), clocks=int(m[2]), bad=int(m[3]), flat_x=int(m[4]))
+    return ("none" if int(m[1]) == 0 else "pass" if int(m[3]) == 0 else "x_in_flat" if int(m[3]) == int(m[4]) else "fail"), dict(outputs=int(m[1]), clocks=int(m[2]), bad=int(m[3]), flat_x=int(m[4]))
 
 
 def one(cx, d, cycles, seed):
@@ -185,8 +186,12 @@ def one(cx, d, cycles, seed):
     open(fv, "w").write(flat)
     open(rv, "w").write(text)
     res = dict(design=name, report=rep, flat_lines=flat.count("\n"), rtl_lines=text.count("\n"), lift_s=round(lift_s, 2))
-    tb, nout = make_tb(nl, "cyc4_top", "cyc4_rtl", "pad_", "io_", cycles, seed, wd, flat)
-    st, info = run_iv([tb, fv, rv], wd, "eq")
+    # async clear / clock driven by logic: zero-delay evaluation order (vector vs per-FF updates) changes glitches, not function -> hold-safe delays
+    lutn = {L_["name"] for L_ in nl.luts}
+    delayed = any((F_.get("aclr") in lutn) or (F_.get("clk") in lutn) for F_ in nl.ffs)
+    tb, nout = make_tb(nl, "cyc4_top", "cyc4_rtl", "pad_", "io_", cycles, seed, wd, flat, HOLD_STEP if delayed else STEP)
+    st, info = run_iv([tb, fv, rv], wd, "eq", ["-DLUT_DELAY=#1"] if delayed else [])
+    res["hold_safe"] = delayed
     res["eq_flat"], res["eq_info"] = st, info
     try:
         res["src"] = src_metrics(d)
