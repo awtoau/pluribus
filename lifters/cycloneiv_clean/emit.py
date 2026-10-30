@@ -585,7 +585,7 @@ class Builder:
         for L in nl.luts:
             refs.update(p for p in L["pins"] if p)
         for F in nl.ffs:
-            refs.update(p for p in (F["d"], F["clk"]) if p)
+            refs.update(p for p in (F["d"], F["clk"], F.get("ena"), F.get("aclr"), F.get("sclr"), F.get("sload"), F.get("asdata")) if p)
         for io in nl.ios:
             refs.update(p for p in (io.get("drv"), io.get("oe")) if p)
         for M in nl.mac:
