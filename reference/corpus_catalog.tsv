@@ -1,19 +1,19 @@
 family	designs	purpose	exercises	generator	built_ok	dup_extra	ignored_assign	unplaced_pins	in_evidence	in_gate
-gxbh	4936	bit_hunter gxbh_0000ceb869	bit_hunter	cycloneiv_bit_hunter.py,cycloneiv_rebuild_all.py	4936	436	784	0	2380	1234
+gxbh	4152	bit_hunter gxbh_0000ceb869	bit_hunter	cycloneiv_bit_hunter.py,cycloneiv_rebuild_all.py	4152	119	0	0	2196	1027
 gxbase	2535	routing specimen LAB X32 Y48 -> X12 Y48 (base twin: no net)	routing,specimen		2535	459	0	1633	0	633
 gxspec	2534	routing specimen LAB X32 Y48 -> X12 Y48 (one net)	routing,specimen		2534	11	0	1632	0	572
-gxlm	1492	lab_modes fan b	forced,lab	cycloneiv_lab_modes.py	1492	1016	656	0	1492	373
+gxlm	836	lab_modes fan b	forced,lab	cycloneiv_lab_modes.py	836	388	0	0	836	373
 gxm9k	831	bincode bit 13 (base)	m9k	claims_register.py,cycloneiv_clean_fields_pairs.py,cycloneiv_clean_hardblocks_score.py	831	66	0	831	831	208
-gxr4df	786	hop specimen gxr4df_b_101_18_8__104_18_6	forced,hop_specimen,routing		786	90	393	0	432	197
-gx150	574	cross-LAB carry chain: 40-bit adder	carry,ff_controls,gate,geometry,header,io,lab_controls,le_address,routing	cycloneiv_blkrba_lab.py,cycloneiv_blkrba_sample.py,cycloneiv_clean_carry_specimens.py	574	0	62	574	0	143
-gxnb100x75d1	512	LOCAL_LINE u0@N0 -> u1@N0	forced,routing	cycloneiv_forced.py	512	240	256	0	512	128
-gxnb10x10d1	512	LOCAL_LINE u0@N0 -> u1@N0	forced,routing	cycloneiv_forced.py	512	240	256	0	512	128
-gxll100x75	480	LOCAL_LINE u0@N0 -> u1@N2	forced,routing		480	224	240	0	480	120
-gxll	480	LOCAL_LINE u0@N0 -> u1@N2	forced,routing	cycloneiv_forced.py,profile_stages.py	480	225	240	0	480	120
+gx150	512	cross-LAB carry chain: 40-bit adder	carry,ff_controls,gate,geometry,header,io,lab_controls,le_address,routing	cycloneiv_blkrba_lab.py,cycloneiv_blkrba_sample.py,cycloneiv_clean_carry_specimens.py	512	0	0	512	0	126
+gxr4df	393	hop specimen gxr4df_null_rename_s	forced,hop_specimen,routing		393	7	0	0	216	98
 gxct	381	LAB control base aclr/1 at lab a	ctrl	cycloneiv_clean_fields_pairs.py,cycloneiv_ctrl.py	381	3	0	0	0	95
-gxhop	132	hop specimen gxhop_c4_1030929_b	forced,hop_specimen,routing		132	41	66	0	128	33
-gxr4	85	hop specimen gxr4_b_29_50_2__30_50_6	forced,hop_specimen,routing		85	28	37	0	76	21
-gxhb	72	mac null_seed (base)	m9k	cycloneiv_clean_hardblocks_build.py,cycloneiv_clean_hardblocks_score.py,cycloneiv_clean_mac_check.py	72	0	2	72	0	0
-gxt1	24	tier1 u0@N0 -> u1.dataa	forced,routing	cycloneiv_forced.py	24	24	12	0	0	0
+gxnb100x75d1	256	LOCAL_LINE u0@N0 -> u1@N0	forced,routing	cycloneiv_forced.py	256	0	0	0	256	0
+gxnb10x10d1	256	LOCAL_LINE u0@N0 -> u1@N0	forced,routing	cycloneiv_forced.py	256	0	0	0	256	0
+gxll100x75	240	LOCAL_LINE u0@N0 -> u1@N2	forced,routing		240	0	0	0	240	120
+gxll	240	LOCAL_LINE u0@N0 -> u1@N2	forced,routing	cycloneiv_forced.py,profile_stages.py	240	0	0	0	240	120
+gxhb	70	mac null_seed (base)	m9k	cycloneiv_clean_hardblocks_build.py,cycloneiv_clean_hardblocks_score.py,cycloneiv_clean_mac_check.py	70	0	0	70	0	0
+gxhop	66	hop specimen gxhop_c4_1030929_s	forced,hop_specimen,routing		66	2	0	0	64	33
+gxr4	48	hop specimen gxr4_null_rename_s	forced,hop_specimen,routing		48	2	0	0	42	12
+gxt1	12	tier1 u0@N0 -> u1.dataa	forced,routing	cycloneiv_forced.py	12	12	0	0	0	0
 gxcanary	2	canary: tier0 self-loop	forced,routing	recovery_status.py	2	0	0	0	0	1
 gxt0	2	tier0 self-loop	forced,routing	cycloneiv_forced.py,recovery_status.py	2	2	0	0	0	0
