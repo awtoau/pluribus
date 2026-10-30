@@ -23,3 +23,23 @@ Input is the emit `Netlist` (read-only); no decoder or emit hunk is touched. Str
 - (ii) structure vs `src/top.v`: register bits, adders / subtractors (count, width), comparators, MAC, M9K, counters, FSMs -> matched / missing / extra / wrong. Random-LUT specimens have no word-level source structure.
 - (iii) lines and constructs, RTL vs flat.
 - Results: issue #165 comments (numbers with date and sample).
+
+## hl corpus score (2026-10-30, 153 designs, matched / missing / extra / wrong; `scripts/cycloneiv_hl_score.py`, split by seed parity)
+- Lifter changes were made looking at train (even seeds, 74 designs) only; held-out (odd seeds, 79) run once for before and once after. `scripts/cycloneiv_hl_iter.py` = cached-netlist iteration harness.
+
+| key | train before | train after | held-out before | held-out after |
+|---|---|---|---|---|
+| reg_bits | 11170/423/114/0 | 11170/423/114/0 | 14515/371/69/0 | 14515/371/69/0 |
+| counters | 0/75/0/0 | 55/20/0/0 | 0/67/0/0 | 47/20/0/0 |
+| adders | 13/19/12/2 | 32/1/15/1 | 23/24/15/1 | 45/3/13/0 |
+| subtractors | 0/3/0/0 | 3/0/13/0 | 1/11/0/0 | 9/3/10/0 |
+| comparators | 0/14/0/0 | 12/2/0/0 | 0/24/0/0 | 19/5/0/0 |
+| fsms | 5/16/0/0 | 21/0/0/0 | 5/16/0/0 | 21/0/0/0 |
+| shift_registers | 83/163/38/0 | 233/13/3/0 | 106/171/33/0 | 269/8/3/0 |
+| muxes | 8/0/255/0 | 7/1/1/0 | 7/1/282/0 | 7/1/5/0 |
+| m9k | 87/7/1/0 | 87/7/1/0 | 89/7/2/0 | 89/7/2/0 |
+| mac | 19/1/0/0 | 19/1/0/0 | 143/2/0/0 | 143/2/0/0 |
+| all keys | 11385/721/420/2 (90.9%) | 11639/468/147/1 (95.0%) | 14889/694/401/1 (93.1%) | 15164/420/102/0 (96.7%) |
+
+- RTL vs flat: train 73 pass + 1 `x_in_flat` (was 69 pass / 5 fail), held-out 78 pass + 1 `x_in_flat` (was 75 / 4). The 4 async-clear `regs` failures were zero-delay glitch order, not function: pass under hold-safe delays (also vs .vo).
+- Remaining misses are not lifter limits: identical counters merged by Quartus (ram / rom / mix pairs), registers absorbed into M9K / MAC (reg_bits), 4-bit adders / comparators built from plain LUTs (no carry chain), fifo occupancy arithmetic (extra adders / subtractors, real logic absent from the manifest).
