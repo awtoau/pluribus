@@ -41,11 +41,9 @@ public class Emulate extends GhidraScript {
             long pc = emu.getExecutionAddress().getOffset();
             if (pc == SENTINEL) break;
             Address pa = emu.getExecutionAddress();
-            if (body != null && !body.contains(pa)) {
-              Function g = getFunctionAt(pa);
-              if (g == null || g.isExternal() || g.isThunk() || currentProgram.getMemory().getBlock(pa) == null || !currentProgram.getMemory().getBlock(pa).isExecute()) { status = "fault:call"; break; }
-              status = "fault:call"; break;
-            }
+            Function g = getFunctionAt(pa);
+            if (g != null && !pa.equals(entry)) { status = "fault:call"; break; }   // entered another function (call / tail call)
+            if (currentProgram.getMemory().getBlock(pa) == null) { status = "fault:pc"; break; }
             if (++steps > maxSteps) { status = "steps"; break; }
             if (!emu.step(monitor)) { status = "fault:" + emu.getLastError(); break; }
           }
