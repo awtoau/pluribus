@@ -1,0 +1,5 @@
+top = "top"
+purpose = "cross-LAB carry chain: 40-bit adder"
+exercises = ["carry"]
+qsf = ["set_global_assignment -name SEED 2"]
+device = "EP4CGX150DF31C7"

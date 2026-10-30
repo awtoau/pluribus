@@ -17,3 +17,5 @@ libcomp_asm	15feb6	plate	LAB_ENABLE_SYNC_SIGNALS value per (sload idx, sclr idx)
 libcomp_asm	16baea	plate	LE_CLEAR_SELECT: an LE without ACLR selects the signal whose real source is NULL (value 1 if aclr 1 unused, else 0); both unused = ground	docs/cycloneiv-clean-ffctl.md
 libcomp_asm	15ee88	plate	LAB_CLR_INVERT_PAIR value bit k = polarity of aclr k; second bit = 1 when only the first signal is used and its source is not fabric (types 0xdc / 0xe1)	docs/cycloneiv-clean-ffctl.md
 libcomp_asm	16c294	plate	LE_USE_REGISTER_FEEDBACK = 1: the LE's DATAC input is its own register (ff-lcell pair, direct connection)	docs/cycloneiv-clean-ffctl.md
+libcomp_asm	166e26	plate	VIRTUAL_LAB_LINE table (11 x 5 dwords at 0x3cda00): field 1 = signal mask (4 CLK, 2 ENA, 0x40 SLOAD, 8 ACLR, 0x20 SCLR); lines 0..4 = clk0, ena0, clk1, ena1, sload = LAB_INVERT gi 0..4; port type -> mask map built in this ctor	docs/cycloneiv-clean-ffctl.md
+libcomp_asm	161508	plate	LAB model ctor jump table 0x3cd61c by base_family-6: 6 / 0x10 / 0x3d own handlers, {0xe, 0x30}, {0x2e, 0x37, 0x38}, {9, 0x34} shared; STINGRAY (0x30) shares CUDA (0xe)	docs/cycloneiv-clean-ffctl.md

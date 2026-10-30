@@ -396,8 +396,8 @@ class Builder:
         cx, ls, lv = self.cx, self.lsig, self.lev
         g = int(lv["LE_CLOCK_SELECT"][lab, le])                  # clock and enable signal index = mux gi
         inv = ls["invert"][lab]
-        # source: LAB_INVERT gi 2g = clock g polarity (value 1 = inverted), 2g + 1 = enable g (value 1 = positive), 4 = sload (1 = positive), 5 = sclr (1 = positive);
-        #         gi -> signal read off the ffc / rb corpus (875 clock, 156 enable, 94 sload FFs); the vendor signal-id table (ASM_SINGLE_LAB_MODEL_BASE ctor) is not read
+        # source: LAB_INVERT gi k = line k of the VIRTUAL_LAB_LINE table (ASM_LAB_MODEL_TITAN ctor@0x166e26, data @0x3cda00): 0 clk0, 1 ce0, 2 clk1, 3 ce1, 4 sload, 5 sclr (table lines 5..8, unused clock 3 and the aclr pair, are skipped);
+        #         clock value 1 = inverted, ce / sload / sclr value 1 = positive (corpus 100 %, incl. an inverted-sclr build)
         sc = int(ls["clk_sel"][lab, g])
         F["clk_inv"] = bool(inv[2 * g]) ^ (0 <= sc < 4)           # a LAB_CONTROL_MUX source flips the polarity bit (look_up_signal_polarity@0x1563ae), as for aclr
         nl.counts["ff_clk_inverted" if F["clk_inv"] else "ff_clk_positive"] += 1
