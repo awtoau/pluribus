@@ -6,7 +6,7 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 
 | What | Where | Tracked |
 |---|---|---|
-| Ghidra project `quartus` (all libs below, analysed) | `vendor-analysis/altera/ghidra-project/` | no (gitignored, vendor-derived) |
+| Ghidra project `quartus` (single main project: 23 libs, analysed, RTTI classes, typed; the only writer) | `vendor-analysis/altera/ghidra-project/` | no (gitignored, vendor-derived) |
 | Name files | `reference/ghidra/{functions,globals,structs,notes,enums,vtables,signatures}.tsv` | yes (names / offsets / types only) |
 | Driver | `scripts/ghidra_apply_names.py` | yes |
 | Ghidra scripts | `scripts/ghidra/{ApplyNames,TypesPass,ReadablePass,FindXrefs,ExportNames,DecompNames,StringXrefs}.java` | yes |
@@ -16,7 +16,8 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 | Decompile / string-xref output | `vendor-analysis/altera/analysis/ghidra_out/` | no |
 | Logs | `tmp/logs/ghidra_apply_names.log` | no |
 
-- Libs in the project: libcomp_asm, libcomp_asm2, libcomp_asmcc, libcomp_asmgx, libdb_asmdb, libddb_dev, libddb_dygr, libddb_dstr, libpgm_pgmio, libpgm_npcf, libdb_pdb.
+- Snapshots live in `vendor-analysis/altera/ghidra-project-copies/<name>`; the current one is `current` (taken after the last typing pass).
+- Libs in the project (plus libcomp_asmio/ram/mac/pll, libdb_cdb_atom_stingray/ygr, libddb_bcm2bits, libdb_u2b_bcm, libddb_dbcm, libpgm_fbgen, libpgm_pof, libdb_cut): libcomp_asm, libcomp_asm2, libcomp_asmcc, libcomp_asmgx, libdb_asmdb, libddb_dev, libddb_dygr, libddb_dstr, libpgm_pgmio, libpgm_npcf, libdb_pdb.
 - Image base of every lib is 0x100000: TSV addresses are ELF vaddrs (= `nm` addresses); Ghidra shows vaddr + 0x100000. Old decompile dumps under `analysis/` carry the Ghidra form.
 
 ## Start (new agent)

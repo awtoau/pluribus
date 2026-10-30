@@ -45,7 +45,7 @@ LOG = os.path.join(REPO, "tmp", "logs", "ghidra_apply_names.log")
 LIBS = ["libcomp_asm", "libcomp_asm2", "libcomp_asmcc", "libcomp_asmgx", "libdb_asmdb", "libddb_dev",
         "libddb_dygr", "libddb_dstr", "libpgm_pgmio", "libpgm_npcf",
         "libcomp_asmio", "libcomp_asmram", "libcomp_asmmac", "libcomp_asmpll", "libdb_cdb_atom_stingray", "libddb_bcm2bits",
-        "libdb_u2b_bcm", "libddb_dbcm", "libpgm_fbgen", "libpgm_pof"]
+        "libdb_u2b_bcm", "libddb_dbcm", "libpgm_fbgen", "libpgm_pof", "libdb_cut", "libdb_cdb_atom_ygr"]
 COLS = {"functions.tsv": 6, "globals.tsv": 7, "structs.tsv": 8, "notes.tsv": 5, "enums.tsv": 5, "vtables.tsv": 6,
         "signatures.tsv": 6}
 SRC_COL = {"enums.tsv": 4, "vtables.tsv": 5, "signatures.tsv": 4}   # new files: source column index
