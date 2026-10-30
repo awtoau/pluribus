@@ -51,13 +51,8 @@ def absolute_masks(w):
     return out
 
 
-def main():
-    os.makedirs(os.path.dirname(LOG), exist_ok=True)
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    log = logging.getLogger("unc")
-    log.setLevel(logging.INFO)
-    log.addHandler(logging.FileHandler(LOG, "w"))
-    log.addHandler(logging.StreamHandler(sys.stdout))
+def claimed_mask(log=None):
+    """-> (claimed bool[N_BITS], w, names): asm.ddb + default list + LAB / MEAB / MAC calc groups (fields.py)."""
     w = W.Walk()
     names = D.enum_tables()
     flds = F.fields(w, names)
@@ -70,6 +65,17 @@ def main():
     for bt in F.PLACED:
         m = F.claim_masks(w, flds, bt)
         claimed |= m["path"] | m["aux"]
+    return claimed, w, names
+
+
+def main():
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    log = logging.getLogger("unc")
+    log.setLevel(logging.INFO)
+    log.addHandler(logging.FileHandler(LOG, "w"))
+    log.addHandler(logging.StreamHandler(sys.stdout))
+    claimed, w, names = claimed_mask()
     base = int(claimed.sum())
     log.info("claimed (asm.ddb + default + LAB/MEAB/MAC) %d, unclaimed %d", base, P.N_BITS - base)
     res = {"base_claimed": base, "abs_blocks": {}}

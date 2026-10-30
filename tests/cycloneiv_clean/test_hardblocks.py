@@ -37,3 +37,18 @@ def test_absolute_groups_counts():
     cram = {k: v.get("cram", []) for k, v in a.items()}
     assert sum(len(v) for k, v in cram.items() if k[0] == "HIO") > 20000
     assert all(0 <= b < 39040976 for v in cram.values() for b in v)
+
+
+def test_default_bit_calc_objects():
+    # 8 ASMDB_DEFAULT_BIT_CALC objects (LAB 1, MEAB 6, MAC 1) x instances (9,360 / 720 / 360) = 14,040 cells, inside the die
+    from lifters.cycloneiv_clean import asmdb_walk as W, fields as F
+    w = W.Walk()
+    dbc = [o for o in w.S["DG"].objs[1:] if o["cls"] == 11]
+    assert len(dbc) == 8
+    n = 0
+    for o in dbc:
+        bt = w.block_infos()[o["bi"][1] - 1]["btype"]
+        a = F.absolute(F.bases(w, bt), [o["bit"]])
+        assert a.min() >= 0
+        n += a.size
+    assert n == 14040 and len(dbc) == 8
