@@ -19,7 +19,7 @@ Rules: ledger P-002, P-008..P-011, B-010, B-011. Facts: `tests/test_reversing_fa
 
 ## Open
 
-- PLL_CLKIN source (IO_RAW_DATAIN / CLKPIN_TO_PLLCLKIN_MUX / PLLREFCLKMUX -> PLL_CLKIN), ledger P-011: the 2-entry destination group cells are 0 in 12 PLL builds and 33 other designs although the RCF routes differ; PLL_6 / PLL_7 route through PLLREFCLKMUX. 1 missing pip per PLL design (the only PLL fault left in the PLL builds).
+- (resolved, ledger T-007 / P-011 / P-014 / P-015: select bits are CFF-tagged routing bits; image PLL_2 and PLL_8 index 0 take the same input, ball B14 (F672) through clock buffer X57 Y91 and the global clock network; Fin 54.9-83.3 MHz derived from M / N / C and the VCO limits, not measured) PLL_CLKIN source (IO_RAW_DATAIN / CLKPIN_TO_PLLCLKIN_MUX / PLLREFCLKMUX -> PLL_CLKIN), ledger P-011: the 2-entry destination group cells are 0 in 12 PLL builds and 33 other designs although the RCF routes differ; PLL_6 / PLL_7 route through PLLREFCLKMUX. 1 missing pip per PLL design (the only PLL fault left in the PLL builds).
   - Asmdb of this die has no PLL_INPUT_CLOCK_SELECT / PLL_SELECT_REF_CLK group for blocks 43 / 45.
   - CFF diff base vs clkswitch (9 bits): PLL_SO_ENABLE, PLL_SO_CONTROL_MODE, PLL_CLOCK_SWITCH_INVERT, 6 IO pad bits. No clock-input select bit.
 - Scan chain layout (144 bits) and dynamic reconfiguration: the CFF groups are the shadow of the scan chain; order in `ddb_stingray_basic.pll` (not read here). Switchover / lock-detect inputs: lock detect is output only (`PLL_LOCKED_PIN` edges match).
