@@ -1314,31 +1314,50 @@ def init(eng=None):
     _assert_no_drift(eng)
 
 
-def _assert_no_drift(eng):
-    """Compare declared columns against what the database actually has."""
+def drift_report(eng) -> dict[str, list[str]]:
+    """Declared vs actual: {"columns": [...], "fks": [...], "indexes": [...]}.
+
+    Tables absent from the database are ignored (create_all makes them).
+    Extra tables / extra indexes in the database are not drift.
+    """
     from sqlalchemy import inspect as _inspect
     insp = _inspect(eng)
     have_tables = set(insp.get_table_names())
-    missing: list[str] = []
+    out: dict[str, list[str]] = {"columns": [], "fks": [], "indexes": []}
     for table in metadata.sorted_tables:
         if table.name not in have_tables:
-            continue  # create_all just made it, or it is genuinely new
+            continue
         actual = {c["name"] for c in insp.get_columns(table.name)}
-        for col in table.columns:
-            if col.name not in actual:
-                missing.append(f"{table.name}.{col.name}")
-    if not missing:
+        out["columns"] += [f"{table.name}.{c.name}" for c in table.columns
+                           if c.name not in actual]
+        want = {(tuple(e.parent.name for e in fk.elements),
+                 fk.elements[0].column.table.name,
+                 tuple(e.column.name for e in fk.elements))
+                for fk in table.foreign_key_constraints}
+        got = {(tuple(f["constrained_columns"]), f["referred_table"],
+                tuple(f["referred_columns"]))
+               for f in insp.get_foreign_keys(table.name)}
+        out["fks"] += [f"{table.name}{k[0]} -> {k[1]}{k[2]}" for k in sorted(want ^ got)]
+        have_idx = {i["name"] for i in insp.get_indexes(table.name)}
+        out["indexes"] += [f"{table.name}.{i.name}" for i in table.indexes
+                           if i.name not in have_idx]
+    return out
+
+
+def _assert_no_drift(eng):
+    """Fail fast on missing columns or foreign keys that differ from schema.py."""
+    rep = drift_report(eng)
+    if not (rep["columns"] or rep["fks"]):
         return
-    shown = ", ".join(missing[:8]) + (" ..." if len(missing) > 8 else "")
     import db as _db
+    shown = "; ".join((rep["columns"] + rep["fks"])[:8])
     _db.die(
-        f"database schema is OUT OF DATE: {len(missing)} declared column(s) are "
-        f"absent from the existing tables ({shown}).\n"
-        f"CREATE TABLE IF NOT EXISTS cannot add columns, so this database predates "
-        f"the current schema.py and writes to it will fail mid-pipeline.\n"
-        f"Derived data has no legacy here -- delete the database and rebuild "
-        f"rather than migrating it. For SQLite that is simply removing the file "
-        f"named by $PLURIBUS_SQLITE_PATH (default ./pluribus.db).")
+        f"database schema is OUT OF DATE: {len(rep['columns'])} missing column(s), "
+        f"{len(rep['fks'])} foreign-key difference(s) ({shown}).\n"
+        f"CREATE TABLE IF NOT EXISTS cannot alter existing tables.\n"
+        f"User-owned DB (evidence, gates, claims): python3 scripts/migrate_family_db.py "
+        f"--apply (lossless, backs up first).\n"
+        f"Derived-only DB: delete the file named by $PLURIBUS_SQLITE_PATH and rebuild.")
 
 
 def drop_all(eng=None):
