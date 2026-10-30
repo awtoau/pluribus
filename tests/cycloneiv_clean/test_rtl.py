@@ -76,3 +76,14 @@ def test_dead_flop_sum_is_not_read():
     L = rtl.Lift(nl)
     L.index()
     assert L.unread("lc_0_0_1") and L.unread("lc_0_0_0")
+
+
+def test_constant_output_pad_and_ffmap():
+    one = "1'b1"
+    nl = _chain_nl([(0x0055, ["s0", one, one, one]), (0xA5AF, ["s1", one, "co_0_0_0", one]), (0x0F0F, [one, one, "co_0_0_1", one])])
+    nl.ios.append(dict(ball="K1", dir="output", drv=None, const=1, oe=None, und=[]))
+    nl.ios.append(dict(ball="K2", dir="output", drv=None, const=0, oe=None, und=[]))
+    fm = {}
+    text, _rep = rtl.lift(nl, ffmap=fm)
+    assert "assign io_K1 = 1'b1;" in text and "assign io_K2 = 1'b0;" in text and "UNDECODED: io_K" not in text
+    assert set(fm) == {F["name"] for F in nl.ffs} and all("[" in v or v for v in fm.values())

@@ -1623,13 +1623,16 @@ class Lift:
             st["rule:FSM"] += 1
             st["fsms"] += 1
             st["fsm_state_bits"] += w
+        self.ffmap = {n: (h[0] if h[1] is None else f"{h[0]}[{h[1]}]") for n, h in self.home.items() if n in self.ffd}
         # ---- IO
         ports, io_lines = [], []
         for io in sorted(nl.ios, key=lambda i: i["ball"]):
             pn = f"{self.prefix}{io['ball']}"
             d = io["dir"]
             ports.append(f"{'input' if d == 'input' else 'output' if d == 'output' else 'inout'} wire {pn}")
-            if d in ("output", "bidir-or-tristate") and io.get("drv") is not None:
+            if d == "output" and io.get("const") is not None:
+                io_lines.append(f"assign {pn} = 1'b{io['const']}; // [R:IO] constant pad")
+            elif d in ("output", "bidir-or-tristate") and io.get("drv") is not None:
                 sp = simp(*self.node_of(io["drv"], ("io",)))
                 text, rule = render(sp, [self.ref(x) for x in sp[2]])
                 self.mux_note(sp, None)
@@ -1681,8 +1684,10 @@ class Lift:
             rtl_lines=s["lines"], pattern_modules=s["pattern_modules"], adder_widths=sorted(self.adder_widths), fsm_state_bits=s["fsm_state_bits"], rules={k[5:]: v for k, v in s.items() if k.startswith("rule:")})
 
 
-def lift(nl, prefix="io_", module="cyc4_top"):
-    """-> (verilog text, report dict)."""
+def lift(nl, prefix="io_", module="cyc4_top", ffmap=None):
+    """-> (verilog text, report dict).  ffmap: dict filled with {flat FF name: RTL register bit text} for probing a simulation."""
     L = Lift(nl, prefix, module)
     text = L.run()
+    if ffmap is not None:
+        ffmap.update(L.ffmap)
     return text, L.report()

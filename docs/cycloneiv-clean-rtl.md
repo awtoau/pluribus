@@ -79,3 +79,10 @@ Input is the emit `Netlist` (read-only); no decoder or emit hunk is touched. Str
 - Flat LUTs left before: 1,004 failed chains: operand polarity mixed or negate (R6/R7/R8: 5,013 LUTs), no operand form (5,165: dead-flop sums and ambiguous head forms). After: 40 chains, all `no_operand_form` (multi-LE result tails after the adder bits, AND-gated operand incrementers, bits whose second operand repeats one signal).
 - SHIFT bundles fell 274 -> 259: stage-0 flops fed by a now-recognised chain sum belong to `REG_CHAIN` registers (137 -> 339), leaving a 2-stage tail below `SHIFT_MIN`.
 - Chain check (`scripts/cycloneiv_clean_rtl_chain_check.py`): 2,061 chains, 0 mismatches over 64 random assignments each (791 mixed polarity).
+
+## Image RTL vs flat simulation (2026-10-31, #165)
+- Constant output pads (`io["const"]`, 6 on the image, 4 of them 1) are driven as in the flat emit; the RTL had left them `// UNDECODED`.
+- `Lift.ffmap` / `rtl.lift(nl, ffmap=dict)`: flat FF name -> RTL register bit, for probes.
+- `scripts/cycloneiv_clean_rtl_image_compare.py` (lift / run [--spi]): flat and RTL simulated with the same testbench, FF snapshots through the map. 20,000 clocks, 53 output pads, SPI program (frame active low, `+cs_active=0`): 0 differing rows, 0 differing FFs at all 23 snapshots; AA7 high in 640 rows in both. Idle run: 0 differing rows.
+- The earlier "AA7 never high in the RTL" came from the testbench: `cycloneiv_clean_image_sim.py run --src rtl` builds without probes, so no SPI program was driven; the default `+spi` frame polarity (active high) loads nothing in either model.
+- Image netlist rebuilt at HEAD: 89,282 LUTs, 35,873 FFs; RTL 139,293 lines, adders 1,377, subtractors 198, comparators 260, counters 226, FSMs 21, flat LUTs left 418.
