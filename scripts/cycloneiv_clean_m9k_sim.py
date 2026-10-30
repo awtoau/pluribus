@@ -9,7 +9,6 @@ import fnmatch
 import logging
 import os
 import re
-import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -42,11 +41,14 @@ def one(name):
     tb = tb.replace("$finish;", '$display("MACRESULT bad=%0d", macbad); $finish;')
     open(os.path.join(wd, "tb_m9k.v"), "w").write(tb)
     vvp = os.path.join(wd, "m9k.vvp")
-    c = subprocess.run(["iverilog", "-g2012", "-o", vvp, os.path.join(wd, "tb_m9k.v"), os.path.join(wd, "emit.v"), os.path.join(d, "postfit.vo"), *S.sim_libs()],
-                       capture_output=True, text=True, timeout=RUN_LIMIT_S)
+    c = S.run_tool(["iverilog", "-g2012", "-o", vvp, os.path.join(wd, "tb_m9k.v"), os.path.join(wd, "emit.v"), os.path.join(d, "postfit.vo"), *S.sim_libs()])
+    if c.timed_out:
+        return "timeout", "iverilog exceeded the guard"
     if c.returncode:
         return "compile_error", c.stderr[:200]
-    r = subprocess.run(["vvp", vvp], capture_output=True, text=True, timeout=RUN_LIMIT_S)
+    r = S.run_tool(["vvp", vvp])
+    if r.timed_out:
+        return "timeout", "vvp exceeded the guard"
     m = re.search(r"MACRESULT bad=(\d+)", r.stdout)
     return ("pass" if m and int(m[1]) == 0 else "fail" if m else "no_result"), (m[1] if m else r.stdout[-200:])
 

@@ -202,7 +202,7 @@ def extract(sof, rbf, dest):
     np.savez_compressed(dest, opt=opt, t19=t19, cram=cram, hdr=hdr)
 
 
-def build_one(d, base, assign, jtag, pins):
+def build_one(d, base, assign, jtag, pins, keep_rbf=None):
     import cycloneiv_fuzz as fz
     import heavy_guard
     import toolchain
@@ -234,6 +234,8 @@ def build_one(d, base, assign, jtag, pins):
                 open(os.path.join(d, "FAILED"), "w").write(step)
                 return f"FAILED {step}"
     extract(os.path.join(q, "build.sof"), os.path.join(q, "build.rbf"), res)
+    if keep_rbf:
+        shutil.copy(os.path.join(q, "build.rbf"), keep_rbf)
     shutil.rmtree(q, ignore_errors=True)
     return "ok"
 

@@ -319,6 +319,7 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 | AS INPUT TRI-STATED | IOST `1100` / `110` (value 3), strengths 0, pull-up 0 |
 | WITH WEAK PULL-UP | as above, pull-up 1 |
 | OUTPUT DRIVING GROUND = UNSPECIFIED SIGNAL | strengths all ones (pull-down 9 / pull-up 8 bits), pull-up 0; the two are CFF-identical |
+| WITH BUS-HOLD (2026-10-30, 3 more builds, pins AD25 / C29 / A23) | pull-up cell 0, bus-hold cell 1 at 446 unused sites; strengths and IOST as the base; CRAM identical to WITH WEAK PULL-UP |
 
 - Device-fixed pads (vector equal in all options and builds): 5 sites incl. the pad-less VIO site (6.324) and nCEO.
 
@@ -423,7 +424,7 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 - Every IO pad without a ball is written as the "output driving ground = unspecified" unused state: strengths all ones (pull-down 9 / pull-up 8 bits), pull-up 0, CRAM `MIO_DATA_INVERT` 11, `MIO_OE_INVERT` 0. Bonded unused pads: tri-state / weak pull-up (QSF option) with DATA_INVERT 00, OE_INVERT 1. The option set in the QSF does not change the unbonded state.
 - Counts: F484 builds 198 pads in that state + 3 MISSING-class sites (the ground vector with the site's extra bit, below) = 201 / 201; F672 builds 80 or 81 + 1..2 MISSING-class = 82 / 82. 0 bonded pads in the ground state in any build.
 - Dedicated clock pads (blocks 60 / 61) with no ball keep the ordinary unused state: they cannot discriminate packages.
-- The ground and the "driving ground" user option are CFF-identical; the unbonded state differs from a user-chosen ground only if the CRAM pair differs: not tested (user ground builds: `scripts/cycloneiv_clean_io_unused.py`, CRAM not compared).
+- The ground and the "driving ground" user option are CFF-identical, and their CRAM is identical too (builds `gnd` vs `unspec`, 3 pins: 0 CFF, 0 CRAM bits differ; `test_config_facts.py`). A user ground vs the unbonded state is not distinguishable by CFF; the unbonded CRAM vs a user ground at an unbonded pad was not built.
 
 ### Image
 
@@ -448,13 +449,20 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
   - Parity: in 80 builds the end-of-frame groups equal the lane parity of bytes 0..787 in 100 of 169 (frame, lane) groups (hint only; the check coverage is not decoded).
 - Fix: `scripts/cycloneiv_clean_cff_tables.py data_groups` (also `--groups-only` on an existing table); Cff has one 4-cell group per bit (31,060 / 31,060).
 - Result: MISSING IO sites 13 -> 0 in all 20 package builds and 6 -> 0 in the image (site (6,206) index difference, AE10 DATA7 PIN_MODE=1, the B12n IOST bit and the 2 MISSING unbonded F672 pads were all check cells). Pins gate fast tier 4,660 / 4,660 matched (0 missing, 0 extra, 0 wrong).
-- The earlier "VREF-pad overlap", "bank 4 / consecutive DIFFIO" and "foreign IOST bit = IOST bit of the VREF pad" explanations are not needed for these sites. The 92 foreign standard bits of the cross-check section were computed with the old table and are to be re-derived (`io_decode.write()` was re-run; the cross-check numbers in that section are the old ones).
+- The earlier "VREF-pad overlap", "bank 4 / consecutive DIFFIO" and "foreign IOST bit = IOST bit of the VREF pad" explanations are not needed for these sites. The 92 foreign standard bits were re-derived with the current tables (`io_decode.cross_check`, 2026-10-30): unchanged, 92 over 20 / 20 sites (B bits are sof indices, A bits plane-derived; neither uses the rbf data-group choice). Split: 72 bits in the pull-up / pull-down strength + IOST groups of site (6,2) (bank-3 config pad, every pin), 20 = one IOST bit of a neighbouring site per pin (the VREF-pad explanation holds for these 20 only).
 
 ### Dual-purpose configuration pads (pin file `Configuration Function`, `minpu` F896 build)
 
 - Fixed pattern independent of the design: AE7 nCEO, A3 DATA0, G9 DATA1 / ASDO, B4 nCSO (the 4 device-fixed IO pads; the fifth fixed site is the pad-less VIO site).
 - Ordinary unused sites (weak pull-up): AE8 INIT_DONE, AD6 CRC_ERROR, AE4 / AE5 DATA5 / DATA6, AF28 DEV_OE, AF27 DEV_CLRn, C2 DATA4, D1 DATA3, H9 DATA2, A4 CLKUSR.
 - AE10 DATA7: the earlier `MIO_PIN_MODE` 1 was a check cell; with the data groups it is an ordinary unused site.
+- Option-dependent cells (2026-10-30, #168; option pair builds `tmp/cycloneiv_clean/option_pairs`, sof tag-17 diff resolved by the asmdb walk; test `test_config_facts.py`):
+  - ENABLE_INIT_DONE_OUTPUT -> VIO site 0 (AE8 INIT_DONE) MIO_OE_INVERT 1 -> 0; option bit 3.
+  - CRC_ERROR_CHECKING -> VIO site 1 (AD6 CRC_ERROR) MIO_OE_INVERT 1 -> 0 and MIO_DATA_INVERT 0 -> 1; option bits 8, 92.
+  - CYCLONEII_RESERVE_NCEO_AFTER_CONFIGURATION = regular IO -> VIO site 2 (AE7 nCEO) MIO_OE_INVERT 0 -> 1; option bit 91.
+  - RESERVE_DCLK_AFTER_CONFIGURATION = regular IO, CONFIGURATION_SCHEME = PASSIVE SERIAL and TRI_STATE_SPI_PINS = ON all change the same 2 cells: VIO pseudo-site 324 (UDCLK, B3, no ball in any package) MIO_OE_INVERT + MIO_DATA_INVERT.
+  - No sof change: RESERVE_DATA0_AFTER_CONFIGURATION, RESERVE_FLASH_NCE_AFTER_CONFIGURATION (regular IO); ENABLE_DEVICE_WIDE_OE / RESET change the option register only (bits 5 / 4), pads AF28 / AF27 unchanged.
+  - Sites 320..324 = A4 CLKUSR, A3 DATA0, G9 DATA1 / ASDO, B4 nCSO, DCLK; ASDO, nCSO and CLKUSR as regular IO were not built (open).
 
 
 ### Package inference and emit (2026-10-30, #172; `pkginfer.py`, `emit.py --package`, ledger K-007)

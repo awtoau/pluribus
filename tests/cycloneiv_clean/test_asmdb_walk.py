@@ -107,6 +107,6 @@ def test_oracle_signatures_are_inside_decoded_fields(sites):
     report("io_oracle_site_fields", sites_unique=unique, sites_unplaced=missing,
            fields=sorted((a, list(b), n) for (a, b), n in fields.items()))
     obuf = [(a, b, n) for (a, b), n in fields.items() if a == "IOOBUF"]
-    assert sum(n for *_, n in obuf) >= 150
+    assert sum(n for *_, n in obuf) >= len(files)   # one confirmed output-buffer signature per design in the sample (150 / 150 on the full corpus, 74 / 73 on the pruned one)
     assert all(dict(b).keys() == {"MIO_SET_PULLUP_STRENGTH", "MIO_SET_PULLDOWN_STRENGTH", "MIO_SET_SLEW_RATE"} for _, b, _ in obuf)
     assert {tuple(b) for a, b in fields if a == "IOIBUF"} == {(("MIO_USE_PCI_DIODE_CLAMP", 1),)}

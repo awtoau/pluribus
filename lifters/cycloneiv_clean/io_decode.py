@@ -256,7 +256,7 @@ STATE_NAMES = ("MIO_SELECT_IOST_DIRT", "MIO_SET_PULLDOWN_STRENGTH", "MIO_SET_PUL
                "MIO_USE_PULL_UP", "MIO_USE_BUS_HOLD", "MIO_TERMINATION_CONTROL_SELECT", "MIO_PIN_MODE")
 # source: Quartus RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP builds: the base builds use `AS INPUT TRI-STATED`; io_unused builds the other three
 UNUSED_OPTIONS = {"tristate": "AS INPUT TRI-STATED", "pullup": "AS INPUT TRI-STATED WITH WEAK PULL-UP", "gnd": "AS OUTPUT DRIVING GROUND",
-                   "unspec": "AS OUTPUT DRIVING AN UNSPECIFIED SIGNAL"}
+                   "unspec": "AS OUTPUT DRIVING AN UNSPECIFIED SIGNAL", "bushold": "AS INPUT TRI-STATED WITH BUS-HOLD"}
 
 
 def site_vector(chain, cff, site):

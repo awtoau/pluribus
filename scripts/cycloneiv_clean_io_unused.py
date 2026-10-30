@@ -21,7 +21,8 @@ import cycloneiv_clean_io_pairs as M  # noqa: E402
 REPO = M.REPO
 OUT = os.path.join(REPO, "tmp", "cycloneiv_clean", "io_unused")
 # source: Quartus QSF RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP legal values (Assignment Editor, "Reserve all unused pins")
-OPTIONS = {"pullup": "AS INPUT TRI-STATED WITH WEAK PULL-UP", "gnd": "AS OUTPUT DRIVING GROUND", "unspec": "AS OUTPUT DRIVING AN UNSPECIFIED SIGNAL"}
+OPTIONS = {"pullup": "AS INPUT TRI-STATED WITH WEAK PULL-UP", "gnd": "AS OUTPUT DRIVING GROUND", "unspec": "AS OUTPUT DRIVING AN UNSPECIFIED SIGNAL",
+           "bushold": "AS INPUT TRI-STATED WITH BUS-HOLD"}
 BASE_OPTION = "AS INPUT TRI-STATED"
 log = logging.getLogger("io_unused")
 
@@ -30,6 +31,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pins", default="AD25,C29,A23")
     ap.add_argument("--jobs", type=int, default=9)
+    ap.add_argument("--options", default=",".join(OPTIONS), help="comma list of option tags (default all)")
     a = ap.parse_args()
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=[
@@ -38,7 +40,7 @@ def main():
     jobs = []
     for pin in a.pins.split(","):
         aux, _ = M.aux_pins(sample[pin]["bank"], sample)
-        for name, opt in OPTIONS.items():
+        for name, opt in ((n, OPTIONS[n]) for n in a.options.split(",")):
             jobs.append((os.path.join(OUT, pin, name), pin, aux, opt))
     log.info("jobs %d (limit 200), workers %d, limits %s", len(jobs), a.jobs, M.LIMITS)
 

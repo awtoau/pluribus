@@ -133,8 +133,15 @@ def test_statistical_is_its_own_tier(conn):
 
 def test_build_id_registers_from_design_toml(conn):
     from provenance import corpus
-    a = corpus.build_id(conn, FAM, "gxbh_0000ceb869")
-    assert a == corpus.build_id(conn, FAM, "gxbh_0000ceb869")        # idempotent on the dir name
+    import glob
+    import os
+    import pytest
+    d = sorted(glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "corpus", "cycloneiv", "gxbh_*", "design.toml")))
+    if not d:
+        pytest.skip("no kept gxbh_* design with a design.toml in corpus/cycloneiv (corpus pruned, reference/corpus_keep.tsv)")
+    name = os.path.basename(os.path.dirname(d[0]))
+    a = corpus.build_id(conn, FAM, name)
+    assert a == corpus.build_id(conn, FAM, name)        # idempotent on the dir name
 
 
 def test_constant_per_group_law_ignores_single_row_groups(conn):

@@ -20,13 +20,13 @@ import json
 import logging
 import os
 import re
-import subprocess
 import sys
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
+import heavy_guard  # noqa: E402
 log = logging.getLogger("cycloneiv_clean_rtl_check")
 LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_rtl_check.log")
 OUT = os.path.join(REPO, "tmp", "cycloneiv_clean")
@@ -152,12 +152,16 @@ def make_tb(nl, mod_a, mod_b, pa, pb, cycles, seed, wd, flat=""):
 def run_iv(files, wd, tag):
     vvp = os.path.join(wd, f"{tag}.vvp")
     try:
-        c = subprocess.run(["iverilog", "-g2012", "-o", vvp, *files], capture_output=True, text=True, timeout=RUN_LIMIT_S)
+        c = heavy_guard.guarded(["iverilog", "-g2012", "-o", vvp, *files], "iverilog", log, overall_s=RUN_LIMIT_S)
+        if c.timed_out:
+            return "timeout", f"iverilog exceeded the guard ({RUN_LIMIT_S}s overall / 60 s stall)"
         if c.returncode:
             return "compile_error", c.stderr[:400]
-        r = subprocess.run(["vvp", vvp], capture_output=True, text=True, timeout=RUN_LIMIT_S)
-    except subprocess.TimeoutExpired as e:
-        return "timeout", f"{e.cmd[0]} exceeded {RUN_LIMIT_S}s"
+        r = heavy_guard.guarded(["vvp", vvp], "vvp", log, overall_s=RUN_LIMIT_S)
+        if r.timed_out:
+            return "timeout", f"vvp exceeded the guard ({RUN_LIMIT_S}s overall / 60 s stall)"
+    except OSError as e:
+        return "tool_missing", str(e)
     m = re.search(r"RESULT outputs=(\d+) clocks=(\d+) bad=(\d+) badx=(\d+)", r.stdout)
     if not m:
         return "no_result", (r.stdout + r.stderr)[-300:]

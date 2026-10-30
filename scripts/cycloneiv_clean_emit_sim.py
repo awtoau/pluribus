@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import re
-import subprocess
 import sys
 import time
 
@@ -56,6 +55,12 @@ HOLD_SAFE = False          # --hold-safe: HALF 2000, lcell outputs delayed 1 ps 
 WARMUP = 6                  # cycles before comparing: FF pipelines settle (power-up 0 in both models)
 # iverilog compile of a 5 k-cell post-fit netlist + run of 300 cycles measured ~1-2 s; 3x worst cold = stall backstop
 RUN_LIMIT_S = 120
+
+
+def run_tool(cmd):
+    """iverilog/vvp under the repo guard (60 s stall, RUN_LIMIT_S overall); returncode -9 and .timed_out on expiry (#122)."""
+    import heavy_guard
+    return heavy_guard.guarded(cmd, os.path.basename(cmd[0]), log, overall_s=RUN_LIMIT_S)
 
 
 def vo_ports(path):
@@ -168,13 +173,19 @@ def run_one(cx, d, cycles, seed):
     vvp = os.path.join(wd, "sim.vvp")
     res = dict(design=name, comparable=len(comparable), uncomparable=dict(uncomp), tied_sources=tied, srcmap=len(srcmap))
     try:
-        c = subprocess.run(["iverilog", "-g2012", "-o", vvp, *(["-DLUT_DELAY=#1"] if HOLD_SAFE else []), tb, mine_v, os.path.join(d, "postfit.vo"), *sim_libs()], capture_output=True, text=True, timeout=RUN_LIMIT_S)
+        c = run_tool(["iverilog", "-g2012", "-o", vvp, *(["-DLUT_DELAY=#1"] if HOLD_SAFE else []), tb, mine_v, os.path.join(d, "postfit.vo"), *sim_libs()])
+        if c.timed_out:
+            res.update(status="timeout", err=f"iverilog exceeded the guard ({RUN_LIMIT_S}s overall / 60 s stall)")
+            return res
         if c.returncode:
             res.update(status="compile_error", err=c.stderr[:300])
             return res
-        r = subprocess.run(["vvp", vvp], capture_output=True, text=True, timeout=RUN_LIMIT_S)
-    except subprocess.TimeoutExpired as e:
-        res.update(status="timeout", err=f"{e.cmd[0]} exceeded {RUN_LIMIT_S}s")
+        r = run_tool(["vvp", vvp])
+        if r.timed_out:
+            res.update(status="timeout", err=f"vvp exceeded the guard ({RUN_LIMIT_S}s overall / 60 s stall)")
+            return res
+    except OSError as e:
+        res.update(status="tool_missing", err=str(e))
         return res
     m = re.search(r"RESULT comparable=(\d+) bad_events=(\d+) bad_ports=(\d+)", r.stdout)
     if not m:

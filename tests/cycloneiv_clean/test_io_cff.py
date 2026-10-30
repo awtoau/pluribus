@@ -126,7 +126,7 @@ def test_io_site_signatures_in_cff_space(cff):
     report("io_site_signatures", designs=len(files), sites_used=len(use), signature_bits=sorted((f"{a}:{b}", n) for (a, b), n in sigs.items()),
            shapes=sorted(((a, list(s)), n) for (a, s), n in shapes.items()), fields_decoded=0)
     # IOOBUF: one shared 9-bit shape; IOIBUF: one bit.  Sites below that count are reported, not hidden.
-    assert max(n for (a, _), n in shapes.items() if a == "IOOBUF") >= 150
+    assert max(n for (a, _), n in shapes.items() if a == "IOOBUF") >= len(files)   # >= 1 per design (150 / 150 on the full corpus, 74 / 73 on the pruned one)
     assert all(len(s) == 1 for (a, s) in shapes if a == "IOIBUF")
 
 
