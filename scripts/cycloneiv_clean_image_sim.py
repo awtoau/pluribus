@@ -219,23 +219,27 @@ def gen_tb(nl, plan, cycles, groups, tag, pre="pad_", probe=True):
         L.append(f"integer fg{gi}; initial fg{gi} = $fopen(\"{W}/trace_{tag}_g{gi}.txt\", \"w\");")
         L.append(f"always @(negedge {g['clk']}) $fwrite(fg{gi}, \"%0d %b %b %b\\n\", ed{list(dom).index(g['clk'])}, {ena}, {{{mem}}}, dbit);")
     # SPI program (+spi at run time): pads from the SPI trace (data AB11, bit clock AA8, frame AA9, MISO AA7); snapshots of every FF after each transfer
-    if probe:
-        allv = ", ".join(f"v{i}" for i in reversed(range(len(dom))))
-        tot = sum(len(v) for v in dom.values())
-        names = [f for v in dom.values() for f in v]
-        json.dump(names, open(os.path.join(W, f"ffall_{tag}.json"), "w"))
-        L.append(f"wire [{tot - 1}:0] vall = {{{allv}}};")
-        L.append(f"integer fsn; initial fsn = $fopen(\"{W}/snap_{tag}.txt\", \"w\");")
+    if True:                                  # rtl source (probe False): same SPI stimulus, no per-FF snapshots (flat FF names do not exist there)
+        if probe:
+            allv = ", ".join(f"v{i}" for i in reversed(range(len(dom))))
+            tot = sum(len(v) for v in dom.values())
+            names = [f for v in dom.values() for f in v]
+            json.dump(names, open(os.path.join(W, f"ffall_{tag}.json"), "w"))
+            L.append(f"wire [{tot - 1}:0] vall = {{{allv}}};")
+            L.append(f"integer fsn; initial fsn = $fopen(\"{W}/snap_{tag}.txt\", \"w\");")
         L.append("integer csa, q, per, lbl; reg [23:0] mrise, mfall; reg [7:0] hold;")
-        ch = "".join(f" $fwrite(fsn, \"%b\", vall[{min(k + 4095, tot - 1)}:{k}]);" for k in range(0, tot, 4096))
-        L.append("task snap(input integer l); begin $fwrite(fsn, \"%0d \", l);" + ch + " $fwrite(fsn, \"\\n\"); end endtask")
+        if probe:
+            ch = "".join(f" $fwrite(fsn, \"%b\", vall[{min(k + 4095, tot - 1)}:{k}]);" for k in range(0, tot, 4096))
+            L.append("task snap(input integer l); begin $fwrite(fsn, \"%0d \", l);" + ch + " $fwrite(fsn, \"\\n\"); end endtask")
+        else:
+            L.append("task snap(input integer l); begin end endtask")
         L.append("task spi_byte(input [7:0] b); integer i; begin for (i = 7; i >= 0; i = i - 1) begin"
                  " pad_AB11_r = b[i]; #(q); pad_AA8_r = 1'b1; mrise = {mrise[22:0], pad_AA7_w}; #(2 * q - 1000); mfall = {mfall[22:0], pad_AA7_w}; #1000; pad_AA8_r = 1'b0; #(q); end end endtask")
         L.append("task spi_xfer(input [7:0] op, input [7:0] rg, input [7:0] v); begin"
                  " pad_AA9_r = csa[0]; #(8 * per); spi_byte(op); spi_byte(rg); spi_byte(v); #(8 * per); pad_AA9_r = ~csa[0]; #(16 * per);"
                  " $display(\"SPI op=%h reg=%h val=%h miso_rise=%b miso_fall=%b\", op, rg, v, mrise, mfall); end endtask")
         L.append("initial if ($test$plusargs(\"spi\")) begin")
-        L.append("  if (!$value$plusargs(\"cs_active=%d\", csa)) csa = 1;")
+        L.append("  if (!$value$plusargs(\"cs_active=%d\", csa)) csa = 0;")      # the image's frame pad is active low
         L.append(f"  per = {2 * max(half.values())}; q = 8 * per;")
         L.append("  pad_AA9_r = ~csa[0]; pad_AA8_r = 1'b0; pad_AB11_r = 1'b0;")
         L.append(f"  #{8 * hmax + 200 * 2 * max(half.values())}; snap(0);")
