@@ -5,6 +5,8 @@
   python3 scripts/ghidra_apply_names.py apply                   # apply reference/ghidra/*.tsv (idempotent)
   python3 scripts/ghidra_apply_names.py decomp <lib> <pat|0xVADDR> ...   # -> vendor-analysis/altera/analysis/ghidra_out/
   python3 scripts/ghidra_apply_names.py strings <lib> <regex>   # string -> referencing functions
+  python3 scripts/ghidra_apply_names.py batch <lib> <re:regex|0xVADDR|substr> ...   # one .c per function -> ghidra_out/cache/<lib>/ (skips existing)
+  python3 scripts/ghidra_apply_names.py xrefs <lib> 0xVADDR ...  # references to an address (and +0x10) -> ghidra_out/<lib>_xrefs.tsv
   python3 scripts/ghidra_apply_names.py export                  # user-defined names -> tmp/ghidra/export.tsv
   python3 scripts/ghidra_apply_names.py check                   # validate TSV shape (no Ghidra needed)
 
@@ -108,6 +110,21 @@ def main():
         open(out, "w").close()
         rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS,
                   "-postScript", "StringXrefs.java", out, rest[1]], "strings")
+        print(out)
+        return rc
+    if cmd == "batch":
+        out = os.path.join(OUT, "cache", rest[0])
+        os.makedirs(out, exist_ok=True)
+        rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS,
+                  "-postScript", "DecompBatch.java", out] + rest[1:], "batch", 120, 3600)
+        print(out)
+        return rc
+    if cmd == "xrefs":
+        os.makedirs(OUT, exist_ok=True)
+        out = os.path.join(OUT, rest[0] + "_xrefs.tsv")
+        open(out, "w").close()
+        rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS,
+                  "-postScript", "AddrXrefs.java", out] + rest[1:], "xrefs")
         print(out)
         return rc
     if cmd == "export":

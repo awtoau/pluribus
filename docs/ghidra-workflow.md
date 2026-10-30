@@ -54,3 +54,11 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 - Rename only with evidence; put the evidence in `source`. A wrong name is worse than none.
 - Re-applying must not change anything (apply is by address; same name and type are skipped).
 - Findings and open questions go to the issue (#168 for IO), not only to a TSV.
+
+## Batch / xref / class-recovery tools (#169)
+
+- `... batch <lib> <re:regex|0xVADDR|substr> ...`: decompile every matching function to `ghidra_out/cache/<lib>/<vaddr>_<name>.c`; existing files are skipped (re-run is cheap). Script `scripts/ghidra/DecompBatch.java`. Example: `batch libcomp_asm 're:^ASM_\w+::(process_atom|process_end_of_phase)$'` (1,030 functions, ~1 min).
+- `... xrefs <lib> 0xVADDR ...`: references to an address and to address+0x10 (vtable slot 0) -> `ghidra_out/<lib>_xrefs.tsv` (`AddrXrefs.java`). Empty for ASM_* vtables: vtable stores are `lea` of the symbol, found by text search of `objdump -d -C` instead.
+- `scripts/cycloneiv_clean_class_objects.py <lib> [--dump CLASS]`: static instances of a class from `.rela.dyn` RELATIVE addends = vtable + 0x10. ASM_* processing classes have none (created by `new` in the arch-group factories).
+- `scripts/cycloneiv_clean_class_bind.py`: factory switch (jump tables + cmp/je cases) -> class per group type; ~1 min, needs `objdump`.
+- Decompiler caveats: in `mux_select` calls `(uint)param_1` is the first argument as decompiled (the class instance in the process_atom functions read; signature parse unverified); noreturn `operator_new` truncates factory bodies (read the disassembly).
