@@ -200,8 +200,8 @@ class Builder:
         sel = cx.leinp.select(bits)
         ygr = np.stack([bits[c] == 1 for c in cx.ext.reg.ygr], axis=-1)   # [labs, 16, 3] True = LUT output
         ubuf = cx.ext.reg.used(edges)
-        ll_used = used_src[np.maximum(cx.ll_rec, 0)] & (cx.ll_rec >= 0)
         ffc = cx.ext.reg.ff(bits, edges)
+        ll_used = used_src[np.maximum(cx.ll_rec, 0)] & (cx.ll_rec >= 0) | self._ll_selected(cells, carry, ffc, sel)
         reg_out = (ubuf & ~ygr[..., :2]).any(-1) | (ll_used & ~ygr[..., 2])
         ffp = ffc | reg_out
         # a LUT exists when its INIT is set or a used output path selects the LUT (a constant-0 LUT); an FF-only LE has no LUT
@@ -217,6 +217,19 @@ class Builder:
         self._hard(nl, bits, edges)
         self._close(nl)
         return nl
+
+    @staticmethod
+    def _ll_selected(cells, carry, ffc, sel):
+        """bool [labs, 16]: LOCAL_LINE le is selected by a LE_LUT_INPUT pin of a configured LE (LUT INIT set, or FF-only).  The consumer is a mux,
+        not a routing edge, so `used_src` does not see it; the pin is not tested for function dependence (a dependence filter loses GT-routed pins)."""
+        pin = np.broadcast_to(np.arange(4), sel.shape)
+        live = (cells.any(-1) | ffc)[..., None] & ~(carry[..., None] & (pin == 2))
+        ll = sel - LI_PER_LAB
+        ok = live & (ll >= 0) & (ll < 16)
+        out = np.zeros(cells.shape[:2], bool)
+        lab, le, g = np.nonzero(ok)
+        out[lab, ll[lab, le, g]] = True
+        return out
 
     # ---- sources -----------------------------------------------------------------------------------------------------------------
     def _signals_prepare(self, nl):
