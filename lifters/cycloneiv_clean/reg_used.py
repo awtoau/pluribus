@@ -78,11 +78,12 @@ class RegUsed:
         """bool [labs, 16]: the LE has a flip-flop (claim); False = no flip-flop or not decidable."""
         y = np.stack([bits[c] == 1 for c in self.ygr], axis=-1)
         u = self.used(edges)
-        configured = (self.lut.cells(bits).sum(axis=2) > 0) | ((bits[self.sync[0]] == 1) & (bits[self.sync[1]] == 1))
-        reg_buf = (u & ~y[..., :2]).any(axis=-1)
-        local_only = ~u.any(axis=-1) & ~y[..., 2] & self.local_used(bits, edges, configured | (bits[self.sync[0]] == 1))
         sync = (bits[self.sync[0]] == 1) & (bits[self.sync[1]] == 1)           # source: ffctl.py doc (ASM_LE_USE_SYNC_* writers): the shared bit is set only when an sclr / sload term is connected = a register exists
-        claim = sync | (configured & (reg_buf | local_only))
+        nz = self.lut.cells(bits).sum(axis=2) > 0
+        reg_buf = (u & ~y[..., :2]).any(axis=-1)                              # a used LE_BUFFER selects the register output: the register exists (same test as emit.py `reg_out`)
+        live = nz | sync | (u & y[..., :2]).any(axis=-1)                       # LEs whose LE_LUT_INPUT pins count as consumers (emit.py `live`)
+        local_only = ~u.any(axis=-1) & ~y[..., 2] & self.local_used(bits, edges, live | reg_buf)
+        claim = sync | reg_buf | (nz & local_only)
         return claim & self.clock_ok(bits) if self.ffc is not None else claim
 
     def local_used(self, bits, edges, live):
