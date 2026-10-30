@@ -11,10 +11,14 @@ Input is the emit `Netlist` (read-only); no decoder or emit hunk is touched. Str
 - Carry chain: per LE the fitter stores sum = X^Y^c and cout = maj(X,Y,c) ^ po (polarity po alternating per stage); X/Y = operand bit, inverted operand bit, or constant. Which pin carries which operand changes between bits; orientation = shared signal -> B, on a tie the inverted operand -> B. Accepted only if every LE fits one form with common operand polarity (ADD / ADDC / SUB).
   - Head LE may be a pure carry generator (sum unused or not an adder bit): `free_head`, its sum stays ordinary logic. LEs whose sum is unused (compare chains) are checked on cout only. A last LE that fits no form (result gating LUT) is split off (`tail_free`), its carry-in is the chain carry out.
   - `CMP_GE` / `CMP_GT`: subtract chain whose only used output is the final carry (a <= b, a < b etc. = polarity of that carry). `CARRY`: prefix carry wire.
+- Mixed polarity: a chain whose operand bits carry different inversions (fitter polarity choice per signal) is accepted as `A + B` over effective literals (`~sig` printed per bit); covers negate / constant-minus-x chains. Flag `mixed` in the chain record.
+- Dead flops: a sum read only by the D pin of a flop whose output nobody reads is treated as unread (not observable), same as a sum with no reader.
+- Head ambiguity: the head LE fits several (polarity, constant carry-in) forms; each is tried until the whole chain fits. Constant LE pins take only their constant value in the form check.
 - Counters: `CNT_UP` / `CNT_DOWN` / `CNT_UPDOWN` / `CNT_SEL`: chain whose bit i is the FF fed by sum i (own Q is an operand), other operand constant or one shared signal; next = R + K(s). Enable / clears / load are the bundle's FF control set. A free head's bit 0, or a shared signal that is itself a toggling FF, is bit 0 of the register. `CNTL`: counter built from LUTs (patterns.lut_counters, exact check), per-bit statements kept.
 - Registers: FFs with equal clock / polarity / enable / aclr / sclr / sload form one always block (`REG`, chunks of 32); chain-fed register (`REG_CHAIN`); `SHIFT` = longest-path decomposition of the D-copy forest (taps do not break a path; loadable stages: mux with one shared select set), `LFSR` = shift whose head D is a function of >= 2 stages of its own path.
 - Cones: single-fanout LUT trees merged up to 6 leaves, support reduced, then `MUX<2^k>`, `XOR`, `SOP` (exact Quine-McCluskey), `TT`. A mux construct (report key `muxes`) = mux-shaped cones joined by data flow that share a select set (bus) or form a tree of >= 3; a lone mux-shaped cone is an expression. Load muxes inside a shift register are not counted.
 - `FSM`: strongly connected group of register FFs (2..24 state bits, one control set, no load); reachable states from power-up 0 enumerated (<= 64) with next-state per state over the inputs its cone still depends on after constant propagation (<= 10 per state), so the total input count is unbounded; binary / gray / one-hot alike. `case` lists reachable states only (closed under all inputs, exact from reset).
+- Pattern modules (`patterns.lfsr_groups`, Fibonacci / Galois, medium or high confidence): one bundle in stage order printed as its own module `lfsr<n>_<table name>_<k>` / `crc<n>_<table name>_<k>` (word-parallel / serial Galois groups with a CRC table match) or `lfsr<n>_<form>_taps_<..>`; outside signals are `in_<k>` ports. Header comment: stages, form, taps, characteristic polynomial, external inputs, table match + orientation. Function unchanged (same always block).
 - M9K / MAC / PLL text is the emit's own block text with names rewritten (tracks emit.py), long lines split. Pads: `io_<ball>`.
 - Combinational assigns carry the `LUT_DELAY` macro (empty by default), same as the flat emit.
 
@@ -22,6 +26,8 @@ Input is the emit `Netlist` (read-only); no decoder or emit hunk is touched. Str
 - (i) iverilog, same vectors (hold-safe `-DLUT_DELAY=#1`, 2 ns compare spacing, when an async clear or clock is driven by logic; zero-delay glitches differ between a vector update and per-FF updates, the function does not). Status `x_in_flat` = every mismatch is an x in the flat model (INIT-indexed LUT with an x on a pin its INIT ignores), not counted as pass: RTL vs flat emit (all output pads); `--vo`: RTL vs post-fit .vo through `emit_sim.run_one`, next to the flat-vs-.vo baseline (an inherited emit mismatch shows in both).
 - (ii) structure vs `src/top.v`: register bits, adders / subtractors (count, width), comparators, MAC, M9K, counters, FSMs -> matched / missing / extra / wrong. Random-LUT specimens have no word-level source structure.
 - (iii) lines and constructs, RTL vs flat.
+- (iv) `scripts/cycloneiv_clean_rtl_chain_check.py`: every recognised chain vs the LUT-level chain on random operand assignments (sums read, carry signals with polarity); negative control (flipped carry-in) fails every chain.
+- Flat-LUT classification: `scripts/cycloneiv_clean_rtl_left.py` (chain failure reason, chain length histogram).
 - Results: issue #165 comments (numbers with date and sample).
 
 ## hl corpus score (2026-10-30, 153 designs, matched / missing / extra / wrong; `scripts/cycloneiv_hl_score.py`, split by seed parity)
@@ -43,3 +49,33 @@ Input is the emit `Netlist` (read-only); no decoder or emit hunk is touched. Str
 
 - RTL vs flat: train 73 pass + 1 `x_in_flat` (was 69 pass / 5 fail), held-out 78 pass + 1 `x_in_flat` (was 75 / 4). The 4 async-clear `regs` failures were zero-delay glitch order, not function: pass under hold-safe delays (also vs .vo).
 - Remaining misses are not lifter limits: identical counters merged by Quartus (ram / rom / mix pairs), registers absorbed into M9K / MAC (reg_bits), 4-bit adders / comparators built from plain LUTs (no carry chain), fifo occupancy arithmetic (extra adders / subtractors, real logic absent from the manifest).
+
+## hl corpus, second pass (2026-10-30, netlists rebuilt at the same HEAD; matched / missing / extra / wrong)
+- Changes: mixed-polarity chains, dead-flop sums, head ambiguity, pattern modules. Edits looked at train (even seeds) only; held-out (odd) run before and after.
+
+| split | before | after |
+|---|---|---|
+| train (74) | 11639/468/147/1 | 11640/467/147/1 |
+| held-out (79) | 15164/420/102/0 | 15169/415/106/0 |
+
+- Held-out arithmetic: counters 47 -> 49 matched, subtractors 9 -> 12 matched; extra subtractors 10 -> 13 and adders 13 -> 14 (chains the manifest has no entry for).
+- Flat LUTs left in the hl set: held-out `bigadd_1` 195 -> 0, `counter_9` 24 -> 0, `mix_3` 32 -> 0, `ram_5` 7 -> 0.
+- RTL vs flat: train 73 pass + 1 `x_in_flat`, held-out 78 pass + 1 `x_in_flat` (unchanged).
+- Gate tier `hl` recorded: `gate_runs` id 43 (153 designs, no regression vs run 36).
+
+## Third-party image (counts only; 2026-10-30, same HEAD decoders, before = rtl.py at HEAD a080869a1)
+| key | before | after |
+|---|---|---|
+| LUTs / FFs | 89,282 / 36,993 | same |
+| adders / subtractors / comparators | 586 / 180 / 108 | 1,377 / 353 / 108 |
+| counters / FSMs | 224 / 21 | 226 / 21 |
+| shift registers (bundles) | 275 | 267 (259 SHIFT + 1 LFSR + 7 LFSR modules) |
+| pattern modules (LFSR / CRC) | 0 | 8 (7 + 1) |
+| carry chains recognised | 874 | 1,838 |
+| flat LUTs left (`FLAT_LUT`) | 10,178 | 418 |
+| RTL lines | 174,994 | 141,432 |
+| verilator `--lint-only` (RTL) | 0 errors | 0 errors, 2 warnings |
+
+- Flat LUTs left before: 1,004 failed chains: operand polarity mixed or negate (R6/R7/R8: 5,013 LUTs), no operand form (5,165: dead-flop sums and ambiguous head forms). After: 40 chains, all `no_operand_form` (multi-LE result tails after the adder bits, AND-gated operand incrementers, bits whose second operand repeats one signal).
+- SHIFT bundles fell 274 -> 259: stage-0 flops fed by a now-recognised chain sum belong to `REG_CHAIN` registers (137 -> 339), leaving a 2-stage tail below `SHIFT_MIN`.
+- Chain check (`scripts/cycloneiv_clean_rtl_chain_check.py`): 2,061 chains, 0 mismatches over 64 random assignments each (791 mixed polarity).

@@ -26,6 +26,8 @@ Input is the emit `Netlist` (read-only). Generic: no image data in tracked files
 | `mac_rom` | MAC operand bits fed by M9K outputs | per-MAC M9K counts |
 | `cdc` | 2-FF synchronisers (chain head fanout 1, source in another domain or a pad), cross-domain register edges, gray-coded counter registers, counter-vs-bus comparator chains | counts per domain pair |
 
+RTL use: `rtl.py` prints each `lfsr` / `parallel` group of form Fibonacci / Galois (confidence medium or high) as its own module named from the table match (`lfsr15_x15_x14_1_<k>`, `crc16_CRC_16_CCITT_<k>`) or from form and taps; header comment = stages, form, taps, characteristic polynomial, external inputs, table match. Naming only; function is the lifted always block.
+
 Limits (not covered, therefore unknown):
 - Non-modelled M9Ks (dual-port / 32-36 bit / undecoded widths) have no decoded address pins: no interleaver / FIFO / ROM test on them.
 - GF(2^8) multiplier-accumulate (feedback `d ^ p` form, RS encoder) and non-polynomial bases are not matched; only pure 8-in 8-out multipliers.

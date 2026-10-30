@@ -292,6 +292,8 @@ class Lift:
         self.muxn = []
         self.counters = {}
         self.flat_text = flat_text
+        self.cap = None                   # (own register name, {outside signal text: port}) while a pattern module body is generated
+        self.modules = []
 
     # ---- indices ------------------------------------------------------------------------------------------------------------------
     def index(self):
@@ -377,6 +379,14 @@ class Lift:
             elif L["mode"] == "cin" and n not in self.tail_free:
                 self.opaque.add(n)
 
+    def unread(self, n):
+        """Signal n has no reader, or only the D pin of a flip-flop whose output nobody reads (dead register: not observable)."""
+        if self.fan[n] == 0:
+            return True
+        if self.fan[n] == 1 and self.sole[n][0] == "ffd":
+            return self.fan[self.sole[n][1]["name"]] == 0
+        return False
+
     @staticmethod
     def maj(a, b, c):
         return (a & b) | (a & c) | (b & c)
@@ -399,6 +409,22 @@ class Lift:
                 ch["luts"] = full
 
     def _analyse(self, ch, n_eff, exempt_last):
+        """Head forms can be ambiguous (carry polarity, constant carry-in): try each until the whole chain fits."""
+        ch["nhead"] = 1
+        deepest = None
+        for k in range(8):
+            for key in ("why", "fail_at"):
+                ch.pop(key, None)
+            self._analyse1(ch, n_eff, exempt_last, k)
+            if ch.get("ok"):
+                return
+            if deepest is None or ch.get("fail_at", -1) > deepest.get("fail_at", -1):
+                deepest = {key: ch[key] for key in ("why", "fail_at") if key in ch}
+            if k + 1 >= ch["nhead"]:
+                break
+        ch.update(deepest)
+
+    def _analyse1(self, ch, n_eff, exempt_last, head_k):
         """Per bit (X, Y) operand forms such that sum = X ^ Y ^ c and cout = maj(X, Y, c) ^ po (carry signal polarity po per stage, as stored
         by the fitter); incoming signal polarity of stage i = po of stage i - 1.  Head: constant carry-in c0 (signal 0 into cout)."""
         bits, pols, c0, pin = [], [], None, None
@@ -408,7 +434,7 @@ class Lift:
         nl_ = n_eff + (0 if exempt_last else 1)          # cout of the last analysed LE is checked unless it is the real last LE
         for i, L in enumerate(ch["luts"][:n_eff]):
             pins, init = L["pins"], L["init"]
-            sumfree = self.fan[L["name"]] == 0
+            sumfree = self.unread(L["name"])
             if L.get("und"):
                 ch.setdefault('why', 'R1'); return
             if i == 0 and L["mode"] == "cin":
@@ -416,6 +442,7 @@ class Lift:
             # operand pin pairs: the two non-constant (or constant) inputs read as X, Y; the remaining pin must be a constant (datad of the last LE may carry a control)
             pairs = [(0, 1)] if pins[3] in CONSTV else [(0, 3), (3, 0), (1, 3), (3, 1)]
             found = None
+            hc = []
             for px, py in pairs:
                 other = ({0, 1, 3} - {px, py}).pop()
                 if pins[other] not in CONSTV:
@@ -425,6 +452,7 @@ class Lift:
                     v = {px: x, py: y, other: CONSTV[pins[other]]}
                     return (v[0] | (v[1] << 1) | (c << 2) | (v[3] << 3)) if dc is None else (v[0] | (v[1] << 1) | (c << 2) | (dc << 3))
                 sx, sy = pins[px], pins[py]
+                xr, yr = (CONSTV[sx],) if sx in CONSTV else (0, 1), (CONSTV[sy],) if sy in CONSTV else (0, 1)      # a constant pin takes only its value
 
                 def sum_fn(x, y, c):
                     return (init >> idx(x, y, c)) & 1
@@ -439,17 +467,15 @@ class Lift:
                             continue
                         for po in ((0, 1) if i < nl_ - 1 else (0,)):
                             if i == 0:
-                                cc_ok = [cc for cc in (0, 1) if all(cout_fn(x, y, 0) == self.maj(ev(fx, x), ev(fy, y), cc) ^ po for x in (0, 1) for y in (0, 1))]
+                                cc_ok = [cc for cc in (0, 1) if all(cout_fn(x, y, 0) == self.maj(ev(fx, x), ev(fy, y), cc) ^ po for x in xr for y in yr)]
                                 if not cc_ok:
                                     continue
                                 cv = CONSTV[pins[2]] if pins[2] in CONSTV else None
-                                good = [cc for cc in cc_ok if cv is not None and all(sum_fn(x, y, cv) == ev(fx, x) ^ ev(fy, y) ^ cc for x in (0, 1) for y in (0, 1))]
-                                cand = (fx, fy, po, (good or cc_ok[:1])[0], sx, sy, not good)
-                                if good or found is None:
-                                    found = cand
+                                good = [cc for cc in cc_ok if cv is not None and all(sum_fn(x, y, cv) == ev(fx, x) ^ ev(fy, y) ^ cc for x in xr for y in yr)]
+                                hc += [(fx, fy, po, cc, sx, sy, not good) for cc in (good or cc_ok)]
                             elif all((sumfree or sum_fn(x, y, c) == ev(fx, x) ^ ev(fy, y) ^ c ^ pin) and
                                      (i == nl_ - 1 or cout_fn(x, y, c) == self.maj(ev(fx, x), ev(fy, y), c ^ pin) ^ po)
-                                     for x in (0, 1) for y in (0, 1) for c in (0, 1)):
+                                     for x in xr for y in yr for c in (0, 1)):
                                 found = (fx, fy, po, None, sx, sy, False)
                             if found and (i > 0 or not found[6]):
                                 break
@@ -459,6 +485,10 @@ class Lift:
                         break
                 if found and (i > 0 or not found[6]):
                     break
+            if i == 0:
+                hc.sort(key=lambda t_: t_[6])
+                ch["nhead"] = len(hc)
+                found = hc[head_k] if head_k < len(hc) else None
             if not found:
                 ch['why'] = 'no_operand_form'
                 ch['fail_at'] = i
@@ -502,18 +532,21 @@ class Lift:
             return sig, inv
         sa, ia_ = operand(0)
         sb, ib_ = operand(1)
-        if len(ia_) > 1 or len(ib_) > 1:
-            ch.setdefault('why', 'R6'); return
-        pa_, pb_ = (next(iter(ia_)) if ia_ else 0), (next(iter(ib_)) if ib_ else 0)
-        if pa_ and pb_:
-            ch.setdefault('why', 'R7'); return
-        swap = pa_ == 1
+        pa_, pb_ = (next(iter(ia_)) if len(ia_) == 1 else 0), (next(iter(ib_)) if len(ib_) == 1 else 0)
+        mixed = len(ia_) > 1 or len(ib_) > 1 or (pa_ and pb_)       # per-bit operand inversion (fitter polarity choice): A + B over effective literals
+        swap = pa_ == 1 and not mixed
         if swap or (not any(f[0] == "s" for _, f, _p in sa) and any(f[0] == "s" for _, f, _p in sb)):
             sa, sb, pa_, pb_ = sb, sa, pb_, pa_
         if not any(f[0] == "s" for _, f, _p in sa):
-            ch.setdefault('why', 'R8'); return
-        if pa_:
+            if not any(f[0] == "s" for _, f, _p in sb):
+                ch.setdefault('why', 'R8'); return
+            sa, sb, pa_, pb_ = sb, sa, pb_, pa_                     # inverted signals against constants (negate / constant minus x): effective literals
+            mixed = mixed or bool(pa_)
+        if pa_ and not mixed:
             ch.setdefault('why', 'R9'); return
+        ch["mixed"] = bool(mixed)
+        if mixed:
+            pb_ = 0
         ch["A"] = [(f, p) for _, f, p in sa]
         ch["B"] = [(f, p) for _, f, p in sb]
         ch["pol"] = pb_
@@ -530,6 +563,29 @@ class Lift:
                     out.append(f"1'b{f[1] ^ pol}")
             return out
         return raw(ch["A"], 0), raw(ch["B"], ch["pol"])
+
+    def concat_lits(self, lits):
+        """MSB-first (signal, inverted) list -> concatenation text; inverted bits print as ~signal."""
+        parts, run = [], []
+        for sg, inv in lits:
+            if inv and self.res(sg) not in CONSTV:
+                if run:
+                    parts.append(self.concat(run))
+                    run = []
+                parts.append("~" + self.ref(sg))
+            else:
+                run.append(sg)
+        if run:
+            parts.append(self.concat(run))
+        if len(parts) == 1:
+            return parts[0]
+        return "{" + ", ".join(p[1:-1] if p.startswith("{") else p for p in parts) + "}"
+
+    def chain_operand_lits(self, ch):
+        """-> (A, B) lists of (signal, inverted) per bit; constants are printed values."""
+        def lit(side, pol):
+            return [((p, f[1] if ch["mixed"] else 0) if f[0] == "s" else (f"1'b{f[1] ^ pol}", 0)) for f, p in side]
+        return lit(ch["A"], 0), lit(ch["B"], ch["pol"])
 
     # ---- cones --------------------------------------------------------------------------------------------------------------------
     def free_head(self, n):
@@ -641,9 +697,10 @@ class Lift:
         if s in CONSTV:
             return s
         h = self.home.get(s)
-        if h:
-            return h[0] if h[1] is None else f"{h[0]}[{h[1]}]"
-        return s
+        t = (h[0] if h[1] is None else f"{h[0]}[{h[1]}]") if h else s
+        if self.cap is not None and not (h and h[0] == self.cap[0]):
+            return self.cap[1].setdefault(t, f"in_{len(self.cap[1])}")          # inside a pattern module: outside signals become input ports
+        return t
 
     def concat(self, sigs):
         """MSB-first signal list -> concatenation text with slice runs merged."""
@@ -703,6 +760,7 @@ class Lift:
                     ffs = [F for _, F in lst]
                     self.bundles.append(dict(kind="REG_CHAIN", ffs=ffs, key=key, chain=k, pos=[p for p, _ in lst]))
                     used.update(F["name"] for F in ffs)
+        self.pattern_bundles(groups, used)
         # shift registers: D is the plain Q of another FF of the same control set (taps and loads do not break a path: longest-path decomposition of the
         # D-copy forest; a stage with several copies continues with its deepest child, the others head their own paths; loads = sload/asdata per bit)
         for key, fs in groups.items():
@@ -769,6 +827,30 @@ class Lift:
             rest = sorted((F for F in fs if F["name"] not in used), key=lambda F: (F["x"], F["y"], F["le"]))
             for i in range(0, len(rest), BUS_MAX):
                 self.bundles.append(dict(kind="REG", ffs=rest[i:i + BUS_MAX], key=key))
+
+    def pattern_bundles(self, groups, used):
+        """Linear feedback groups found by patterns.lfsr_groups (Fibonacci / Galois form, medium or high confidence): one bundle in stage order,
+        printed as its own module named from the matched table polynomial or the group's structure.  Function unchanged: the bundle's always block."""
+        from . import patterns
+        D = patterns.Design(self.nl).prepare()
+        clocked = {F["name"] for fs in groups.values() for F in fs}
+        for g in patterns.lfsr_groups(D):
+            names = list(g["members"])
+            if g["kind"] not in ("lfsr", "parallel") or g["form"] not in ("fibonacci", "galois") or g["conf"] == "low":
+                continue
+            if any(n in used or n not in clocked for n in names) or len({self.ctl_key(self.ffd[n]) for n in names}) != 1:
+                continue
+            self.bundles.append(dict(kind="LFSRM", ffs=[self.ffd[n] for n in names], key=self.ctl_key(self.ffd[names[0]]), pat=g))
+            used.update(names)
+
+    @staticmethod
+    def pattern_module_name(g):
+        slug = lambda t: re.sub(r"\W+", "_", t).strip("_")
+        if g["match"]:
+            label = g["match"][0][0]
+            head = slug(label.split(" (")[0].split()[0] if not label.startswith("CRC") else label.split()[0])
+            return ("crc" if g["kind"] == "parallel" and label.startswith("CRC") else "lfsr") + f"{g['n']}_{head}"
+        return f"lfsr{g['n']}_{g['form']}_taps_" + "_".join(str(t) for t in g["taps"])
 
     def lut_counter_bundles(self, groups, used):
         """Binary counters built from plain LUTs (patterns.lut_counters: nested FF supports, exact count / hold / clear check per bit).  The bundle keeps
@@ -1202,6 +1284,22 @@ class Lift:
         out.append("end")
         return out
 
+    def pattern_module(self, b, name, w, lines):
+        """Module text for a pattern bundle (appended after the top module); -> the instance line for the top."""
+        g = b["pat"]
+        mname = f"{self.pattern_module_name(g)}_{len(self.modules)}"
+        ports = sorted(self.cap[1].items(), key=lambda kv: int(kv[1][3:]))
+        sig = f"// [R:LFSR] {g['n']} stages, {g['form']} form, taps {g['taps']}, characteristic polynomial {g['poly']}, {g['ext']} external input(s)"
+        if g["match"]:
+            sig += f"; table match {g['match'][0][0]} ({g['match'][0][1]})"
+        plist = [f"input wire {p}" for _t, p in ports] + [f"output reg [{w - 1}:0] {name}"]
+        txt = [sig, f"module {mname} (\n  " + ",\n  ".join(plist) + "\n);", f"  initial {name} = {w}'b0;"]
+        txt += ["  " + l for l in lines] + ["endmodule"]
+        self.modules.append("\n".join(txt))
+        self.stats["pattern_modules"] += 1
+        conn = ", ".join([f".{p}({t})" for t, p in ports] + [f".{name}({name})"])
+        return f"{mname} u_{name} ({conn}); // [R:LFSR] instance"
+
     def mux_note(self, sp, out):
         """Record a mux-shaped cone (select leaves, data leaves, output signal) for the structural mux count."""
         if sp[0] != "mux":
@@ -1272,7 +1370,7 @@ class Lift:
             nd["vec"] = vec
         # ---- registers: names and homes
         for b in self.bundles:
-            b["name"] = newname({"SHIFT": "sr", "REG": "r", "REG_CHAIN": "r", "CNT": "cnt", "CNTL": "cnt"}[b["kind"]])
+            b["name"] = newname({"SHIFT": "sr", "REG": "r", "REG_CHAIN": "r", "CNT": "cnt", "CNTL": "cnt", "LFSRM": "lfsr"}[b["kind"]])
             self.width[b["name"]] = len(b["ffs"])
             for j, F in enumerate(b["ffs"]):
                 self.home[F["name"]] = (b["name"], j)
@@ -1304,7 +1402,8 @@ class Lift:
             ba, bb = newname("bus"), newname("bus")
             decl.append(f"wire [{W - 1}:0] {ba};")
             # deferred: operand bits may be sums of a chain whose homes are assigned later in this loop
-            logic.append(lambda A=A, ba=ba, W=W, sub=sub: f"assign {ba} = {self.concat(list(reversed(A)))}; // [R:{'SUB' if sub else 'ADD'}] operand A, {W} bit")
+            AL, BL = self.chain_operand_lits(ch)
+            logic.append(lambda AL=AL, ba=ba, W=W, sub=sub: f"assign {ba} = {self.concat_lits(list(reversed(AL)))}; // [R:{'SUB' if sub else 'ADD'}] operand A, {W} bit")
             if bconst:
                 beff = sum(f[1] << i for i, (f, _p) in enumerate(ch["B"]))
                 kk = beff + c0
@@ -1313,7 +1412,7 @@ class Lift:
                 btxt = self.num(beff, W)
             else:
                 decl.append(f"wire [{W - 1}:0] {bb};")
-                logic.append(lambda B=B, bb=bb, W=W, sub=sub: f"assign {bb} = {self.concat(list(reversed(B)))}; // [R:{'SUB' if sub else 'ADD'}] operand B, {W} bit")
+                logic.append(lambda BL=BL, bb=bb, W=W, sub=sub: f"assign {bb} = {self.concat_lits(list(reversed(BL)))}; // [R:{'SUB' if sub else 'ADD'}] operand B, {W} bit")
                 btxt = bb
             if cmpmode:
                 cn = newname("cmp")
@@ -1412,7 +1511,9 @@ class Lift:
         for b in self.bundles:
             name, ffs = b["name"], b["ffs"]
             w = len(ffs)
-            decl.append(f"reg [{w - 1}:0] {name} = {w}'b0;")
+            decl.append(f"wire [{w - 1}:0] {name};" if b["kind"] == "LFSRM" else f"reg [{w - 1}:0] {name} = {w}'b0;")
+            if b["kind"] == "LFSRM":
+                self.cap = (name, {})
             stm, j = [], 0
             F0 = b.get("ctl") or ffs[0]
             if id(b) in self.counters:
@@ -1435,7 +1536,7 @@ class Lift:
                 st[f"rule:{tag}"] += 1
                 st["counters"] += 1
             else:
-                tag = b["kind"]
+                tag = "LFSR" if b["kind"] == "LFSRM" else b["kind"]
                 if tag == "SHIFT":                  # feedback: the head's D is a function of >= 2 stages of its own path
                     hs = self.dsimp[ffs[0]["name"]]
                     pn = {F["name"] for F in ffs}
@@ -1453,7 +1554,8 @@ class Lift:
                         stm.append(f"{name}[{j}] <= {sload_c} ? {self.ref(F.get('asdata') or chr(49) + chr(39) + 'b0')} : {d};")
                         j += 1
                         continue
-                    if sp[0] == "lit" and not sp[1] and self.home.get(self.res(sp[2][0]), (None, None))[1] is not None:
+                    if sp[0] == "lit" and not sp[1] and self.home.get(self.res(sp[2][0]), (None, None))[1] is not None and \
+                            (self.cap is None or self.home[self.res(sp[2][0])][0] == name):
                         v, ix = self.home[self.res(sp[2][0])]
                         e = j
                         while e + 1 < w:
@@ -1476,8 +1578,13 @@ class Lift:
                     st[f"rule:{rule}"] += 1
                     stm.append(f"{name}[{j}] <= {text}; // [R:{rule}]")
                     j += 1
-            logic += self.always_block(F0, name, stm, tag)
-            st[f"rule:{tag}"] += 1 if tag in ("REG", "REG_CHAIN", "SHIFT", "LFSR", "CNTL") else 0
+            lines = self.always_block(F0, name, stm, tag)
+            if self.cap is not None:
+                logic.append(self.pattern_module(b, name, w, lines))
+                self.cap = None
+            else:
+                logic += lines
+            st[f"rule:{('CRCM' if b['pat']['kind'] == 'parallel' and b['pat']['match'] and b['pat']['match'][0][0].startswith('CRC') else 'LFSRM') if b['kind'] == 'LFSRM' else tag}"] += 1 if tag in ("REG", "REG_CHAIN", "SHIFT", "LFSR", "CNTL") else 0
             st["reg_bits"] += w
             st["bundles"] += 1
         for F in self.unclocked:
@@ -1558,6 +1665,7 @@ class Lift:
             out.append(blk)                                   # block declarations precede their readers
         out += [l() if callable(l) else l for l in logic] + io_lines
         out.append("endmodule")
+        out += self.modules
         self.count_muxes()
         self.stats["lines"] = len(out)
         return "\n".join(out) + "\n"
@@ -1567,10 +1675,10 @@ class Lift:
         return dict(
             flat_luts=len(self.nl.luts), flat_ffs=len(self.nl.ffs), chains=s["chains"], chain_bits=s["chain_bits"],
             adders=s["rule:ADD"] + s["rule:ADDC"], subtractors=s["rule:SUB"], comparators=s["rule:CMP_GE"] + s["rule:CMP_GT"],
-            counters=s["counters"] + s["rule:CNTL"], bundles=s["bundles"], reg_bits=s["reg_bits"], shift_registers=s["rule:SHIFT"] + s["rule:LFSR"], lfsrs=s["rule:LFSR"], fsms=s["fsms"],
+            counters=s["counters"] + s["rule:CNTL"], bundles=s["bundles"], reg_bits=s["reg_bits"], shift_registers=s["rule:SHIFT"] + s["rule:LFSR"] + s["rule:LFSRM"], lfsrs=s["rule:LFSR"] + s["rule:LFSRM"], crc_modules=s["rule:CRCM"], fsms=s["fsms"],
             muxes=s["mux_constructs"], mux_nodes=s["mux_nodes"], sop=s["rule:SOP"], xor=s["rule:XOR"], tt=s["rule:TT"],
             flat_lut_left=s["rule:FLAT_LUT"], m9k=len(self.nl.m9k), mac=len(self.nl.mac), cone_cut=s["cone_cut"], loop_luts=s["loop_luts"],
-            rtl_lines=s["lines"], adder_widths=sorted(self.adder_widths), fsm_state_bits=s["fsm_state_bits"], rules={k[5:]: v for k, v in s.items() if k.startswith("rule:")})
+            rtl_lines=s["lines"], pattern_modules=s["pattern_modules"], adder_widths=sorted(self.adder_widths), fsm_state_bits=s["fsm_state_bits"], rules={k[5:]: v for k, v in s.items() if k.startswith("rule:")})
 
 
 def lift(nl, prefix="io_", module="cyc4_top"):

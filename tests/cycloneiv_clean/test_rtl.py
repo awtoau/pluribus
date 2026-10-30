@@ -43,3 +43,36 @@ def test_xor_and_const():
     assert rtl.simp(["a", "b", "c"], 0x96)[0] == "xor"
     assert rtl.simp(["a", "b"], 0)[0] == "const"
     assert rtl.simp(["a", "b"], 0b1010)[0] == "lit"
+
+
+def _chain_nl(spec):
+    """Fake netlist: spec = [(init, pins)] in chain order (first LE datac, others cin); each sum feeds a live FF."""
+    import types
+    luts, ffs, ios = [], [], []
+    for i, (init, pins) in enumerate(spec):
+        luts.append(dict(name=f"lc_0_0_{i}", x=0, y=0, le=i, init=init, pins=list(pins), mode="datac" if i == 0 else "cin",
+                         cin=None if i == 0 else f"co_0_0_{i - 1}"))
+        ffs.append(dict(name=f"ff_0_0_{i}", x=0, y=0, le=i, d=f"lc_0_0_{i}", clk="clk", ena=None, aclr=None, sclr=None, sload=None, asdata=None))
+        ios.append(dict(ball=f"P{i}", dir="output", drv=f"ff_0_0_{i}", oe=None))
+    return types.SimpleNamespace(luts=luts, ffs=ffs, ios=ios, srcs={}, m9k=[], mac=[], pll=[], und={}, label="t")
+
+
+def test_negate_chain_is_mixed_polarity():
+    one = "1'b1"
+    nl = _chain_nl([(0x0055, ["s0", one, one, one]), (0xA5AF, ["s1", one, "co_0_0_0", one]), (0x5A05, ["s2", one, "co_0_0_1", one]),
+                    (0x0F0F, [one, one, "co_0_0_2", one])])
+    L = rtl.Lift(nl)
+    L.index()
+    L.chains()
+    ch = L.chain_list[0]
+    assert ch["ok"] and ch["mixed"]
+    assert not L.opaque
+
+
+def test_dead_flop_sum_is_not_read():
+    one = "1'b1"
+    nl = _chain_nl([(0x0055, ["s0", one, one, one]), (0xA5AF, ["s1", one, "co_0_0_0", one]), (0x0F0F, [one, one, "co_0_0_1", one])])
+    nl.ios = []                                          # no reader of any flop output
+    L = rtl.Lift(nl)
+    L.index()
+    assert L.unread("lc_0_0_1") and L.unread("lc_0_0_0")
