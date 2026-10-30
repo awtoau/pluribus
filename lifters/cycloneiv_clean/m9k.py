@@ -61,8 +61,9 @@ def index(width, word, bit):
     raise ValueError(f"width {width} not measured")
 
 
-# source: hl_rom_2 (x36 atom ROM, 128 x 32 MIF): every MIF bit (word w, bit b) sits at mem_init index 4608 + 36 * w + b (affine search over all 128 words, bits 0 / 1 / 17 / 18 / 31 exact),
-#         i.e. a plain stride-36 layout with the unconnected address bit 7 high (words 128..255); the two-lane layout of `index` belongs to the two-x18 single-port x32 / x36 builds
+# source: ASM_RAM_CONTENT_YGR_MEAB::map_ram_content libcomp_asmram@0x275d0, width 36 (case 0x24): position = row * 256 + address, address = unconnected address pins forced high
+#         (local_e4: bit 1 << physical index for every address input with no source) + the word's pins at their physical indices; = eab_position(36, ...).  mem_init index = (p % 256) * 36 + p // 256
+#         (pos_of_index) therefore gives word * 36 + bit, and 4608 + 36 * w + b for the 128-word ROM hl_rom_2 whose address pin 7 is unconnected (128 * 36 = 4608); hl_rom_2 is the confirming specimen
 ATOM36_STRIDE = 36
 
 
@@ -71,6 +72,28 @@ def read_words_atom36(bitvals):
     bitvals = np.asarray(bitvals, np.uint8)
     i = np.arange(256)[:, None] * ATOM36_STRIDE + np.arange(ATOM36_STRIDE)[None, :]
     return bitvals[pos_of_index(i)]
+
+
+# source: ASM_RAM_CONTENT_YGR_MEAB::map_ram_content libcomp_asmram@0x275d0: ASM_CONST_CACHE::get_constant(0xd4 = dirt CONST_NUM_EAB_BIT_ROWS, block 0x27 = MEAB) = 256 (dirt EAB/MEAB/CONSTANT node, scripts/cycloneiv_clean_dirt.py)
+BIT_ROWS = 256
+# source: same function, M9K branch (flag at this+0xd+1 set): eab_bit_index u -> mux position u + hole, for widths 1 / 2 / 4 / 8 only (one 256-bit parity row after every 8 data rows);
+#         widths 9 / 18 / 36 / 32 add nothing, width 16 adds 0x200 in address group 1
+EAB_HOLES = ((0x800, 0x100), (0x1000, 0x200), (0x1800, 0x300))      # (first u of the span, added to u)
+
+
+def eab_position(width, addr, row):
+    """RAM_CONTENT mux position of physical address `addr` (0..8191) and physical data row `row` at port width `width` (map_ram_content@0x275d0).
+    u = ((addr // 256) * width + row) * 256 + addr % 256; then the width-specific parity holes.  addr / row are the PHYSICAL values
+    (atom physical-index lists: fitter data, not in the assembler)."""
+    addr, row = np.asarray(addr, np.int64), np.asarray(row, np.int64)
+    u = ((addr // BIT_ROWS) * width + row) * BIT_ROWS + addr % BIT_ROWS
+    if width in (9, 18, 32, 36):
+        return u
+    if width == 16:
+        return np.where(addr // BIT_ROWS == 1, u + 0x200, u)
+    if width not in (1, 2, 4, 8):
+        raise ValueError(f"width {width}")
+    return u + np.select([u >= start for start, _ in EAB_HOLES[::-1]], [add for _, add in EAB_HOLES[::-1]], 0)
 
 
 def depth(width):

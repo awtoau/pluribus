@@ -25,6 +25,13 @@ CE_LINES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_ce_line
 # source: RAM_MS_WRITE_ADDRESS_INPUT group indices in asmdb (walk): gi 0..7 and 12 (9 groups); slot order read off the training split (115 / 115 specimens at A = 9)
 WRITE_SLOTS = (12, 0, 1, 2, 3, 4, 5, 6, 7)
 CLASS_A = (13, 12, 11, 10, 9, 8)    # source: 8192 / (word width class) addresses = 2**A (by1 .. by16); class 5 = by32 / by36 (256 words, m9k.depth)
+# source: ASM_RAM_CE_SELECT_INPUT@0x7fc98, _CORE@0x7ff4a (port A: ENA0 -> 0, ENA2 -> 2; ENA1 / ENA3 raise "can't be set on the A side"),
+#         ASM_RAM_CE_SELECT_INPUT_B@0x7fdee, _CORE_B@0x800a2 (port B: ENA1 -> 1, ENA3 -> 3; ENA0 / ENA2 raise "can't be set on the B side"), libcomp_asmram
+CE_SELECT_VALUES = {"A": {"ENA0": 0, "ENA2": 2}, "B": {"ENA1": 1, "ENA3": 3}}
+# source: ASM_RAM_CE_SELECT_OUTPUT@0x7ea68 / _B@0x7ec3a: output-register CE flag 0x800 -> value 0, else flag 0x1000 -> value 1, neither -> group not written (same bits for both ports)
+CE_SELECT_OUTPUT_FLAGS = {0x800: 0, 0x1000: 1}
+# source: process_end_of_phase of ASM_RAM_{CLEAR,CLOCK,CE,READ_ENABLE,WRITE_ENABLE}_INVERT libcomp_asmram@0x2ca6a / 0x2caea / 0x2c9ea / 0x2e04e / 0x2df5c: model query (site, kind) with kind = these numbers
+INVERT_KIND = {"RAM_CLEAR_INVERT": 0, "RAM_CLOCK_INVERT": 1, "RAM_CE_INVERT": 2, "RAM_READ_ENABLE_INVERT": 8, "RAM_WRITE_ENABLE_INVERT": 0xb}
 
 
 # source: every non-port MEAB control group of the asmdb walk (names in docs/cycloneiv-clean-hardblocks.md); read as raw bit columns, values per m9k.WRITERS / the mode docs
