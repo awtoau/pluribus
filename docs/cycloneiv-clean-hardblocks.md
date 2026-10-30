@@ -87,3 +87,9 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 - Writers decompiled (function@vaddr, table `m9k.WRITERS`): `ASM_RAM_USAGE_MODE@0x1efc6`, `_B@0x1f106`, `ASM_RAM_REG_DATA_OUT@0x7de60`, `ASM_RAM_NEW_DATA_MODE@0x1f6fe`, `ASM_RAM_IS_ROM_ONLY@0x1fa72`, `ASM_RAM_WRITE_OPTION@0x1fd68`, `ASM_RAM_MS_DATA_INPUT@0x6663e` (port input mux value = RE line index of the port source).
 - Check (`score_m9k_code_rules`): REG_DATA_OUT and NEW_DATA_MODE expected from the build parameter via the rule, 51 builds, 102 matched / 0 missing / 0 extra / 0 wrong.
 - Not yet code-derived (still pair-derived, missing as code): port-input mux value tables (flags word fields come from `ASM_RAM_MODEL_YGR_MEAB`), byte enables, clock / clear / CE selects, packed mode; MAC (`ASM_MAC_*::process_end_of_phase`, `ASM_MAC_MODEL::process_atom_mac_mult@0x5e232`, `_mac_out@0x5e42e`) and PLL leftovers (libcomp_asmpll) are decompiled-to-do.
+
+## Code-derived MAC writer rules (libcomp_asmmac, #169)
+
+- Table `mac.WRITERS` (function@vaddr). Register flags per signal: flag byte bit 3 = input register (IREG_*), bit 4 = pipeline / multiplier register (PREG_*), bit 5 = output register (OREG_*); IREG / PREG / OREG groups exist for SIGN, SMODE, SATAC, SATRS, SHFTR.
+- Data input / multiplier register selection for dataa / datab is therefore not a clock-fast-mux bit: the `in_a_reg`, `in_b_reg`, `mult_reg` pairs differ in `MAC_ROW_DATA_INPUT` (36 rows x 2 paths, excluded from the control signatures as routing); that group carries the register choice per data bit. Value table for it: not yet derived (missing).
+- Port-flag word builders for M9K: `CUT_RAM_UTIL::get_ram_mode` is in libdb_cut (not yet in the Ghidra project; import requested); `ASM_SINGLE_RAM_MODEL_YGR_MEAB::cache_ram_mode@0x4a624` copies those flag vectors (bit 14..18, 24..27 masks) into the per-port model.
