@@ -141,6 +141,15 @@ class Wires:
                         self.edge[(bt, path)] = e
         self.cff, self._seen = None, (None, frozenset())
         self.site = {v[:2]: k for k, v in tiles.items()}      # (btype, path) -> icd
+        # PLL_CLKIN parents whose group has no literal (every required value 0): a 2-entry destination mux selecting value 00 programs no bit of its own
+        self.st = st
+        e_clk = N.enum_of("PLL_CLKIN")
+        self.zero = {}                                        # PLL_CLKIN record -> (icd, [edge ids with required 00])
+        for d in np.flatnonzero(enum == e_clk).tolist():
+            es = [int(e) for e in np.flatnonzero(st.edst[:st.n_edges] == d) if st.nlit[e] == 0 and st.size[e] > 0]
+            # inclk0 only (element index 0): the PLL always has its primary input; inclk1 (index 1) is used only with clock switchover (ASM_PLL_INPUT_CLK_MUX writes index(inclk0) | index(inclk1) * 4)
+            if es and rt.element(d)[4] == 0 and (int(rt.x[d]), int(rt.y[d])) in xy:
+                self.zero[d] = (xy[(int(rt.x[d]), int(rt.y[d]))][0], es)
 
     def enabled(self, bits):
         """frozenset of icd (PLL_k) with PLL_ENABLE_PLL set; `bits` is a tracer.Plane (carries the rbf the CFF is read from)."""
@@ -158,6 +167,21 @@ class Wires:
         """-> edge ids of the enabled PLLs."""
         en = self.enabled(bits)
         return np.asarray([e for bp, e in sorted(self.edge.items()) if self.site[bp] in en], np.int64)
+
+    def zero_select(self, bits, fired):
+        """-> edge ids of PLL_CLKIN parents selected by value 00 for every enabled PLL: the destination is used (PLL enabled), no other parent
+        fired (their literal bits are clear) and the destination's exclusion bits are clear.  source: ledger T-007 / P-011 (select bits in the CFF space, value 00 = no literal)."""
+        en, st, out = self.enabled(bits), self.st, []
+        fired = set(np.asarray(fired).tolist())
+        for d, (icd, es) in self.zero.items():
+            if icd not in en or any(e in fired for e in np.flatnonzero(st.edst[:st.n_edges] == d).tolist()):
+                continue
+            xs = int(bits[st.xcell[st.xrec == d]].sum())
+            for e in es:
+                a, b = int(st.estart[e]), int(st.estart[e + 1])
+                if not bits[st.cell[a:b]].any() and xs == int(bits[st.cell[a:b]][(st.kind[a:b] & 2) != 0].sum()):
+                    out.append(e)
+        return np.asarray(out, np.int64)
 
 
 # group (gi) -> (element, DB_INPUT_PORT_TYPE, port index) of the vendor block interface PLL<n> (blockiface.py).  Name match for 7 ports, 7 of 7 specimens

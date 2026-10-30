@@ -381,7 +381,7 @@ def hardblocks(cx, plane_path):
 
 def analyse(cx, path):
     bits = cx.T.plane_bits(path)
-    res = {"set_cram_bits": int(bits.sum())}
+    res = {"set_cram_bits": int(bits[:39_040_976].sum())}
     r, fired, g = routing(cx, bits)
     res["routing"] = r
     head = np.asarray(fired[cx.T.HEADLINE_VARIANT])

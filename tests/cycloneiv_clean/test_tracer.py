@@ -32,7 +32,7 @@ def test_static_edge_table(st):
     assert st.n_edges == 14_862_095
     assert int(st.estart[-1]) == len(st.cell)
     report("tracer-static", edges=st.n_edges, empty_groups=int((st.size == 0).sum()), entries=len(st.cell))
-    assert int(st.cell.max()) <= T.SENTINEL                   # every entry resolves inside the die (outside_die = 0)
+    assert int(st.cell.max()) < T.CFF_BASE + 40_000                   # every entry resolves inside the die (outside_die = 0)
     assert int(st.xrec.max()) < 1 << 21 and len(st.xcell) == len(st.xrec)
     assert ((np.asarray(st.kind) & 2) != 0).all()              # every list bit is also a bit of the destination's exclusion groups
 

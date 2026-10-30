@@ -22,6 +22,7 @@ from . import plane as P
 
 # source: A4 / A6 (plane.N_BITS): cell index = r * 6344 + (j - 1) * 8 + k; sentinel N_BITS = "no cell" (reads 0)
 SENTINEL = P.N_BITS
+CFF_BASE = P.N_BITS + 1          # source: ledger T-007 (CFF-tagged routing bits): plane index of CFF bit i = N_BITS + 1 + i
 CACHE = os.path.join(P.REPO, "tmp", "cycloneiv_clean", "tracer_static.npz")
 CHUNK_EDGES = 1_000_000          # edges per numpy block: ~3.5 M entries, ~60 MB of temporaries per worker
 ENUM_BITS = 21                   # record ids < 2^21 (1,802,443 records)
@@ -53,6 +54,8 @@ def _build_static(die=ddb.DIE):
     b0, b1 = ((f & 0xFF) ^ 0x80) - 0x80, (((f >> 8) & 0xFF) ^ 0x80) - 0x80
     f0, f1 = np.cumsum(b0) & 1, np.cumsum(b1) & 1
     want_all = np.where(f0 == 1, f1, 1).astype(np.uint8)
+    # F3 (address-space tag): same running sum; 1 -> the flat address is a CFF index, not CRAM (DYGR_ROUTE_ASM_BIT::operator<<@0x2caf80, get_flat_address@0x23ab50; ledger T-007)
+    tag_all = (np.cumsum(((f >> 24) & 0xFF ^ 0x80) - 0x80) & 1).astype(np.uint8)
     del f, b0, b1, f0, f1
     ent = np.repeat(real, gsize)
     addr = pos[ent] & ddb.ADDR_MASK
@@ -61,37 +64,44 @@ def _build_static(die=ddb.DIE):
     xent = np.repeat(~real, gsize)
     xrec = np.repeat(grec, gsize)[xent].astype(np.int64)
     xaddr = pos[xent] & ddb.ADDR_MASK
-    xkey = np.unique(xrec << 31 | xaddr)
+    xtag = tag_all[xent].astype(np.int64)
+    xkey_all = xrec << 31 | xaddr | xtag << 30                  # bit 30 = address-space tag (CRAM addresses < 2^26, CFF < 2^15)
+    xkey, xi = np.unique(xkey_all, return_index=True)
+    xtag = xtag[xi]
     erec = np.repeat(dst, size)                                   # destination record of each list entry
+    tag_ent = tag_all[ent]
     inx = np.zeros(len(addr), bool)
     for lo in range(0, len(addr), 8_000_000):
         sl = slice(lo, lo + 8_000_000)
-        q = erec[sl] << 31 | addr[sl]
+        q = erec[sl] << 31 | addr[sl] | tag_ent[sl].astype(np.int64) << 30
         i = np.minimum(np.searchsorted(xkey, q), len(xkey) - 1)
         inx[sl] = xkey[i] == q
     del erec
     tab = P.load_tables()
 
-    def cells(ad):
+    def cells(ad, tg):
         c = np.full(len(ad), SENTINEL, np.int64)
+        c[tg == 1] = CFF_BASE + ad[tg == 1]                      # tagged entry: CFF bit, appended to the plane after the sentinel
         for lo in range(0, len(ad), 8_000_000):
             sl = slice(lo, lo + 8_000_000)
-            m = (ad[sl] >= 0) & (ad[sl] < P.N_BITS)
+            m = (ad[sl] >= 0) & (ad[sl] < P.N_BITS) & (tg[sl] == 0)
             rr, jj, kk2 = P.sof_to_rbf(ad[sl][m], tab)
             cc = np.full(len(m), SENTINEL, np.int64)
             cc[m] = rr * P.BITS_PER_FRAME + (jj - 1) * P.LANES + kk2
-            c[sl] = cc
+            c[sl][m] = cc[m]
         return c
-    cell = cells(addr)
-    xcell = cells(xkey & ddb.ADDR_MASK)
+    cell = cells(addr, tag_all[ent])
+    xcell = cells(xkey & 0x3FFFFFFF, xtag)
     xr = (xkey >> 31).astype(np.int32)
     flagbits = want | (inx.astype(np.uint8) << 1)               # bit0 = required value, bit1 = also in the destination's exclusion set
     nreq1 = np.add.reduceat(want.astype(np.int32), np.minimum(estart[:-1], len(want) - 1))
     nreq1 = np.where(size > 0, nreq1, 0)
     os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-    np.savez(CACHE, esrc=r.astype(np.int32), edst=dst.astype(np.int32), estart=estart, cell=cell.astype(np.uint32),
+    tmp = CACHE + ".tmp.npz"
+    np.savez(tmp, esrc=r.astype(np.int32), edst=dst.astype(np.int32), estart=estart, cell=cell.astype(np.uint32),
              kind=flagbits, nlit=nreq1.astype(np.int16), size=size.astype(np.int16), group_index=gi.astype(np.int64),
              xcell=xcell.astype(np.uint32), xrec=xr)
+    os.replace(tmp, CACHE)
     return dict(groups=len(grec), real=len(gi), entries=len(addr), exclusion_entries=len(xkey), list_entries_in_exclusion=int(inx.sum()))
 
 
@@ -154,12 +164,24 @@ class Plane(np.ndarray):
 
 
 def plane_bits(rbf):
-    """uint8 [N_BITS + 1] of an rbf CRAM, index r * 6344 + (j - 1) * 8 + k; sentinel last."""
+    """uint8 plane of an rbf: CRAM index r * 6344 + (j - 1) * 8 + k, sentinel N_BITS (0), then the CFF bits (CFF_BASE + index)."""
     from . import sofio
-    out = np.zeros(P.N_BITS + 1, np.uint8).view(Plane)
+    cff = _cff().read(rbf)[0]
+    out = np.zeros(CFF_BASE + len(cff), np.uint8).view(Plane)
     out.rbf = rbf
     out[:P.N_BITS] = sofio.rbf_cram(rbf).reshape(-1)
+    out[CFF_BASE:] = cff
     return out
+
+
+_cff_obj = []
+
+
+def _cff():
+    if not _cff_obj:
+        from . import cycloneiv_io as IO
+        _cff_obj.append(IO.Cff())
+    return _cff_obj[0]
 
 
 # ---- RCF ground-truth tree (Quartus routing.rcf) and name -> record -----------------------------------------------------------------
@@ -369,7 +391,7 @@ class Extras:
         imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits), self.pia.apply(bits), self.macpia.apply(bits), self.clkbuf.apply(bits), self.pllw.apply(bits), self.pllin.apply(bits)])
         mrec = self.macpia.clock_recs(bits)
         mclk = self.clocks.chain(mrec) if len(mrec) else np.zeros(0, np.int64)
-        return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp, mclk])) for v, e in fired.items()}
+        return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp, mclk, self.pllw.zero_select(bits, e)])) for v, e in fired.items()}
 
 
 # source: io_decode.json `values` rows with setting 'default' (pair builds, docs/cycloneiv-clean-io.md): pattern of each group per base kind
