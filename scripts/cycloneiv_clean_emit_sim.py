@@ -33,7 +33,7 @@ OUT = os.path.join(REPO, "tmp", "cycloneiv_clean")
 WORK = os.path.join(OUT, "emit_sim")
 ATOMS = "/mnt/2tb/opt/altera/quartus-25.1/quartus/eda/sim_lib/cycloneiv_atoms.v"       # Quartus 25.1 simulation library (vendor)
 PRIMS = "/mnt/2tb/opt/altera/quartus-25.1/quartus/eda/sim_lib/altera_primitives.v"     # dffeas
-ATOMS_NOPLL = os.path.join(WORK, "cycloneiv_atoms_nopll.v")
+ATOMS_NOPLL = os.path.join(WORK, "cycloneiv_atoms_nopll.v")   # regenerated when HOLD_SAFE changes (file name carries the mode)
 
 
 def sim_libs():
@@ -41,10 +41,18 @@ def sim_libs():
     if not os.path.exists(ATOMS_NOPLL):
         text = open(ATOMS).read()
         a, b = text.index("module cycloneiv_pll (inclk"), text.rindex("endmodule // cycloneiv_pll") + len("endmodule // cycloneiv_pll")
-        open(ATOMS_NOPLL, "w").write(text[:a] + text[b:])
+        text = text[:a] + text[b:]
+        for pin in ("combout", "cout") if HOLD_SAFE else ():          # 1 ps lcell output delay (hold-safe GT, see HALF)
+            text = text.replace(f"and ({pin}, {pin}_tmp, 1'b1) ;", f"and #1 ({pin}, {pin}_tmp, 1'b1) ;")
+        open(ATOMS_NOPLL, "w").write(text)
     return [ATOMS_NOPLL, PRIMS]
 
 
+
+# hold-safe GT: lcell outputs delayed 1 ps (zero-delay GT samples data that is derived from the clock pad after the edge: delta race, verified on rb_118);
+# TB half period HALF ps >> the deepest LUT path
+HALF = 10
+HOLD_SAFE = False          # --hold-safe: HALF 2000, lcell outputs delayed 1 ps in the GT library and -DLUT_DELAY=#1 in the emit
 WARMUP = 6                  # cycles before comparing: FF pipelines settle (power-up 0 in both models)
 # iverilog compile of a 5 k-cell post-fit netlist + run of 300 cycles measured ~1-2 s; 3x worst cold = stall backstop
 RUN_LIMIT_S = 120
@@ -75,8 +83,8 @@ def run_one(cx, d, cycles, seed):
     clock_ports, srcmap = set(), {}
     for n in nets:
         nm = n["name"]
-        if nm.endswith("~inputclkctrl"):
-            clock_ports.add(nm[:-13])
+        if nm.endswith("~inputclkctrl") and any(dd[2] == "CLK" for dd in n["dests"]):
+            clock_ports.add(nm[:-13])             # a clkctrl port that only feeds CLRN / data is driven as data (clock edge and clear edge would coincide)
         if (nm.endswith("~input") or nm.endswith("~inputclkctrl")) and n["roots"] and n["roots"][0][0] in ("CLKBUF_OUT", "CLK_BUFFER"):
             r = n["roots"][0]
             srcmap[f"u_{r[0].lower()}_{r[1]}_{r[2]}_{r[3]}_{r[4]}"] = nm.replace("~inputclkctrl", "").replace("~input", "")
@@ -127,10 +135,10 @@ def run_one(cx, d, cycles, seed):
     for p in ins:
         if p not in clock_ports:
             lines.append(f"  r_{p} = $random(seed);")
-    lines += ["  #10 clk = 1; #10;", f"  if (cyc >= {WARMUP}) begin"]
+    lines += [f"  #{HALF} clk = 1; #{HALF};", f"  if (cyc >= {WARMUP}) begin"]
     for i, (p, ball) in enumerate(comparable):
         lines.append(f"    if (g_{p} !== m_{p}) begin badp[{i}] = 1; bad = bad + 1; end")
-    lines += ["  end", "  clk = 0; #10;", "end",
+    lines += ["  end", f"  clk = 0; #{HALF};", "end",
               f'$display("RESULT comparable={len(comparable)} bad_events=%0d bad_ports=%0d", bad, $countones(badp));']
     lines += ['$finish;', 'end', 'endmodule']
     tb = os.path.join(wd, "tb.v")
@@ -138,7 +146,7 @@ def run_one(cx, d, cycles, seed):
     vvp = os.path.join(wd, "sim.vvp")
     res = dict(design=name, comparable=len(comparable), uncomparable=dict(uncomp), tied_sources=tied, srcmap=len(srcmap))
     try:
-        c = subprocess.run(["iverilog", "-g2012", "-o", vvp, tb, mine_v, os.path.join(d, "postfit.vo"), *sim_libs()], capture_output=True, text=True, timeout=RUN_LIMIT_S)
+        c = subprocess.run(["iverilog", "-g2012", "-o", vvp, *(["-DLUT_DELAY=#1"] if HOLD_SAFE else []), tb, mine_v, os.path.join(d, "postfit.vo"), *sim_libs()], capture_output=True, text=True, timeout=RUN_LIMIT_S)
         if c.returncode:
             res.update(status="compile_error", err=c.stderr[:300])
             return res
@@ -177,7 +185,12 @@ def main():
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--seed", type=int, default=20261030)
     ap.add_argument("--tag", default="x")
+    ap.add_argument("--hold-safe", action="store_true", help="HALF 2000 ps, lcell outputs delayed 1 ps in GT and emit (clock-pad-as-data designs)")
     a = ap.parse_args()
+    global HALF, HOLD_SAFE, ATOMS_NOPLL
+    if a.hold_safe:
+        HALF, HOLD_SAFE = 2000, True
+        ATOMS_NOPLL = os.path.join(WORK, "cycloneiv_atoms_nopll_hs.v")
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     os.makedirs(WORK, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=[logging.StreamHandler(), logging.FileHandler(LOG)])

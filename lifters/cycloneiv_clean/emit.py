@@ -224,6 +224,14 @@ class Builder:
         self.sel_only = lut_p & ~live        # constant-0 LUT claimed only by a selected LOCAL_LINE: no GT route reaches its pins
         grp = self.lev["LE_CLOCK_SELECT"]                                   # value = clock / enable signal index = LAB_CLOCK_FAST_MUX gi (ffctl.py)
         clk = np.where(ffp, np.take_along_axis(self.lsig["clk_rec"], grp, axis=1), -1)
+        # source: ASM_LAB_CLOCK_FAST_MUX::process_end_of_phase@0x15e138 writes the clock mux of every LAB signal with a real source, and
+        #         ASM_LE_CLOCK_SELECT::process_atom@0x16ba06 selects it per register: a register whose selected clock mux decodes to no input
+        #         (first level unconfigured) cannot exist.  Register claims by output select alone (YGR) are dropped then; sync-bit FFs are kept.
+        csel = np.take_along_axis(self.lsig["clk_sel"], grp, axis=1)
+        drop = ffp & (csel == -1) & ~sync_ff
+        nl.counts["ff_claim_dropped_no_clock_source"] = int(drop.sum())
+        ffp = ffp & ~drop
+        clk = np.where(ffp, clk, -1)
         self.bits, self.edges, self.parent, self.root, self.used_src = bits, edges, parent, root, used_src
         self.cells, self.carry, self.sel, self.ygr, self.ffp, self.lut_p, self.clk = cells, carry, sel, ygr, ffp, lut_p, clk
         nl.counts["ff_claim_reg_used"], nl.counts["ff_from_used_register_output"] = int(ffc.sum()), int((ffp & ~ffc).sum())
@@ -284,7 +292,7 @@ class Builder:
                                 "M4K_BUFFER": "M9K output: port wiring not decoded"}.get(t, f"source of type {t}: not decoded"))
 
     def _le_out(self, lab, le, comb, x, y):
-        if comb:
+        if comb or not self.ffp[lab, le]:          # register select without a register (dropped claim): the LUT output
             return (f"lc_{x}_{y}_{le}", ("LC", x, y, le))
         return (f"ff_{x}_{y}_{le}", ("FF", x, y, le))
 
@@ -586,6 +594,8 @@ def verilog(nl, module="cyc4_top"):
     ports = [f"input wire pad_{b}" for b in sorted(inputs)] + [f"output wire pad_{b}" for b in sorted(outputs)] + \
             [f"inout wire pad_{b}" for b in sorted(others)] + \
             [f"input wire {n} /* UNDECODED: {c} */" for n, (_t, c) in sorted(nl.srcs.items())]
+    w("// LUT output delay (empty = zero-delay netlist); a LUT fed by the clock pad changes after the register samples in hardware: compile with -DLUT_DELAY=#1")
+    w("`ifndef LUT_DELAY\n`define LUT_DELAY\n`endif")
     w(f"module {module} (")
     w("  " + ",\n  ".join(ports) if ports else "")
     w(");")
@@ -601,13 +611,13 @@ def verilog(nl, module="cyc4_top"):
         a_, b_, c_, d_ = L["pins"]
         und = L.get("und")
         w(f"localparam [15:0] I_{n} = 16'h{L['init']:04X};" + (f" // UNDECODED: {', '.join(und)}" if und else ""))
-        w(f"assign {n} = I_{n}[{{{d_}, {c_}, {b_}, {a_}}}];")
+        w(f"assign `LUT_DELAY {n} = I_{n}[{{{d_}, {c_}, {b_}, {a_}}}];")
         if L["mode"] == "cin":
-            w(f"assign co_{L['x']}_{L['y']}_{L['le']} = I_{n}[{{1'b0, {c_}, {b_}, {a_}}}];")
+            w(f"assign `LUT_DELAY co_{L['x']}_{L['y']}_{L['le']} = I_{n}[{{1'b0, {c_}, {b_}, {a_}}}];")
         else:
             # source: cycloneiv_atoms.v cycloneiv_lcell_comb: cout = lut4(mask, dataa, datab, cin, 1'b0) in every mode; a LE not using the chain has cin = gnd
             #         (LE_USE_CARRY set: carry-in term unconnected, ASM_LE_USE_CARRY::process_atom@0x16c186)
-            w(f"assign co_{L['x']}_{L['y']}_{L['le']} = I_{n}[{{1'b0, 1'b0, {b_}, {a_}}}];")
+            w(f"assign `LUT_DELAY co_{L['x']}_{L['y']}_{L['le']} = I_{n}[{{1'b0, 1'b0, {b_}, {a_}}}];")
     for F in nl.ffs:
         n = F["name"]
         if F["clk"] is not None and F["d"] is not None:
