@@ -1,6 +1,6 @@
 # Lightbridge ground FPGA (m2001): what we found
 
-Third-party EP4CGX150 image = DJI Phantom 3 (P3X) Lightbridge ground-side FPGA, module m2001.
+Third-party EP4CGX150 image = Lightbridge ground-side FPGA, module m2001. It ships inside the P3X (Phantom 3) firmware packages, but it is the only Cyclone IV image in any package: the other ground images (m2000, m2002, m2003) and every air image (m1900) are Cyclone V. m2001 is probably the Inspire 1 RC (GL658) board variant (I: wiki board marking names a Cyclone IV GX; the Inspire RC package has m2000 and m2001 but no m2002). Which hardware variant a P3 ground unit uses is not settled.
 Tags: **V** traced/measured here, **I** inferred, **H** hypothesis, **U** unknown. Structure and counts only; no ROM dumps, no firmware addresses, no ID values.
 Status changes fast: numbers are from the run named in each section; evidence lives in #165 / #169 / #176 comments, `reference/rules.tsv`, `docs/cycloneiv-clean-*.md`.
 
@@ -13,7 +13,7 @@ Status changes fast: numbers are from the run named in each section; evidence li
 
 ## 2. Decode status (DJI tier run 46, fast gate run 45)
 
-- 89,282 LUTs, 35,554 FFs claimed by the gate (emit netlist says 35,873: 319 gap open), 85 used IO pads, 542 M9K with routed outputs (8 hold data), 87 MACs (2 in 9-bit mode), 2 PLLs, 6 clock domains.
+- 89,282 LUTs, 35,873 FFs (gate, emit and netlist agree), 85 used IO pads, 542 M9K with routed outputs (8 hold data), 87 MACs (2 in 9-bit mode), 2 PLLs, 6 clock domains.
 - 6,154 of 6,154 frames pass CRC; 0 fan-in conflicts; 0 undriven nets; 99.05 % of set bits explained, 56.47 % validated.
 - Fast gate (134 designs): pips 656,759 / 2 missing; lut_init and pins 0 missing; register_clock 3 missing.
 - Readable lift: 1,377 adders, 198 subtractors, 260 comparators, 226 counters, 21 FSMs, 418 flat LUTs left of 89,282.
@@ -70,7 +70,8 @@ Status changes fast: numbers are from the run named in each section; evidence li
 
 - 542 tiles with routed outputs: single port 359, simple dual port 178 (148 x36), ROM 3, true dual port 2; no packed/mixed width/byte enables (V).
 - Only 8 tiles hold data (12,993 set bits). None holds an FFT twiddle, preamble, pilot sequence, interleaver, CRC or PRBS table (V, negative).
-- Content: linear ramps (two 100-word, ~0.03 % residual), a smooth phase-like 512x18 ramp (not a sine), a 4-level staircase, decaying-exponential-like curves, and ROMs that look like sequencer microcode (opcode + operand, count-down operands; 680-word 9-bit + 3-bit companion pair). A soft RISC/sequencer test is running.
+- Content: linear ramps (two 100-word, ~0.03 % residual), a smooth phase-like 512x18 ramp (not a sine), a 4-level staircase, decaying-exponential-like curves feeding MAC inputs (V: datapath tables, no feedback).
+- No sequencer or soft CPU (V): the 680-word 9-bit + 3-bit pair is an index/parameter ROM driving the read addresses and enables of 24 downstream M9K banks. The 7_85+7_86 pair is one 32-bit true dual-port RAM written at run time (initial content only in the bitstream), with a serialiser and a data-dependent second address path in the 218-FF domain of pad AF3; its function is U.
 - Training/pilot/interleaver therefore come from logic, not memory.
 
 ## 9. FX3 side
@@ -80,7 +81,7 @@ Status changes fast: numbers are from the run named in each section; evidence li
 
 ## 10. Clocks
 
-- 2 PLLs enabled: PLL_2 (m14, c0 50/50) and PLL_8 (m20; c0 4/4, c3 8/8; VCO post-scale 2). 6 clock domains; the main one holds ~63 % of FFs. Which pad feeds which PLL: CFF-tagged select just found (#176), image connectivity pending.
+- 2 PLLs enabled: PLL_2 (m14, c0 50/50) and PLL_8 (m20; c0 4/4, c3 8/8; VCO post-scale 2). 6 clock domains; the main one holds ~63 % of FFs. Both PLLs take their first input from ball B14 (dedicated clock pin) through a global clock buffer, the row/LAB clock lines and the dedicated-buffer element (V); same chain for both, no PLL cascade, second inputs unused. N25 (AD9363 data clock) is sampled as data, not used as a PLL input. Fin lies in 54.9-83.3 MHz if the decoded PLL parameters hold (I); what B14 is on the board is U.
 - Weird: the PLL input select lives in the periphery (CFF) address space, flagged by a fourth routing flag byte that earlier tracers ignored.
 
 ## 11. Odd facts worth remembering
