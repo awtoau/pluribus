@@ -167,7 +167,17 @@ def logic(cx, bits, fired_head, g):
     # register clock: line chosen per (LAB, LE); root(s) of the programmed tree(s) that contain it, found upstream
     blk = np.where(ff, cx.ext.clocks.le_blk(bits), -1)
     res["ff_clock_line_chosen"] = int((blk >= 0).sum())
-    res["ff_no_clock_line_MISSING"] = int(ff.sum() - (blk >= 0).sum())
+    # claims with no BLK_CLK_BUF line: fabric clock (LAB clock mux input = LAB_CONTROL_MUX i, ffctl.py) or no decodable source at all
+    sig = cx.ext.reg.ffc.lab_signals(bits)
+    grp = cx.ext.reg.ffc.le_val(bits)["LE_CLOCK_SELECT"].astype(np.int64)
+    csel, crec = (np.take_along_axis(sig[k], grp, axis=1) for k in ("clk_sel", "clk_rec"))
+    noline = ff & (blk < 0)
+    res["ff_clock_fabric_lcm"] = int((noline & (crec >= 0) & (csel < 4)).sum())
+    res["ff_clock_fabric_by_lcm"] = {str(i): int((noline & (csel == i)).sum()) for i in range(4)}
+    res["ff_clock_fabric_by_path"] = {"regbuf": int((noline & used_buf).sum()), "local": int((noline & ~used_buf).sum()),
+                                      "arith": int((noline & carry).sum()), "lut_less": int((noline & ~nz).sum())}
+    res["ff_no_clock_line_MISSING"] = int(noline.sum() - (noline & (crec >= 0)).sum())
+    res["ff_no_blk_line_fabric_clock"] = int((noline & (crec >= 0)).sum())
     src, dst = st.esrc[fired_head].astype(np.int64), st.edst[fired_head].astype(np.int64)
     o = np.argsort(dst, kind="stable")
     ds, ss = dst[o], src[o]
@@ -212,7 +222,7 @@ def logic(cx, bits, fired_head, g):
     res["clock_lines_ambiguous_roots_MISSING"] = many
     res["clock_lines_undriven_MISSING"] = none
     res["ff_clock_one_root"] = cnt["resolved"]
-    res["ff_clock_unresolved_MISSING"] = cnt["other"] + res["ff_no_clock_line_MISSING"]
+    res["ff_clock_unresolved_MISSING"] = cnt["other"] + int(noline.sum())       # fabric-clocked claims stay unresolved (root not traced)
     res["clock_root_nets_distinct"] = len(set(one.values()))
     res["clock_root_types"] = dict(collections.Counter(cx.tn(r) for r in set(one.values())).most_common(8))
     return res

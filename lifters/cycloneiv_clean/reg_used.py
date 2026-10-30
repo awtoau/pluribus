@@ -18,6 +18,7 @@ from . import fields as F
 from . import plane as P
 
 LAB_BLOCK = 18                                      # source: ASMDB_ARCH_GROUP_BLOCK_TYPE LAB (fields.PLACED)
+LI_PER_LAB = 38                                     # source: lab_control.Implicit (LOCAL_INTERCONNECT records per LAB tile; LE_LUT_INPUT input i >= 38 = LOCAL_LINE i - 38)
 YGR = "LE_REG_OUT_YGR"                              # source: libdb_asmdb arch-group-type table (gi 0, 1, 2; one bit per LE)
 SYNC = ("LE_USE_SYNC_CLEAR", "LE_USE_SYNC_LOAD")    # source: libdb_asmdb arch-group-type table (one bit per LE)
 BUFFER = "LE_BUFFER"                                # source: names_table.json (RCF type -> routing.ddb element enum)
@@ -58,6 +59,11 @@ class RegUsed:
         self.buf = np.where(keys[i] == q, order[i], -1)                  # [labs, 16, 2]
         if (self.buf < 0).any():
             raise SystemExit("LAB without 32 LE_BUFFER records")
+        e_ll = names.enum_of("LOCAL_LINE")
+        q = np.stack([ddb.element_key(e_ll, x, y, 0, le) for le in range(16)], axis=1)
+        i = np.minimum(np.searchsorted(keys, q), len(keys) - 1)
+        self.ll = np.where(keys[i] == q, order[i], -1)                    # LOCAL_LINE record per (LAB, LE) = the third output path
+        self.leinp = None                                                # emit.LeInputs, set lazily (LE_LUT_INPUT selection)
         self.slot = np.full(rt.n, -1, np.int64)
         self.slot[self.buf.ravel()] = np.arange(self.buf.size)
 
@@ -74,10 +80,25 @@ class RegUsed:
         u = self.used(edges)
         configured = (self.lut.cells(bits).sum(axis=2) > 0) | ((bits[self.sync[0]] == 1) & (bits[self.sync[1]] == 1))
         reg_buf = (u & ~y[..., :2]).any(axis=-1)
-        local_only = ~u.any(axis=-1) & ~y[..., 2]
+        local_only = ~u.any(axis=-1) & ~y[..., 2] & self.local_used(bits, edges, configured | (bits[self.sync[0]] == 1))
         sync = (bits[self.sync[0]] == 1) & (bits[self.sync[1]] == 1)           # source: ffctl.py doc (ASM_LE_USE_SYNC_* writers): the shared bit is set only when an sclr / sload term is connected = a register exists
         claim = sync | (configured & (reg_buf | local_only))
         return claim & self.clock_ok(bits) if self.ffc is not None else claim
+
+    def local_used(self, bits, edges, live):
+        """bool [labs, 16]: the LE's third output path (LOCAL_LINE le) is consumed: a programmed edge leaves it, or a LE_LUT_INPUT pin of a live LE selects it.
+        source: a register's output must be used, on a LE_BUFFER or on the LOCAL_LINE (same consumption test as emit.py `ll_used`; LE_LUT_INPUT = ASM_LE_LUT_INPUT::process_atom@0x16c464)."""
+        if self.leinp is None:
+            from .emit import LeInputs
+            self.leinp = LeInputs(self.lut)
+        src = np.zeros(self.rt.n, bool)
+        src[self.st.esrc[np.asarray(edges, np.int64)]] = True
+        out = (self.ll >= 0) & src[np.maximum(self.ll, 0)]
+        sel = self.leinp.select(bits)
+        ok = live[..., None] & (sel >= LI_PER_LAB) & (sel < LI_PER_LAB + 16)
+        lab, le, g = np.nonzero(ok)
+        out[lab, sel[lab, le, g] - LI_PER_LAB] = True
+        return out
 
     def clock_ok(self, bits):
         """bool [labs, 16]: the LAB clock mux selected by the LE's LE_CLOCK_SELECT decodes to a source.  source: ASM_LAB_CLOCK_FAST_MUX::process_end_of_phase@0x15e138
