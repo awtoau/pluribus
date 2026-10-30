@@ -45,7 +45,7 @@ class M9kCtl:
             nm = gt.get(g["type"])
             if nm in ("RAM_MS_DATA_INPUT", "RAM_MS_WRITE_ADDRESS_INPUT", "RAM_MS_READ_ADDRESS_INPUT", "RAM_PIA_TO_INPUT_YGR", "RAM_MS_BYTE_ENABLE_INPUT"):
                 self.calc[(nm, g["gi"])] = ffctl.Calc(walk, g, bs, tab)
-            elif nm in ("RAM_DATA_WRITE_MODE", "RAM_CLOCK_FAST_MUX", "RAM_REG_DATA_OUT", "RAM_CE_FAST_MUX", "RAM_CE_SELECT_INPUT", "RAM_CE_INVERT"):
+            elif nm in ("RAM_DATA_WRITE_MODE", "RAM_CLOCK_FAST_MUX", "RAM_REG_DATA_OUT", "RAM_REG_DATA_OUT_B", "RAM_CE_FAST_MUX", "RAM_CE_SELECT_INPUT", "RAM_CE_INVERT"):
                 c = ffctl._cols(bs, walk.mux(g["paths"][0][0])["bits"], tab)
                 self.cols[(nm, g["gi"])] = np.stack([c[k] for k in sorted(c)], axis=1)
                 if nm == "RAM_CLOCK_FAST_MUX":
@@ -74,6 +74,7 @@ class M9kCtl:
         o["cg"] = np.where(o["pia"][:, 0] >= 0, 0, np.where(o["pia"][:, 1] >= 0, 1, 0))
         o["clk_fast"] = np.where(o["cg"][:, None] == 0, bits[self.cols[("RAM_CLOCK_FAST_MUX", 0)]], bits[self.cols[("RAM_CLOCK_FAST_MUX", 1)]]).astype(np.int64)
         o["oreg"] = bits[self.cols[("RAM_REG_DATA_OUT", -1)]][:, 0] == 0
+        o["oreg_b"] = bits[self.cols[("RAM_REG_DATA_OUT_B", -1)]][:, 0] == 0
         # input-side clock enable (ledger M-017): RAM_CE_SELECT_INPUT bit 0 = ENA0 selected; RAM_CE_FAST_MUX gi 0 bit set = alternate PIA line, clear = preferred line
         ce = json.load(open(CE_LINES))["ce_fast_mux"]["0"]
         o["ce_in"] = bits[self.cols[("RAM_CE_SELECT_INPUT", -1)]][:, 0] == 1

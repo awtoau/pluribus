@@ -325,6 +325,7 @@ class Builder:
     def _signals_prepare(self, nl):
         self.mac_refs = set()
         self.m9k_refs = set()
+        self.m9k_out = {}                                          # (x, y) -> M4K_BUFFER indices referenced (ROM width)
         self.sig_cache = {}
         self.nl = nl
 
@@ -354,6 +355,7 @@ class Builder:
             return self._le_out(lab, i, bool(self.ygr[lab, i, 2]), x, y)
         if t == "M4K_BUFFER":                                   # M9K port-A data out bit i (routing.rcf: M4K_BUFFER:X<x>Y<y>S0I<bit>)
             self.m9k_refs.add((x, y))
+            self.m9k_out.setdefault((x, y), set()).add(i)
             return (f"m9k_{x}_{y}_o[{i}]", ("M9K", x, y, i))
         if t == "DSP_BUFFER":                                   # MAC result bit i (routing.rcf: DSP_BUFFER:X<x>Y<y>S0I<bit> of the MAC tile)
             self.mac_refs.add((x, y))
@@ -664,14 +666,24 @@ class Builder:
         W, A, cls = int(mk["W"][i]), int(mk["A"][i]), int(mk["cls"][i])
         if W in (32, 36):                       # x32 / x36 decode as class by16 + packed bit; depth from the measured layout (m9k.depth)
             A = m9k.depth(W).bit_length() - 1
+        # ROM (no data-in groups): word width from the class and the highest routed output buffer (class by8/9: 8 or 9; by16/18: 16 or 18; by32/36: 32 or 36)
+        if W == 0 and cls == 5 and int(mk["n_data"][i]) > 0:    # x32 / x36 with fewer than 32 connected data pins: lanes differ only in unconnected bits, depth 256 for both
+            W = 36
+            A = m9k.depth(W).bit_length() - 1
+        outs = self.m9k_out.get((x, y))
+        if W == 0 and cls >= 0 and outs and not (mk["data"][i] >= 0).any():
+            cand = ({0: (1,), 1: (2,), 2: (4,), 3: (8, 9), 4: (16, 18), 5: (32, 36)})[cls]
+            W = next((c for c in cand if outs <= set(ram_mapper.data_idx(c)) or c in (32, 36)), cand[-1])
+            if cls == 5:
+                A = m9k.depth(W).bit_length() - 1
+            M["rom"] = True
         M.update(W=W, A=A, cls=cls, modelled=False)
         why = None
         if cls < 0:
             why = "word-width class not decoded"
         elif W not in (1, 2, 4, 8, 9, 16, 18, 32, 36):
             why = f"width {W} (undecoded) not modelled"
-        elif int(mk["read_groups"][i]) and W not in (32, 36):
-            why = "separate read-address groups (dual-port / wide modes) not modelled"
+
         if why:
             M["why"] = why
             nl.und["M9K: " + why.split(" (")[0]] += 1
@@ -709,13 +721,13 @@ class Builder:
                     return pin(mk["data"][i, gi])
                 if grp == "RAM_MS_WRITE_ADDRESS_INPUT" and gi in slot and mk["waddr"][i, slot[gi]] >= 0:
                     return pin(mk["waddr"][i, slot[gi]])
-            return "1'b0"
+            return "1'b1"                                       # unconnected address pin = constant high (hl_rom_3: 7-bit ROM content sits at the top 128 of 512 words)
         order = sorted(asrc, key=lambda ix: (ix - 8) % 13)[:A]
         addr = [apin(ix) for ix in order] if A >= 8 else []
         raddr = None
-        if W in (32, 36):                                       # simple dual port: separate read address (RAM_MS_READ_ADDRESS_INPUT gi = port index)
+        if int(mk["read_groups"][i]) or W in (32, 36):          # simple dual port: separate read address (RAM_MS_READ_ADDRESS_INPUT gi = port index)
             rg = {ix: gi for gi, ty, ix in ram_mapper.entries("RAM_MS_READ_ADDRESS_INPUT", Wa)}
-            raddr = [pin(mk["raddr"][rg[ix]][i]) if ix in rg and rg[ix] in mk["raddr"] else "1'b0" for ix in sorted(rg, key=lambda ix: (ix - 8) % 13)[:A]]
+            raddr = [pin(mk["raddr"][rg[ix]][i]) if ix in rg and rg[ix] in mk["raddr"] and mk["raddr"][rg[ix]][i] >= 0 else "1'b1" for ix in sorted(rg, key=lambda ix: (ix - 8) % 13)[:A]]
         ln = cx.m9kctl.clock_line(mk["clk_fast"][i])
         if isinstance(ln, int):
             rec = int(cx.find(names.enum_of("BLK_CLK_BUF"), x, y, 0, ln))
@@ -736,7 +748,8 @@ class Builder:
             if mk["ce_invert"][i]:
                 ce = "!" + ce
         words = m9k.read_words(bitsv, W)
-        M.update(modelled=True, ce=ce, be=be, data=data, addr=addr, raddr=raddr, we=pin(mk["we"][i]), clk=clk, oreg=bool(mk["oreg"][i]),
+        M.update(modelled=True, ce=ce, be=be, data=data, addr=addr, raddr=raddr, we=("1'b1" if mk["we"][i] < 0 and not M.get("rom") and (mk["data"][i] >= 0).any() else pin(mk["we"][i])), clk=clk,
+                 oreg=bool(mk["oreg_b"][i] if raddr else mk["oreg"][i]),
                  init=[int("".join(str(int(b)) for b in r[::-1]), 2) for r in words])
         nl.counts["m9k_single_port_modelled"] += 1
         nl.counts[f"m9k_w{W}"] += 1
