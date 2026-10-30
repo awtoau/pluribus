@@ -9,6 +9,17 @@
   python3 scripts/ghidra_apply_names.py xrefs <lib> 0xVADDR ...  # references to an address (and +0x10) -> ghidra_out/<lib>_xrefs.tsv
   python3 scripts/ghidra_apply_names.py export                  # user-defined names -> tmp/ghidra/export.tsv
   python3 scripts/ghidra_apply_names.py check                   # validate TSV shape (no Ghidra needed)
+  -- readability layer (docs/ghidra-workflow.md "Readable code") --
+  python3 scripts/ghidra_apply_names.py gen-enums | gen-vtables  # regenerate enums.tsv / vtables.tsv from the vendor libs
+  python3 scripts/ghidra_apply_names.py classes [lib ...]        # Ghidra RTTI class recovery (once per lib; marker in tmp/ghidra/)
+  python3 scripts/ghidra_apply_names.py types                    # names + enums + structs + vtable structs + signatures.tsv
+  python3 scripts/ghidra_apply_names.py rename-locals <lib> <selector> [limit]   # name locals/params from types and field accesses
+  python3 scripts/ghidra_apply_names.py export-readable <lib> [selector] [limit] # rename + annotated pseudo-code per class
+  python3 scripts/ghidra_apply_names.py emulate <lib> <0xVADDR> <maxSteps> <arg|A..B> ...   # P-code sweep of a pure table function
+  python3 scripts/ghidra_apply_names.py find-xrefs <lib> <target> ...            # references to symbol regex / vaddr
+  python3 scripts/ghidra_apply_names.py class-tree <lib> ...     # RTTI class hierarchy -> analysis/readable/class_tree.tsv
+  python3 scripts/ghidra_apply_names.py readable [lib ...]       # classes + types + export-readable for the key functions
+Project override: $PLURIBUS_GHIDRA_PROJ (a copy lets two agents work without the project lock).
 
 Project: vendor-analysis/altera/ghidra-project/quartus (gitignored).  Log: tmp/logs/ghidra_apply_names.log.
 Quartus root: $PLURIBUS_QUARTUS_DIR or the default below.  One analyzeHeadless at a time (project lock).
@@ -24,15 +35,23 @@ import heavy_guard  # noqa: E402
 REPO = os.environ.get("PLURIBUS_REPO") or os.path.dirname(HERE)
 import toolchain  # noqa: E402
 QROOT = os.environ.get("PLURIBUS_QUARTUS_DIR") or os.path.dirname(toolchain.quartus_bin())
-PROJ = os.path.join(REPO, "vendor-analysis", "altera", "ghidra-project")
+PROJ = os.environ.get("PLURIBUS_GHIDRA_PROJ") or os.path.join(REPO, "vendor-analysis", "altera", "ghidra-project")
 PNAME = "quartus"
 TSV = os.path.join(REPO, "reference", "ghidra")
 SCRIPTS = os.path.join(REPO, "scripts", "ghidra")
 OUT = os.path.join(REPO, "vendor-analysis", "altera", "analysis", "ghidra_out")
 LOG = os.path.join(REPO, "tmp", "logs", "ghidra_apply_names.log")
 LIBS = ["libcomp_asm", "libcomp_asm2", "libcomp_asmcc", "libcomp_asmgx", "libdb_asmdb", "libddb_dev",
-        "libddb_dygr", "libddb_dstr", "libpgm_pgmio", "libpgm_npcf"]
-COLS = {"functions.tsv": 6, "globals.tsv": 7, "structs.tsv": 8, "notes.tsv": 5}
+        "libddb_dygr", "libddb_dstr", "libpgm_pgmio", "libpgm_npcf",
+        "libcomp_asmio", "libcomp_asmram", "libcomp_asmmac", "libcomp_asmpll", "libdb_cdb_atom_stingray", "libddb_bcm2bits",
+        "libdb_u2b_bcm", "libddb_dbcm", "libpgm_fbgen", "libpgm_pof"]
+COLS = {"functions.tsv": 6, "globals.tsv": 7, "structs.tsv": 8, "notes.tsv": 5, "enums.tsv": 5, "vtables.tsv": 6,
+        "signatures.tsv": 6}
+SRC_COL = {"enums.tsv": 4, "vtables.tsv": 5, "signatures.tsv": 4}   # new files: source column index
+READ_OUT = os.path.join(REPO, "vendor-analysis", "altera", "analysis", "readable")
+ALL_LIBS = LIBS + ["libdb_pdb"]
+KEY_SELECTOR = ("re:::(process_(atom|end_of_phase|begin_of_phase|beginning_of_phase)|operator<<|xfr_\\w+|set_bits|silent_set_bits|"
+                "mux_select|resolve_io_index\\w*|write_block\\w*)$;re:^asm_convert_")
 
 
 def run(args, label, stall_s=120, overall_s=1800):
@@ -56,6 +75,8 @@ def check():
     bad = 0
     for f, n in COLS.items():
         p = os.path.join(TSV, f)
+        if not os.path.exists(p):
+            continue
         for i, line in enumerate(open(p), 1):
             if not line.strip() or line.startswith("#"):
                 continue
@@ -63,7 +84,10 @@ def check():
             if len(c) < n:
                 print(f"{f}:{i}: {len(c)} cols < {n}")
                 bad += 1
-            elif f != "notes.tsv" and not c[-1 if f != "structs.tsv" else 7].strip():
+            elif f in SRC_COL and not c[SRC_COL[f]].strip():
+                print(f"{f}:{i}: empty source column")
+                bad += 1
+            elif f != "notes.tsv" and f not in SRC_COL and not c[-1 if f != "structs.tsv" else 7].strip():
                 print(f"{f}:{i}: empty source column")
                 bad += 1
             for bannedtxt in ("/mnt/", "/home/"):
@@ -72,6 +96,15 @@ def check():
                     bad += 1
     print("TSV ok" if not bad else f"{bad} problems")
     return bad
+
+
+def main_with(argv):
+    old = sys.argv
+    sys.argv = [old[0]] + argv
+    try:
+        return main()
+    finally:
+        sys.argv = old
 
 
 def main():
@@ -87,15 +120,74 @@ def main():
         os.makedirs(PROJ, exist_ok=True)
         files = [os.path.join(QROOT, "linux64", l + ".so") for l in libs]
         return run(["-import"] + files + ["-analysisTimeoutPerFile", "1200"], "import", 300, 5400)
-    if cmd == "apply":
+    if cmd in ("apply", "types"):
         if check():
             return 1
         rep = os.path.join(REPO, "tmp", "ghidra", "apply_report.tsv")
         os.makedirs(os.path.dirname(rep), exist_ok=True)
         open(rep, "w").close()
-        rc = run(["-process", "-noanalysis", "-scriptPath", SCRIPTS, "-postScript", "ApplyNames.java", TSV, rep], "apply")
+        scr = ["-postScript", "ApplyNames.java", TSV, rep]
+        if cmd == "types":
+            scr += ["-postScript", "TypesPass.java", TSV, rep]
+        rc = run(["-process", "-noanalysis", "-scriptPath", SCRIPTS] + scr, cmd)
         print(open(rep).read())
         return rc
+    if cmd in ("gen-enums", "gen-vtables"):
+        import subprocess
+        return subprocess.run([sys.executable, os.path.join(HERE, "ghidra_" + cmd.replace("-", "_") + ".py")]).returncode
+    if cmd == "class-tree":
+        import subprocess
+        return subprocess.run([sys.executable, os.path.join(HERE, "ghidra_class_tree.py")] + rest).returncode
+    if cmd == "classes":
+        rc = 0
+        mark = os.path.join(REPO, "tmp", "ghidra")
+        os.makedirs(mark, exist_ok=True)
+        for l in rest or ALL_LIBS:
+            m = os.path.join(mark, "classes_done_" + l)
+            if os.path.exists(m):
+                print(l, "classes already recovered (delete", m, "to redo)")
+                continue
+            r = run(["-process", l + ".so", "-noanalysis", "-postScript", "RecoverClassesFromRTTIScript.java"], "classes-" + l, 120, 3600)
+            if r == 0:
+                open(m, "w").close()
+            rc = rc or r
+        return rc
+    if cmd in ("rename-locals", "export-readable"):
+        lib = rest[0]
+        sel = rest[1] if len(rest) > 1 else KEY_SELECTOR
+        lim = rest[2] if len(rest) > 2 else "1000000"
+        os.makedirs(READ_OUT, exist_ok=True)
+        return run(["-process", lib + ".so", "-noanalysis", "-scriptPath", SCRIPTS, "-postScript", "ReadablePass.java", READ_OUT,
+                    "rename" if cmd == "rename-locals" else "both", sel, lim], cmd + "-" + lib, 120, 3600)
+    if cmd == "emulate":   # emulate <lib> <vaddr> <maxSteps> <argSpec> ...   (spec N | A..B) -> readable/emulate_<lib>_<vaddr>.tsv
+        os.makedirs(READ_OUT, exist_ok=True)
+        out = os.path.join(READ_OUT, f"emulate_{rest[0]}_{rest[1]}.tsv")
+        open(out, "w").close()
+        rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS, "-postScript", "Emulate.java", out]
+                 + rest[1:], "emulate", 120, 1800)
+        print(out)
+        return rc
+    if cmd == "export-gdt":   # export-gdt <lib> -> readable/pluribus_<lib>.gdt (GUI Data Type Archive of /pluribus types)
+        os.makedirs(READ_OUT, exist_ok=True)
+        out = os.path.join(READ_OUT, f"pluribus_{rest[0]}.gdt")
+        return run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS, "-postScript", "ExportGdt.java", out],
+                   "export-gdt")
+    if cmd == "find-xrefs":
+        os.makedirs(READ_OUT, exist_ok=True)
+        out = os.path.join(READ_OUT, "xrefs_" + rest[0] + ".tsv")
+        open(out, "w").close()
+        rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS, "-postScript", "FindXrefs.java", out]
+                 + rest[1:], "find-xrefs")
+        print(out)
+        return rc
+    if cmd == "readable":
+        for step in (["classes"] + rest, ["types"]):
+            if main_with(step):
+                return 1
+        for l in rest or ALL_LIBS:
+            if main_with(["export-readable", l]):
+                return 1
+        return 0
     if cmd == "decomp":
         os.makedirs(OUT, exist_ok=True)
         out = os.path.join(OUT, rest[0] + "_" + "_".join(x.replace(":", "") for x in rest[1:])[:60] + ".c")
