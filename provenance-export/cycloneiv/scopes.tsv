@@ -1050,6 +1050,7 @@ cycloneiv	EP4CGX150	bit	cells	json:{"flat":[4158978,4184449]}	2		gxlm_psw_10x10_
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:25|9,5|9,6"]}	1		
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:31|7,-19|7,-18"]}	1		
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[39131282]}	1		bh_17ffbb27a4_be087a70dd
+cycloneiv	EP4CGX150	bit	formula	json:{"inventory_class":"4e","matcher":"inventory","n_objects":113757}	113757		IO row tiles (y=0, y=91) of LAB columns
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:10|9,7|9,8"]}	1		
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[19608639,19615007,19685107,20474692,20487428,20608422,20665734]}	7		gxr4df_s_i31_X58Y23_from62_23_26
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:30|9,-15|9,-14"]}	1		
@@ -2885,6 +2886,7 @@ cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:23|13,21|13,22"]}	1
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["li_map:17|12,-13|12,-12"]}	1		
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:1|9,-11|9,-10"]}	1		
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:30|2,5|2,6"]}	1		
+cycloneiv	EP4CGX150	bit	formula	json:{"inventory_class":"4a","matcher":"inventory","n_objects":173132}	173132		periphery frames 1..36 (IO ring, clocks, PLL, misc)
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["li_map:29|8,-1|8,0"]}	1		
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[10924779,10982091,11033036,11045772,11275015,11287751,11313216,11357792]}	8		gxr4df_s_i2_X34Y52_from33_52_0
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[33972156,34029468,34099513,34112250,34175912,34188648]}	6		gxnb100x75d1_14_20
@@ -3645,6 +3647,7 @@ cycloneiv	EP4CGX150	bit	cells	json:{"flat":[13478905]}	1		bh_61fb74ecf0_ed998a0d
 cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-18,0],[-10,-1],[-8,-64],[2,-64]],"x":10,"y":10}	4		LAB X10Y10 LOCAL_LINE 30->0
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[19742919]}	1		bh_d6128ea02a_dfde2621fa
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:19|2,31|2,32"]}	1		
+cycloneiv	EP4CGX150	bit	formula	json:{"inventory_class":"6","matcher":"inventory","n_objects":5061948}	5061948		unclassified (LAB-column cells no decoder claims)
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[1656337,1713650,1764595,1777331,3649523,3668627,3681370,3732314]}	8		gxnb6x10d2_28_24
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[20056438,20062805,20132898,20922478,20935214,21056205,21113517]}	7		gxr4df_s_i29_X60Y52_from64_52_28
 cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-13,-5],[-9,-4],[-8,-55],[2,-55]],"x":10,"y":10}	4		LAB X10Y10 LOCAL_LINE 24->2
@@ -3841,6 +3844,7 @@ cycloneiv	EP4CGX150	bit	cells	json:{"flat":[39144002]}	1		bh_648f564984_6ec2286d
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:21|9,-9|9,-8"]}	1		
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:17|9,7|9,8"]}	1		
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:5|7,-7|7,-6"]}	1		
+cycloneiv	EP4CGX150	bit	formula	json:{"inventory_class":"5c","matcher":"inventory","n_objects":21109}	21109		lane-tail byte (v 6344..6351, CRAM frames)
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[33991283]}	1		bh_1c6147ed75_65f0a4b514
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:21|9,19|9,20"]}	1		
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:19|9,-17|9,-16"]}	1		
@@ -6175,6 +6179,7 @@ cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:24|7,-23|7,-22"]}	1
 cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-18,-25],[-10,-25],[-8,-56],[2,-56]],"x":58,"y":30}	4		LAB X58Y30 LOCAL_LINE 26->12
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:28|2,-11|2,-10"]}	1		
 cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-13,-43],[-9,-43],[-8,-47],[2,-47]],"x":10,"y":10}	4		LAB X10Y10 LOCAL_LINE 20->18
+cycloneiv	EP4CGX150	bit	formula	json:{"inventory_class":"4b","matcher":"inventory","n_objects":6760810}	6760810		M9K columns (8): cells outside the data tables and the control cells found
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[4241789]}	1		bh_7de8bd3223_ecd17e5106
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:23|9,-9|9,-8"]}	1		
 cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-11,-12],[-9,-13],[-8,-25],[2,-25]],"x":37,"y":60}	4		LAB X37Y60 LOCAL_LINE 12->6
@@ -7179,6 +7184,7 @@ cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-11,-39],[-9,-39],[-8,-18],[2,-18
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[1656383,1713695,1764640,1777376,3719573,3738678,3834243,3846980]}	8		gxnb6x10d2_08_26
 cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-17,-42],[-10,-43],[-8,-9],[2,-9]],"x":37,"y":60}	4		LAB X37Y60 LOCAL_LINE 4->18
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:31|2,29|2,30"]}	1		
+cycloneiv	EP4CGX150	bit	formula	json:{"inventory_class":"4b","matcher":"inventory","n_objects":5603328}	5603328		M9K data cells at the other sites (per-site offset rule)
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[9894633,9907370,9913733,9926469,9951934,9996510,10009264,10066576]}	8		gxhop_r4_437473
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[33972156,34029468,34099513,34112250,34175954,34188690]}	6		gxnb100x75d1_14_02
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:31|2,-27|2,-26"]}	1		
@@ -7375,6 +7381,7 @@ cycloneiv	EP4CGX150	bit	cells	json:{"flat":[4241767]}	1		bh_47ee679bd9_b319d00b3
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:1|7,5|7,6"]}	1		
 cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-13,-21],[-9,-20],[-8,-55],[2,-55]],"x":10,"y":10}	4		LAB X10Y10 LOCAL_LINE 24->10
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[19717393,19774706,19825650,19838385,19908425]}	5		gxnb58x30d1_24_28
+cycloneiv	EP4CGX150	bit	formula	json:{"inventory_class":"4c","matcher":"inventory","n_objects":135008}	135008		multiplier columns (4)
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:25|9,-23|9,-22"]}	1		
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["lis:21|6,-1|6,0"]}	1		
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:3|13,-11|13,-10"]}	1		
@@ -8055,6 +8062,7 @@ cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:30|13,-15|13,-14"]}	1
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[15400992,15458304,15509246,15521982,15789429,15935906,15942273]}	7		gxr4df_s_i0_X47Y45_from46_45_2
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[4139915,4178123,4190847,4254527]}	4		gxlm_pC_10x10_08_02_i04
 cycloneiv	EP4CGX150	mux-input	keys	json:{"keys":["defaults:20|13,3|13,4"]}	1		
+cycloneiv	EP4CGX150	bit	formula	json:{"inventory_class":"4d","matcher":"inventory","n_objects":285409}	285409		IOL / IOR columns (+ 4 frames before col 0)
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[33972164,34029476,34080419,34093155,34175919]}	5		gxnb100x75d1_10_16
 cycloneiv	EP4CGX150	bit	tile	json:{"offsets":[[-16,-63],[-10,-63],[-8,-17],[2,-17]],"x":10,"y":10}	4		LAB X10Y10 LOCAL_LINE 8->28
 cycloneiv	EP4CGX150	bit	cells	json:{"flat":[13389711,13447024,13459756,13523436]}	4		gxlm_pA_37x60_22_20_i11
