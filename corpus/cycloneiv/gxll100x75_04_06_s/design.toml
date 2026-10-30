@@ -1,8 +1,0 @@
-top = "top"
-purpose = "LOCAL_LINE u0@N4 -> u1@N6"
-exercises = ["routing", "forced"]
-qsf = ["set_location_assignment LCCOMB_X100_Y75_N4 -to u0", "set_location_assignment LCCOMB_X100_Y75_N6 -to u1", "set_location_assignment PIN_B9 -to y", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
-device = "EP4CGX150DF31C7"
-tool = "quartus"
-tool_version = "25.1"
-built = "2026-10-28"

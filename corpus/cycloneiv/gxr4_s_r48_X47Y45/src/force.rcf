@@ -1,0 +1,46 @@
+### Routing Constraints File: build.rcf
+### Written on:				Thu Oct 29 17:27:10 2026
+### Written by:				Version 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+
+section global_data {
+	rcf_written_by = "Quartus Prime 25.1 Build 1129";
+	device = EP4CGX150DF31C7;
+}
+
+signal_name = u1 {
+	LE_BUFFER:X47Y45S0I9;
+	R4:X43Y45S0I20;
+	R4:X39Y45S0I18;
+	C16:X42Y46S0I0;
+	C16:X42Y60S0I0;
+	C16:X42Y74S0I0;
+	R24:X19Y89S0I0;
+	C4:X33Y90S0I3;
+	LOCAL_INTERCONNECT:X34Y91S0I11;
+	BLOCK_INPUT_MUX:X34Y91S0I13;
+	dest = ( y~output, I );
+}
+signal_name = y~output {
+	dest = ( y, PADIN );
+}
+signal_name = ~ALTERA_NCEO~~obuf {
+	dest = ( ~ALTERA_NCEO~, PADIN );
+}
+signal_name = ~ALTERA_DATA0~ {
+	dest = ( ~ALTERA_DATA0~~ibuf, I );
+}
+signal_name = ~ALTERA_ASDO_DATA1~ {
+	dest = ( ~ALTERA_ASDO_DATA1~~ibuf, I );
+}
+signal_name = ~ALTERA_NCSO~ {
+	dest = ( ~ALTERA_NCSO~~ibuf, I );
+}
+signal_name = ~ALTERA_DCLK~~obuf {
+	dest = ( ~ALTERA_DCLK~, PADIN );
+}
+signal_name = u0_o {
+	LE_BUFFER:X47Y45S0I16;
+	R4:X47Y45S0I8;
+	LOCAL_INTERCONNECT:X47Y45S0I8;
+	dest = ( u1, DATAB ), route_port = DATAB;
+}

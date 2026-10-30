@@ -1,5 +1,0 @@
-top = "top"
-purpose = "register-control corpus (WYSIWYG dffeas groups) on EP4CGX150"
-exercises = ["ff_controls", "lab_controls"]
-qsf = ["set_global_assignment -name SEED 12"]
-device = "EP4CGX150DF31C7"

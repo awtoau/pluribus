@@ -1,8 +1,0 @@
-top = "top"
-purpose = "routing specimen LAB X113 Y40 -> X116 Y40 (base twin: no net)"
-exercises = ["routing", "specimen"]
-qsf = ["set_location_assignment LCCOMB_X113_Y40_N0 -to l1", "set_location_assignment LCCOMB_X116_Y40_N0 -to l2", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
-device = "EP4CGX150DF31C7"
-tool = "quartus"
-tool_version = "25.1"
-built = "2026-10-28"

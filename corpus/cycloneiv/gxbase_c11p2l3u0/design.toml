@@ -1,5 +1,0 @@
-top = "top"
-purpose = "routing specimen LAB X90 Y47 -> X87 Y47 (base twin: no net)"
-exercises = ["routing", "specimen"]
-qsf = ["set_location_assignment LCCOMB_X90_Y47_N0 -to l1", "set_location_assignment LCCOMB_X87_Y47_N0 -to l2", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
-device = "EP4CGX150DF31C7"

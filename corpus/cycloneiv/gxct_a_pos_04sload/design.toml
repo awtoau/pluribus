@@ -1,8 +1,0 @@
-top = "top"
-purpose = "LAB control specimen pos/04sload at lab a"
-exercises = ["ctrl"]
-qsf = ["set_global_assignment -name ROUTING_BACK_ANNOTATION_MODE NORMAL", "set_global_assignment -name ROUTING_BACK_ANNOTATION_FILE ../src/force.rcf", "set_location_assignment LCCOMB_X10_Y10_N8 -to l4", "set_location_assignment FF_X10_Y10_N9 -to r4", "set_location_assignment LCCOMB_X10_Y10_N30 -to sKA", "set_location_assignment LCCOMB_X10_Y10_N28 -to sKB", "set_location_assignment LCCOMB_X10_Y10_N26 -to sE", "set_location_assignment LCCOMB_X10_Y10_N24 -to sC", "set_location_assignment LCCOMB_X10_Y10_N22 -to sS", "set_location_assignment LCCOMB_X10_Y10_N20 -to sL", "set_location_assignment LCCOMB_X10_Y10_N18 -to sM", "set_location_assignment LCCOMB_X58_Y30_N0 -to fl", "set_location_assignment FF_X58_Y30_N1 -to far1", "set_location_assignment FF_X58_Y32_N1 -to far2", "set_location_assignment PIN_A11 -to D", "set_location_assignment PIN_A15 -to D2", "set_location_assignment PIN_B9 -to y4", "set_location_assignment PIN_A13 -to yf1", "set_location_assignment PIN_A14 -to yf2", "set_global_assignment -name AUTO_GLOBAL_CLOCK OFF", "set_global_assignment -name AUTO_GLOBAL_REGISTER_CONTROLS OFF", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
-device = "EP4CGX150DF31C7"
-tool = "quartus"
-tool_version = "25.1"
-built = "2026-10-29"

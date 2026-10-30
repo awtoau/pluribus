@@ -1,0 +1,65 @@
+### Routing Constraints File: build.rcf
+### Written on:				Thu Oct 29 19:29:12 2026
+### Written by:				Version 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+
+section global_data {
+	rcf_written_by = "Quartus Prime 25.1 Build 1129";
+	device = EP4CGX150DF31C7;
+}
+
+signal_name = u1 {
+	LE_BUFFER:X82Y35S0I6;
+	C4:X82Y36S0I2;
+	C4:X82Y40S0I2;
+	C4:X82Y44S0I2;
+	C4:X82Y48S0I2;
+	C4:X82Y52S0I2;
+	C4:X82Y56S0I2;
+	C4:X82Y60S0I2;
+	C4:X82Y64S0I2;
+	C4:X82Y68S0I2;
+	C4:X82Y72S0I2;
+	C4:X82Y76S0I2;
+	C4:X82Y80S0I2;
+	C4:X82Y84S0I2;
+	R4:X79Y87S0I22;
+	R4:X75Y87S0I23;
+	R4:X71Y87S0I26;
+	R4:X67Y87S0I33;
+	R4:X63Y87S0I32;
+	R4:X59Y87S0I31;
+	R4:X55Y87S0I30;
+	R4:X51Y87S0I29;
+	R4:X47Y87S0I28;
+	R4:X43Y87S0I27;
+	R4:X39Y87S0I25;
+	R4:X35Y87S0I21;
+	C4:X34Y88S0I3;
+	LOCAL_INTERCONNECT:X34Y91S0I3;
+	BLOCK_INPUT_MUX:X34Y91S0I13;
+	dest = ( y~output, I );
+}
+signal_name = y~output {
+	dest = ( y, PADIN );
+}
+signal_name = ~ALTERA_NCEO~~obuf {
+	dest = ( ~ALTERA_NCEO~, PADIN );
+}
+signal_name = ~ALTERA_DATA0~ {
+	dest = ( ~ALTERA_DATA0~~ibuf, I );
+}
+signal_name = ~ALTERA_ASDO_DATA1~ {
+	dest = ( ~ALTERA_ASDO_DATA1~~ibuf, I );
+}
+signal_name = ~ALTERA_NCSO~ {
+	dest = ( ~ALTERA_NCSO~~ibuf, I );
+}
+signal_name = ~ALTERA_DCLK~~obuf {
+	dest = ( ~ALTERA_DCLK~, PADIN );
+}
+signal_name = u0_o {
+	LE_BUFFER:X87Y35S0I9;
+	R4:X83Y35S0I20;
+	LOCAL_INTERCONNECT:X82Y35S0I2;
+	dest = ( u1, DATAA ), route_port = DATAA;
+}

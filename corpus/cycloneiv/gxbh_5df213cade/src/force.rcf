@@ -1,9 +1,0 @@
-section global_data {
-	rcf_written_by = "Quartus Prime 25.1 Build 1129";
-	device = EP4CGX150DF31C7;
-}
-
-signal_name = u0_o {
-	LOCAL_LINE:X10Y10S0I6;
-	dest = ( u1, DATAD ), route_port = DATAD;
-}

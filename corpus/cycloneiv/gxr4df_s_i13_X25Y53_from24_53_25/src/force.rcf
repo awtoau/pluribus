@@ -1,0 +1,52 @@
+### Routing Constraints File: build.rcf
+### Written on:				Thu Oct 29 18:46:49 2026
+### Written by:				Version 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+
+section global_data {
+	rcf_written_by = "Quartus Prime 25.1 Build 1129";
+	device = EP4CGX150DF31C7;
+}
+
+signal_name = u1 {
+	LE_BUFFER:X25Y53S0I6;
+	R4:X26Y53S0I3;
+	R4:X29Y53S0I4;
+	R4:X32Y53S0I3;
+	C4:X33Y54S0I3;
+	C4:X33Y57S0I3;
+	C4:X33Y60S0I3;
+	C4:X33Y64S0I3;
+	C4:X33Y68S0I3;
+	C4:X33Y72S0I3;
+	C4:X33Y76S0I3;
+	C4:X33Y80S0I3;
+	C4:X33Y84S0I3;
+	C4:X33Y88S0I3;
+	LOCAL_INTERCONNECT:X34Y91S0I11;
+	BLOCK_INPUT_MUX:X34Y91S0I13;
+	dest = ( y~output, I );
+}
+signal_name = y~output {
+	dest = ( y, PADIN );
+}
+signal_name = ~ALTERA_NCEO~~obuf {
+	dest = ( ~ALTERA_NCEO~, PADIN );
+}
+signal_name = ~ALTERA_DATA0~ {
+	dest = ( ~ALTERA_DATA0~~ibuf, I );
+}
+signal_name = ~ALTERA_ASDO_DATA1~ {
+	dest = ( ~ALTERA_ASDO_DATA1~~ibuf, I );
+}
+signal_name = ~ALTERA_NCSO~ {
+	dest = ( ~ALTERA_NCSO~~ibuf, I );
+}
+signal_name = ~ALTERA_DCLK~~obuf {
+	dest = ( ~ALTERA_DCLK~, PADIN );
+}
+signal_name = u0_o {
+	LE_BUFFER:X24Y53S0I25;
+	R4:X25Y53S0I13;
+	LOCAL_INTERCONNECT:X25Y53S0I37;
+	dest = ( u1, DATAC ), route_port = DATAC;
+}
