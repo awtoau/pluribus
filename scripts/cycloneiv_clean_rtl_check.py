@@ -43,7 +43,7 @@ def src_metrics(d):
     for m in re.finditer(r"\b(?:input|output|wire|reg)\s*(?:\[(\d+):(\d+)\])?\s*(\w+)", t):
         if m[1]:
             ports.setdefault(m[3], int(m[1]) - int(m[2]) + 1)
-    regs = sum((int(m[1]) - int(m[2]) + 1) if m[1] else 1 for m in re.finditer(r"\breg\s*(?:\[(\d+):(\d+)\])?\s*\w+\s*[;,=]", t))
+    regs = len(re.findall(r"\bdffeas\b", t)) + sum((int(m[1]) - int(m[2]) + 1) if m[1] else 1 for m in re.finditer(r"\breg\s*(?:\[(\d+):(\d+)\])?\s*\w+\s*[;,=]", t))
     adders, cmps = [], 0
     for m in re.finditer(r"assign\s+(\w+)\s*=\s*([^;]*);", t):
         rhs = m[2]
@@ -58,8 +58,8 @@ def src_metrics(d):
             adders.append(("add", 0))
     ctr = len(re.findall(r"(\w+)\s*<=\s*\1\s*[+-]", t))
     return dict(reg_bits=regs, arith=adders, cmps=cmps, mults=len(re.findall(r"\*", t)) + t.count("cycloneiv_mac_mult"),
-                m9k=t.count("cycloneiv_ram_block"), counters=ctr, fsm=len(re.findall(r"\bcase[xz]?\s*\(", t)),
-                lut_inst=t.count("cycloneiv_lcell_comb") + len(re.findall(r"localparam \[15:0\] M\d+", t)))
+                m9k=t.count("cycloneiv_ram_block") + len(re.findall(r"\baltsyncram\b", t)), counters=ctr, fsm=len(re.findall(r"\bcase[xz]?\s*\(", t)),
+                lut_inst=len(re.findall(r"\bcycloneiv_lcell_comb\b", t)) + len(re.findall(r"localparam \[15:0\] M\d+", t)))
 
 
 def score_structure(sm, rep):
@@ -85,6 +85,7 @@ def score_structure(sm, rep):
     cnt("comparators", sm["cmps"], rep["comparators"])
     cnt("macs", sm["mults"], rep["mac"])
     cnt("m9k", sm["m9k"], rep["m9k"])
+    cnt("lut_cells", sm["lut_inst"], rep["flat_luts"])
     cnt("counters", sm["counters"], rep["counters"])
     cnt("fsms", sm["fsm"], rep["fsms"])
     return out
@@ -111,29 +112,38 @@ def clock_pads(nl):
     return pads
 
 
-def make_tb(nl, mod_a, mod_b, pa, pb, cycles, seed, wd):
-    ins = [f"pad_{io['ball']}" for io in nl.ios if io["dir"] == "input"] + sorted(nl.srcs)
-    outs = [f"pad_{io['ball']}" for io in nl.ios if io["dir"] == "output"]
+def make_tb(nl, mod_a, mod_b, pa, pb, cycles, seed, wd, flat=""):
+    # inout pads: weak TB drive (a floating pad reads x in the flat model, which the minimised RTL can mask)
+    undriven = [f"pad_{io['ball']}" for io in nl.ios if io["dir"] not in ("input", "output")]
+    ins = [f"pad_{io['ball']}" for io in nl.ios if io["dir"] == "input"] + undriven + sorted(nl.srcs)
+    # output pads with no driver (undecoded) that logic still reads are floating (x in the flat model): forced from the TB in both models
+    floating = [f"pad_{io['ball']}" for io in nl.ios if io["dir"] == "output" and f"assign pad_{io['ball']} =" not in flat]
+    outs = [f"pad_{io['ball']}" for io in nl.ios if io["dir"] == "output" and f"pad_{io['ball']}" not in floating]
+    pins_conn = list(ins)
+    ins += floating
     ckp = clock_pads(nl)
-    L = ["`timescale 1ps/1ps", "module tb;", "integer cyc, bad, i, seed;"]
+    L = ["`timescale 1ps/1ps", "module tb;", "integer cyc, bad, badx, i, seed;"]
     L += [f"reg i_{n} = 0;" for n in ins]
+    L += [f"wire w_{n}; assign (weak0, weak1) w_{n} = i_{n};" for n in undriven]     # inout ports need a net; a weak TB drive shows only while the DUT releases (z)
     L += [f"wire a_{n}, b_{n};" for n in outs]
-    conn = lambda pre, tag: ", ".join([f".{n.replace('pad_', pre) if n.startswith('pad_') else n}(i_{n})" for n in ins] +
+    conn = lambda pre, tag: ", ".join([f".{n.replace('pad_', pre) if n.startswith('pad_') else n}({'w_' if n in undriven else 'i_'}{n})" for n in pins_conn] +
                                       [f".{n.replace('pad_', pre)}({tag}_{n})" for n in outs])
     L.append(f"{mod_a} ua({conn(pa, 'a')});")
     L.append(f"{mod_b} ub({conn(pb, 'b')});")
-    L += [f"initial begin seed = {seed}; bad = 0;", f"for (cyc = 0; cyc < {cycles}; cyc = cyc + 1) begin"]
+    L += [f"initial begin seed = {seed}; bad = 0; badx = 0;"]
+    L += [f"force ua.{n} = i_{n}; force ub.{n.replace('pad_', pb)} = i_{n};" for n in floating]
+    L += [ f"for (cyc = 0; cyc < {cycles}; cyc = cyc + 1) begin"]
     for n in ins:
         if n not in ckp:
             L.append(f"  i_{n} = $random(seed);")
     L.append(f"  #{STEP};")
     L.append("  " + " ".join(f"if (a_{n} !== b_{n}) bad = bad + 1;" for n in outs[:0]))
-    cmp_ = "".join(f"if (a_{n} !== b_{n}) bad = bad + 1; " for n in outs)
+    cmp_ = "".join(f"if (a_{n} !== b_{n}) begin bad = bad + 1; if ($isunknown(a_{n})) badx = badx + 1; end " for n in outs)
     L.append("  " + cmp_)
     for n in sorted(ckp & set(ins)):
         L.append(f"  i_{n} = ~i_{n}; #{STEP}; {cmp_}")
         L.append(f"  i_{n} = ~i_{n}; #{STEP}; {cmp_}")
-    L += ["end", f'$display("RESULT outputs={len(outs)} clocks={len(ckp & set(ins))} bad=%0d", bad);', "$finish;", "end", "endmodule"]
+    L += ["end", f'$display("RESULT outputs={len(outs)} clocks={len(ckp & set(ins))} bad=%0d badx=%0d", bad, badx);', "$finish;", "end", "endmodule"]
     p = os.path.join(wd, "tb.v")
     open(p, "w").write("\n".join(L) + "\n")
     return p, len(outs)
@@ -148,10 +158,10 @@ def run_iv(files, wd, tag):
         r = subprocess.run(["vvp", vvp], capture_output=True, text=True, timeout=RUN_LIMIT_S)
     except subprocess.TimeoutExpired as e:
         return "timeout", f"{e.cmd[0]} exceeded {RUN_LIMIT_S}s"
-    m = re.search(r"RESULT outputs=(\d+) clocks=(\d+) bad=(\d+)", r.stdout)
+    m = re.search(r"RESULT outputs=(\d+) clocks=(\d+) bad=(\d+) badx=(\d+)", r.stdout)
     if not m:
         return "no_result", (r.stdout + r.stderr)[-300:]
-    return ("none" if int(m[1]) == 0 else "pass" if int(m[3]) == 0 else "fail"), dict(outputs=int(m[1]), clocks=int(m[2]), bad=int(m[3]))
+    return ("none" if int(m[1]) == 0 else "pass" if int(m[3]) == 0 else "fail"), dict(outputs=int(m[1]), clocks=int(m[2]), bad=int(m[3]), flat_x=int(m[4]))
 
 
 def one(cx, d, cycles, seed):
@@ -171,7 +181,7 @@ def one(cx, d, cycles, seed):
     open(fv, "w").write(flat)
     open(rv, "w").write(text)
     res = dict(design=name, report=rep, flat_lines=flat.count("\n"), rtl_lines=text.count("\n"), lift_s=round(lift_s, 2))
-    tb, nout = make_tb(nl, "cyc4_top", "cyc4_rtl", "pad_", "io_", cycles, seed, wd)
+    tb, nout = make_tb(nl, "cyc4_top", "cyc4_rtl", "pad_", "io_", cycles, seed, wd, flat)
     st, info = run_iv([tb, fv, rv], wd, "eq")
     res["eq_flat"], res["eq_info"] = st, info
     try:
@@ -296,6 +306,8 @@ def main():
     for r in fails:
         rep = r.get("report", {})
         scope[r["eq_flat"] + (":compile" if r["eq_flat"] == "compile_error" else "")] += 1
+        if isinstance(r.get("eq_info"), dict) and r["eq_info"].get("bad") == r["eq_info"].get("flat_x"):
+            scope["all_mismatches_have_x_in_flat_model"] += 1
         for k in ("chains", "fsms", "counters", "shift_registers", "m9k", "mac", "loop_luts", "cone_cut"):
             if rep.get(k):
                 scope["fail_has_" + k] += 1

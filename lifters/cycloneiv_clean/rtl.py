@@ -380,12 +380,12 @@ class Lift:
         for i, L in enumerate(ch["luts"]):
             pa, pb, pc, pd = L["pins"]
             if pd not in CONSTV or L.get("und"):
-                return
+                ch.setdefault('why', 'R1'); return
             dv = CONSTV[pd]
             ia, ib = pa in CONSTV, pb in CONSTV
             init = L["init"]
             if i == 0 and (L["mode"] == "cin" or pc not in CONSTV):
-                return
+                ch.setdefault('why', 'R2'); return
             cv = CONSTV[pc] if i == 0 else None
             ev = lambda f, v: (v ^ f[1]) if f[0] == "s" else f[1]
 
@@ -418,15 +418,15 @@ class Lift:
                 if found:
                     break
             if not found:
-                ch['why'] = f'bit {i} {L["name"]} no form'
-                return
+                ch['why'] = 'no_operand_form'
+                ch.setdefault('why', 'R3'); return
             if i == 0:
                 c0 = found[3]
             pin = found[2]
             pols.append(pin)
             bits.append((found[0], found[1], pa, pb))
         if c0 is None:
-            return
+            ch.setdefault('why', 'R4'); return
         ch["bits"], ch["c0"], ch["po"] = bits, c0, pols
         # trailing collector LE (both operands constant 0): its sum is the carry out
         n = len(bits)
@@ -434,7 +434,7 @@ class Lift:
         while top > 0 and bits[top - 1][0] == ("c", 0) and bits[top - 1][1] == ("c", 0):
             top -= 1
         if n - top > 1 or top == 0:
-            return
+            ch.setdefault('why', 'R5'); return
         W = top
         ch["W"], ch["collector"] = W, n - top
 
@@ -445,17 +445,17 @@ class Lift:
         sa, ia_ = operand(0)
         sb, ib_ = operand(1)
         if len(ia_) > 1 or len(ib_) > 1:
-            return
+            ch.setdefault('why', 'R6'); return
         pa_, pb_ = (next(iter(ia_)) if ia_ else 0), (next(iter(ib_)) if ib_ else 0)
         if pa_ and pb_:
-            return
+            ch.setdefault('why', 'R7'); return
         swap = pa_ == 1
         if swap or (not any(f[0] == "s" for _, f, _p in sa) and any(f[0] == "s" for _, f, _p in sb)):
             sa, sb, pa_, pb_ = sb, sa, pb_, pa_
         if not any(f[0] == "s" for _, f, _p in sa):
-            return
+            ch.setdefault('why', 'R8'); return
         if pa_:
-            return
+            ch.setdefault('why', 'R9'); return
         ch["A"] = [(f, p) for _, f, p in sa]
         ch["B"] = [(f, p) for _, f, p in sb]
         ch["pol"] = pb_
@@ -1022,7 +1022,8 @@ class Lift:
             # operand buses
             ba, bb = newname("bus"), newname("bus")
             decl.append(f"wire [{W - 1}:0] {ba};")
-            logic.append(f"assign {ba} = {self.concat(list(reversed(A)))}; // [R:{'SUB' if sub else 'ADD'}] operand A, {W} bit")
+            # deferred: operand bits may be sums of a chain whose homes are assigned later in this loop
+            logic.append(lambda A=A, ba=ba, W=W, sub=sub: f"assign {ba} = {self.concat(list(reversed(A)))}; // [R:{'SUB' if sub else 'ADD'}] operand A, {W} bit")
             if bconst:
                 beff = sum(f[1] << i for i, (f, _p) in enumerate(ch["B"]))
                 kk = beff + c0
@@ -1031,7 +1032,7 @@ class Lift:
                 btxt = self.num(beff, W)
             else:
                 decl.append(f"wire [{W - 1}:0] {bb};")
-                logic.append(f"assign {bb} = {self.concat(list(reversed(B)))}; // [R:{'SUB' if sub else 'ADD'}] operand B, {W} bit")
+                logic.append(lambda B=B, bb=bb, W=W, sub=sub: f"assign {bb} = {self.concat(list(reversed(B)))}; // [R:{'SUB' if sub else 'ADD'}] operand B, {W} bit")
                 btxt = bb
             if cmpmode:
                 cn = newname("cmp")
@@ -1246,7 +1247,7 @@ class Lift:
         out = hdr + [f"module {self.module} (", "  " + ",\n  ".join(ports) if ports else "", ");"] + decl
         if blk:
             out.append(blk)                                   # block declarations precede their readers
-        out += logic + io_lines
+        out += [l() if callable(l) else l for l in logic] + io_lines
         out.append("endmodule")
         self.stats["lines"] = len(out)
         return "\n".join(out) + "\n"
