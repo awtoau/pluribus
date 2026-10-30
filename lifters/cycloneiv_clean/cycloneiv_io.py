@@ -13,7 +13,7 @@ import numpy as np
 from . import plane as P
 
 # a >= 0 -> CRAM bit a; (a & mask) == mask picks the space, index = a & keep; 0xfffffffa..e = DB_ILLEGAL_* markers.
-# source: libcomp_asmcc ASM_BITFIELD::silent_set_bits @ vaddr 0x17e50 (project copy; ELF-symbol twin 0x1a240, identical logic; static decompile), tag tests in this order
+# source: libcomp_asmcc ASM_BITFIELD::silent_set_bits @ vaddr 0x1a240 (0x17e50 is its PLT stub; static decompile), tag tests in this order
 ADDRESS_SPACES = (
     # name, mask (all bits must be set), keep (index bits)
     ("LITERAL", 0xC0000000, 0x3FFFFFFF),

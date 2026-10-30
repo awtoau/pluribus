@@ -6,7 +6,7 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 
 | What | Where | Tracked |
 |---|---|---|
-| Ghidra project `quartus` (single main project: 23 libs, analysed, RTTI classes, typed; the only writer) | `vendor-analysis/altera/ghidra-project/` | no (gitignored, vendor-derived) |
+| Ghidra project `quartus` (single main project: 97 programs = 96 core libs/binaries of `reference/ghidra/libs.tsv` + libdb_pdb, analysed; RTTI classes recovered for the first 23, typed for all; the only writer) | `vendor-analysis/altera/ghidra-project/` | no (gitignored, vendor-derived) |
 | Name files | `reference/ghidra/{functions,globals,structs,notes,enums,vtables,signatures}.tsv` | yes (names / offsets / types only) |
 | Driver | `scripts/ghidra_apply_names.py` | yes |
 | Ghidra scripts | `scripts/ghidra/{ApplyNames,TypesPass,ReadablePass,FindXrefs,ExportNames,DecompNames,StringXrefs}.java` | yes |
@@ -16,7 +16,9 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 | Decompile / string-xref output | `vendor-analysis/altera/analysis/ghidra_out/` | no |
 | Logs | `tmp/logs/ghidra_apply_names.log` | no |
 
-- Snapshots live in `vendor-analysis/altera/ghidra-project-copies/<name>`; the current one is `current` (taken after the last typing pass).
+- Snapshots live in `vendor-analysis/altera/ghidra-project-copies/<name>`. **Current full snapshot (97 programs, after the import + typing + defect pass): `vendor-analysis/altera/ghidra-project-copies/snap-20261030-full2`** (older ones kept: `current`, `hio`, `ctl_decode`, `errata` for running agents). Read-only commands pick the newest snapshot; `export PLURIBUS_GHIDRA_RO_PROJ=<path>` pins one.
+- Lock rule: the main project is only opened for `import-core`, `classes`, `types`, `apply`; each is followed by `snapshot <name>` and the path above is updated. Everything else (`decomp`, `batch`, `xrefs`, `strings`, `emulate`, `index-feed`, `find-xrefs`) reads a snapshot.
+- Offline tools (no Ghidra, no lock): `ghidra_index.py`, `ghidra_trace.py`, `ghidra_dump.py`, `ghidra_vcalls.py`, `ghidra_defects.py`; recipes in [reversing-lessons.md](reversing-lessons.md).
 - Libs in the project (plus libcomp_asmio/ram/mac/pll, libdb_cdb_atom_stingray/ygr, libddb_bcm2bits, libdb_u2b_bcm, libddb_dbcm, libpgm_fbgen, libpgm_pof, libdb_cut): libcomp_asm, libcomp_asm2, libcomp_asmcc, libcomp_asmgx, libdb_asmdb, libddb_dev, libddb_dygr, libddb_dstr, libpgm_pgmio, libpgm_npcf, libdb_pdb.
 - Image base of every lib is 0x100000: TSV addresses are ELF vaddrs (= `nm` addresses); Ghidra shows vaddr + 0x100000. Old decompile dumps under `analysis/` carry the Ghidra form.
 
@@ -26,6 +28,17 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 - Apply names: `python3 scripts/ghidra_apply_names.py apply` (idempotent; report in `tmp/ghidra/apply_report.tsv`; summary line per lib `ok=N fail=M`).
 - One `analyzeHeadless` at a time (project lock). Do not open the project in the GUI while a headless run is active.
 - GUI: `ghidra`, open `vendor-analysis/altera/ghidra-project/quartus.gpr`; structs live under `/pluribus` in the Data Type Manager; bookmarks category `pluribus`.
+
+## Inventory, import, index, trace (#169)
+
+- `python3 scripts/ghidra_inventory.py` -> `reference/ghidra/libs.tsv`: every `linux64/*.so` + `quartus_{asm,cpf,fit,cdb,map,pow,...}` classified (tier core / adjacent / no) by name and by dynsym hits (stingray, cycloneiv, ygr, asmdb, cut, atm, pgm, pdb, dstr, dev). `*aes*` libs excluded (#165: no key work).
+- `ghidra_apply_names.py libs` lists core libs + import state; `import-core` imports the missing ones (8 per headless run, auto-analysis with the same settings, 20 min per-file cap), then `types` (enums, structs, vtable structs, signatures, external signatures, noreturn fix), then `snapshot`.
+- `ghidra_apply_names.py index-feed` (snapshot, `IndexDump.java`) -> `analysis/index/<lib>.tsv` (functions, call edges, string xrefs); `python3 scripts/ghidra_index.py build` -> `analysis/index.db` (gitignored; ELF symbols, enums, bindings, vtable slots for every lib, mined facts, feed). Queries: `func`, `callers`, `callees`, `strings-grep`, `data`, `enum-users`, `find-writers-of`, `mined`.
+- `python3 scripts/ghidra_trace.py trace <group|enum:N|addr:BIT|name@0xVADDR|class:C> [--ghidra]`: the whole chain in one call (asmdb group, bound class, writers, vtable slots, ctor tables, readable file, mined facts, ledger/errata rows). Addresses are ELF vaddr; `--ghidra` normalises a Ghidra-form address (+0x100000).
+- `python3 scripts/ghidra_dump.py dump-table|dump-struct-array|ctor-tables|switch|emulate`: relocated .data/.rodata tables, struct arrays, jump tables, P-code sweeps.
+- `python3 scripts/ghidra_vcalls.py annotate|slots|who|abstract`: virtual calls -> vtable slot targets.
+- Defects: `ghidra_defects.py` -> `reference/ghidra/defects.tsv`; fixes live in `signatures.tsv` + generated `extsigs.tsv` (`gen-extsigs`, applied to EXTERNAL stubs by `TypesPass`) and `TypesPass.clearNoReturnNew` (operator new / memset flagged noreturn truncated bodies; 64 truncated bodies re-decompiled).
+- Regression: `python3 -m pytest tests/test_reversing_facts.py` (26 facts; decompile-text facts skip without the cache).
 
 ## Query
 

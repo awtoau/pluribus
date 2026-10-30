@@ -1,0 +1,15 @@
+# mangled	signature	source  (generated: ghidra_apply_names.py gen-extsigs from signatures.tsv)
+_ZN12ASM_BITFIELD15silent_set_bitsERSt6vectorI14DB_BIT_SETTINGSaIS1_EE	bool silent_set_bits(ASM_BITFIELD * this, void * settings)	docs/cycloneiv-address-spaces.md s2.1
+_ZN12ASM_BITFIELD8set_bitsERSt6vectorI14DB_BIT_SETTINGSaIS1_EE	bool set_bits(ASM_BITFIELD * this, void * settings)	docs/cycloneiv-address-spaces.md s2.1
+_ZN14ASM_ARCH_GROUP10mux_selectEjRSt6vectorIjSaIjEER21ASMDB_SETTING_STREAMS	void mux_select(void * this, uint arg1, void * values, ASMDB_SETTING_STREAMS * streams)	#169 nm overload (uint,vector<uint>&,streams&)
+_ZN14ASM_ARCH_GROUP10mux_selectEjjR21ASMDB_SETTING_STREAMS	void mux_select(ASM_ARCH_GROUP * this, uint site_index, uint value, ASMDB_SETTING_STREAMS * streams)	#168 c1, mangled args (uint, uint, streams&)
+_ZN14ASM_ARCH_GROUP10mux_selectEjjbR21ASMDB_SETTING_STREAMS	void mux_select(void * this, uint arg1, uint arg2, bool value, ASMDB_SETTING_STREAMS * streams)	#169 nm overload (uint,uint,bool,streams&)
+_ZN15ASM_IO_PIN_MODE12process_atomEP13CDB_ATOM_NODER21ASMDB_SETTING_STREAMS	void process_atom(ASM_IO_PIN_MODE * this, CDB_ATOM_NODE * atom, ASMDB_SETTING_STREAMS * streams)	#168 c1, vtables.tsv (virtual slot +0x18)
+_ZN15ASM_IO_PIN_MODE24handle_ygr_dual_pin_iostEP13CDB_ATOM_NODER21ASMDB_SETTING_STREAMSi	void handle_ygr_dual_pin_iost(ASM_IO_PIN_MODE * this, CDB_ATOM_NODE * atom, ASMDB_SETTING_STREAMS * streams, int variant)	#168 c1
+_ZN16ASMDB_BLOCK_INFOlsER20PDB_SEGMENT_TEMPLATEI16PDB_DDB_SEG_BASEE	void operator<<(ASMDB_BLOCK_INFO * this, PDB_SEGMENT_TEMPLATE * seg)	serializer:asmdb_ser.c
+_ZN17DEV_PKG_INFO_BODYlsER20PDB_SEGMENT_TEMPLATEI16PDB_DDB_SEG_BASEE	void operator<<(DEV_PKG_INFO_BODY * this, PDB_SEGMENT_TEMPLATE * seg)	serializer:ddb_dev
+_ZN18DYGR_ROUTE_ASM_BITlsER20PDB_SEGMENT_TEMPLATEI16PDB_DDB_SEG_BASEE	void operator<<(DYGR_ROUTE_ASM_BIT * this, PDB_SEGMENT_TEMPLATE * seg)	serializer:ddb_dygr
+_ZN19ASM_IO_USE_BUS_HOLD12process_atomEP13CDB_ATOM_NODER21ASMDB_SETTING_STREAMS	void process_atom(ASM_IO_USE_BUS_HOLD * this, CDB_ATOM_NODE * atom, ASMDB_SETTING_STREAMS * streams)	#168 c4, vtables.tsv
+_ZN19DYGR_ROUTE_ASM_NODElsER20PDB_SEGMENT_TEMPLATEI16PDB_DDB_SEG_BASEE	void operator<<(DYGR_ROUTE_ASM_NODE * this, PDB_SEGMENT_TEMPLATE * seg)	serializer:ddb_dygr
+_ZN7DEV_PINlsER20PDB_SEGMENT_TEMPLATEI16PDB_DDB_SEG_BASEE	void operator<<(DEV_PIN * this, PDB_SEGMENT_TEMPLATE * seg)	serializer:ddb_dev
+_ZN9ASMDB_DIElsER20PDB_SEGMENT_TEMPLATEI16PDB_DDB_SEG_BASEE	void operator<<(ASMDB_DIE * this, PDB_SEGMENT_TEMPLATE * seg)	serializer:asmdb_ser.c

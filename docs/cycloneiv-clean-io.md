@@ -13,7 +13,7 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 
 | # | Fact | Source | Count |
 |---|---|---|---|
-| E1 | The assembler bit address carries a space tag: CRAM (bit 31 clear), CFF (`101` top), UNVM (`1001`), OPTION (`10001`), DPRIO (`100001`), literals (`11`) | static decompile of `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, Ghidra 0x117e50 = vaddr 0x17e50 copy; ELF-symbol twin vaddr 0x1a240, identical logic); `cycloneiv_io.ADDRESS_SPACES` | 5 spaces + literals |
+| E1 | The assembler bit address carries a space tag: CRAM (bit 31 clear), CFF (`101` top), UNVM (`1001`), OPTION (`10001`), DPRIO (`100001`), literals (`11`) | static decompile of `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, vaddr 0x1a240; vaddr 0x17e50 is its PLT stub); `cycloneiv_io.ADDRESS_SPACES` | 5 spaces + literals |
 | E2 | The vendor die record counts them separately: CRAM 39,040,976, CFF 31,060, UNVM 0, option register 160 | `ASMDB_DIE::operator<<` field order, asmdb body offsets 5/9/13/17; `cycloneiv_io.die_head()` | read live in the test |
 | E3 | The sof has one section per space: tag 17 CRAM = 12 + ceil(39,040,976 / 8) = 4,880,134 B; tag 21 CFF = 12 + ceil(31,060 / 8) = 3,895 B; tag 18 option = 40 B | `sfl_ep4cgx150.sof` section walk | 4,880,134 / 3,895 / 40 |
 | E4 | asm.ddb holds CRAM only | census of all entries with `io.classify` | 51,565,365 / 51,565,365 CRAM; 0 CFF, 0 UNVM, 0 option; min 3,105, max 39,037,932 < 39,040,976 |

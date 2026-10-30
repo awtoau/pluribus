@@ -56,6 +56,30 @@ def nm_symbols(path):
     return vt, fn
 
 
+def rows_for(lib):
+    """(rows, n_classes) of one lib: primary-vtable slots as (lib, class, off, method, target, source)."""
+    rows = []
+    path = os.path.join(QROOT, "linux64", lib + ".so")
+    vt, fn = nm_symbols(path)
+    e = ELFFile(open(path, "rb"))
+    text = e.get_section_by_name(".text")
+    t0, t1 = text["sh_addr"], text["sh_addr"] + text["sh_size"]
+    rel = {}
+    rd = e.get_section_by_name(".rela.dyn")
+    for r in (rd.iter_relocations() if rd is not None else []):
+        rel[r["r_offset"]] = r["r_addend"]
+    for cls, (a, sz) in sorted(vt.items()):
+        for off in range(a + 16, a + sz, 8):
+            tgt = rel.get(off)
+            if tgt is None:
+                continue
+            if not (t0 <= tgt < t1):
+                break
+            m = fn.get(tgt, f"FUN_{tgt:x}")
+            rows.append((lib, cls, f"{off - a - 16:#x}", m, f"{tgt:x}", "elf:vtable"))
+    return rows, len(vt)
+
+
 def main():
     libs = sys.argv[1:] or LIBS
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
@@ -75,26 +99,9 @@ def main():
                 keep.append(ln)
     rows = []
     for lib in libs:
-        path = os.path.join(QROOT, "linux64", lib + ".so")
-        vt, fn = nm_symbols(path)
-        e = ELFFile(open(path, "rb"))
-        text = e.get_section_by_name(".text")
-        t0, t1 = text["sh_addr"], text["sh_addr"] + text["sh_size"]
-        rel = {}
-        for r in e.get_section_by_name(".rela.dyn").iter_relocations():
-            rel[r["r_offset"]] = r["r_addend"]
-        nc = ns = 0
-        for cls, (a, sz) in sorted(vt.items()):
-            for off in range(a + 16, a + sz, 8):
-                tgt = rel.get(off)
-                if tgt is None:
-                    continue
-                if not (t0 <= tgt < t1):
-                    break
-                m = fn.get(tgt, f"FUN_{tgt:x}")
-                rows.append((lib, cls, f"{off - a - 16:#x}", m, f"{tgt:x}", "elf:vtable"))
-                ns += 1
-            nc += 1
+        r, nc = rows_for(lib)
+        rows += r
+        ns = len(r)
         log.info("%s: %d vtables, %d slots", lib, nc, ns)
     with open(OUT, "w") as f:
         f.write("# lib\tclass\toffset\tmethod\ttarget_vaddr\tsource\n")

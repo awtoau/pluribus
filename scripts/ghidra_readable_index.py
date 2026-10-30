@@ -40,6 +40,13 @@ def main():
     L += ["| Enum | Constants | Source table |", "|---|---|---|"]
     for e, n in sorted(enums.items()):
         L.append(f"| `{e}` | {n} | `enums.tsv` (vendor debug-string table) |")
+    libs = rows("libs.tsv")
+    core = [r for r in libs if len(r) > 7 and r[7] == "core"]
+    L += ["", "## Library inventory (`scripts/ghidra_inventory.py`)", "",
+          f"{len(libs)} files in `linux64` classified; {sum(1 for r in libs if len(r) > 7 and r[7] == 'adjacent')} adjacent, {len(core)} core (imported into the project by `ghidra_apply_names.py import-core`).",
+          "", "| Core lib | Dynamic symbols | Symbol hits (stingray/ygr/asmdb/cut/...) |", "|---|---|---|"]
+    for r in sorted(core):
+        L.append(f"| {r[0]} | {r[1]} | {r[2]} |")
     vt = {}
     for r in rows("vtables.tsv"):
         vt.setdefault(r[0], set()).add(r[1])

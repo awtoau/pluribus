@@ -2,6 +2,8 @@
 """Ghidra workflow for the Quartus libs (#165, #168).  Docs: docs/ghidra-workflow.md.
 
   python3 scripts/ghidra_apply_names.py import [lib ...]        # create/extend the project (slow, once)
+  python3 scripts/ghidra_apply_names.py import-core | libs      # import every tier=core lib of reference/ghidra/libs.tsv / list status
+  python3 scripts/ghidra_apply_names.py index-feed               # functions/call edges/string xrefs of the newest snapshot -> analysis/index/<lib>.tsv
   python3 scripts/ghidra_apply_names.py apply                   # apply reference/ghidra/*.tsv (idempotent)
   python3 scripts/ghidra_apply_names.py decomp <lib> <pat|0xVADDR> ...   # -> vendor-analysis/altera/analysis/ghidra_out/
   python3 scripts/ghidra_apply_names.py strings <lib> <regex>   # string -> referencing functions
@@ -47,8 +49,8 @@ LIBS = ["libcomp_asm", "libcomp_asm2", "libcomp_asmcc", "libcomp_asmgx", "libdb_
         "libcomp_asmio", "libcomp_asmram", "libcomp_asmmac", "libcomp_asmpll", "libdb_cdb_atom_stingray", "libddb_bcm2bits",
         "libdb_u2b_bcm", "libddb_dbcm", "libpgm_fbgen", "libpgm_pof", "libdb_cut", "libdb_cdb_atom_ygr"]
 COLS = {"functions.tsv": 6, "globals.tsv": 7, "structs.tsv": 8, "notes.tsv": 5, "enums.tsv": 5, "vtables.tsv": 6,
-        "signatures.tsv": 6}
-SRC_COL = {"enums.tsv": 4, "vtables.tsv": 5, "signatures.tsv": 4}   # new files: source column index
+        "signatures.tsv": 6, "twins.tsv": 5, "defects.tsv": 7, "libs.tsv": 9, "extsigs.tsv": 3}
+SRC_COL = {"enums.tsv": 4, "vtables.tsv": 5, "signatures.tsv": 4, "extsigs.tsv": 2}   # new files: source column index
 READ_OUT = os.path.join(REPO, "vendor-analysis", "altera", "analysis", "readable")
 ALL_LIBS = LIBS + ["libdb_pdb"]
 KEY_SELECTOR = ("re:::(process_(atom|end_of_phase|begin_of_phase|beginning_of_phase)|operator<<|xfr_\\w+|set_bits|silent_set_bits|"
@@ -56,6 +58,49 @@ KEY_SELECTOR = ("re:::(process_(atom|end_of_phase|begin_of_phase|beginning_of_ph
 
 
 SNAPS = os.path.join(REPO, "vendor-analysis", "altera", "ghidra-project-copies")
+
+
+def gen_extsigs():
+    import subprocess
+    syms = {}
+    rows = [l.rstrip("\n").split("\t") for l in open(os.path.join(TSV, "signatures.tsv")) if l.strip() and not l.startswith("#")]
+    out = []
+    for lib in sorted({r[0] for r in rows}):
+        p = os.path.join(QROOT, "linux64", lib + ".so")
+        if not os.path.exists(p):
+            continue
+        mang = subprocess.run(["nm", "--defined-only", p], capture_output=True, text=True).stdout.splitlines()
+        dem = subprocess.run(["nm", "-C", "--defined-only", p], capture_output=True, text=True).stdout.splitlines()
+        for m, d in zip(mang, dem):
+            a, d_ = m.split(" ", 2), d.split(" ", 2)
+            if len(a) == 3 and a[2].startswith("_Z"):
+                syms.setdefault((lib, int(a[0], 16)), []).append((a[2], d_[2]))
+    for r in rows:
+        va = int(r[1].replace("0x", ""), 16)
+        for mg, dm in syms.get((r[0], va), []):
+            if dm.split("(")[0] == r[2]:
+                out.append((mg, r[3], r[4]))
+    out = sorted(set(out))
+    with open(os.path.join(TSV, "extsigs.tsv"), "w") as f:
+        f.write("# mangled\tsignature\tsource  (generated: ghidra_apply_names.py gen-extsigs from signatures.tsv)\n")
+        for o in out:
+            f.write("\t".join(o) + "\n")
+    print(len(out), "external signatures")
+    return 0
+
+
+def core_libs():
+    """tier=core rows of reference/ghidra/libs.tsv (scripts/ghidra_inventory.py), names without .so"""
+    out = []
+    for line in open(os.path.join(TSV, "libs.tsv")):
+        c = line.rstrip("\n").split("\t")
+        if not line.startswith("#") and len(c) > 7 and c[7] == "core":
+            out.append(c[0][:-3] if c[0].endswith(".so") else c[0])
+    return out
+
+
+def imported(lib):
+    return lib in ALL_LIBS or os.path.exists(os.path.join(REPO, "tmp", "ghidra", "imported_" + lib))
 
 
 def ro_proj():
@@ -146,8 +191,31 @@ def main():
     if cmd == "import":
         libs = rest or LIBS
         os.makedirs(PROJ, exist_ok=True)
-        files = [os.path.join(QROOT, "linux64", l + ".so") for l in libs]
+        files = [os.path.join(QROOT, "linux64", l if os.path.exists(os.path.join(QROOT, "linux64", l)) else l + ".so") for l in libs]
         return run(["-import"] + files + ["-analysisTimeoutPerFile", "1200"], "import", 300, 5400)
+    if cmd == "import-core":   # every tier=core lib of reference/ghidra/libs.tsv not yet imported, 8 per headless run; marker per lib
+        todo = [l for l in core_libs() if not imported(l)]
+        print(len(todo), "libs to import")
+        for i in range(0, len(todo), 8):
+            chunk = todo[i:i + 8]
+            r = main_with(["import"] + [c[:-3] if c.endswith(".so") else c for c in chunk])
+            if r:
+                print("chunk failed:", chunk)
+                return r
+            for c in chunk:
+                open(os.path.join(REPO, "tmp", "ghidra", "imported_" + c), "w").close()
+        return 0
+    if cmd == "index-feed":   # IndexDump.java over every program of the read-only snapshot -> analysis/index/<lib>.tsv (input of ghidra_index.py build)
+        out = os.path.join(REPO, "vendor-analysis", "altera", "analysis", "index")
+        os.makedirs(out, exist_ok=True)
+        return run(["-process", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS, "-postScript", "IndexDump.java", out],
+                   "index-feed", 300, 7200, proj=ro_proj())
+    if cmd == "gen-extsigs":   # signatures.tsv (vaddr) -> extsigs.tsv (mangled symbol): TypesPass applies it to the EXTERNAL stubs other libs call
+        return gen_extsigs()
+    if cmd == "libs":
+        for l in core_libs():
+            print(l, "imported" if imported(l) else "TODO")
+        return 0
     if cmd in ("apply", "types"):
         if check():
             return 1
@@ -238,7 +306,7 @@ def main():
         out = os.path.join(OUT, "cache", rest[0])
         os.makedirs(out, exist_ok=True)
         rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS,
-                  "-postScript", "DecompBatch.java", out] + rest[1:], "batch", 120, 3600)
+                  "-postScript", "DecompBatch.java", out] + rest[1:], "batch", 120, 3600, proj=ro_proj())
         print(out)
         return rc
     if cmd == "xrefs":
@@ -246,14 +314,14 @@ def main():
         out = os.path.join(OUT, rest[0] + "_xrefs.tsv")
         open(out, "w").close()
         rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS,
-                  "-postScript", "AddrXrefs.java", out] + rest[1:], "xrefs")
+                  "-postScript", "AddrXrefs.java", out] + rest[1:], "xrefs", proj=ro_proj())
         print(out)
         return rc
     if cmd == "export":
         out = os.path.join(REPO, "tmp", "ghidra", "export.tsv")
         os.makedirs(os.path.dirname(out), exist_ok=True)
         open(out, "w").close()
-        rc = run(["-process", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS, "-postScript", "ExportNames.java", out], "export")
+        rc = run(["-process", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS, "-postScript", "ExportNames.java", out], "export", proj=ro_proj())
         print(out)
         return rc
     print(__doc__)

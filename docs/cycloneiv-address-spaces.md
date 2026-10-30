@@ -17,7 +17,7 @@ Related: [cycloneiv-clean-io.md](cycloneiv-clean-io.md) (#168), [cycloneiv-clean
 
 ### 2.1 Space table
 
-Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, Ghidra 0x117e50 = vaddr 0x17e50 copy; identical-logic twin = ELF symbol vaddr 0x1a240 = Ghidra 0x11a240; static decompile). Input = list of (uint32 address, value byte); tag tests in this order.
+Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, vaddr 0x1a240 = Ghidra 0x11a240; vaddr 0x17e50 is its PLT stub; static decompile). Input = list of (uint32 address, value byte); tag tests in this order.
 
 | space | tag (all bits set) | index | size, source | sof | rbf | owner |
 |---|---|---|---|---|---|---|

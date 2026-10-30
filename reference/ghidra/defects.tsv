@@ -1,0 +1,73 @@
+# lib	vaddr	function	kind	detail	resolution	source
+libcomp_asm	12f55c	ASM_DLL_SET_STATIC_DLL_SETTING_ASM_DLL_SET_STATIC_DLL_SETTING	jumptable	table 0x3c8e5c entries 52	ghidra_dump.py switch libcomp_asm 0x3c8e5c 52	scripts/ghidra_defects.py
+libcomp_asm	12f5c6	ASM_DLL_OFFSET_CONTROL_ASM_DLL_OFFSET_CONTROL	jumptable	table 0x3c8f28 entries 52	ghidra_dump.py switch libcomp_asm 0x3c8f28 52	scripts/ghidra_defects.py
+libcomp_asm	12f63e	ASM_DLL_SET_DELAY_BUFFER_MODE_ASM_DLL_SET_DELAY_BUFFER_MODE	jumptable	table 0x3c8ff4 entries 52	ghidra_dump.py switch libcomp_asm 0x3c8ff4 52	scripts/ghidra_defects.py
+libcomp_asm	12f6a8	ASM_DLL_ADD_OR_SUB_STATIC_OFFSET_ASM_DLL_ADD_OR_SUB_STATIC_OFFSET	jumptable	table 0x3c90c0 entries 52	ghidra_dump.py switch libcomp_asm 0x3c90c0 52	scripts/ghidra_defects.py
+libcomp_asm	12f720	ASM_DLL_STATIC_OFFSET_ASM_DLL_STATIC_OFFSET	jumptable	table 0x3c918c entries 52	ghidra_dump.py switch libcomp_asm 0x3c918c 52	scripts/ghidra_defects.py
+libcomp_asm	1330de	ASM_DLL_OUTPUT_MUX_SEL_process_atom	noreturn-new	body truncated after operator_new	TypesPass clearNoReturnNew + re-decompile	scripts/ghidra_defects.py
+libcomp_asm	1409aa	ASM_RX_DPA_HOLD_INPUT_ASM_RX_DPA_HOLD_INPUT	jumptable	table 0x3ca010 entries 57	ghidra_dump.py switch libcomp_asm 0x3ca010 57	scripts/ghidra_defects.py
+libcomp_asm	140a12	ASM_TX_DATA_INPUT_ASM_TX_DATA_INPUT	jumptable	table 0x3ca0f0 entries 57	ghidra_dump.py switch libcomp_asm 0x3ca0f0 57	scripts/ghidra_defects.py
+libcomp_asm	140a7a	ASM_TX_DATA_INVERT_ASM_TX_DATA_INVERT	jumptable	table 0x3ca1d0 entries 57	ghidra_dump.py switch libcomp_asm 0x3ca1d0 57	scripts/ghidra_defects.py
+libcomp_asm	140adc	ASM_TX_SELECT_OUTPUT_SIGNAL_ASM_TX_SELECT_OUTPUT_SIGNAL	jumptable	table 0x3ca2b0 entries 57	ghidra_dump.py switch libcomp_asm 0x3ca2b0 57	scripts/ghidra_defects.py
+libcomp_asm	140b62	ASM_RX_DPA_BITSLIP_INPUT_ASM_RX_DPA_BITSLIP_INPUT	jumptable	table ? entries 57	read objdump	scripts/ghidra_defects.py
+libcomp_asm	1428d6	ASM_RX_DPA_SWITCH_ENABLE_ASM_RX_DPA_SWITCH_ENABLE	jumptable	table ? entries 52	read objdump	scripts/ghidra_defects.py
+libcomp_asm	142ad0	ASM_DPA_HOLD_FIFO_UNTIL_LOCK_ASM_DPA_HOLD_FIFO_UNTIL_LOCK	jumptable	table 0x3ca55c entries 57	ghidra_dump.py switch libcomp_asm 0x3ca55c 57	scripts/ghidra_defects.py
+libcomp_asm	142b30	ASM_DPA_RISING_EDGE_DETECT_ASM_DPA_RISING_EDGE_DETECT	jumptable	table 0x3ca63c entries 57	ghidra_dump.py switch libcomp_asm 0x3ca63c 57	scripts/ghidra_defects.py
+libcomp_asm	142b92	ASM_DPA_DESER_FACTOR_ASM_DPA_DESER_FACTOR	jumptable	table 0x3ca71c entries 57	ghidra_dump.py switch libcomp_asm 0x3ca71c 57	scripts/ghidra_defects.py
+libcomp_asm	142bf2	ASM_DPA_CLK_OUT_ENABLE_ASM_DPA_CLK_OUT_ENABLE	jumptable	table ? entries 57	read objdump	scripts/ghidra_defects.py
+libcomp_asm	142c52	ASM_DPA_PASS_CLK_UP_OR_DOWN_ASM_DPA_PASS_CLK_UP_OR_DOWN	jumptable	table ? entries 50	read objdump	scripts/ghidra_defects.py
+libcomp_asm	142d42	ASM_SERDES_RX_SELECT_FCLK_ASM_SERDES_RX_SELECT_FCLK	jumptable	table 0x3ca9a0 entries 57	ghidra_dump.py switch libcomp_asm 0x3ca9a0 57	scripts/ghidra_defects.py
+libcomp_asm	142df6	ASM_SERDES_TX_SELECT_FCLK_ASM_SERDES_TX_SELECT_FCLK	jumptable	table 0x3caaa8 entries 57	ghidra_dump.py switch libcomp_asm 0x3caaa8 57	scripts/ghidra_defects.py
+libcomp_asm	142eaa	ASM_SERDES_RX_SELECT_LOADEN_ASM_SERDES_RX_SELECT_LOADEN	jumptable	table 0x3cabb0 entries 57	ghidra_dump.py switch libcomp_asm 0x3cabb0 57	scripts/ghidra_defects.py
+libcomp_asm	142f5e	ASM_SERDES_TX_SELECT_LOADEN_ASM_SERDES_TX_SELECT_LOADEN	jumptable	table 0x3cacb8 entries 57	ghidra_dump.py switch libcomp_asm 0x3cacb8 57	scripts/ghidra_defects.py
+libcomp_asm	143012	ASM_RX_BITSLIP_RESET_INPUT_ASM_RX_BITSLIP_RESET_INPUT	jumptable	table 0x3cadc0 entries 57	ghidra_dump.py switch libcomp_asm 0x3cadc0 57	scripts/ghidra_defects.py
+libcomp_asm	14307a	ASM_RX_DPA_RESET_INPUT_ASM_RX_DPA_RESET_INPUT	jumptable	table 0x3caea0 entries 57	ghidra_dump.py switch libcomp_asm 0x3caea0 57	scripts/ghidra_defects.py
+libcomp_asm	1430e2	ASM_RX_DPA_SWITCH_INPUT_ASM_RX_DPA_SWITCH_INPUT	jumptable	table ? entries 57	read objdump	scripts/ghidra_defects.py
+libcomp_asm	14314a	ASM_RX_DPA_FIFO_RESET_INPUT_ASM_RX_DPA_FIFO_RESET_INPUT	jumptable	table 0x3cb060 entries 57	ghidra_dump.py switch libcomp_asm 0x3cb060 57	scripts/ghidra_defects.py
+libcomp_asm	1431b2	ASM_SERDES_INVERT_FCLK_ASM_SERDES_INVERT_FCLK	jumptable	table 0x3cb140 entries 57	ghidra_dump.py switch libcomp_asm 0x3cb140 57	scripts/ghidra_defects.py
+libcomp_asm	145642	ASM_INT_DPA_CONFIG_ASM_INT_DPA_CONFIG	jumptable	table ? entries 57	read objdump	scripts/ghidra_defects.py
+libcomp_asm	14cc30	ASM_HSSI_MODEL_BASE_ASM_HSSI_MODEL_BASE	jumptable	table 0x3cb32c entries 50	ghidra_dump.py switch libcomp_asm 0x3cb32c 50	scripts/ghidra_defects.py
+libcomp_asm	14ce66	ASM_HSSI_MODEL_YGR_ASM_HSSI_MODEL_YGR	jumptable	table ? entries 57	read objdump	scripts/ghidra_defects.py
+libcomp_asm	159132	ASM_LAB_ARCH_GROUP_ASM_LAB_ARCH_GROUP	jumptable	table 0x3cd018 entries 57	ghidra_dump.py switch libcomp_asm 0x3cd018 57	scripts/ghidra_defects.py
+libcomp_asm	1605ec	ASM_LAB_MODEL_BASE_ASM_LAB_MODEL_BASE	jumptable	table 0x3cd45c entries 57	ghidra_dump.py switch libcomp_asm 0x3cd45c 57	scripts/ghidra_defects.py
+libcomp_asm	161508	ASM_SINGLE_LAB_MODEL_BASE_ASM_SINGLE_LAB_MODEL_BASE	jumptable	table 0x3cd61c entries ?	ghidra_dump.py switch libcomp_asm 0x3cd61c N	scripts/ghidra_defects.py
+libcomp_asm	16bd3a	ASM_LE_CLOCK_SELECT_process_beginning_of_phase	jumptable	table 0x3ce410 entries 57	ghidra_dump.py switch libcomp_asm 0x3ce410 57	scripts/ghidra_defects.py
+libcomp_asm	16e1ac	ASM_LE_CLEAR_SELECT_ASM_LE_CLEAR_SELECT	jumptable	table 0x3ce530 entries 57	ghidra_dump.py switch libcomp_asm 0x3ce530 57	scripts/ghidra_defects.py
+libcomp_asm	18cb86	ASM_IO_OE_SELECT_IOST_process_routing_element	noreturn-new	body truncated after operator_new	TypesPass clearNoReturnNew + re-decompile	scripts/ghidra_defects.py
+libcomp_asm	1ab9b2	ASM_PLL_COUNTER_INPUT_MUX_process_atom	jumptable	table 0x3d148c entries 44	ghidra_dump.py switch libcomp_asm 0x3d148c 44	scripts/ghidra_defects.py
+libcomp_asm	1ac506	ASM_PLL_M_HIGH_COUNTER_ASM_PLL_M_HIGH_COUNTER	jumptable	table 0x3d1538 entries 58	ghidra_dump.py switch libcomp_asm 0x3d1538 58	scripts/ghidra_defects.py
+libcomp_asm	1ac568	ASM_PLL_M_LOW_COUNTER_ASM_PLL_M_LOW_COUNTER	jumptable	table 0x3d161c entries 58	ghidra_dump.py switch libcomp_asm 0x3d161c 58	scripts/ghidra_defects.py
+libcomp_asm	1ac5ca	ASM_PLL_OUTPUT_COUNTER_ARCH_GROUP_ASM_PLL_OUTPUT_COUNTER_ARCH_GROUP	jumptable	table 0x3d1700 entries 58	ghidra_dump.py switch libcomp_asm 0x3d1700 58	scripts/ghidra_defects.py
+libcomp_asm	1ac708	ASM_PLL_PFD_ENA_INVERT_ASM_PLL_PFD_ENA_INVERT	jumptable	table 0x3d18c4 entries 58	ghidra_dump.py switch libcomp_asm 0x3d18c4 58	scripts/ghidra_defects.py
+libcomp_asm	1ac76a	ASM_PLL_VCO_PHASE_CONTROL_ASM_PLL_VCO_PHASE_CONTROL	jumptable	table 0x3d19a8 entries 58	ghidra_dump.py switch libcomp_asm 0x3d19a8 58	scripts/ghidra_defects.py
+libcomp_asm	1ac8b2	ASM_PLL_M_INPUT_MUX_ASM_PLL_M_INPUT_MUX	jumptable	table 0x3d1a8c entries 44	ghidra_dump.py switch libcomp_asm 0x3d1a8c 44	scripts/ghidra_defects.py
+libcomp_asm	1ad7f6	ASM_CLKBUF_PLL_FEEDBACK_SELECT_ASM_CLKBUF_PLL_FEEDBACK_SELECT	jumptable	table 0x3d1be4 entries 57	ghidra_dump.py switch libcomp_asm 0x3d1be4 57	scripts/ghidra_defects.py
+libcomp_asm	1b250c	ASM_PLL_MODEL_ASM_PLL_MODEL	jumptable	table ? entries 57	read objdump	scripts/ghidra_defects.py
+libcomp_asm	1b41d8	ASM_ASMDBIO_search_for_pll_arch_groups	jumptable	table ? entries 1287	read objdump	scripts/ghidra_defects.py
+libcomp_asm	1c958a	ASM_OCT_CAL_CGA_BOOL_ASM_OCT_CAL_CGA_BOOL	jumptable	table 0x3d5090 entries 52	ghidra_dump.py switch libcomp_asm 0x3d5090 52	scripts/ghidra_defects.py
+libcomp_asm	1c9600	ASM_OCT_CAL_PROGRAMMABLE_INVERT_ASM_OCT_CAL_PROGRAMMABLE_INVERT	jumptable	table 0x3d5194 entries ?	ghidra_dump.py switch libcomp_asm 0x3d5194 N	scripts/ghidra_defects.py
+libcomp_asm	1c983a	ASM_OCT_CAL_INPUT_MUX_ASM_OCT_CAL_INPUT_MUX	jumptable	table 0x3d5260 entries 52	ghidra_dump.py switch libcomp_asm 0x3d5260 52	scripts/ghidra_defects.py
+libcomp_asm	1c98de	ASM_OCT_CAL_FAST_MUX_ASM_OCT_CAL_FAST_MUX	jumptable	table 0x3d532c entries 52	ghidra_dump.py switch libcomp_asm 0x3d532c 52	scripts/ghidra_defects.py
+libcomp_asm	1c9958	ASM_OCT_LOGIC_SELECTION_MUX_ASM_OCT_LOGIC_SELECTION_MUX	jumptable	table 0x3d53f8 entries 50	ghidra_dump.py switch libcomp_asm 0x3d53f8 50	scripts/ghidra_defects.py
+libcomp_asm	1c9a3e	ASM_OCT_RESISTANCE_VARIATION_ASM_OCT_RESISTANCE_VARIATION	jumptable	table 0x3d54f8 entries 49	ghidra_dump.py switch libcomp_asm 0x3d54f8 49	scripts/ghidra_defects.py
+libcomp_asm	1e1410	ASM_EAB_BLOCK_PORTS_ASM_EAB_BLOCK_PORTS	jumptable	table ? entries 57	read objdump	scripts/ghidra_defects.py
+libcomp_asm	1e2960	ASM_MAC_BLOCK_PORTS_ASM_MAC_BLOCK_PORTS	jumptable	table ? entries 57	read objdump	scripts/ghidra_defects.py
+libcomp_asm	24b77c	ASM_NETLIST_REWIRING_GURU_HCX_process_mram_atom	jumptable	table ? entries 9	read objdump	scripts/ghidra_defects.py
+libcomp_asm	24b77c	ASM_NETLIST_REWIRING_GURU_HCX_process_mram_atom	jumptable	table ? entries ?	read objdump	scripts/ghidra_defects.py
+libcomp_asm	26337e	ASM_NETLIST_REWIRING_GURU_S5_process_atom	jumptable	table 0x3d7818 entries 132	ghidra_dump.py switch libcomp_asm 0x3d7818 132	scripts/ghidra_defects.py
+libcomp_asm	26337e	ASM_NETLIST_REWIRING_GURU_S5_process_atom	jumptable	table 0x3d7a24 entries 34	ghidra_dump.py switch libcomp_asm 0x3d7a24 34	scripts/ghidra_defects.py
+libcomp_asm	292fa0	ASM_NETLIST_REWIRING_GURU_S5_process_pl_ffpll_atom	jumptable	table 0x3d9390 entries 9	ghidra_dump.py switch libcomp_asm 0x3d9390 9	scripts/ghidra_defects.py
+libcomp_asm	2959d8	ASM_NETLIST_REWIRING_GURU_ARRIA5_process_atom	jumptable	table 0x3d93d0 entries 32	ghidra_dump.py switch libcomp_asm 0x3d93d0 32	scripts/ghidra_defects.py
+libcomp_asm	31a372	ASM_NETLIST_REWIRING_GURU_ARRIA5_process_pl_ffpll_atom	jumptable	table 0x3db794 entries 9	ghidra_dump.py switch libcomp_asm 0x3db794 9	scripts/ghidra_defects.py
+libcomp_asm	338276	ASM_NETLIST_REWIRING_GURU_CYCLONE5_process_atom	jumptable	table 0x3dd1cc entries 32	ghidra_dump.py switch libcomp_asm 0x3dd1cc 32	scripts/ghidra_defects.py
+libcomp_asm	3543e2	ASM_NETLIST_REWIRING_GURU_CYCLONE5_process_pl_ffpll_atom	jumptable	table 0x3dda30 entries 9	ghidra_dump.py switch libcomp_asm 0x3dda30 9	scripts/ghidra_defects.py
+libcomp_asm	35ffd4	ASM_SPLIT_BITS_UTILITY_ASM_SPLIT_BITS_UTILITY	noreturn-new	body truncated after operator_new	TypesPass clearNoReturnNew + re-decompile	scripts/ghidra_defects.py
+libcomp_asm	368e00	ASM_ASMRE_DUMPER_process_pad_connection	noreturn-new	body truncated after operator_new	TypesPass clearNoReturnNew + re-decompile	scripts/ghidra_defects.py
+libcomp_asm	369880	ASM_ASMRE_DUMPER_process_dest_atom	noreturn-new	body truncated after operator_new	TypesPass clearNoReturnNew + re-decompile	scripts/ghidra_defects.py
+libcomp_asm	36c020	ASM_ASMRE_DUMPER_process_atom_netlist	noreturn-new	body truncated after operator_new	TypesPass clearNoReturnNew + re-decompile	scripts/ghidra_defects.py
+libcomp_asm	fbab4	ASM_CDB_NODE_MODEL_ASM_CDB_NODE_MODEL	jumptable	table 0x3c0394 entries 57	ghidra_dump.py switch libcomp_asm 0x3c0394 57	scripts/ghidra_defects.py
+libcomp_asmgx	38cd6	asmgx_search_for_arch_groups	jumptable	table ? entries 3591	read objdump	scripts/ghidra_defects.py
+libddb_dygr	211040	DYGR_ROUTE_BLOCK_INTERFACE_NODE_add_connection	noreturn-new	body truncated after operator_new	TypesPass clearNoReturnNew + re-decompile	scripts/ghidra_defects.py
+libddb_dygr	2318a0	DYGR_ROUTE_INFO_BODY_setup_blc_data	noreturn-new	body truncated after operator_new	TypesPass clearNoReturnNew + re-decompile	scripts/ghidra_defects.py
+libddb_dygr	2c6fd0	DYGR_ROUTE_BLOCK_INTERFACE_CONNECTION_operator_	jumptable	table ? entries ?	read objdump	scripts/ghidra_defects.py
+libddb_dygr	2c7680	DYGR_ROUTE_BLOCK_IO_MAPPING_ENTRY_operator_	jumptable	table ? entries ?	read objdump	scripts/ghidra_defects.py
