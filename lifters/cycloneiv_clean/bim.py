@@ -6,7 +6,7 @@ The routing graph has no fan-out for LOCAL_INTERCONNECT, and BLOCK_INPUT_MUX rec
   - The BIM of the pad data pin is a function of SUB_LOC only (SUB_LOC_BIM below): label specimens, one build names pad site and BIM in
     its routing.rcf / postfit.vo (scripts/cycloneiv_clean_bim_specimens.py, 6 builds, 24 / 24 pads, 0 contradictions).
   - LI and BIM are records of the BIM tile.
-Not decoded: HIO pads (block type 5: input map is a class-20 two-vector mux), MIO_LABLINE_TO_DATA gi 1 and the control-pin muxes (OE, CE, CLK,
+HIO pads (block type 5, class-20 muxes) are decoded in io_line.py.  Not decoded: MIO_LABLINE_TO_DATA gi 1 and the control-pin muxes (OE, CE, CLK,
 CLR, SCLR) whose BIM index is not labelled by the specimens.
 """
 import numpy as np

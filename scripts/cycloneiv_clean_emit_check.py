@@ -92,7 +92,7 @@ def parse_pin(path):
     return out
 
 
-def gt_producer(net, lc_name, ff_name, qnet, pins):
+def gt_producer(net, lc_name, ff_name, qnet, pins, lcs_=(), ffs_=()):
     """Producer tuple of a GT RCF net (by net name, else by its root element)."""
     nm = net["name"]
     if nm in lc_name:
@@ -105,6 +105,10 @@ def gt_producer(net, lc_name, ff_name, qnet, pins):
         return ("PAD", pins[nm[:-6]][0])
     if net["roots"]:
         r = net["roots"][0]
+        if r[0] == "LE_BUFFER":                  # unnamed net: the buffer's LE is a LUT-only or a FF-only site -> that producer; both -> left as SRC
+            k = (r[1], r[2], r[4] // 2)
+            if (k in lcs_) != (k in ffs_):
+                return ("LC" if k in lcs_ else "FF",) + k
         return ("SRC", r[0], r[1], r[2], r[3], r[4])
     return None
 
@@ -241,7 +245,7 @@ def score_design(cx, d, workers):
     for n in nets:
         for last, cell, port, rp in n["dests"]:
             if cell.endswith("~output") and port == "I":
-                out_net[cell[:-7]] = gt_producer(n, lc_name, ff_name, qnet, pins)
+                out_net[cell[:-7]] = gt_producer(n, lc_name, ff_name, qnet, pins, lcs, ffs)
     vo_ports = set(re.findall(r"^// (\S+)\t=>  Location: PIN_", open(os.path.join(d, "postfit.vo")).read(), re.M))
     for ball, (port, dirn) in gt_ports.items():
         if port not in vo_ports:
@@ -265,6 +269,9 @@ def score_design(cx, d, workers):
                 scope["io_data"]["missing:" + ("gt_driver_unknown" if g is None else "pad_row" if io["site"][0] == 5 else "col_pad_no_bim")] += 1
             elif tuple(io["drv_prod"]) == tuple(g):
                 out["io_data"]["matched"] += 1
+            elif io["drv_prod"][0] == "SRC" and g[0] in ("PAD", "SRC"):
+                out["io_data"]["missing"] += 1                 # undecoded source named, not mapped (same rule as lut_pin)
+                scope["io_data"]["missing:undecoded_source:" + io["drv_prod"][1]] += 1
             else:
                 out["io_data"]["wrong"] += 1
                 scope["io_data"]["wrong:%s->%s" % (io["drv_prod"][0], g[0])] += 1

@@ -105,6 +105,10 @@ class Ctx:
         self.io_dec = IF.Decoder(self.io_table)
         self.io_cram_names = sorted({e["group"] for e in self.io_table["cram_values"]})
         self.pllmap = pll.PllMap(flds)
+        from . import io_line
+        gt = D.enum_tables()["arch_group_type"]
+        self.hio_data = io_line.Line(w, gt, 5, "MIO_LABLINE_TO_DATA", 0)         # HIO pad data / OE source (docs/cycloneiv-clean-emit.md)
+        self.hio_oe = io_line.Line(w, gt, 5, "MIO_LABLINE_TO_OE")
         tab = P.load_tables()
 
         def cell(a):
@@ -201,7 +205,9 @@ class Builder:
         ygr = np.stack([bits[c] == 1 for c in cx.ext.reg.ygr], axis=-1)   # [labs, 16, 3] True = LUT output
         ubuf = cx.ext.reg.used(edges)
         ffc = cx.ext.reg.ff(bits, edges)
-        ll_used = used_src[np.maximum(cx.ll_rec, 0)] & (cx.ll_rec >= 0) | self._ll_selected(cells, carry, ffc, sel)
+        ll_edge = used_src[np.maximum(cx.ll_rec, 0)] & (cx.ll_rec >= 0)
+        live = cells.any(-1) | (ubuf & ygr[..., :2]).any(-1) | (ll_edge & ygr[..., 2]) | ffc          # LEs that exist before the selected-LOCAL_LINE pass
+        ll_used = ll_edge | self._ll_selected(live, carry & cells.any(-1), sel)         # an FF-only LE's DATAC is its D input, not the carry
         reg_out = (ubuf & ~ygr[..., :2]).any(-1) | (ll_used & ~ygr[..., 2])
         ffp = ffc | reg_out
         # a LUT exists when its INIT is set or a used output path selects the LUT (a constant-0 LUT); an FF-only LE has no LUT
@@ -219,16 +225,14 @@ class Builder:
         return nl
 
     @staticmethod
-    def _ll_selected(cells, carry, ffc, sel):
-        """bool [labs, 16]: LOCAL_LINE le is selected by a LE_LUT_INPUT pin of a configured LE (LUT INIT set, or FF-only).  The consumer is a mux,
-        not a routing edge, so `used_src` does not see it; the pin is not tested for function dependence (a dependence filter loses GT-routed pins)."""
+    def _ll_selected(live, carry, sel):
+        """bool [labs, 16]: LOCAL_LINE le is selected by a LE_LUT_INPUT pin of an existing LE (`live`).  The consumer is a mux, not a routing
+        edge, so `used_src` does not see it; the pin is not tested for function dependence (a dependence filter loses GT-routed pins)."""
         pin = np.broadcast_to(np.arange(4), sel.shape)
-        live = (cells.any(-1) | ffc)[..., None] & ~(carry[..., None] & (pin == 2))
-        ll = sel - LI_PER_LAB
-        ok = live & (ll >= 0) & (ll < 16)
-        out = np.zeros(cells.shape[:2], bool)
+        ok = live[..., None] & ~(carry[..., None] & (pin == 2)) & (sel >= LI_PER_LAB) & (sel < LI_PER_LAB + 16)
+        out = np.zeros(live.shape, bool)
         lab, le, g = np.nonzero(ok)
-        out[lab, ll[lab, le, g]] = True
+        out[lab, sel[lab, le, g] - LI_PER_LAB] = True
         return out
 
     # ---- sources -----------------------------------------------------------------------------------------------------------------
@@ -409,14 +413,28 @@ class Builder:
                         io["und"].append("output data: BLOCK_INPUT_MUX not programmed")
                         nl.und["VIO output pad: data mux not programmed / SUB_LOC not mapped"] += 1
                 else:
-                    io["und"].append("output data: HIO pad data mux not decoded")
-                    nl.und["HIO output pad: data path not decoded"] += 1
+                    li = self._hio_li(cx.hio_data, bits, site, x, y)
+                    if li >= 0:
+                        io["drv"], io["drv_prod"] = self.sig(li)
+                        io["drv_rec"] = li
+                    else:
+                        io["und"].append("output data: HIO MIO_LABLINE_TO_DATA selects no LOCAL_INTERCONNECT")
+                        nl.und["HIO output pad: data mux selects no LOCAL_INTERCONNECT"] += 1
             if io["dir"] == "bidir-or-tristate":
-                io["und"].append("output enable")
-                nl.und["bidirectional pad: output enable not decoded"] += 1
+                li = self._hio_li(cx.hio_oe, bits, site, x, y) if site[0] == 5 else -1
+                if li >= 0:
+                    io["oe"], io["oe_prod"] = self.sig(li)
+                else:
+                    io["und"].append("output enable")
+                    nl.und["bidirectional pad: output enable not decoded"] += 1
             if io["dir"] is None:
                 nl.und["IO direction"] += 1
             nl.ios.append(io)
+
+    def _hio_li(self, line, bits, site, x, y):
+        """LOCAL_INTERCONNECT record feeding a HIO pad pin (io_line.Line input number < 38 = LI index of the pad's tile), -1 if none."""
+        i = line.select(bits, site[1])
+        return int(self.cx.find(names.enum_of("LOCAL_INTERCONNECT"), x, y, 0, i)) if 0 <= i < LI_PER_LAB else -1
 
     def _close(self, nl):
         """A referenced lc_ / ff_ / co_ signal without a cell is a decode inconsistency: declared as an undecoded source and counted."""
@@ -428,8 +446,7 @@ class Builder:
         for F in nl.ffs:
             refs.update(p for p in (F["d"], F["clk"]) if p)
         for io in nl.ios:
-            if io.get("drv"):
-                refs.add(io["drv"])
+            refs.update(p for p in (io.get("drv"), io.get("oe")) if p)
         have = {io["ball"] for io in nl.ios}
         for r in sorted(refs):
             if r.startswith("pad_") and r[4:] not in have:
@@ -529,6 +546,8 @@ def verilog(nl, module="cyc4_top"):
         w(f"// IO {pn} site {io['x']},{io['y']},{io['k']} dir={io['dir']} {info}" + (" // UNDECODED: " + "; ".join(io["und"]) if io["und"] and io["dir"] == "input" else ""))
         if io["dir"] == "output" and io["drv"] is not None:
             w(f"assign {pn} = {io['drv']};")
+        elif io["dir"] == "bidir-or-tristate" and io.get("drv") is not None and io.get("oe") is not None:
+            w(f"assign {pn} = {io['oe']} ? {io['drv']} : 1'bz;")
         elif io["dir"] in ("output", "bidir-or-tristate"):
             w(f"// UNDECODED: {pn}: {'; '.join(io['und'])}")
     for p in nl.pll:
