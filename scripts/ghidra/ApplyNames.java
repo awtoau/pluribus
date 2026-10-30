@@ -21,7 +21,7 @@ public class ApplyNames extends GhidraScript {
       if (s.isBlank() || s.startsWith("#")) continue;
       String[] c = s.split("\t", -1);
       if (c.length < ncol) { c = Arrays.copyOf(c, ncol); for (int i = 0; i < ncol; i++) if (c[i] == null) c[i] = ""; }
-      if (c[0].equals(lib)) out.add(c);
+      if (c[0].equals(lib) || c[0].equals("*")) out.add(c);
     }
     return out;
   }
@@ -36,6 +36,8 @@ public class ApplyNames extends GhidraScript {
   void log(String kind, String key, String msg) { rep.println(lib + "\t" + kind + "\t" + key + "\t" + msg); }
   DataType type(String t) throws Exception {
     DataTypeManager dtm = currentProgram.getDataTypeManager();
+    DataType en = dtm.getDataType(new DataTypePath(CAT + "/enums", t));
+    if (en != null) return en;
     DataTypeParser p = new DataTypeParser(dtm, dtm, null, DataTypeParser.AllowedDataTypes.ALL);
     return p.parse(t);
   }
@@ -45,7 +47,17 @@ public class ApplyNames extends GhidraScript {
     lib = currentProgram.getName().replaceAll("\\.so$", "");
     rep = new PrintWriter(new FileWriter(a[1], true));
     DataTypeManager dtm = currentProgram.getDataTypeManager();
-    // structs first so signatures / globals can use them
+    // enums first (every enum goes into every program, lib column = where the table was read), then structs
+    Map<String, EnumDataType> en = new LinkedHashMap<>(); Path ep = Paths.get(a[0], "enums.tsv");
+    if (Files.exists(ep)) for (String s : Files.readAllLines(ep)) {
+      if (s.isBlank() || s.startsWith("#")) continue;
+      String[] c = s.split("\t", -1); if (c.length < 5) continue;
+      EnumDataType e = en.computeIfAbsent(c[1], k -> new EnumDataType(new CategoryPath(CAT + "/enums"), k, 4, dtm));
+      try { e.add(c[3], Long.decode(c[2])); } catch (Exception ex) { /* duplicate name: generator suffixes, skip */ }
+    }
+    int etx = currentProgram.startTransaction("enums");
+    for (var e : en.entrySet()) { dtm.addDataType(e.getValue(), DataTypeConflictHandler.REPLACE_HANDLER); ok++; }
+    currentProgram.endTransaction(etx, true);
     Map<String, List<String[]>> st = new LinkedHashMap<>();
     for (String[] r : rows(a[0], "structs.tsv", 8)) st.computeIfAbsent(r[1], k -> new ArrayList<>()).add(r);
     for (var e : st.entrySet()) {

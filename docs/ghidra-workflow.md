@@ -7,9 +7,11 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 | What | Where | Tracked |
 |---|---|---|
 | Ghidra project `quartus` (all libs below, analysed) | `vendor-analysis/altera/ghidra-project/` | no (gitignored, vendor-derived) |
-| Name files | `reference/ghidra/{functions,globals,structs,notes}.tsv` | yes (names / offsets / types only) |
+| Name files | `reference/ghidra/{functions,globals,structs,notes,enums,vtables,signatures}.tsv` | yes (names / offsets / types only) |
 | Driver | `scripts/ghidra_apply_names.py` | yes |
-| Ghidra scripts | `scripts/ghidra/{ApplyNames,ExportNames,DecompNames,StringXrefs}.java` | yes |
+| Ghidra scripts | `scripts/ghidra/{ApplyNames,TypesPass,ReadablePass,FindXrefs,ExportNames,DecompNames,StringXrefs}.java` | yes |
+| Readable pseudo-code | `vendor-analysis/altera/analysis/readable/<lib>/<Class>.c`, `class_tree.tsv`, `xrefs_<lib>.tsv` | no (vendor-derived) |
+| Readable index | `docs/ghidra-readable-index.md` (names, addresses, purpose; no bodies) | yes |
 | Struct miner | `scripts/ghidra_mine_serializers.py` | yes |
 | Decompile / string-xref output | `vendor-analysis/altera/analysis/ghidra_out/` | no |
 | Logs | `tmp/logs/ghidra_apply_names.log` | no |
@@ -55,6 +57,19 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 - Re-applying must not change anything (apply is by address; same name and type are skipped).
 - Findings and open questions go to the issue (#168 for IO), not only to a TSV.
 
+## Readable code (enums, vtables, class structs, renamed locals)
+
+One step for a new agent: `python3 scripts/ghidra_apply_names.py readable` (classes -> types -> export, minutes to ~1 h cold), then open `vendor-analysis/altera/analysis/readable/<lib>/<Class>.c`.
+
+- Layers, in order (each idempotent):
+  - `classes`: Ghidra `RecoverClassesFromRTTIScript` per lib (class structs, `this` params, vftable structs, ctor/dtor). Marker `tmp/ghidra/classes_done_<lib>`.
+  - `types`: `ApplyNames` (enums, structs, functions, globals, notes) then `TypesPass`: merges `/pluribus` structs into the same-named RTTI/demangler struct (signatures then show `this->m_field`), builds `<Class>_vtbl` function-pointer structs + `vptr` at offset 0, applies `signatures.tsv`.
+  - `rename-locals` / `export-readable`: `ReadablePass` names params/locals from pointer-to-struct types and from `LOAD(struct + const)` field accesses, retypes locals to enum-typed fields (switch constants render as names), writes one `.c` per class with header (types used) and per-function callers/callees. Default selector = key functions (`process_*`, `operator<<`, `xfr_*`, `set_bits`, `silent_set_bits`, `mux_select`, `write_block*`, `asm_convert_*`); pass a selector (`re:<regex>`, `0xVADDR`, substring; `;`-separated) to widen.
+- Generated tables (rerun when the vendor libs change): `gen-enums` -> `enums.tsv` (ASMDB_ARCH_GROUP_TYPE 4,663, ASMDB_ARCH_GROUP_BLOCK_TYPE 542, ASMDB_DIRT_TYPE 303, DEV_ELEMENT_ENUM 2,715); `gen-vtables` -> `vtables.tsv` (primary vtable slots of every `vtable for` symbol; offset is relative to the vptr, equal to the call offset seen in decompiled `(**(code **)(*p + 0x88))`). Curated rows (source not `elf:`) survive regeneration; `alias:<Class>` reuses another class's slots (PDB_SEGMENT_TEMPLATE -> PDB_SEGMENT_READER).
+- `find-xrefs <lib> <re:regex|0xVADDR|name>`: referencing functions -> `readable/xrefs_<lib>.tsv`. `class-tree <lib>...`: RTTI base classes -> `readable/class_tree.tsv`.
+- Work on a copy to avoid the project lock: `cp -r vendor-analysis/altera/ghidra-project vendor-analysis/altera/ghidra-project-readable; export PLURIBUS_GHIDRA_PROJ=$PWD/vendor-analysis/altera/ghidra-project-readable`.
+- Rules: enum names are vendor debug strings (names only); decompiled bodies stay under `vendor-analysis/`; a demangled signature of a non-static method lacks `this` (Ghidra shows `atom` as `param_1`): add the real signature to `signatures.tsv`.
+
 ## Batch / xref / class-recovery tools (#169)
 
 - `... batch <lib> <re:regex|0xVADDR|substr> ...`: decompile every matching function to `ghidra_out/cache/<lib>/<vaddr>_<name>.c`; existing files are skipped (re-run is cheap). Script `scripts/ghidra/DecompBatch.java`. Example: `batch libcomp_asm 're:^ASM_\w+::(process_atom|process_end_of_phase)$'` (1,030 functions, ~1 min).
@@ -62,3 +77,8 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
 - `scripts/cycloneiv_clean_class_objects.py <lib> [--dump CLASS]`: static instances of a class from `.rela.dyn` RELATIVE addends = vtable + 0x10. ASM_* processing classes have none (created by `new` in the arch-group factories).
 - `scripts/cycloneiv_clean_class_bind.py`: factory switch (jump tables + cmp/je cases) -> class per group type; ~1 min, needs `objdump`.
 - Decompiler caveats: in `mux_select` calls `(uint)param_1` is the first argument as decompiled (the class instance in the process_atom functions read; signature parse unverified); noreturn `operator_new` truncates factory bodies (read the disassembly).
+- Snapshots (decompile agents never wait for imports): `python3 scripts/ghidra_apply_names.py snapshot <name>` copies the project (no lock files) to `vendor-analysis/altera/ghidra-project-copies/<name>`; `decomp`, `strings`, `find-xrefs`, `emulate` run `-readOnly -noanalysis` on the newest snapshot (or `$PLURIBUS_GHIDRA_RO_PROJ`). Imports, analysis and typing passes stay in the main project; take a new snapshot after each.
+- `emulate <lib> <0xVADDR> <maxSteps> <arg|A..B> ...`: P-code sweep of a pure table function (RDI, RSI, RDX, RCX, R8, R9) -> `readable/emulate_<lib>_<vaddr>.tsv` (arg..., rax, status). A call out of the function body stops the run (`fault:call`): only leaf functions work.
+- `export-gdt <lib>`: `/pluribus` enums + structs + vtbl structs as `readable/pluribus_<lib>.gdt` for the GUI (File > Open File Archive).
+- Index of what exists: [ghidra-readable-index.md](ghidra-readable-index.md) (`python3 scripts/ghidra_readable_index.py`).
+- `silent_set_bits` / `set_bits` in libcomp_asmcc exist twice with identical logic: ELF symbols vaddr 0x1a240 / 0x1aca0 and project copies vaddr 0x17e50 / 0x18000 (Ghidra 0x117e50 / 0x118000). Cite as "vaddr 0x1a240 (ELF symbol)" and name the twin.

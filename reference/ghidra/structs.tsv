@@ -171,3 +171,7 @@ libddb_dev	DEV_PIN	584	0xe8	m_string_data	byte[104]	13 strings: [0] ball name, [
 libddb_dev	DEV_PAD_BODY	968	0x0	m_id	int	pad ids are 1..520 in pad order	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
 libddb_dev	DEV_PAD_BODY	968	0x100	m_string_data	byte[208]	26 strings: [1] site X<x>Y<y>SUB_LOC<n>, [3] pad class (Row I/O 131, Column I/O 324, Dedicated Transceiver 32, Dedicated Clock 20, Dedicated Programming 8, JTAG 4, UDCLK 1), [4] function name	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
 libddb_dev	DEV_PAD_BODY	968	0x3c0	m_default_io_standards_by_enum	byte[8]	125 pointer slots up to 0x7a8; 125 tags (xfr_ptr), pooled DEV_IO_STANDARD_DESC	#168 pad/pin walk, lifters/cycloneiv_clean/pkgpad.py
+libdb_asmdb	ASMDB_ARCH_GROUP_BASE	24	0xc	m_type	ASMDB_ARCH_GROUP_TYPE	enum from asmdb type table	enum:enums.tsv
+libdb_asmdb	ASMDB_ARCH_GROUP_BASE	24	0x10	m_group_block_type	ASMDB_ARCH_GROUP_BLOCK_TYPE	enum from asmdb block table	enum:enums.tsv
+libdb_asmdb	ASMDB_BLOCK_INFO	152	0x48	m_block_type	ASMDB_ARCH_GROUP_BLOCK_TYPE	enum from asmdb block table	enum:enums.tsv
+libdb_asmdb	ASMDB_PARAM_MASTER_BASE	48	0x10	m_block_type	ASMDB_ARCH_GROUP_BLOCK_TYPE	enum from asmdb block table	enum:enums.tsv

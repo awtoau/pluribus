@@ -97,7 +97,7 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
   - Arch group `m_type` -> name over 4,664 groups: 84 IO_PIN_MODE, 161 IO_SET_DRIVE_STRENGTH_YGR, 165 IO_USE_BUS_HOLD, 178 IO_USE_PULL_UP, 180 IO_USE_SLOW_SLEW, 182 IO_USE_OPEN_DRAIN, 188..190 IO_OCT_*, 229..231 MIO_SET_*SLEW_RATE, 247/248 MIO_SET_PULLDOWN/PULLUP_STRENGTH, 249 MIO_SET_DRIVE_STRENGTH, 254 MIO_SELECT_IOST_DIRT, 305/306 MIO_USE_BUS_HOLD / MIO_USE_PULL_UP, 506 MIO_PIN_MODE.
 - Drive / slew / pull `process_atom` paths (libcomp_asm):
   - Pull-up, bus-hold, slow-slew, open-drain = one boolean mux each (`mux_select(group, resolve_io_index_for_block(), bool)`); sources: cut_io_util vtbl +0x88 / +0x78, atom vtbl +0xe58, atom bit 0x16.
-  - Drive strength value = dirt tree lookup `IO / IO_SET_DRIVE_STRENGTH_YGR / IO_STANDARD / CURRENT_STRENGTH / VIO_PAD|HIO_PAD / SETTINGS`; the stingray dirt ddb files carry no IO subtree (only 12 MIO arch-group entries), so the table is not in these dirt files.
+  - Drive strength value = dirt tree lookup `IO / IO_SET_DRIVE_STRENGTH_YGR / IO_STANDARD / CURRENT_STRENGTH / VIO_PAD|HIO_PAD / SETTINGS`; the stingray dirt ddb carries the IO tables under `ARCH_GROUPS` (see "IO setting tables from the dirt" below), not under `IO`.
 - pkg ddb: type table is DEV_PKG_INFO_BODY (1), DEV_PIN (896), std::string: no second record kind; the root holds vector<DEV_PIN*> then hash<string, DEV_PKG_NET*>. The 11-int run is part of the DEV_PIN field stream (not decoded). `ASM_IO_PIN_MODEL_YGR` takes (CDB_CHIP_DB_ENTRY, DEV_DIE_INFO, DEV_PAD_INFO): pad data comes from the pad ddb.
 - Still open: group objects (classes 5..8) and mux pools are not walked, so group -> CFF bit vectors and instance bases remain 0; IO fields 0/5.
 
@@ -295,7 +295,7 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 
 ### Still open
 
-- VREF pad -> pin map (the foreign IOST bit), IOST value of a 3-element site's shared 4th bit, CRAM value patterns of the registered fields, 50 ohm termination and SSTL-2 output (no CFF change), the 4 dedicated-clock pads.
+- VREF pad -> pin map (the foreign IOST bit), CRAM value patterns of the registered fields, 50 ohm termination and SSTL-2 output (no CFF change), the 4 dedicated-clock pads.
 
 ## Value laws from the vendor code, unused-pin states, per-site decode (2026-10-30, #168; code `io_encode.py`, `io_fields.py`, `io_decode.py`; tests `test_io_fields.py`)
 
@@ -306,7 +306,7 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 - `ASMDB_ARCH_GROUP_DUMB::select`: bit = `value != 0` (arch_value 1; value > 1 = internal error).
 - All IO groups (IOST, pull-up / pull-down strength, slew, duty cycle = ENCODED, `arch_value` 1; pull-up, bus-hold, PCI clamp, termination select = DUMB, 1) have no inversion and one mux: the full value -> pattern table is `io_encode.all_values` (IOST 8 / 16 values, strength 256 / 512, slew 4), including values no build used. Slew 0 / 1 / 2 = `00` / `10` / `01` follows from the law.
 - IOST mux: 51 sites list the no-bit sentinel `0xfffffffb` as 4th bit (3 CFF bits, values 0..7); the pad-less VIO site lists it 4 times (no IOST). The "shared 4th IOST bit" is absent, not shared.
-- Not code-derived yet: value -> meaning (which IOST / strength value a standard or drive setting selects). `asm_convert_db_to_asm_iost` (libcomp_asm) maps standards to IOST classes by jump table but does not reproduce the measured Stingray output values (2.5 V -> 0 measured, 1 by the function; SSTL-2 out -> 0 measured, 5 by the function); the drive / IOST `get_settings` read a dirt subtree `IO` that the stingray dirt files do not contain. Meaning stays pair-build-labelled (confirmation tier) until that path is found.
+- Value -> meaning: from the asmdb dirt ARCH_GROUPS tables (next section); drive current (mA) -> strength value is the open part.
 
 ### Table hygiene
 
@@ -341,3 +341,12 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 - VREF pad of a pin: pad ddb carries no group field (all fields tested are constant or inconsistent with the 20 observed pin -> VREF owners); hypothesis "nearest VREF pad of the bank by site index" holds 19 of 20 (AH19 -> VREFB4N2 observed, VREFB4N1 nearer): unverified, not used by the decoder. Exact route: one SSTL input pin per build, foreign IOST bit names the pad (~455 builds) or the DEV_PAD serializer fields.
 - 6 image sites with stray strength bits / IOST 7 on differential pads: candidate cause = p / n pair coupling; pair builds proposed (not run, image uses no differential standard): LVDS output on a `p` pin, diff of the `n` and `p` neighbour sites, 3 sites x 2 standards = 6 builds.
 - Registered-IO CRAM groups are tabulated (`cram_values`); the clock / clear source muxes are LABLINE routing (placement-dependent) and not part of the table.
+
+### IO setting tables from the asmdb dirt (vendor data; `io_dirt.py`, `test_io_dirt.py`)
+
+- `ddb_stingray4_asmdb_dirt.ddb` root child `ARCH_GROUPS` holds 17 groups: `ARCH_GROUP_TYPE`, `ARCH_GROUP_BLOCK_TYPE`, rows of (key string, `SETTINGS` integer). IO groups: `MIO_SELECT_IOST_DIRT` (HIO 42 rows, VIO / clock 46: IO standard -> IOST value) and `MIO_SET_PULLDOWN_STRENGTH` / `MIO_SET_PULLUP_STRENGTH` (HIO, VIO: 6 rows by VCCIO level).
+- Integer decode: the first element of each INTEGER node is a delta against the previous INTEGER node of the file; absolute SETTINGS = running sum over all integer nodes in node order.
+- IOST values: 2.5 V, 3.3 / 3.0 V LVTTL / LVCMOS, 3.0-V PCI = 0; 1.8 / 1.5 / 1.2 V = 2; SSTL-2 / SSTL-18 / HSTL-18 (and DIFF_) = 5; HSTL 1.5 / 1.2 = 1 (HIO HSTL_12_II 0); LVDS / BUS_LVDS / MINI_LVDS / LVPECL / RSDS / PPDS / HCSL / CML = 11; RSDS_1R / _3R, PPDS_3R, MINI_LVDS_3R (and HIO LVDS_3R) = 3; no entry has 7. Reserved (unused) pin = 3 (`ASM_IO_SELECT_IOST::process_atom`).
+- Check against pair builds: every `in` / `bidir` standard row equals its dirt value; outputs of voltage-class standards equal their dirt value; outputs of SSTL-2 / SSTL-18 / 1.5-V HSTL / 1.8-V HSTL I measure the value of their VCCIO class (0 / 2 / 2 / 2), not the dirt value of the standard (4 of 4).
+- LVDS input builds (3 pins): p pad IOST 11 (dirt LVDS) and clamp 0, the n companion's IOST goes from the unused value 3 to 11; mini-LVDS and LVDS outputs are refused by the fitter at these pads ("only input pins of this I/O standard"). 
+- Strength tables (by VCCIO level, 3.3 / 3.0 / 2.5 / 1.8 / 1.5 / 1.2 V): pull-down 4, 19, 29, 40, 64, 119; pull-up 9, 61, 42, 47, 77, 136. The 2.5 V entries equal the measured `8MA` build (pull-down 29, pull-up 42). The unassigned default (39 / 39) and 4 / 12 / 16 mA (pull-down 15 / 44 / 59, pull-up 21 / 65 / 87 at 2.5 V) are not table entries: current -> value scaling is not in the dirt.

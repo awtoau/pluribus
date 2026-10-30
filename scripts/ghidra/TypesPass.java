@@ -15,7 +15,7 @@ import java.io.*; import java.nio.file.*; import java.util.*;
 
 public class TypesPass extends GhidraScript {
   static final String CAT = "/pluribus";
-  PrintWriter rep; String lib; int merged = 0, vtbls = 0, vptrs = 0, sigs = 0, fail = 0;
+  PrintWriter rep; String lib; int thisFixed = 0, merged = 0, vtbls = 0, vptrs = 0, sigs = 0, fail = 0;
 
   List<String[]> rows(String dir, String file, int ncol) throws Exception {
     List<String[]> out = new ArrayList<>(); Path p = Paths.get(dir, file);
@@ -50,13 +50,11 @@ public class TypesPass extends GhidraScript {
         if (t.getCategoryPath().getPath().equals(CAT)) continue;
         int tx = currentProgram.startTransaction("merge");
         try {
-          if (t.getLength() < m.getLength()) t.growStructure(m.getLength() - t.getLength());
           DataTypeComponent c0 = t.getComponentAt(0);
           boolean keep0 = c0 != null && isVptr(c0);
-          for (DataTypeComponent c : m.getDefinedComponents()) {
-            if (keep0 && c.getOffset() < c0.getLength()) continue;
-            t.replaceAtOffset(c.getOffset(), c.getDataType(), c.getLength(), c.getFieldName(), c.getComment());
-          }
+          DataType vdt = keep0 ? c0.getDataType() : null; String vname = keep0 ? c0.getFieldName() : null;
+          t.replaceWith(m);   // size + all components of the mined layout; the target keeps its name/category (signatures keep pointing at it)
+          if (keep0) t.replaceAtOffset(0, vdt, 8, vname, null);
           merged++;
         } catch (Exception e) { log("merge", m.getName(), "FAIL " + e); fail++; }
         finally { currentProgram.endTransaction(tx, true); }
@@ -97,6 +95,32 @@ public class TypesPass extends GhidraScript {
     }
   }
 
+  // (d) virtual methods whose demangled signature lacks `this`: insert `Class * this` as parameter 0.
+  void thisParams(String dir) throws Exception {
+    FunctionManager fm = currentProgram.getFunctionManager(); Set<Long> seen = new HashSet<>();
+    for (String[] r : rows(dir, "vtables.tsv", 6)) {
+      if (r[4].isEmpty() || r[3].startsWith("alias:") || !r[3].contains("::")) continue;
+      long v = Long.parseUnsignedLong(r[4], 16); if (!seen.add(v)) continue;
+      String m = r[3]; String cls = m.substring(0, m.lastIndexOf("::")); String meth = m.substring(m.lastIndexOf("::") + 2);
+      if (meth.startsWith("~") || meth.equals(cls) || cls.contains("<") || cls.contains("::")) continue;
+      Function f = fm.getFunctionAt(currentProgram.getImageBase().add(v));
+      if (f == null || f.isThunk() || f.isExternal()) continue;
+      if (f.getParameterCount() > 0 && f.getParameter(0).getName().equals("this")) continue;
+      Structure st = null;
+      for (Structure c : structsNamed(cls)) if (st == null || c.getNumDefinedComponents() > st.getNumDefinedComponents()) st = c;
+      if (st == null) continue;
+      int tx = currentProgram.startTransaction("this");
+      try {
+        List<Variable> ps = new ArrayList<>();
+        ps.add(new ParameterImpl("this", new PointerDataType(st), currentProgram));
+        for (Parameter p : f.getParameters()) ps.add(new ParameterImpl(p.getName(), p.getDataType(), currentProgram));
+        f.replaceParameters(ps, Function.FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS, true, SourceType.USER_DEFINED);
+        thisFixed++;
+      } catch (Exception ex) { log("this", r[4], "FAIL " + ex.getMessage()); fail++; }
+      finally { currentProgram.endTransaction(tx, true); }
+    }
+  }
+
   void signatures(String dir) throws Exception {
     long base = currentProgram.getImageBase().getOffset();
     for (String[] r : rows(dir, "signatures.tsv", 6)) {   // lib vaddr name signature source comment
@@ -119,7 +143,7 @@ public class TypesPass extends GhidraScript {
     String[] a = getScriptArgs();
     lib = currentProgram.getName().replaceAll("\\.so$", "");
     rep = new PrintWriter(new FileWriter(a[1], true));
-    mergeStructs(); vtables(a[0]); mergeStructs(); signatures(a[0]);
-    rep.println(lib + "\tTYPES\tmerged=" + merged + " vtbl=" + vtbls + " vptr=" + vptrs + " sigs=" + sigs + " fail=" + fail); rep.close();
+    mergeStructs(); vtables(a[0]); mergeStructs(); thisParams(a[0]); signatures(a[0]);
+    rep.println(lib + "\tTYPES\tthis=" + thisFixed + " merged=" + merged + " vtbl=" + vtbls + " vptr=" + vptrs + " sigs=" + sigs + " fail=" + fail); rep.close();
   }
 }

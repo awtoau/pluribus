@@ -16,6 +16,7 @@
   python3 scripts/ghidra_apply_names.py rename-locals <lib> <selector> [limit]   # name locals/params from types and field accesses
   python3 scripts/ghidra_apply_names.py export-readable <lib> [selector] [limit] # rename + annotated pseudo-code per class
   python3 scripts/ghidra_apply_names.py emulate <lib> <0xVADDR> <maxSteps> <arg|A..B> ...   # P-code sweep of a pure table function
+  python3 scripts/ghidra_apply_names.py snapshot <name>          # read-only copy; decomp/strings/find-xrefs/emulate use the newest one
   python3 scripts/ghidra_apply_names.py find-xrefs <lib> <target> ...            # references to symbol regex / vaddr
   python3 scripts/ghidra_apply_names.py class-tree <lib> ...     # RTTI class hierarchy -> analysis/readable/class_tree.tsv
   python3 scripts/ghidra_apply_names.py readable [lib ...]       # classes + types + export-readable for the key functions
@@ -54,7 +55,34 @@ KEY_SELECTOR = ("re:::(process_(atom|end_of_phase|begin_of_phase|beginning_of_ph
                 "mux_select|resolve_io_index\\w*|write_block\\w*)$;re:^asm_convert_")
 
 
-def run(args, label, stall_s=120, overall_s=1800):
+SNAPS = os.path.join(REPO, "vendor-analysis", "altera", "ghidra-project-copies")
+
+
+def ro_proj():
+    """Read-only commands (decomp/strings/find-xrefs/emulate) use $PLURIBUS_GHIDRA_RO_PROJ, else the newest snapshot, else PROJ."""
+    env = os.environ.get("PLURIBUS_GHIDRA_RO_PROJ")
+    if env:
+        return env
+    if os.path.isdir(SNAPS):
+        d = sorted((os.path.getmtime(os.path.join(SNAPS, x)), os.path.join(SNAPS, x)) for x in os.listdir(SNAPS)
+                   if os.path.exists(os.path.join(SNAPS, x, PNAME + ".gpr")))
+        if d:
+            return d[-1][1]
+    return PROJ
+
+
+def snapshot(name):
+    import shutil
+    dst = os.path.join(SNAPS, name)
+    if os.path.exists(dst):
+        shutil.rmtree(dst)
+    os.makedirs(SNAPS, exist_ok=True)
+    shutil.copytree(PROJ, dst, ignore=shutil.ignore_patterns("*.lock*", "*.lock"))
+    print(dst)
+    return 0
+
+
+def run(args, label, stall_s=120, overall_s=1800, proj=None):
     """Ghidra headless under the stall guard: kill when tree CPU does not advance for stall_s (JVM idle = hung);
     overall_s = backstop (import of 10 libs measured ~25 min cold; per-lib import / process runs are minutes)."""
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
@@ -64,7 +92,7 @@ def run(args, label, stall_s=120, overall_s=1800):
         log.addHandler(logging.StreamHandler(sys.stdout))
         log.setLevel(logging.INFO)
     env = dict(os.environ, GHIDRA_MAXMEM=os.environ.get("GHIDRA_MAXMEM", "12G"))
-    cmd = ["analyzeHeadless", PROJ, PNAME] + args
+    cmd = ["analyzeHeadless", proj or PROJ, PNAME] + args
     r = heavy_guard.run_stall_guarded(cmd, label, log, stall_s=stall_s, overall_s=overall_s, env=env)
     with open(LOG, "a") as lg:
         lg.write(f"== {label}: {' '.join(cmd)}\n{r.stdout}{r.stderr}")
@@ -135,6 +163,8 @@ def main():
     if cmd in ("gen-enums", "gen-vtables"):
         import subprocess
         return subprocess.run([sys.executable, os.path.join(HERE, "ghidra_" + cmd.replace("-", "_") + ".py")]).returncode
+    if cmd == "snapshot":   # snapshot <name>: cp of the project (no lock files) -> ghidra-project-copies/<name>; read-only commands use the newest
+        return snapshot(rest[0] if rest else "latest")
     if cmd == "class-tree":
         import subprocess
         return subprocess.run([sys.executable, os.path.join(HERE, "ghidra_class_tree.py")] + rest).returncode
@@ -164,7 +194,7 @@ def main():
         out = os.path.join(READ_OUT, f"emulate_{rest[0]}_{rest[1]}.tsv")
         open(out, "w").close()
         rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS, "-postScript", "Emulate.java", out]
-                 + rest[1:], "emulate", 120, 1800)
+                 + rest[1:], "emulate", 120, 1800, proj=ro_proj())
         print(out)
         return rc
     if cmd == "export-gdt":   # export-gdt <lib> -> readable/pluribus_<lib>.gdt (GUI Data Type Archive of /pluribus types)
@@ -177,7 +207,7 @@ def main():
         out = os.path.join(READ_OUT, "xrefs_" + rest[0] + ".tsv")
         open(out, "w").close()
         rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS, "-postScript", "FindXrefs.java", out]
-                 + rest[1:], "find-xrefs")
+                 + rest[1:], "find-xrefs", proj=ro_proj())
         print(out)
         return rc
     if cmd == "readable":
@@ -193,7 +223,7 @@ def main():
         out = os.path.join(OUT, rest[0] + "_" + "_".join(x.replace(":", "") for x in rest[1:])[:60] + ".c")
         open(out, "w").close()
         rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS,
-                  "-postScript", "DecompNames.java", out] + rest[1:], "decomp")
+                  "-postScript", "DecompNames.java", out] + rest[1:], "decomp", proj=ro_proj())
         print(out)
         return rc
     if cmd == "strings":
@@ -201,7 +231,7 @@ def main():
         out = os.path.join(OUT, rest[0] + "_strings.tsv")
         open(out, "w").close()
         rc = run(["-process", rest[0] + ".so", "-noanalysis", "-readOnly", "-scriptPath", SCRIPTS,
-                  "-postScript", "StringXrefs.java", out, rest[1]], "strings")
+                  "-postScript", "StringXrefs.java", out, rest[1]], "strings", proj=ro_proj())
         print(out)
         return rc
     if cmd == "batch":

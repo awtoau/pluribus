@@ -19,7 +19,7 @@ Builders: `scripts/cycloneiv_clean_options_build.py` (table), `scripts/cycloneiv
 
 - sof tag 18 = 40 B = 320 bits. Bit i (0..159) = value of option bit i. Bit 160+i = flag of option bit i.
 - Flag semantics (static, `ASM_BITFIELD`):
-  - `set_bits` (libcomp_asmcc 0x118000) writes the value, a "written" mask and the shadow buffer (= flag half); `silent_set_bits` (0x117e50) writes the value only.
+  - `set_bits` (libcomp_asmcc vaddr 0x18000 copy; ELF-symbol twin 0x1aca0) writes the value, a "written" mask and the shadow buffer (= flag half); `silent_set_bits` (vaddr 0x17e50 copy; ELF-symbol twin 0x1a240) writes the value only.
   - flag 0 <=> default-list bit (95); flag 1 <=> forced-list or group bit (65). Vendor sof: 95 / 95 match (`test_flag_half_is_default_list`).
 - Value half: 1 for every forced and default bit in all 197 builds and all vendor GX sofs.
 - rbf: option cells only in rbf frame 0 (`cff2rbf.npz` `option` table); flag half never reaches the rbf. 35 value bits have cells; 125 do not.

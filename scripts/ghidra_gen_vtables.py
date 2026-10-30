@@ -23,7 +23,9 @@ QROOT = os.environ.get("PLURIBUS_QUARTUS_DIR") or os.path.dirname(toolchain.quar
 OUT = os.path.join(REPO, "reference", "ghidra", "vtables.tsv")
 LOG = os.path.join(REPO, "tmp", "logs", "ghidra_gen_vtables.log")
 LIBS = ["libcomp_asm", "libcomp_asm2", "libcomp_asmcc", "libcomp_asmgx", "libdb_asmdb", "libddb_dev",
-        "libddb_dygr", "libddb_dstr", "libpgm_pgmio", "libpgm_npcf", "libdb_pdb"]
+        "libddb_dygr", "libddb_dstr", "libpgm_pgmio", "libpgm_npcf", "libdb_pdb", "libcomp_asmio", "libcomp_asmram",
+        "libcomp_asmmac", "libcomp_asmpll", "libdb_cdb_atom_stingray", "libddb_bcm2bits", "libdb_u2b_bcm", "libddb_dbcm",
+        "libpgm_fbgen", "libpgm_pof"]
 
 
 def strip_args(n):
