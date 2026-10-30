@@ -2,6 +2,12 @@
 
 Rebuild of the placement/lift stack from vendor-derived facts only. The layered coordinate model (AFX ladder, descending-x mirror, per-column tables, hop shifts) fitted constants to explain itself and is retired as a source (tag `pre-clean-cycloneiv`).
 
+## Scope assumption (Dan, 2026-10-30)
+- Images are assumed to be built by Altera tools: the current Quartus or an earlier version.
+- First pass: lift the image to simple Verilog with the current-Quartus-derived decoders.
+- Later passes: use the corpus built with older Quartus versions to see what differs by version.
+- Not litigated at this stage: who built an image, other tools, forced settings. Status answers stay simple.
+
 ## Accepted inputs (each with its evidence)
 
 | # | Fact | Source | Evidence |
