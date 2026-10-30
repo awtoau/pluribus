@@ -36,9 +36,11 @@ def main():
         edges = cx.ext.apply(bits, cx.st.fire(bits, workers=4))[G.HEADLINE]
         en = cx.ext.pllw.enabled(bits)
         pads = E.Ctx._pads(None, a.pins)
+        bits = bits.copy()
     finally:
         os.remove(IMG.PLANE)
     st = cx.st
+    fired_set = set(edges.tolist())
     parent = {}
     for e in edges.tolist():
         parent.setdefault(int(st.edst[e]), []).append(int(st.esrc[e]))
@@ -67,6 +69,11 @@ def main():
         for d in np.flatnonzero((cx.enum == e_clk) & (cx.rt.x == x) & (cx.rt.y == y)).tolist():
             ps = parent.get(d, [])
             log.info("PLL_%d PLL_CLKIN index %d: %d programmed parents %s", icd, int(cx.rt.element(d)[4]), len(ps), [desc(q) for q in ps])
+            for q in ps:                                  # select bits of the parent's own group: cell values of every graph parent of q
+                es = np.flatnonzero(st.edst[:st.n_edges] == q).tolist()
+                xc = st.xcell[st.xrec == q]
+                log.info("   %s graph parents %d, exclusion cells %d set %d; parent cells: %s", desc(q), len(es), len(xc), int(bits[xc].sum()),
+                         [(desc(int(st.esrc[e])), int(bits[st.cell[st.estart[e]]]), int(e in fired_set)) for e in es])
             found = []
             walk(d, [], 0, found)
             log.info("   pad chains: %d; balls %s", len(found), sorted({b for _, b in found}))
