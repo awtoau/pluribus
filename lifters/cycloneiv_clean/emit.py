@@ -740,7 +740,14 @@ class Builder:
         for k, bt, p in pm.used(cff):
             nl.pll.append(dict(k=k, params=pm.params(cff, bt, p)))
         nl.counts["pll_enabled"] = len(nl.pll)
-        nl.und["PLL: input clock / output-to-clock-buffer connectivity"] += len(nl.pll)
+        # output counters c# with a programmed PLL_BUFFER -> CLKBUF_IN edge (clkbuf.py); the input clock source (PLL_CLKIN mux) is not decoded (#175)
+        icd = {v[2]: k for k, v in pll.pll_tiles().items()}
+        sp = cx.st.esrc[np.asarray(edges, np.int64)].astype(np.int64)
+        for r in sp[cx.enum[sp] == names.enum_of("PLL_BUFFER")].tolist():
+            for pl in nl.pll:
+                if pl["k"] == icd[(int(cx.rt.x[r]), int(cx.rt.y[r]))]:
+                    pl.setdefault("to_clkbuf", set()).add(int(cx.rt.element(r)[4]))
+        nl.und["PLL: input clock source"] += len(nl.pll)
         # M9K: used = an M4K_BUFFER with programmed fan-out or a programmed edge into an M9K-column BLOCK_INPUT_MUX / M4K_LEFT_CONTROL_INPUT
         rt = cx.rt
         st = cx.st
@@ -857,7 +864,8 @@ def verilog(nl, module="cyc4_top"):
             w(f"// UNDECODED: {pn}: {'; '.join(io['und'])}")
     for p in nl.pll:
         w(f"// PLL_{p['k']}: " + " ".join(f"{k}={list(v) if isinstance(v, tuple) else v}" for k, v in p["params"].items()))
-        w(f"// UNDECODED: PLL_{p['k']} input clock and output-to-clock-buffer connectivity")
+        w(f"// PLL_{p['k']} counters feeding clock buffers: " + (" ".join(f"c{c}" for c in sorted(p.get("to_clkbuf", ()))) or "none"))
+        w(f"// UNDECODED: PLL_{p['k']} input clock source")
     for m in nl.m9k:
         if m.get("modelled"):
             n = f"m9k_{m['x']}_{m['y']}"

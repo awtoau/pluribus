@@ -106,6 +106,29 @@ def pll_design(prm, seed=1):
     return v, [f"set_global_assignment -name SEED {seed}"]
 
 
+# --- PLL_6 / PLL_7 (MPLL: no compensation, c0 only) and fabric control ports (areset, pfdena, clkswitch, scan), one port per specimen (#175)
+MP_BASE = dict(PLL_BASE, operation_mode="NO_COMPENSATION", compensate_clock="UNUSED")
+MP_PORTS = {
+    "ar": ({"port_areset": "PORT_USED"}, ["ar"], ".areset(ar)"),
+    "pfd": ({"port_pfdena": "PORT_USED"}, ["pf"], ".pfdena(pf)"),
+    "sw": ({"port_clkswitch": "PORT_USED", "switch_over_type": "MANUAL", "inclk1_input_frequency": 20000}, ["clk1", "sw"], ".clkswitch(sw)"),
+    "scan": ({"port_scanclk": "PORT_USED", "port_scanclkena": "PORT_USED", "port_scandata": "PORT_USED", "port_configupdate": "PORT_USED"},
+             ["sck", "sce", "sda", "cfg"], ".scanclk(sck), .scanclkena(sce), .scandata(sda), .configupdate(cfg)"),
+}
+
+
+def pllmp_design(port=None, seed=1, areset_reg=False):
+    prm, pins, conn = MP_PORTS[port] if port else ({}, [], "")
+    prm = dict(MP_BASE, **prm)
+    pl = ",\n    ".join(f".{k}({v if isinstance(v, int) else chr(34) + v + chr(34)})" for k, v in prm.items())
+    pl += ',\n    .intended_device_family("Cyclone IV GX"),\n    .lpm_type("altpll")'
+    ins = "".join(f", input {p}" for p in pins)
+    inclk = "{clk1, clk}" if "clk1" in pins else "{1'b0, clk}"
+    v = (f"module top(input clk{ins}, output q0, output l);\n  wire [4:0] c;\n  reg q0r; always @(posedge c[0]) q0r <= ~q0r;\n  assign q0 = q0r;\n"
+         f"  altpll #(\n    {pl}\n  ) pll (\n    .inclk({inclk}), .clk(c), .locked(l){', ' + conn if conn else ''});\nendmodule\n")
+    return v, [f"set_global_assignment -name SEED {seed}"]
+
+
 def specs(which):
     """[(base name, specimen name, (verilog, qsf), purpose)]"""
     out = []
@@ -131,6 +154,14 @@ def specs(which):
         for k in range(1, 9):
             out.append(("gxhb_pll_base", f"gxhb_pllsite_{k}", pll_design(PLL_BASE),
                         (pll_design(PLL_BASE)[0], pll_design(PLL_BASE)[1] + [f"set_location_assignment PLL_{k} -to pll|auto_generated|pll1"]), f"pll at PLL_{k}"))
+    elif which == "pllmp":
+        loc = lambda k: [f"set_location_assignment PLL_{k} -to pll|auto_generated|pll1"]      # noqa: E731
+        vb = pllmp_design()
+        for k in (6, 7):
+            out.append(("gxhb_pllmp_base", f"gxhb_pllmp_site{k}", (vb[0], vb[1] + loc(1)), (vb[0], vb[1] + loc(k)), f"mpll at PLL_{k}"))
+        for port in MP_PORTS:
+            vp = pllmp_design(port)
+            out.append(("gxhb_pllmp_base", f"gxhb_pllmp_{port}", (vb[0], vb[1] + loc(1)), (vp[0], vp[1] + loc(1)), f"pll port {port}"))
     elif which == "pll":
         for nm, ov in PLL_SPECS:
             out.append(("gxhb_pll_base", f"gxhb_pll_{nm}", pll_design(PLL_BASE), pll_design(dict(PLL_BASE, **ov)), f"pll {nm}"))
@@ -150,7 +181,7 @@ def write_all(which):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("cmd", choices=["gen", "build"])
-    ap.add_argument("set", choices=["mac", "macpin", "pll", "pllsite"])
+    ap.add_argument("set", choices=["mac", "macpin", "pll", "pllsite", "pllmp"])
     ap.add_argument("--jobs", type=int, default=12)
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)

@@ -298,3 +298,51 @@ def test_mined_pgmio_ghidra_form_is_another_function():
     X.load_elf(db, "libpgm_pgmio")
     assert "reverse_address_counter_frames" in db.execute("select name from functions where vaddr=?", (0x43be30,)).fetchone()[0]
     assert db.execute("select name from functions where vaddr=?", (0x53be30,)).fetchone()[0].startswith("__tcf_0")
+
+
+def test_clkbuf_input_select_writers(db):
+    """ledger B-010 / B-011: the clock buffer input select writer, its bit-3 helper and the gid -> index map sit at these ELF vaddrs (nm -C verified)."""
+    for vaddr, frag in ((0x2fd9f8, "ASM_CLKBUF_CLK_INPUT_SELECT_CYCLONEII::process_atom"),
+                        (0x2f9adc, "ASM_CLKBUF_CLK_INPUT_SELECT_CYCLONEII::second_pll_feeds_clock_mux"),
+                        (0x2fcc58, "ASM_CLOCKSPINE_MODEL::resolve_clock_buffer_index_for_blk_type"),
+                        (0x1a3ea8, "ASM_PLL_INPUT::process_atom"), (0x1a25ba, "ASM_PLL_FEEDBACK_SELECT::process_atom")):
+        row = db.execute("select name from functions where vaddr=?", (vaddr,)).fetchone()
+        assert row and frag in row[0], hex(vaddr)
+
+
+def test_clkbuf_select_group_is_30_sites_of_4_bits(walk):
+    """ledger B-010: CLKBUF_CLK_INPUT_SELECT_CYCLONEII = one STD group of block 73, 30 sites, ENCODED mux of 4 bits (value 7 = none, bit 3 = second PLL)."""
+    import cycloneiv_clean_dirt as D
+    gt = D.enum_tables()["arch_group_type"]
+    g = [g for g in walk.groups() if g["btype"] == 73 and gt.get(g["type"]) == "CLKBUF_CLK_INPUT_SELECT_CYCLONEII"]
+    assert len(g) == 1 and len(g[0]["paths"]) == 30 and len(walk.mux(g[0]["paths"][0][0])["bits"]) == 4
+
+
+def test_pll_dirt_tables():
+    """ledger P-002 / B-011: PLL_k = icd of the dirt coordinate map (PLL_1 at X0Y13 ... PLL_4 at X117Y90); CLKMUX_PLL_SOURCE = 5 runs of 6 sites (icd 1 8 4 2 3)."""
+    from lifters.cycloneiv_clean import pll
+    t = pll.pll_tiles()
+    assert {k: v[2] for k, v in t.items()} == {1: (0, 13), 5: (0, 14), 6: (0, 43), 7: (0, 48), 8: (0, 76), 2: (0, 77), 3: (117, 1), 4: (117, 90)}
+    s = pll.clkmux_pll_source()
+    assert [s[g] for g in range(0, 30, 6)] == [1, 8, 4, 2, 3] and all(len({s[g + k] for k in range(6)}) == 1 for g in range(0, 30, 6))
+
+
+def test_pll_interface_ports():
+    """ledger P-009: the vendor block interface PLL1 carries the control ports on these BLOCK_INPUT_MUX indices (PLL3 / PLL4: PHASESTEP on 16)."""
+    from lifters.cycloneiv_clean import blockiface as B
+    pn, de = B.input_port_names(), {v: k for k, v in B.dev_enums().items()}
+    ifs = {d["name"]: d for d in B.load() if d["type"] == 1}
+
+    def ports(n):
+        return {m["index"]: pn.get(c["port"]) for m in ifs[n]["nodes"] for c in m["conns"] if de.get(c["enum"]) in ("PLL", "CLKBUFBLOCK")}
+    p1 = ports("PLL1")
+    assert {p1[i] for i in (0, 1, 3, 10, 24, 25, 27)} == {"CLKSWITCH", "SCANCLK", "CONFIGUPDATE", "SCANCLKENA", "SCANDATA", "PFDENA", "ARESET"}
+    assert p1[17] == "PHASESTEP" and ports("PLL3")[16] == "PHASESTEP"
+
+
+def test_pll_limits_are_periods_in_ps():
+    """ledger P-010: vendor PLL limits are periods (769 ps = 1300 MHz, 1666 ps = 600 MHz VCO); the GPLL table of speed grade 7 and 8 is identical."""
+    from lifters.cycloneiv_clean import pll
+    a, b = pll.limits("GPLL", 7), pll.limits("GPLL", 8)
+    assert a == b and a["vco"][1] == (769, 1666) and a["vco"][2] == (1538, 3333) and a["input"] == (2116, 200000)
+    assert pll.limits("MPLL", 7)["vco"][1] == (625, 1666)

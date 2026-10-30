@@ -26,7 +26,7 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 | PLL_4 | (45, 1) | gxhb_pllsite_4 |
 | PLL_5 | (43, 1) | gxhb_pllsite_5 |
 | PLL_8 | (43, 4) | gxhb_pllsite_8 |
-| PLL_6, PLL_7 | not placeable in this package (fit fails); paths (43, 2), (43, 3) unassigned | missing |
+| PLL_6, PLL_7 | (43, 2), (43, 3) (dirt coordinate map; MPLL: no compensation, c0 only; E-U3) | gxhb_pllmp_site6, gxhb_pllmp_site7 |
 
 - Encodings (code + netlist agree):
   - M and N: high = (count + 1) >> 1, low = count >> 1; count = high + low. Mult-factor group: even 0 / odd 2 (M); N observed 1 (n = 1) and 2 (n = 7).
@@ -101,6 +101,8 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 - Physical values: vendor text tables `ddb_stingray_basic.pll` (`pll.basic_tables`: field value -> current / resistor / capacitor, e.g. R field 27 = 4000 ohm, 8 = 14000, 24 = 6000; CP field 1 = 20, 3 = 40) and the bandwidth settings table `ddb_stingray_bandwidth_gpll.pll` (`pll.bandwidth_rows`: 10 rows, M * post-scale range -> ICP / R / C field values). Low / medium bandwidth use the GPLL table (ICP 1); high bandwidth takes the ICP 3 rows of `ddb_stingray_bandwidth_mpll.pll` (same R / C, input-frequency range column differs). `pll.bandwidth_settings(m, post, bandwidth)` reproduces ICP / R / C of 28 of 28 builds.
 - The earlier statement that these values are an index into a device-DB element table (`get_cp_and_lp_value@0x1b1e2a`) stands for the code path, but the data is also available as the text tables above; the element-descriptor decoder is not needed for them.
 - Switchover, scan, lock detect, areset / pfdena input muxes: groups present (`PLL_CLOCK_SWITCH_*`, `PLL_SCAN_*`, `PLL_LOCK_*`, 16-bit input muxes whose value is an RE index like the M9K input muxes); writers not yet decompiled: missing.
+
+- PLL connectivity, control inputs, clock buffer sources, Fin limits: [cycloneiv-clean-pll-clocks.md](cycloneiv-clean-pll-clocks.md) (#175).
 
 ## PLL element descriptor (decoder status, #169)
 

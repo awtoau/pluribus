@@ -148,10 +148,16 @@ class Static:
         return {"vendor_nx": np.flatnonzero(has & (bl == 0)), "vendor": np.flatnonzero(has & (bl == 0) & (bx == 0))}
 
 
+class Plane(np.ndarray):
+    """uint8 plane that remembers its rbf (decoders of CFF-held state, pll.Wires, read it from there)."""
+    rbf = None
+
+
 def plane_bits(rbf):
     """uint8 [N_BITS + 1] of an rbf CRAM, index r * 6344 + (j - 1) * 8 + k; sentinel last."""
     from . import sofio
-    out = np.zeros(P.N_BITS + 1, np.uint8)
+    out = np.zeros(P.N_BITS + 1, np.uint8).view(Plane)
+    out.rbf = rbf
     out[:P.N_BITS] = sofio.rbf_cram(rbf).reshape(-1)
     return out
 
@@ -341,11 +347,20 @@ class Extras:
         sys.path.insert(0, ddb.SCRIPTS)
         import cycloneiv_clean_dirt as D
         from . import clkbuf
-        self.clkbuf = clkbuf.ClkbufIn(st, rt or ddb.Routing(), self.bim, lut.walk, D.enum_tables()["arch_group_type"])
+        from . import pll
+        self.pllw = pll.Wires(st, rt or ddb.Routing(), lut.walk, D.enum_tables())
+        self.pllin = pll.Inputs(lut.walk, D.enum_tables(), rt or ddb.Routing(), n_real=len(st.esrc))
+        st.esrc = np.concatenate([st.esrc, self.pllin.esrc])
+        st.edst = np.concatenate([st.edst, self.pllin.edst])
+        st._key = None
+        self.clkbuf = clkbuf.ClkbufIn(st, rt or ddb.Routing(), self.bim, lut.walk, D.enum_tables()["arch_group_type"], pllw=self.pllw)
+        st.esrc = np.concatenate([st.esrc, self.clkbuf.esrc])
+        st.edst = np.concatenate([st.edst, self.clkbuf.edst])
+        st._key = None
 
     def apply(self, bits, fired):
         """{variant: edge ids} with the clock and LAB-control edges added to every variant."""
-        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits), self.pia.apply(bits), self.clkbuf.apply(bits)])
+        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits), self.pia.apply(bits), self.clkbuf.apply(bits), self.pllw.apply(bits), self.pllin.apply(bits)])
         return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp])) for v, e in fired.items()}
 
 
