@@ -40,6 +40,13 @@ def classes(cx, bits, gts=None):
     ck = rg.clock_ok(bits)
     carry = cx.lut.carry_in(bits)
     out = collections.Counter()
+    fb = cx.ffc.le_val(bits)["LE_USE_REGISTER_FEEDBACK"] == 1
+    cont = np.zeros_like(carry)                                  # next LE of the same LAB is in carry mode (chain continues)
+    cont[:, :-1] = carry[:, 1:]
+    # consumer kind of a local-path claim: edge = programmed edge leaves LOCAL_LINE; pin = LE_LUT_INPUT pin of a live LE selects it
+    src = np.zeros(cx.rt.n, bool)
+    src[cx.st.esrc[np.asarray(e, np.int64)]] = True
+    cedge = (rg.ll >= 0) & src[np.maximum(rg.ll, 0)]
     for i, n in np.argwhere(claim0).tolist():
         reason = "sync" if sync[i, n] else ("regbuf" if reg_buf[i, n] else "local")
         if not ck[i, n]:
@@ -50,6 +57,9 @@ def classes(cx, bits, gts=None):
             stage = "kept"
         k = (stage, reason, "arith" if carry[i, n] and nz[i, n] else "plain", "lut" if nz[i, n] else "nolut")
         out[k + (("GT" if (i, n) in gts else "noGT"),) if gts is not None else k] += 1
+        if reason == "local" and k[2] == "arith":
+            kind = "edge" if cedge[i, n] else ("pin" if lused[i, n] else "none")
+            out[("detail", stage, kind, "fb" if fb[i, n] else "nofb", "chain_cont" if cont[i, n] else "chain_end") + ((("GT" if (i, n) in gts else "noGT"),) if gts is not None else ())] += 1
     return out
 
 
