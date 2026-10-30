@@ -33,15 +33,15 @@ def test_static_edge_table(st):
     assert int(st.estart[-1]) == len(st.cell)
     report("tracer-static", edges=st.n_edges, empty_groups=int((st.size == 0).sum()), entries=len(st.cell))
     assert int(st.cell.max()) <= T.SENTINEL                   # every entry resolves inside the die (outside_die = 0)
-    k = np.asarray(st.kind)
-    assert ((k & 2) != 0).sum() == (st.size > 0).sum()        # exactly one first entry (select) per non-empty group
+    assert int(st.xrec.max()) < 1 << 21 and len(st.xcell) == len(st.xrec)
+    assert ((np.asarray(st.kind) & 2) != 0).all()              # every list bit is also a bit of the destination's exclusion groups
 
 
 def test_variants_nested(fired):
     s = {k: set(v.tolist()) for k, v in fired.items()}
-    assert s["lit_x"] <= s["lit"] and s["sel_x"] <= s["sel"]
+    assert s["vendor"] <= s["vendor_nx"]
     report("tracer-variants", **{k: len(v) for k, v in s.items()})
-    assert len(s["lit_x"]) > 0
+    assert len(s["vendor"]) > 0
 
 
 def test_rcf_names_resolve_exactly():
@@ -56,11 +56,11 @@ def test_rcf_names_resolve_exactly():
 
 
 def test_programmed_graph_traces(st, fired):
-    g = T.Graph(st, fired["lit_x"])
+    g = T.Graph(st, fired["vendor"])
     roots = g.roots()
     assert roots
     nets = T.tracer_nets(g)
-    assert sum(len(v) for v in nets.values()) >= len(fired["lit_x"]) * 0.99 or len(nets) > 0
+    assert sum(len(v) for v in nets.values()) >= len(fired["vendor"]) * 0.99 or len(nets) > 0
 
 
 def test_lut_cells_cover_every_used_lut(st):

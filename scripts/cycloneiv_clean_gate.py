@@ -22,7 +22,7 @@ Per category: matched / (matched + missing + extra + wrong); a missing connectio
             missing; some roots match = ambiguous = missing; none match = wrong.  extra = (LAB, LE) with a claimed line in a programmed
             tree and no FF in the .vo.  The claim needs the register-used decode (reg_used.py: YGR output select x used LE_BUFFER); undecidable = no claim = missing.
   pins      GT ball set vs balls of IO sites whose CFF key groups equal a decoded default pattern (direction class must agree: else wrong).
-No rule changes between runs: headline variant is fixed (`lit_x`); the other three tracer variants are reported beside it.
+No rule changes between runs: headline variant `vendor`; `vendor_nx` (no destination exclusion check) is reported beside it.
 Log: tmp/logs/cycloneiv_clean_gate.log; results tmp/cycloneiv_clean/gate_<set>.json.
 """
 import argparse
@@ -45,8 +45,8 @@ from lifters.cycloneiv_clean import ddb, names  # noqa: E402
 from lifters.cycloneiv_clean import tracer as T  # noqa: E402
 
 log = logging.getLogger("cycloneiv_clean_gate")
-HEADLINE = "lit_x"                      # fixed before the first GT comparison: literal flag rule + flag-decoded exclusion bits
-VARIANTS = ("lit", "lit_x", "sel", "sel_x")
+HEADLINE = "vendor"                     # asm.ddb conduction rule from the vendor assembler (tracer.py docstring, #165); replaces the delta-byte flag rule
+VARIANTS = ("vendor", "vendor_nx")
 CATS = ("pips", "nets", "lut_init", "register_clock", "pins")
 REGION = 30                             # region bands of dst tile x / y for the failing-scope enumeration
 FILES = ("bitstream.rbf", "routing.rcf", "postfit.vo", "build.pin")

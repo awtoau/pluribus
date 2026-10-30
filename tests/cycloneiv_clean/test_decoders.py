@@ -57,7 +57,7 @@ def test_clock_network_edges(tr):
     tot = collections.Counter()
     for d in DESIGNS:
         bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
-        fired = tr.ext.apply(bits, tr.st.fire(bits, workers=2))["lit_x"]
+        fired = tr.ext.apply(bits, tr.st.fire(bits, workers=2))["vendor"]
         gt = gt_clock_edges(d)
         nm = sorted({e for p in gt for e in p})
         rec, why = res.resolve(nm)
@@ -140,7 +140,7 @@ def test_register_used_claim(tr):
     tot = collections.Counter()
     for d in DESIGNS:
         bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
-        fired = tr.ext.apply(bits, tr.st.fire(bits, workers=2))["lit_x"]
+        fired = tr.ext.apply(bits, tr.st.fire(bits, workers=2))["vendor"]
         ff = tr.ext.reg.ff(bits, fired)
         _, _, ffs = G.parse_vo(os.path.join(d, "postfit.vo"))
         gt = {(tr.lut.lab(x, y), n) for x, y, n in ffs.values()}

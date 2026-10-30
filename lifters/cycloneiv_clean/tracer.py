@@ -1,11 +1,14 @@
 """P2 clean tracer: rbf -> programmed routing edges, nets, LUT INIT cells, IO site kinds.  Vendor-derived inputs only (#165).
 
 Edge <-> group (A1, A2): group k of source record r == fan-out edge k of r; the last (groups - edges) groups of a record are
-select-bit pseudo-groups with no edge (scripts/cycloneiv_ddb_blockmap.py `group_edges`, 14,862,095 real groups).
-Programmed rule (asm.ddb flag rule, docs/cycloneiv-ddb-format.md): entry is expected 1 iff b0 == +1 (select) or b1 == -1;
-an edge is programmed iff it has >= 1 expected-1 entry, every expected-1 entry resolves inside the die and is set in the plane.
-Variant `exact` (exclusion bits): additionally every other entry of the group (b0 in {-1, 0}, b1 != -1) is clear.
-Anything unresolved (address outside the die, no expected-1 entry, name not exactly one record) is missing, never guessed.
+its EXCLUSION groups (dst-side), not edges.
+Conduction rule (source: libddb_dygr DYGR_ROUTE_ASM_INFO_BODY::get_bits_from_source_to_dest + check_routing_connection, static decompile):
+  - entry value: use_encoded flag F0 clear -> bit must be 1 (one-hot select); F0 set -> bit must equal F1 (encoded_high).
+  - F0 / F1 are 1-bit fields serialized as i8 deltas vs the previous bit (DYGR_ROUTE_ASM_BIT::operator<<): the on-disk b0 / b1 bytes are
+    deltas, F = (running sum over all entries) & 1.
+  - every bit of the DESTINATION's exclusion groups that is not in the source's list must be 0.
+An edge needs >= 1 entry that must be 1 (an all-zero pattern is not distinguishable from an unused mux: ambiguous = missing).
+Anything unresolved (address outside the die, name not exactly one record) is missing, never guessed.
 """
 import collections
 import concurrent.futures as cf
@@ -44,36 +47,57 @@ def _build_static(die=ddb.DIE):
     dst = rt.first_dest[r].astype(np.int64) + rt.offs[rt.eoff[t].astype(np.int64) + kk].astype(np.int64)
     size = gsize[gi].astype(np.int64)
     estart = np.concatenate([[0], np.cumsum(size)])
-    # entries of the real groups, in group order
-    ent = np.repeat(real, gsize)
     pos, flag = np.asarray(a["pos"]), np.asarray(a["flag"])
-    addr = pos[ent] & ddb.ADDR_MASK
-    f = flag[ent].astype(np.int64)
+    # F0 (use-encoded) / F1 (encoded-high): running sum of the i8 deltas over all entries, masked to the 1-bit field width
+    f = flag.astype(np.int64)
     b0, b1 = ((f & 0xFF) ^ 0x80) - 0x80, (((f >> 8) & 0xFF) ^ 0x80) - 0x80
-    lit = (b0 == 1) | (b1 == -1)
-    first = np.zeros(len(addr), bool)
-    first[estart[:-1][size > 0]] = True
-    kind = lit.astype(np.uint8) | (first.astype(np.uint8) << 1)
-    tab = P.load_tables()
-    cell = np.full(len(addr), SENTINEL, np.int64)
-    inside = (addr >= 0) & (addr < P.N_BITS)
+    f0, f1 = np.cumsum(b0) & 1, np.cumsum(b1) & 1
+    want_all = np.where(f0 == 1, f1, 1).astype(np.uint8)
+    del f, b0, b1, f0, f1
+    ent = np.repeat(real, gsize)
+    addr = pos[ent] & ddb.ADDR_MASK
+    want = want_all[ent]
+    # exclusion entries: groups of the record beyond its edges, keyed (record, address)
+    xent = np.repeat(~real, gsize)
+    xrec = np.repeat(grec, gsize)[xent].astype(np.int64)
+    xaddr = pos[xent] & ddb.ADDR_MASK
+    xkey = np.unique(xrec << 31 | xaddr)
+    erec = np.repeat(dst, size)                                   # destination record of each list entry
+    inx = np.zeros(len(addr), bool)
     for lo in range(0, len(addr), 8_000_000):
         sl = slice(lo, lo + 8_000_000)
-        m = inside[sl]
-        rr, jj, kk2 = P.sof_to_rbf(addr[sl][m], tab)
-        c = np.full(len(m), SENTINEL, np.int64)
-        c[m] = rr * P.BITS_PER_FRAME + (jj - 1) * P.LANES + kk2
-        cell[sl] = c
-    nlit = np.add.reduceat(lit.astype(np.int32), np.minimum(estart[:-1], len(lit) - 1))
-    nlit = np.where(size > 0, nlit, 0)
+        q = erec[sl] << 31 | addr[sl]
+        i = np.minimum(np.searchsorted(xkey, q), len(xkey) - 1)
+        inx[sl] = xkey[i] == q
+    del erec
+    tab = P.load_tables()
+
+    def cells(ad):
+        c = np.full(len(ad), SENTINEL, np.int64)
+        for lo in range(0, len(ad), 8_000_000):
+            sl = slice(lo, lo + 8_000_000)
+            m = (ad[sl] >= 0) & (ad[sl] < P.N_BITS)
+            rr, jj, kk2 = P.sof_to_rbf(ad[sl][m], tab)
+            cc = np.full(len(m), SENTINEL, np.int64)
+            cc[m] = rr * P.BITS_PER_FRAME + (jj - 1) * P.LANES + kk2
+            c[sl] = cc
+        return c
+    cell = cells(addr)
+    xcell = cells(xkey & ddb.ADDR_MASK)
+    xr = (xkey >> 31).astype(np.int32)
+    flagbits = want | (inx.astype(np.uint8) << 1)               # bit0 = required value, bit1 = also in the destination's exclusion set
+    nreq1 = np.add.reduceat(want.astype(np.int32), np.minimum(estart[:-1], len(want) - 1))
+    nreq1 = np.where(size > 0, nreq1, 0)
     os.makedirs(os.path.dirname(CACHE), exist_ok=True)
     np.savez(CACHE, esrc=r.astype(np.int32), edst=dst.astype(np.int32), estart=estart, cell=cell.astype(np.uint32),
-             kind=kind, nlit=nlit.astype(np.int16), size=size.astype(np.int16), group_index=gi.astype(np.int64))
-    return dict(groups=len(grec), real=len(gi), entries=len(addr), outside_die=int((~inside).sum()))
+             kind=flagbits, nlit=nreq1.astype(np.int16), size=size.astype(np.int16), group_index=gi.astype(np.int64),
+             xcell=xcell.astype(np.uint32), xrec=xr)
+    return dict(groups=len(grec), real=len(gi), entries=len(addr), exclusion_entries=len(xkey), list_entries_in_exclusion=int(inx.sum()))
 
 
 class Static:
-    """Design-independent edge table: esrc / edst per real edge, entry ranges, entry cell index and expected value."""
+    """Design-independent edge table: esrc / edst per real edge, entry ranges, entry cell index, required value, exclusion cells per record.
+    kind bit0 = required value of the entry, bit1 = entry address is also an exclusion bit of the destination; nlit = entries that must be 1."""
 
     def __init__(self, path=CACHE):
         if not os.path.exists(path):
@@ -81,6 +105,7 @@ class Static:
         z = np.load(path)
         self.esrc, self.edst, self.estart = z["esrc"], z["edst"], z["estart"]
         self.cell, self.kind, self.nlit, self.size = z["cell"], z["kind"], z["nlit"], z["size"]
+        self.xcell, self.xrec = z["xcell"], z["xrec"]
         self.n_edges = len(self.esrc)
         self._key = None
 
@@ -95,31 +120,32 @@ class Static:
         i = np.minimum(np.searchsorted(sk, q), len(sk) - 1)
         return np.where(sk[i] == q, order[i], -1)
 
-    def _block(self, bits, a, b):
+    def _block(self, bits, a, b, xset):
         e0, e1 = int(self.estart[a]), int(self.estart[b])
         v = bits[self.cell[e0:e1]]
         k = self.kind[e0:e1]
         off = self.estart[a:b + 1] - e0
-        out = []
-        for pr in ((k & 1) == 1, (k & 3) != 0):          # literal flag rule, flag rule + first entry = select
-            for bad in (pr & (v == 0), ~pr & (v == 1)):      # expected-1 entry clear (miss), other entry set (exclusion)
-                c = np.concatenate([[0], np.cumsum(bad, dtype=np.int32)])
-                out.append(c[off[1:]] - c[off[:-1]])
-        return out
+        miss = v != (k & 1)                                          # list entry differs from its required value
+        c = np.concatenate([[0], np.cumsum(miss, dtype=np.int32)])
+        bad_list = c[off[1:]] - c[off[:-1]]
+        inx = ((k & 2) != 0) & (v == 1)                              # set exclusion bits that belong to the list itself
+        c = np.concatenate([[0], np.cumsum(inx, dtype=np.int32)])
+        own = c[off[1:]] - c[off[:-1]]
+        bad_x = xset[self.edst[a:b]] - own                           # set bits of the destination's exclusion groups outside the list
+        return bad_list, bad_x
 
     def fire(self, bits, workers=4):
         """bits: uint8 [N_BITS + 1] plane (last = sentinel 0).  -> {variant: programmed edge ids}.
-        lit / lit_x: literal flag rule (b0 == +1 or b1 == -1), set-only / with exclusion bits clear.
-        sel / sel_x: the same with the group's first entry (select) always expected 1.  Headline variant: sel_x."""
+        vendor: list entries equal their required value and the destination's other exclusion bits are clear.
+        vendor_nx: list entries only (exclusion bits ignored)."""
+        xset = np.bincount(self.xrec, weights=bits[self.xcell], minlength=int(self.edst.max()) + 1).astype(np.int32)
         blocks = [(a, min(a + CHUNK_EDGES, self.n_edges)) for a in range(0, self.n_edges, CHUNK_EDGES)]
         with cf.ThreadPoolExecutor(workers) as ex:
-            res = list(ex.map(lambda ab: self._block(bits, *ab), blocks))
-        m = [np.concatenate([r[i] for r in res]) for i in range(4)]
-        has = self.size > 0
-        return {"lit": np.flatnonzero((self.nlit > 0) & (m[0] == 0)),
-                "lit_x": np.flatnonzero((self.nlit > 0) & (m[0] == 0) & (m[1] == 0)),
-                "sel": np.flatnonzero(has & (m[2] == 0)),
-                "sel_x": np.flatnonzero(has & (m[2] == 0) & (m[3] == 0))}
+            res = list(ex.map(lambda ab: self._block(bits, *ab, xset), blocks))
+        bl = np.concatenate([r[0] for r in res])
+        bx = np.concatenate([r[1] for r in res])
+        has = (self.size > 0) & (self.nlit > 0)
+        return {"vendor_nx": np.flatnonzero(has & (bl == 0)), "vendor": np.flatnonzero(has & (bl == 0) & (bx == 0))}
 
 
 def plane_bits(rbf):
@@ -324,7 +350,7 @@ class Io:
 
     def __init__(self, chain=None):
         import json
-        from . import io as IO
+        from . import cycloneiv_io as IO
         from . import io_decode as ID
         self.chain = chain or ID.Chain()
         self.cff = IO.Cff()
@@ -352,7 +378,7 @@ class Io:
         return out
 
 
-HEADLINE_VARIANT = "lit_x"      # literal flag rule + flag-decoded exclusion bits; fixed before the first GT comparison (gate docstring)
+HEADLINE_VARIANT = "vendor"     # asm.ddb conduction rule as the vendor assembler states it (module docstring)
 
 
 class Tracer:
