@@ -49,6 +49,13 @@ def main():
             n = N_BY.get(f, N_SAMPLE)
             keep = [(d, f"seeded regression sample ({n} of {len(ds)})") for d in pick(ds, n)]
         rows += [(d, f, why) for d, why in keep]
+    have = {r[0] for r in rows}
+    fast = os.path.join(REPO, "reference", "gate_fast.tsv")           # the fast gate set must exist in the kept corpus
+    if os.path.exists(fast):
+        for line in open(fast).read().splitlines()[1:]:
+            d = line.split("\t")[0].strip()
+            if d and d not in have and os.path.isdir(os.path.join(ROOT, d)):
+                rows.append((d, d.split("_")[0], "fast gate member (reference/gate_fast.tsv)"))
     with open(OUT, "w") as fh:
         w = csv.writer(fh, delimiter="\t")
         w.writerow(["design", "family", "reason"])
