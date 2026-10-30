@@ -29,15 +29,24 @@ def one(name):
         return "not_modelled", f"{len(blocks)} blocks"
     x, y, inst = blocks[0]
     em = open(os.path.join(wd, "emit.v")).read()
-    m = re.search(r"// M9K m9k_%s_%s: single port, (\d+) bit" % (x, y), em)
+    m = re.search(r"// M9K m9k_%s_%s: (?:single|simple dual|true dual) port, (\d+) bit" % (x, y), em)
     if not m:
         return "not_modelled", "emit does not model the tile"
     W = int(m[1])
-    bus = inst.lstrip("\\") + "_PORTADATAOUT_bus"
+    mode = re.search(r'operation_mode = "(\w+)"', vo)[1]
+    bus = inst.lstrip("\\") + ("_PORTBDATAOUT_bus" if mode == "dual_port" else "_PORTADATAOUT_bus")      # simple dual port reads on port B
     tb = open(os.path.join(wd, "tb.v")).read()
     ref = f"gt.\\{bus} " if inst.startswith("\\") else f"gt.{bus}"
     tb = tb.replace("integer cyc, bad, n;", "integer cyc, bad, n, macbad = 0;")
-    tb = re.sub(r"(if \(cyc >= \d+\) begin)", r"\1 if (" + ref.replace("\\", "\\\\") + f"[{W - 1}:0] !== dut.m9k_{x}_{y}_q) macbad = macbad + 1;", tb, count=1)
+    def term(r, lo, hi):
+        return f"((^{r}[{W - 1}:0]) !== 1'bx && {r}[{W - 1}:0] !== dut.m9k_{x}_{y}_q[{hi}:{lo}])"
+    cmp_ = term(ref, 0, W - 1)
+    if mode == "bidir_dual_port":                                   # true dual port: q = {port B, port A}
+        refb = ref.replace("PORTADATAOUT", "PORTBDATAOUT").replace("PORTBDATAOUT_bus", "PORTBDATAOUT_bus")
+        refa = refb.replace("PORTBDATAOUT", "PORTADATAOUT")
+        cmp_ = term(refa, 0, W - 1) + " || " + term(refb, W, 2 * W - 1)
+    # GT X (write-write collision on a true dual port, power-up of a never-written word) is not comparable: only fully known GT words count
+    tb = re.sub(r"(if \(cyc >= \d+\) begin)", r"\1 if (" + cmp_.replace("\\", "\\\\") + ") macbad = macbad + 1;", tb, count=1)
     tb = tb.replace("$finish;", '$display("MACRESULT bad=%0d", macbad); $finish;')
     open(os.path.join(wd, "tb_m9k.v"), "w").write(tb)
     vvp = os.path.join(wd, "m9k.vvp")
@@ -58,8 +67,8 @@ def cfg(name):
     d = os.path.join(REPO, "corpus", "cycloneiv", name)
     vo = open(os.path.join(d, "postfit.vo")).read()
     em = open(os.path.join(S.WORK, name, "emit.v")).read()
-    m = re.search(r"// M9K m9k_\d+_\d+: single port, (\d+) bit x (\d+) words, output register = (\w+)", em)
-    if not m or vo.count("cycloneiv_ram_block ") != 1:
+    m = re.search(r"// M9K m9k_\d+_\d+: (?:single|simple dual|true dual) port, (\d+) bit x (\d+) words, output register = (\w+)", em)
+    if not m or vo.count("cycloneiv_ram_block ") != 1 or 'operation_mode = "single_port"' not in vo:       # dual-port atoms: width / depth are the atom's, checked by the sim only
         return None
     pin = re.search(r"\.portadatain\(\{?([^)]*?)\}?\)", vo)
     dw = sum(1 for t in pin[1].split(",") if t.strip() not in ("gnd", "vcc")) if pin else -1
@@ -71,12 +80,12 @@ def cfg(name):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--match", default="gxm9k_*")
+    ap.add_argument("--match", default="gxm9k_*", help="fnmatch patterns, comma separated")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=[logging.StreamHandler(), logging.FileHandler(os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_m9k_sim.log"))])
     res = {}
     for n in sorted(os.listdir(S.WORK)):
-        if fnmatch.fnmatch(n, a.match) and os.path.exists(os.path.join(S.WORK, n, "emit.v")):
+        if any(fnmatch.fnmatch(n, pat) for pat in a.match.split(",")) and os.path.exists(os.path.join(S.WORK, n, "emit.v")):
             res[n] = one(n)
             log.info("%s %s %s", n, *res[n])
     import zlib

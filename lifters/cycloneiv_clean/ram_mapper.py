@@ -52,3 +52,14 @@ def addr_sources(width):
 def byte_enable_gi(width):
     """byte-enable idx -> RAM_MS_BYTE_ENABLE_INPUT gi."""
     return {ix: gi for gi, ty, ix in entries("RAM_MS_BYTE_ENABLE_INPUT", width)}
+
+
+# source: explicit RAM modes of the true dual port constructors (ram_mapper_table.json: groups of modes 6..9, 16..18 carry type-4 DATA_INPUT_B and
+#         type-6 READ_ADDRESS entries); mode = width: x1 6, x2 7, x4 8, x8 9, x9 16, x16 17, x18 18
+TDP_MODE = {1: 6, 2: 7, 4: 8, 8: 9, 9: 16, 16: 17, 18: 18}
+TYPE_DATA_A, TYPE_DATA_B, TYPE_ADDR_A, TYPE_ADDR_B = 3, 4, 5, 6
+
+
+def entries_mode(group, mode):
+    """[(gi, type, idx)] of one group class at an explicit mode number."""
+    return [(gi, ty, ix) for mo, gi, ty, ix in table()["groups"][group] if mo == mode]

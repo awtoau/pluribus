@@ -22,7 +22,7 @@ import re
 
 import numpy as np
 
-from . import ddb, m9k, m9kctl, mac, macctl, names, ram_mapper
+from . import ddb, m9k, m9k_tdp, m9kctl, mac, macctl, names, ram_mapper
 from . import plane as P
 
 # source: scripts/cycloneiv_clean_gate.py parse_vo on 16,763 corpus .vo files: every unconnected LUT input whose function depends on it is VCC
@@ -666,17 +666,30 @@ class Builder:
         W, A, cls = int(mk["W"][i]), int(mk["A"][i]), int(mk["cls"][i])
         if W in (32, 36):                       # x32 / x36 decode as class by16 + packed bit; depth from the measured layout (m9k.depth)
             A = m9k.depth(W).bit_length() - 1
+        tdp0 = int(mk["ctl"][("RAM_USE_TRUE_DUAL_PORT_MODE", -1)][i, 0])
+        if cls < 0 and int(mk["read_groups"][i]) and not tdp0:   # simple dual port without a write port (no data / write-enable): the class is the read port's (RAM_DATA_WRITE_MODE_B)
+            b = mk["ctl"][("RAM_DATA_WRITE_MODE_B", -1)][i]
+            if b.sum() == 1:
+                cls = int(b.argmax())
+                A = m9kctl.CLASS_A[cls]
+        if cls == 5 and int(mk["read_groups"][i]) and not tdp0:
+            W, A = 36, m9k.depth(36).bit_length() - 1           # simple dual port, class by32/36: the atom is x36 whatever number of data pins is wired (hl_fifo_7: 32 of 36)
         # ROM (no data-in groups): word width from the class and the highest routed output buffer (class by8/9: 8 or 9; by16/18: 16 or 18; by32/36: 32 or 36)
         if W == 0 and cls == 5 and int(mk["n_data"][i]) > 0:    # x32 / x36 with fewer than 32 connected data pins: lanes differ only in unconnected bits, depth 256 for both
             W = 36
             A = m9k.depth(W).bit_length() - 1
         outs = self.m9k_out.get((x, y))
+        if m9k_tdp.is_tdp(mk, i):
+            return self._m9k_tdp(nl, M, mk, i, x, y, outs or set())
         if W == 0 and cls >= 0 and outs and not (mk["data"][i] >= 0).any():
             cand = ({0: (1,), 1: (2,), 2: (4,), 3: (8, 9), 4: (16, 18), 5: (32, 36)})[cls]
             W = next((c for c in cand if outs <= set(ram_mapper.data_idx(c)) or c in (32, 36)), cand[-1])
             if cls == 5:
                 A = m9k.depth(W).bit_length() - 1
             M["rom"] = True
+        if cls in (3, 4) and W not in ({3: (8, 9), 4: (16, 18)})[cls] and not (mk["read_groups"][i] and tdp0):    # fewer data pins wired than the class width (unwired inputs are constant low; address bit 0 shares a data group in by8/9)
+            cand = ({3: (8, 9), 4: (16, 18)})[cls]
+            W = next((c for c in cand if not outs or outs <= set(ram_mapper.data_idx(c))), cand[-1])
         M.update(W=W, A=A, cls=cls, modelled=False)
         why = None
         if cls < 0:
@@ -701,9 +714,13 @@ class Builder:
         # x32 / x36 = two x18 atoms (mode 11 each, gi 0..17 and 18..35): logical bits 0..LA-1 on the second atom's gi 18.., the rest on gi 0.. (read off the gxm9k_h32 / hb32 / hb36
         # data-pin and bus maps; input group = output buffer index; the atom order is not in the mapper tables)
         lane_a = {32: 14, 36: 18}.get(W, 0)
+        tdp = int(mk["ctl"][("RAM_USE_TRUE_DUAL_PORT_MODE", -1)][i, 0])
+        x36 = W == 36 and not tdp and int(mk["read_groups"][i]) > 0     # simple dual port x36 atom: explicit mode 13 tables (ram_mapper), data gi k = logical bit k, address gi k = address bit k
         if lane_a:
             idx = [18 + k if k < lane_a else k - lane_a for k in range(W)]
             gi_d = {ix: ix for ix in idx}
+            if x36:
+                gi_d = {ix: k for k, ix in enumerate(idx)}
         else:
             idx = ram_mapper.data_idx(Wm)[:W]
             gi_d = ram_mapper.data_gi(Wm)
@@ -711,7 +728,7 @@ class Builder:
         data = [pin(mk["data"][i, gi_d[ix]]) for ix in idx]
         # address bit order: port index ix is logical bit (ix - 8) mod 13 (ix 8..12 are the low bits): reproduces the low (A - 9) bits on RAM_MS_DATA_INPUT gi 12..15
         # (x1..x8), then write-address gi 12, 0..7 for A = 9, with no specimen order; the permutation itself is not in the mapper tables (checked by the sims)
-        Wa = 18 if W in (32, 36) else Wm                           # x32 / x36 = two x18 atoms: address pins of the x18 mode
+        Wa = 36 if x36 else 18 if W in (32, 36) else Wm                        # x32 / x36 = two x18 atoms: address pins of the x18 mode
         asrc = ram_mapper.addr_sources(Wa)
         slot = {g: j for j, g in enumerate(m9kctl.WRITE_SLOTS)}
 
@@ -747,13 +764,76 @@ class Builder:
             ce = pin(mk["pia_all"][i, int(mk["ce_line"][i])])
             if mk["ce_invert"][i]:
                 ce = "!" + ce
-        words = m9k.read_words(bitsv, W)
+        sdp = bool(raddr) and not tdp and not (W in (32, 36) and not x36)
+        if sdp:
+            ce, ce_core, ce_b, ce_core_b, clk_b, clk_o = self._m9k_sdp_ctl(mk, i, x, y, pin)
+            M.update(ce_core=ce_core, ce_b=ce_b, ce_core_b=ce_core_b, clk_b=clk_b or clk, clk_o=clk_o or clk)
+        M["sdp"] = sdp
+        words = m9k.read_words_atom36(bitsv) if x36 else m9k.read_words(bitsv, W)
         M.update(modelled=True, ce=ce, be=be, data=data, addr=addr, raddr=raddr, we=("1'b1" if mk["we"][i] < 0 and not M.get("rom") and (mk["data"][i] >= 0).any() else pin(mk["we"][i])), clk=clk,
                  oreg=bool(mk["oreg_b"][i] if raddr else mk["oreg"][i]),
                  init=[int("".join(str(int(b)) for b in r[::-1]), 2) for r in words])
         nl.counts["m9k_single_port_modelled"] += 1
         nl.counts[f"m9k_w{W}"] += 1
         nl.counts["m9k_oreg"] += M["oreg"]
+
+    def _m9k_tdp(self, nl, M, mk, i, x, y, outs):
+        """True dual port (m9k_tdp.py): two ports of one word width on one memory; q = {port B, port A} (W bits each), buffers per m9k_tdp.B_OFFSET."""
+        cx = self.cx
+        e_li = names.enum_of("LOCAL_INTERCONNECT")
+
+        def pin(sel):
+            if sel < 0:
+                return "1'b0"
+            rec = int(cx.find(e_li, x, y, 0, int(sel)))
+            return self.sig(rec)[0] if rec >= 0 else "1'b0"
+        sp, why = m9k_tdp.decode(mk, i, outs, pin)
+        M.update(modelled=False)
+        if why:
+            M["why"] = why
+            nl.und["M9K: " + why] += 1
+            return
+        W = sp["W"]
+        ce_a, core_a, ce_b, core_b, clk_b, _ = self._m9k_sdp_ctl(mk, i, x, y, pin)
+        ln = cx.m9kctl.clock_line(mk["clk_fast"][i])
+        if isinstance(ln, int):
+            rec = int(cx.find(names.enum_of("BLK_CLK_BUF"), x, y, 0, ln))
+            clk = self.sig(rec)[0] if rec >= 0 else "1'b0"
+        else:
+            clk = pin(mk["pia"][i, int(mk["cg"][i])])
+        words = m9k.read_words(M["content"], W)
+        M.update(modelled=True, tdp=True, W=W, A=sp["A"], cls=sp["cls"], data=sp["data"], data_b=sp["data_b"], addr=sp["addr"], addr_b=sp["addr_b"], we=sp["we"], we_b=sp["we_b"],
+                 ce=ce_a, ce_core=core_a, ce_b=ce_b, ce_core_b=core_b, clk=clk, clk_b=clk_b or clk, oreg=bool(mk["oreg"][i]), oreg_b=bool(mk["oreg_b"][i]), qw=2 * W,
+                 out_idx=list(range(W)) + [m9k_tdp.B_OFFSET + k for k in range(W)], raddr=None,
+                 init=[int("".join(str(int(b)) for b in r[::-1]), 2) for r in words])
+        nl.counts["m9k_tdp_modelled"] += 1
+        nl.counts[f"m9k_w{W}"] += 1
+
+    def _m9k_sdp_ctl(self, mk, i, x, y, pin):
+        """Simple dual port clock-enable gates and read-side clock: (ce_in_A, ce_core_A, ce_in_B, ce_core_B, clk_B, clk_out_B), None = ungated / same clock.
+        ENA k -> PIA line by RAM_CE_FAST_MUX gi k (ram_ce_lines.json); port A selects over (ENA0, ENA2), port B over (ENA1, ENA3) -- bit order from the
+        hl_* SDP builds (ena0 = write enable, ena1 = read enable); read address clock group = RAM_SELECT_CLK_READ_ENABLE_READ_ADDRESS_B bit 0."""
+        cx = self.cx
+        ctl = mk["ctl"]
+        lines = json.load(open(m9kctl.CE_LINES))["ce_fast_mux"]
+
+        def ena(k):
+            s = pin(mk["pia_all"][i, lines[str(k)][int(ctl[("RAM_CE_FAST_MUX", k)][i, 0])]])
+            return "!" + s if ctl[("RAM_CE_INVERT", k)][i, 0] else s
+
+        def gate(name, enas):
+            sel = [ena(e) for b, e in zip(ctl[(name, -1)][i], enas) if b]
+            return " && ".join(sel) or None
+
+        def clk_of(g):
+            ln = cx.m9kctl.clock_line(ctl[("RAM_CLOCK_FAST_MUX", g)][i])
+            if isinstance(ln, int):
+                rec = int(cx.find(names.enum_of("BLK_CLK_BUF"), x, y, 0, ln))
+                return self.sig(rec)[0] if rec >= 0 else None
+            return pin(mk["pia"][i, g]) if ln == "pia" else None
+        gb = int(ctl[("RAM_SELECT_CLK_READ_ENABLE_READ_ADDRESS_B", -1)][i, 0])
+        go = int(ctl[("RAM_SELECT_CLK_DATA_OUT_B", -1)][i, 0])
+        return gate("RAM_CE_SELECT_INPUT", (0, 2)), gate("RAM_CE_SELECT_CORE", (0, 2)), gate("RAM_CE_SELECT_INPUT_B", (1, 3)), gate("RAM_CE_SELECT_CORE_B", (1, 3)), clk_of(gb), clk_of(go)
 
     def _close(self, nl):
         """A referenced lc_ / ff_ / co_ signal without a cell is a decode inconsistency: declared as an undecoded source and counted."""
@@ -768,7 +848,7 @@ class Builder:
             refs.update(p for p in (io.get("drv"), io.get("oe")) if p)
         for M in nl.m9k:
             if M.get("modelled"):
-                for e in M["data"] + M["addr"] + [M["we"], M["clk"]] + (M.get("be") or []) + ([M["ce"].lstrip("!")] if M.get("ce") else []):
+                for e in M["data"] + M["addr"] + [M["we"], M["clk"]] + (M.get("be") or []) + [M[k] for k in ("ce", "ce_core", "ce_b", "ce_core_b", "clk_b", "clk_o") if M.get(k)] + (M.get("raddr") or []) + M.get("data_b", []) + M.get("addr_b", []) + ([M["we_b"]] if M.get("we_b") else []):
                     refs.update(re.findall(r"(?:pad|lc|ff|co|u)_\w+", e))
         for M in nl.mac:
             for e in M["a"] + M["b"] + M["sign"] + [M.get("clk", ""), M["ena"], M["aclr"]]:
@@ -868,7 +948,7 @@ def verilog(nl, module="cyc4_top"):
     for m in nl.m9k:
         if m.get("modelled"):
             n = f"m9k_{m['x']}_{m['y']}"
-            w(f"wire [{m['W'] - 1}:0] {n}_q;")
+            w(f"wire [{m.get('qw', m['W']) - 1}:0] {n}_q;")
             # _o = output bus indexed by M4K_BUFFER index = DATAIN idx of the width (ram_mapper.data_idx: x16 skips idx 8)
             w(f"wire [35:0] {n}_o;")
             for k, ix in enumerate(m["out_idx"]):
@@ -929,7 +1009,20 @@ def verilog(nl, module="cyc4_top"):
         if m.get("modelled"):
             n = f"m9k_{m['x']}_{m['y']}"
             W, A = m["W"], m["A"]
-            w(f"// M9K {n}: single port, {W} bit x {1 << A} words, output register = {m['oreg']}")
+            if m.get("tdp"):
+                w(f"// M9K {n}: true dual port, {W} bit x {1 << A} words, output register = {m['oreg']} / {m['oreg_b']}")
+                w(f"reg [{W - 1}:0] {n}_mem [0:{(1 << A) - 1}];")
+                w(f"initial begin " + " ".join(f"{n}_mem[{k}] = {W}'h{v:X};" for k, v in enumerate(m["init"])) + " end")
+                for sfx, ad, di in (("a", "addr", "data"), ("b", "addr_b", "data_b")):
+                    w(f"wire [{A - 1}:0] {n}_ad{sfx} = {{{', '.join(reversed(m[ad]))}}}; wire [{W - 1}:0] {n}_di{sfx} = {{{', '.join(reversed(m[di]))}}};")
+                    w(f"reg [{W - 1}:0] {n}_qc{sfx} = 0; reg [{W - 1}:0] {n}_qr{sfx} = 0;")
+                # read-during-write on the writing port returns the written word (RAM_NEW_DATA_MODE, port_*_read_during_write_mode = new_data_with_nbe_read in hl_ram_6 / hl_mix_13)
+                for sfx, we, ce, core, clk in (("a", "we", "ce", "ce_core", "clk"), ("b", "we_b", "ce_b", "ce_core_b", "clk_b")):
+                    cw = f" && ({m[core]})" if m.get(core) else ""
+                    w(f"always @(posedge {m[clk]}) begin " + (f"if ({m[ce]}) " if m.get(ce) else "") + f"begin if ({m[we]}{cw}) begin {n}_mem[{n}_ad{sfx}] <= {n}_di{sfx}; {n}_qc{sfx} <= {n}_di{sfx}; end else {n}_qc{sfx} <= {n}_mem[{n}_ad{sfx}]; end {n}_qr{sfx} <= {n}_qc{sfx}; end")
+                w(f"assign {n}_q = {{" + (f"{n}_qrb" if m["oreg_b"] else f"{n}_qcb") + ", " + (f"{n}_qra" if m["oreg"] else f"{n}_qca") + "};")
+                continue
+            w(f"// M9K {n}: {'simple dual' if m.get('raddr') else 'single'} port, {W} bit x {1 << A} words, output register = {m['oreg']}")
             w(f"reg [{W - 1}:0] {n}_mem [0:{(1 << A) - 1}];")
             w(f"initial begin " + " ".join(f"{n}_mem[{k}] = {W}'h{v:X};" for k, v in enumerate(m["init"])) + " end")
             w(f"wire [{A - 1}:0] {n}_ad = {{{', '.join(reversed(m['addr']))}}};")
@@ -942,11 +1035,19 @@ def verilog(nl, module="cyc4_top"):
                 wr = f"if ({m['we']}) begin if ({m['be'][0]}) {n}_mem[{n}_ad][7:0] <= {n}_di[7:0]; if ({m['be'][1]}) {n}_mem[{n}_ad][15:8] <= {n}_di[15:8]; end"
             else:
                 wr = f"if ({m['we']}) {n}_mem[{n}_ad] <= {n}_di;"
-            if m.get("ce"):                                     # input clock enable ENA0 gates the address / data / write registers (ledger M-017)
+            if m.get("sdp"):                                    # simple dual port: write side on clk0 (input gate, core gate), read side on the read-address clock
+                cw = f"({m['ce_core']})" if m.get("ce_core") else "1'b1"
+                w(f"always @(posedge {m['clk']}) begin " + (f"if ({m['ce']}) " if m.get("ce") else "") + f"begin {wr.replace('if (' + m['we'] + ')', 'if (' + m['we'] + ' && ' + cw + ')', 1)} end end")
+                w(f"always @(posedge {m['clk_b']}) begin " + (f"if ({m['ce_b']}) " if m.get("ce_b") else "") + f"{n}_ar <= {rd}; end")
+                if m.get("ce_core_b"):                          # read core clock enable: the read data is latched only when enabled (hl_fifo_3: no read data change while rd = 0)
+                    w(f"reg [{W - 1}:0] {n}_qc = 0; wire [{A - 1}:0] {n}_arn = " + (f"({m['ce_b']}) ? {rd} : {n}_ar;" if m.get("ce_b") else f"{rd};"))
+                    w(f"always @(posedge {m['clk_b']}) if ({m['ce_core_b']}) {n}_qc <= {n}_mem[{n}_arn];")
+                w(f"always @(posedge {m['clk_o']}) {n}_qr <= {n}_mem[{n}_ar];")
+            elif m.get("ce"):                                     # input clock enable ENA0 gates the address / data / write registers (ledger M-017)
                 w(f"always @(posedge {m['clk']}) begin if ({m['ce']}) begin {n}_ar <= {rd}; {wr} end {n}_qr <= {n}_mem[{n}_ar]; end")
             else:
                 w(f"always @(posedge {m['clk']}) begin {n}_ar <= {rd}; {wr} {n}_qr <= {n}_mem[{n}_ar]; end")
-            w(f"assign {n}_q = " + (f"{n}_qr;" if m["oreg"] else f"{n}_mem[{n}_ar];"))
+            w(f"assign {n}_q = " + (f"{n}_qr;" if m["oreg"] else f"{n}_qc;" if m.get("sdp") and m.get("ce_core_b") else f"{n}_mem[{n}_ar];"))
             continue
         bitsv = m["content"]
         hexv = int("".join(str(int(b)) for b in bitsv[::-1]), 2) if bitsv.any() else 0

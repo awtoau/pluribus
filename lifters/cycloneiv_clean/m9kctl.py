@@ -27,6 +27,17 @@ WRITE_SLOTS = (12, 0, 1, 2, 3, 4, 5, 6, 7)
 CLASS_A = (13, 12, 11, 10, 9, 8)    # source: 8192 / (word width class) addresses = 2**A (by1 .. by16); class 5 = by32 / by36 (256 words, m9k.depth)
 
 
+# source: every non-port MEAB control group of the asmdb walk (names in docs/cycloneiv-clean-hardblocks.md); read as raw bit columns, values per m9k.WRITERS / the mode docs
+CONTROL_GROUPS = (
+    "RAM_DATA_WRITE_MODE", "RAM_DATA_WRITE_MODE_B", "RAM_CLOCK_FAST_MUX", "RAM_CLOCK_INVERT", "RAM_REG_DATA_OUT", "RAM_REG_DATA_OUT_B",
+    "RAM_CE_FAST_MUX", "RAM_CE_SELECT_INPUT", "RAM_CE_SELECT_INPUT_B", "RAM_CE_SELECT_CORE", "RAM_CE_SELECT_CORE_B", "RAM_CE_SELECT_OUTPUT",
+    "RAM_CE_SELECT_OUTPUT_B", "RAM_CE_INVERT", "RAM_NEW_DATA_MODE", "RAM_NEW_DATA_MODE_B", "RAM_USE_PACKED_MODE", "RAM_USE_TRUE_DUAL_PORT_MODE",
+    "RAM_SELECT_CLK_DATA_OUT", "RAM_SELECT_CLK_DATA_OUT_B", "RAM_SELECT_CLK_BYTE_ENABLE_DATA_B", "RAM_SELECT_CLK_READ_ENABLE_READ_ADDRESS_B",
+    "RAM_RE_FAST_MUX", "RAM_WE_FAST_MUX", "RAM_READ_ENABLE_INVERT", "RAM_WRITE_ENABLE_INVERT", "RAM_CLEAR_FAST_MUX", "RAM_CLEAR_INVERT",
+    "RAM_USE_CLR_DATA_OUT", "RAM_USE_CLR_DATA_OUT_B", "RAM_USE_CLR_READ_ADDRESS", "RAM_USE_CLR_READ_ADDRESS_B", "RAM_SELECT_CLR_DATA_OUT",
+    "RAM_SELECT_CLR_DATA_OUT_B", "RAM_SELECT_CLR_READ_ADDRESS_B", "RAM_USAGE_MODE")
+
+
 class M9kCtl:
     def __init__(self, walk, names_=None):
         import sys
@@ -43,9 +54,10 @@ class M9kCtl:
             if g["btype"] != MEAB:
                 continue
             nm = gt.get(g["type"])
-            if nm in ("RAM_MS_DATA_INPUT", "RAM_MS_WRITE_ADDRESS_INPUT", "RAM_MS_READ_ADDRESS_INPUT", "RAM_PIA_TO_INPUT_YGR", "RAM_MS_BYTE_ENABLE_INPUT"):
+            if nm in ("RAM_MS_DATA_INPUT", "RAM_MS_WRITE_ADDRESS_INPUT", "RAM_MS_READ_ADDRESS_INPUT", "RAM_PIA_TO_INPUT_YGR", "RAM_MS_BYTE_ENABLE_INPUT",
+                      "RAM_MS_DATA_INPUT_B", "RAM_MS_BYTE_ENABLE_INPUT_B"):
                 self.calc[(nm, g["gi"])] = ffctl.Calc(walk, g, bs, tab)
-            elif nm in ("RAM_DATA_WRITE_MODE", "RAM_CLOCK_FAST_MUX", "RAM_REG_DATA_OUT", "RAM_REG_DATA_OUT_B", "RAM_CE_FAST_MUX", "RAM_CE_SELECT_INPUT", "RAM_CE_INVERT"):
+            elif nm in CONTROL_GROUPS:
                 c = ffctl._cols(bs, walk.mux(g["paths"][0][0])["bits"], tab)
                 self.cols[(nm, g["gi"])] = np.stack([c[k] for k in sorted(c)], axis=1)
                 if nm == "RAM_CLOCK_FAST_MUX":
@@ -73,6 +85,9 @@ class M9kCtl:
         o["pia_all"] = np.stack([self.calc[("RAM_PIA_TO_INPUT_YGR", g)].select(bits) for g in range(12)], axis=1)
         o["cg"] = np.where(o["pia"][:, 0] >= 0, 0, np.where(o["pia"][:, 1] >= 0, 1, 0))
         o["clk_fast"] = np.where(o["cg"][:, None] == 0, bits[self.cols[("RAM_CLOCK_FAST_MUX", 0)]], bits[self.cols[("RAM_CLOCK_FAST_MUX", 1)]]).astype(np.int64)
+        o["data_b"] = np.stack([self.calc[("RAM_MS_DATA_INPUT_B", k)].select(bits) for k in range(18)], axis=1)
+        o["be_b"] = np.stack([self.calc[("RAM_MS_BYTE_ENABLE_INPUT_B", k)].select(bits) for k in range(2)], axis=1)
+        o["ctl"] = {nm_gi: bits[c].astype(np.int64) for nm_gi, c in self.cols.items()}              # (group, gi) -> [instances, n bits]
         o["oreg"] = bits[self.cols[("RAM_REG_DATA_OUT", -1)]][:, 0] == 0
         o["oreg_b"] = bits[self.cols[("RAM_REG_DATA_OUT_B", -1)]][:, 0] == 0
         # input-side clock enable (ledger M-017): RAM_CE_SELECT_INPUT bit 0 = ENA0 selected; RAM_CE_FAST_MUX gi 0 bit set = alternate PIA line, clear = preferred line

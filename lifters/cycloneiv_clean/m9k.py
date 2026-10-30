@@ -61,6 +61,18 @@ def index(width, word, bit):
     raise ValueError(f"width {width} not measured")
 
 
+# source: hl_rom_2 (x36 atom ROM, 128 x 32 MIF): every MIF bit (word w, bit b) sits at mem_init index 4608 + 36 * w + b (affine search over all 128 words, bits 0 / 1 / 17 / 18 / 31 exact),
+#         i.e. a plain stride-36 layout with the unconnected address bit 7 high (words 128..255); the two-lane layout of `index` belongs to the two-x18 single-port x32 / x36 builds
+ATOM36_STRIDE = 36
+
+
+def read_words_atom36(bitvals):
+    """bitvals[p] -> uint8 [256, 36] words of an explicit-mode-13 (x36 atom, simple dual port / ROM) block: index = word * 36 + bit."""
+    bitvals = np.asarray(bitvals, np.uint8)
+    i = np.arange(256)[:, None] * ATOM36_STRIDE + np.arange(ATOM36_STRIDE)[None, :]
+    return bitvals[pos_of_index(i)]
+
+
 def depth(width):
     return {1: 8192, 2: 4096, 4: 2048, 8: 1024, 9: 1024, 16: 512, 18: 512, 32: 256, 36: 256}[width]
 
