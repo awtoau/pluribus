@@ -8,7 +8,8 @@ Every node has fan-in 1 except LAB_CLK (30, the SCLK mux) and CLKBUF_OUT (0, roo
   - other 1-entry groups (flags 0 / 0, not in the default list: BLK_CLK_LIM -> LI, GEN_CORE_BUF -> C4 / C16 / R24 ...): programmed iff the bit is SET.
   - structural edges (empty group, fan-in 1) conduct when their destination is used downstream: demand propagates up the unique parent.
   - LAB side: LAB_CLOCK_FAST_MUX gi 0 / gi 1 pick one of 6 LAB clock lines (first-level bit j = BLK_CLK_BUF index j, input map in
-    asmdb); LE_CLOCK_SELECT bit of the LE: 1 = mux gi 0, 0 = mux gi 1.
+    asmdb) or, with the 7th first-level bit, a LAB_CONTROL_MUX (fabric clock; decoded in ffctl.py, which emit.py uses for FF clocks);
+    LE_CLOCK_SELECT bit of the LE: 1 = mux gi 0, 0 = mux gi 1 (arch_value 0: vendor value = NOT bit).
 """
 import numpy as np
 

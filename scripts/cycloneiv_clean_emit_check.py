@@ -164,6 +164,13 @@ def score_design(cx, d, workers):
     for k, L in mine.items():
         if k in lcs:
             ex = sum(1 for gi in range(4) if L["prod"][gi] is not None and L["prod"][gi][0] != "CO" and (k, gi) not in gt_pin)
+            if L["prod"][2] == ("FF",) + k and (k, 2) not in gt_pin:
+                # register feedback (LE_USE_REGISTER_FEEDBACK): direct connection, not in the RCF; GT = the datac net is the q of the FF at this site
+                ex -= 1
+                q = lambda n: re.sub(r"~q$", "", (n or "").lstrip("\\").strip())
+                ok = k in ffs and q(ffs[k]["con"].get("q")) == q(lcs[k]["con"].get("datac"))
+                out["lut_pin"]["matched" if ok else "wrong"] += 1
+                scope["lut_pin"]["info:register_feedback_" + ("matched" if ok else "wrong")] += 1
             out["lut_pin"]["extra"] += ex
             if ex:
                 scope["lut_pin"]["extra:pin_connected_where_gt_not_routed"] += ex
@@ -219,9 +226,9 @@ def score_design(cx, d, workers):
         else:
             out["ff_clock"]["wrong"] += 1
         dn = con.get("d", "").lstrip("\\").strip()
-        src = lc_name.get(re.sub(r"_combout$", "", dn).strip())
+        src = lc_name.get(re.sub(r"[_~]combout$", "", dn).strip())
         asd = con.get("asdata", "").lstrip("\\").strip()
-        asrc = lc_name.get(re.sub(r"_combout$", "", asd).strip()) if con.get("sload") == "vcc" else None
+        asrc = lc_name.get(re.sub(r"[_~]combout$", "", asd).strip()) if con.get("sload") == "vcc" else None
         if src == k:
             ok = F["d"] == "lc_%d_%d_%d" % k
         elif con.get("sload") == "vcc" and dn == "gnd":
@@ -349,7 +356,7 @@ def main():
     ctl = collections.Counter()
     for r in good:
         ctl.update(r["gt_ff_ctl"])
-    log.info("GT FF controls non-idle (not modelled): %s", dict(ctl))
+    log.info("GT FF controls non-idle: %s", dict(ctl))
     json.dump(dict(totals=tot, headline={c: round(headline(tot[c]), 3) for c in CATS}, scope={c: dict(d.most_common(40)) for c, d in scope.items()},
                    gt_ff_ctl=dict(ctl), rows=rows), open(os.path.join(OUT, f"emit_check_{a.tag}.json"), "w"), indent=0, default=str)
 

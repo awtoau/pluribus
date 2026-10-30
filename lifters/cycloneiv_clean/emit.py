@@ -31,6 +31,9 @@ UNCONNECTED = "1'b1"
 LI_PER_LAB = 38                  # source: lab_control.Implicit (n_li counted from the routing graph tile); asserted in Emitter.__init__
 GROUP_LE_INPUT = "LE_LUT_INPUT"  # source: libdb_asmdb arch-group-type table (gi 0..3, 16 sites)
 LAB_BLOCK = 18                   # source: fields.PLACED
+CLEAR_NONE = 10                  # source: LAB_CLEAR_FAST_MUX aux: input 10 = unconstrained second level (no source)
+F_ROWS = 90                      # source: fields.ROWS_PER_COLUMN
+LES_PER_LAB = 16                 # source: LE_LUT_INPUT groups: 16 sites
 # source: routing.rcf roots of input ports on rb_000..009 (10 designs, 0 contradictions; IO_DATAIN / IO_RAW_DATAIN -> Row / Column I/O pad, CLK_BUFFER -> Dedicated Clock pad): element S index = pad SUB_LOC
 PAD_SOURCES = ("IO_DATAIN", "IO_RAW_DATAIN", "CLK_BUFFER")
 # source: m9k.WRITERS / RAM_FLAGS (libcomp_asmram writers): the M9K control groups decoded in m9k.py
@@ -81,6 +84,8 @@ class Ctx:
         lab = np.arange(nlab)
         self.lx, self.ly = xs[lab // 90].astype(np.int64), (lab % 90 + 1).astype(np.int64)
         self.leinp = LeInputs(self.lut)
+        from . import ffctl
+        self.ffc = ffctl.FfCtl(self.lut, self.rt, self.ext.clocks)
         tile = (rt.x == xs[len(xs) // 2]) & (rt.y == 45)
         if int((tile & (self.enum == names.enum_of("LOCAL_INTERCONNECT"))).sum()) != LI_PER_LAB:
             raise SystemExit("LI_PER_LAB differs from the routing graph")
@@ -209,11 +214,16 @@ class Builder:
         live = cells.any(-1) | (ubuf & ygr[..., :2]).any(-1) | (ll_edge & ygr[..., 2]) | ffc          # LEs that exist before the selected-LOCAL_LINE pass
         ll_used = ll_edge | self._ll_selected(live, carry & cells.any(-1), sel)         # an FF-only LE's DATAC is its D input, not the carry
         reg_out = (ubuf & ~ygr[..., :2]).any(-1) | (ll_used & ~ygr[..., 2])
-        ffp = ffc | reg_out
+        self.lsig, self.lev = cx.ffc.lab_signals(bits), cx.ffc.le_val(bits)
+        # source: ASM_LE_USE_SYNC_CLEAR / _LOAD::process_atom: the shared LE bit is set only for a register whose sclr / sload term is connected -> a register exists
+        sync_ff = self.lev["LE_USE_SYNC_CLEAR"] == 1
+        nl.counts["ff_from_sync_bit_only"] = int((sync_ff & ~(ffc | reg_out)).sum())
+        ffp = ffc | reg_out | sync_ff
         # a LUT exists when its INIT is set or a used output path selects the LUT (a constant-0 LUT); an FF-only LE has no LUT
         lut_p = cells.any(-1) | (ubuf & ygr[..., :2]).any(-1) | (ll_used & ygr[..., 2])
         self.sel_only = lut_p & ~live        # constant-0 LUT claimed only by a selected LOCAL_LINE: no GT route reaches its pins
-        clk = np.where(ffp, cx.ext.clocks.le_blk(bits), -1)
+        grp = self.lev["LE_CLOCK_SELECT"]                                   # value = clock / enable signal index = LAB_CLOCK_FAST_MUX gi (ffctl.py)
+        clk = np.where(ffp, np.take_along_axis(self.lsig["clk_rec"], grp, axis=1), -1)
         self.bits, self.edges, self.parent, self.root, self.used_src = bits, edges, parent, root, used_src
         self.cells, self.carry, self.sel, self.ygr, self.ffp, self.lut_p, self.clk = cells, carry, sel, ygr, ffp, lut_p, clk
         nl.counts["ff_claim_reg_used"], nl.counts["ff_from_used_register_output"] = int(ffc.sum()), int((ffp & ~ffc).sum())
@@ -304,15 +314,25 @@ class Builder:
                 s = int(self.sel[lab, le, gi])
                 if gi == 2 and cin_mode:
                     L["mode"] = "cin"
-                    if le > 0 and (lab, le - 1) in lut_at:
-                        L["cin"] = f"co_{x}_{y}_{le - 1}"
+                    # source: ASM_CARRY_CHAIN_MONITOR_BASIC::validate_chain_le_locations@0xfb2b6: LE n > 0 <- LE n - 1 of the same LAB; LE 0 <- LE 15 of the
+                    #         LAB at Y + 1 (same X)
+                    src = (lab, le - 1) if le > 0 else (lab + 1 if (lab + 1) % F_ROWS else -1, LES_PER_LAB - 1)
+                    if src in lut_at:
+                        sx, sy = int(cx.lx[src[0]]), int(cx.ly[src[0]])
+                        L["cin"] = f"co_{sx}_{sy}_{src[1]}"
                         L["pins"][2] = L["cin"]
-                        L["prod"][2] = ("CO", x, y, le - 1)
-                        nl.counts["lut_cin_from_previous_le"] += 1
+                        L["prod"][2] = ("CO", sx, sy, src[1])
+                        nl.counts["lut_cin_from_previous_le" if le > 0 else "lut_cin_from_lab_above"] += 1
                     else:
                         L["pins"][2] = UNCONNECTED
-                        nl.und["carry chain entering a LAB / previous LE not a LUT"] += 1
+                        nl.und["carry-in source LE has no LUT" if src[0] >= 0 else "carry-in from LE 15 of a LAB above the last row"] += 1
                         L["und"] = L.get("und", []) + ["cin"]
+                    continue
+                if gi == 2 and self.lev["LE_USE_REGISTER_FEEDBACK"][lab, le] and self.ffp[lab, le]:
+                    # source: LE_USE_REGISTER_FEEDBACK set <-> the LE's DATAC input is its own register (ASM_LE_USE_REGISTER_FEEDBACK::process_atom@0x16c294)
+                    L["pins"][2] = f"ff_{x}_{y}_{le}"
+                    L["prod"][2] = ("FF", x, y, le)
+                    nl.counts["lut_datac_register_feedback"] += 1
                     continue
                 if s == -1 or self.sel_only[lab, le]:
                     L["pins"][gi] = UNCONNECTED
@@ -334,14 +354,16 @@ class Builder:
                 nl.counts["lut_pin_connected"] += 1
             nl.luts.append(L)
             lut_at[(lab, le)] = L
+        self.lut_at = lut_at
         # FFs
         labs, les = np.nonzero(self.ffp)
         for lab, le in zip(labs.tolist(), les.tolist()):
             x, y = int(cx.lx[lab]), int(cx.ly[lab])
             F = dict(name=f"ff_{x}_{y}_{le}", x=x, y=y, le=le, lab=lab, d=None, clk=None, clk_prod=None, clk_rec=None, und=[])
-            if (lab, le) in lut_at:
+            if (lab, le) in lut_at and not (self.lev["LE_USE_SYNC_CLEAR"][lab, le] and self.lsig["sync_state"][lab] in (4, 5)):
                 F["d"] = f"lc_{x}_{y}_{le}"
             else:
+                # sload tied high (LAB_ENABLE_SYNC_SIGNALS state 4 / 5, LE sync bit set): D = ASDATA; FF-only LE (no LUT) is the same path
                 # FF-only LE: D = ASDATA = the LE's DATAC input (gi 2); evidence: rb_000 FF-only LEs, ASDATA net = the LI selected by gi 2
                 s = int(self.sel[lab, le, 2])
                 rec = int(cx.li_rec[lab, s]) if 0 <= s < LI_PER_LAB else int(cx.ll_rec[lab, s - LI_PER_LAB]) if LI_PER_LAB <= s < LI_PER_LAB + 16 else -1
@@ -357,10 +379,59 @@ class Builder:
                 F["clk"], F["clk_prod"] = self.sig(b)
             else:
                 F["und"].append("clk")
-                nl.und["FF clock line (no LAB clock mux selection)"] += 1
-            for k in ("enable", "async clear", "sync clear", "sync load", "clock polarity", "power-up level"):
-                nl.und[f"FF {k} (modelled idle)"] += 1
+                nl.und["FF clock: selected LAB clock mux has no selection (first level 0)"] += 1
+            self._ff_controls(nl, F, lab, le)
             nl.ffs.append(F)
+
+    def _ff_controls(self, nl, F, lab, le):
+        """FF enable / async clear / sync clear / sync load / clock polarity from ffctl.py (vendor writers, value laws); fields: clk_inv, ena, aclr, sclr, sload, asdata."""
+        cx, ls, lv = self.cx, self.lsig, self.lev
+        g = int(lv["LE_CLOCK_SELECT"][lab, le])                  # clock and enable signal index = mux gi
+        inv = ls["invert"][lab]
+        # source: LAB_INVERT gi 2g = clock g polarity (value 1 = inverted), 2g + 1 = enable g (value 1 = positive), 4 = sload (1 = positive), 5 = sclr (1 = positive);
+        #         gi -> signal read off the ffc / rb corpus (875 clock, 156 enable, 94 sload FFs); the vendor signal-id table (ASM_SINGLE_LAB_MODEL_BASE ctor) is not read
+        sc = int(ls["clk_sel"][lab, g])
+        F["clk_inv"] = bool(inv[2 * g]) ^ (0 <= sc < 4)           # a LAB_CONTROL_MUX source flips the polarity bit (look_up_signal_polarity@0x1563ae), as for aclr
+        nl.counts["ff_clk_inverted" if F["clk_inv"] else "ff_clk_positive"] += 1
+
+        def ctl(key, rec, why, sense_inv):
+            if rec < 0:
+                F["und"].append(key)
+                nl.und[f"FF {key}: {why}"] += 1
+                return
+            F[key], F[key + "_prod"] = self.sig(rec)
+            F[key + "_rec"], F[key + "_inv"] = rec, bool(sense_inv)
+            nl.counts[f"ff_{key}_used" + ("_inverted" if sense_inv else "")] += 1
+        if ls["ce_on"][lab, g]:                                     # LAB_ENABLE_CE gi g value 1 = enable g used
+            ctl("ena", int(ls["ce_rec"][lab, g]), "LAB_CE_FAST_MUX selection not decoded", not inv[2 * g + 1])
+        ga = int(lv["LE_CLEAR_SELECT"][lab, le])                    # aclr signal index = LAB_CLEAR_FAST_MUX gi
+        sel = int(ls["aclr_sel"][lab, ga])
+        if sel == CLEAR_NONE:
+            nl.counts["ff_aclr_idle"] += 1
+        else:
+            # source: ASM_LAB_CLR_INVERT_PAIR::process_end_of_phase@0x15ee88: value bit ga = polarity; a LAB_CONTROL_MUX source flips it (look_up_signal_polarity@0x1563ae)
+            ctl("aclr", int(ls["aclr_rec"][lab, ga]), "LAB_CLEAR_FAST_MUX selection not decoded", bool(ls["clr_polarity"][lab, ga]) ^ (0 <= sel < 4))
+        if lv["LE_USE_SYNC_CLEAR"][lab, le]:                        # shared bit: sclr term connected OR sload term connected (ASM_LE_USE_SYNC_CLEAR / LOAD::process_atom)
+            st = int(ls["sync_state"][lab])
+            if st in (2, 3, 5):
+                ctl("sclr", int(ls["sclr_rec"][lab]), "LAB_SYNC_CLR_FAST_MUX selection not decoded", not ls["invert"][lab, 5])
+            if st in (4, 5):
+                F["sload_vcc"] = True                                 # FF-only LE: sload tied high, D = ASDATA (state 4 / 5)
+                nl.counts["ff_sload_vcc"] += 1
+            if st in (1, 3):
+                ctl("sload", int(ls["sload_rec"][lab]), "LAB_SYNC_LOAD_FAST_MUX_MAG selection not decoded", not inv[4])
+                s = int(self.sel[lab, le, 2])                         # asdata = the LE's DATAC input
+                rec = int(cx.li_rec[lab, s]) if 0 <= s < LI_PER_LAB else int(cx.ll_rec[lab, s - LI_PER_LAB]) if LI_PER_LAB <= s < LI_PER_LAB + 16 else -1
+                if rec >= 0:
+                    F["asdata"], F["asdata_prod"] = self.sig(rec)
+                    F["asdata_rec"] = rec
+                else:
+                    F["und"].append("asdata")
+                    nl.und["FF sync load: ASDATA (DATAC) source"] += 1
+            if st == -1:
+                F["und"].append("sync")
+                nl.und["FF sync controls: LAB_ENABLE_SYNC_SIGNALS state not in the vendor value table"] += 1
+        nl.counts["ff_power_up_low"] += 1                           # no power-up configuration group exists (ASM_REG_POWER_UP_MONITOR writes no bits); all corpus FFs are `low`
 
     # ---- IO ----------------------------------------------------------------------------------------------------------------------
     def _io(self, nl, bits):
@@ -509,7 +580,7 @@ def verilog(nl, module="cyc4_top"):
     others = {io["ball"]: io for io in nl.ios if io["dir"] not in ("input", "output")}
     w(f"// pluribus cycloneiv_clean emit: {nl.label}")
     w("// flat structural netlist; `// UNDECODED:` lines mark pieces the decoders do not cover (counts below)")
-    w("// FF model: posedge, power-up 0, enable / clear / sync-clear / sync-load idle")
+    w("// FF model (dffeas): async clear, then on clk edge with ena: sclr -> 0, sload -> asdata, else d; power-up 0; controls decoded per FF (ffctl.py)")
     for k, v in sorted(nl.und.items()):
         w(f"// UNDECODED count: {k}: {v}")
     ports = [f"input wire pad_{b}" for b in sorted(inputs)] + [f"output wire pad_{b}" for b in sorted(outputs)] + \
@@ -534,11 +605,22 @@ def verilog(nl, module="cyc4_top"):
         if L["mode"] == "cin":
             w(f"assign co_{L['x']}_{L['y']}_{L['le']} = I_{n}[{{1'b0, {c_}, {b_}, {a_}}}];")
         else:
-            w(f"assign co_{L['x']}_{L['y']}_{L['le']} = 1'b0;")
+            # source: cycloneiv_atoms.v cycloneiv_lcell_comb: cout = lut4(mask, dataa, datab, cin, 1'b0) in every mode; a LE not using the chain has cin = gnd
+            #         (LE_USE_CARRY set: carry-in term unconnected, ASM_LE_USE_CARRY::process_atom@0x16c186)
+            w(f"assign co_{L['x']}_{L['y']}_{L['le']} = I_{n}[{{1'b0, 1'b0, {b_}, {a_}}}];")
     for F in nl.ffs:
         n = F["name"]
         if F["clk"] is not None and F["d"] is not None:
-            w(f"always @(posedge {F['clk']}) {n} <= {F['d']}; // UNDECODED: enable, clears, sync load, clock polarity (idle)" + (f"; {'; '.join(F['und'])}" if F["und"] else ""))
+            def x(key, idle):
+                return idle if F.get(key) is None else (f"(~{F[key]})" if F.get(key + "_inv") else F[key])
+            clk = f"(~{F['clk']})" if F.get("clk_inv") else F["clk"]
+            clrn, ena, sclr, sload, asd = x("aclr", "1'b1"), x("ena", "1'b1"), x("sclr", "1'b0"), x("sload", "1'b0"), F.get("asdata") or "1'b0"
+            ev = f"posedge {clk}" + (f" or negedge {clrn}" if F.get("aclr") is not None else "")
+            body = f"{n} <= {sclr} ? 1'b0 : {sload} ? {asd} : {F['d']};"
+            body = body.replace(f"{sclr} ? 1'b0 : ", "") if F.get("sclr") is None else body
+            body = body.replace(f"{sload} ? {asd} : ", "") if F.get("sload") is None else body
+            w(f"always @({ev}) begin" + (f" if (!{clrn}) {n} <= 1'b0; else" if F.get("aclr") is not None else "") +
+              (f" if ({ena}) " if F.get("ena") is not None else " ") + body + " end" + (f" // UNDECODED: {'; '.join(F['und'])}" if F["und"] else ""))
         else:
             w(f"// UNDECODED: {n} has no clock or D source ({'; '.join(F['und'])}); register not clocked")
     for io in nl.ios:

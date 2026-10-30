@@ -71,7 +71,7 @@ Measured 2026-10-30, Quartus 25.1 EP4CGX150 asmdb, existing corpus only (0 new b
 
 ## Open
 
-- Value to bit pattern (arch values per selection) for each group not decoded: `Field.values` holds the raw arch values only.
+- Value to bit pattern for the LAB register-control groups: decoded (`docs/cycloneiv-clean-ffctl.md`); other groups: `Field.values` holds the raw arch values only.
 - Bases for HIO / VIO CRAM bits, clock, PLL, GX, HSSI: BLOCK_INFO lists keys 2..14 not yet interpreted.
 - No MAC, PLL, or carry-chain specimen in the corpus; RAM port input muxes and LE input muxes unvalidated by pair.
 - Sampling-plan builds (4 corners + seeded centre) not started: nothing required a new build to confirm the fields above.
