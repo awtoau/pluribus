@@ -21,9 +21,9 @@ Measured 2026-10-30, Quartus 25.1 EP4CGX150 asmdb, existing corpus only (0 new b
 | LAB 18 | 37 (0 / 37 / 0) | 1,245 | 9,360 | yes |
 | MEAB 39 | 147 (0 / 147 / 0) | 10,483 | 720 | yes |
 | MAC 41 | 93 (0 / 93 / 0) | 578 | 360 | yes |
-| HIO 5 / VIO 6 | 55 / 53 | CFF, #168 (CRAM offsets relative) | 131 / 325 | CFF only |
+| HIO 5 / VIO 6 | 55 / 53 | std / dumb: absolute addresses (CRAM tag 0, CFF tag 0xA), see hardblocks doc | 131 / 325 | absolute |
 | DEDICATED_CLOCK 60 / NEG 61 | 2 / 2 | 50 / 50 | none (lists keys 3..14, base not decoded) | no |
-| CONTROL 8, DEVICE 72, FAST_PLL 43, GENERAL_PLL 45, CLKBUF_GCLK 73, OCT_CAL 98, GX_* 64/67/70/216-219, HSSI_PCIE_HIP 226, HSSI_STRIP 227 | 24, 13, 102, 101, 126, 15, 4/85/17/194/204/168/56, 974, 3,840 | relative only | no BLOCK_INFO instance list (HSSI_STRIP has one, key 3, base not decoded) | no |
+| CONTROL 8, DEVICE 72, FAST_PLL 43, GENERAL_PLL 45, CLKBUF_GCLK 73, OCT_CAL 98, GX_* 64/67/70/216-219, HSSI_PCIE_HIP 226, HSSI_STRIP 227 | 24, 13, 102, 101, 126, 15, 4/85/17/194/204/168/56, 974, 3,840 | std / dumb: absolute addresses, no instance list | none (HSSI_STRIP key 3 = CFF base) | absolute, see hardblocks doc |
 
 - 605 default objects (597 mux settings + 8 bit-calc); default-bit list 2,518 = 2,319 CRAM + 104 CFF + 95 option (walk now keeps it; matches docs/cycloneiv-address-spaces.md).
 
