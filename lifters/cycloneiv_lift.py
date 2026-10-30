@@ -83,6 +83,23 @@ class CycloneIVLift:
     def __init__(self, die):
         self.geom = cg.load(die)
 
+    def lift_clean(self, rbf, ctx=None, label=None):
+        """Clean pipeline (lifters/cycloneiv_clean/emit.py, #165): rbf path -> (Design, Netlist).  Design carries luts / ffs in this module's dict
+        shape (pins a..d / cin, d / clk); undecoded pieces are in Netlist.und / Netlist.srcs and Design.not_lifted, never guessed."""
+        from lifters.cycloneiv_clean import emit
+        nl = emit.Builder(ctx or emit.Ctx(), rbf, label).run()
+        des = Design()
+        for L in nl.luts:
+            a, b, c, d = L["pins"]
+            des.luts.append({"name": L["name"], "x": L["x"], "y": L["y"], "le": L["le"], "init": L["init"], "mode": L["mode"], "a": a, "b": b,
+                             "c": c, "d": d, "cin": L["cin"] or "1'b0", "z": L["name"], "cout": f"co_{L['x']}_{L['y']}_{L['le']}"})
+        for F in nl.ffs:
+            des.ffs.append({"name": F["name"], "x": F["x"], "y": F["y"], "le": F["le"], "d": F["d"], "clk": F["clk"], "q": F["name"]})
+        des.used_les = len(nl.luts)
+        des.terminals = {n: ("UNDECODED", c) for n, (_t, c) in nl.srcs.items()}
+        des.not_lifted.update(nl.und)
+        return des, nl
+
     def tracer(self, plane):
         raise NotImplementedError("no routing tracer: learned tables retired (#165); pass tracer= (clean P2 pending)")
 
