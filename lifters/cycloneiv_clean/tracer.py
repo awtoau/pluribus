@@ -333,10 +333,15 @@ class Extras:
         st.esrc = np.concatenate([st.esrc, self.bim.esrc])
         st.edst = np.concatenate([st.edst, self.bim.edst])
         st._key = None
+        import sys
+        sys.path.insert(0, ddb.SCRIPTS)
+        import cycloneiv_clean_dirt as D
+        from . import clkbuf
+        self.clkbuf = clkbuf.ClkbufIn(st, rt or ddb.Routing(), self.bim, lut.walk, D.enum_tables()["arch_group_type"])
 
     def apply(self, bits, fired):
         """{variant: edge ids} with the clock and LAB-control edges added to every variant."""
-        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits)])
+        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits), self.clkbuf.apply(bits)])
         return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp])) for v, e in fired.items()}
 
 

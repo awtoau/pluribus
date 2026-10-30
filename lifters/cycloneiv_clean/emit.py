@@ -517,7 +517,7 @@ class Builder:
                     nl.und[f"IO {f}"] += 1
             if io["dir"] in ("output", "bidir-or-tristate"):
                 if site[0] == 6:
-                    sub = B.SUB_LOC_BIM.get(k)
+                    sub = B.vio_pin(k)
                     rec = int(cx.find(e_bim, x + sub[0], y, 0, sub[1])) if sub else -1
                     if rec >= 0 and self.parent[rec] >= 0:
                         io["drv"], io["drv_prod"] = self.sig(rec)
@@ -535,7 +535,11 @@ class Builder:
                         nl.und["HIO output pad: data mux selects no LOCAL_INTERCONNECT"] += 1
             if io["dir"] == "bidir-or-tristate":
                 li = self._hio_li(cx.hio_oe, bits, site, x, y) if site[0] == 5 else -1
-                if li >= 0:
+                sub = B.vio_pin(k, "OE") if site[0] == 6 else None
+                rec = int(cx.find(e_bim, x + sub[0], y, 0, sub[1])) if sub else -1
+                if rec >= 0 and self.parent[rec] >= 0:
+                    io["oe"], io["oe_prod"] = self.sig(rec)
+                elif li >= 0:
                     io["oe"], io["oe_prod"] = self.sig(li)
                 else:
                     io["und"].append("output enable")
@@ -545,9 +549,10 @@ class Builder:
             nl.ios.append(io)
 
     def _hio_li(self, line, bits, site, x, y):
-        """LOCAL_INTERCONNECT record feeding a HIO pad pin (io_line.Line input number < 38 = LI index of the pad's tile), -1 if none."""
+        """LOCAL_INTERCONNECT record feeding a HIO pad pin (io_line.Line input number < 42 = LI index of the pad's tile), -1 if none."""
+        from . import bim
         i = line.select(bits, site[1])
-        return int(self.cx.find(names.enum_of("LOCAL_INTERCONNECT"), x, y, 0, i)) if 0 <= i < LI_PER_LAB else -1
+        return int(self.cx.find(names.enum_of("LOCAL_INTERCONNECT"), x, y, 0, i)) if 0 <= i < bim.hio_li_count() else -1
 
     def _mac(self, nl, md, i, x, y):
         """18 x 18 multiplier model of one MAC tile (macctl.py).  Pins come from the LOCAL_INTERCONNECT records of the tile."""

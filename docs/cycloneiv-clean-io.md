@@ -360,3 +360,14 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 - `asm_convert_db_to_asm_iost` (libcomp_asm) is the path of the other families; it does not apply here.
 - Differential builds (`scripts/cycloneiv_clean_io_lvds.py`): LVDS input on a `p` pad: IOST 11 on p and n, clamp 0. RSDS_E_3R / mini-LVDS_E_3R / PPDS_E_3R outputs on a `p` pad (3 pads x 3 standards, 9 ok; LVDS and mini-LVDS outputs and mini-LVDS inputs are refused by the fitter): IOST 3 (dirt `*_3R` = 3) at p, `USE_PSEUDO_DIFFERENTIAL_OUTPUT` bit on p and n, strength bits on both (p: pull-down bits 0 1 2 4 5 6, pull-up bits 0 1 2 6; n: pull-down 4 6, pull-up 5 6) and slew bit 1 on n; the three standards are CFF-identical.
 - The 6 image sites with stray bits (IOST 3 or 7, single strength bits, ground state minus one bit) match none of these patterns: still MISSING.
+
+## Block interfaces (routing.ddb, #171, E-R6)
+
+- Pool: 28 `DYGR_ROUTE_BLOCK_INTERFACE` objects, then 983 `_NODE` objects (registration order = NEW tags of the interface vectors). `lifters/cycloneiv_clean/blockiface.py` parses it (cache `tmp/ddb/<die>_block_interfaces.json`).
+- Type 0 interfaces (HIOL, HIOR, LAB, MAC, MEAB, VIO): LAB_LINE (LI) / LOCAL_LINE nodes with their BLOCK_INPUT_MUX connections; HIO LI count 42.
+- Type 1 interfaces: LEIM (BLOCK_INPUT_MUX) nodes. VIO_L, VIO_R, HIO: connection to element IO = (DB_INPUT_PORT_TYPE, z = SUB_LOC, index) = the pad pin the BIM drives. CM_*, PLL<n>: connection to pin INCLK / ENA / CLKSELECT of CLKBUFBLOCK.
+- HIO: BIM = 8 z + pin offset (ARESET 0, SRESET 1, INCLKENA 2, OUTCLKENA 3, OE 4, DATAIN 5 / 6, CLK 7).
+- VIO_R serves z = 0, 1 (BIM tile x + 1), VIO_L z = 2, 3 (tile x).
+- Pins bound to asm groups in `bim.PINS`: DATA gi 0 / 1, OE, CLR, SCLR, INREG CE, OUTREG CE. Unbound: OEREG CE, INREG / OUTREG CLK (ledger B-008).
+- The assembler never writes a BIM index: `ASM_RE_PROXY::get_first_useful_re_source` skips the BIM and `mux_select` takes the LI index.
+- Clock buffers (`clkbuf.py`): CLKBUF_IN (z 28..33, index I) has one parent; group `CLKBUF_CLK_INPUT_SELECT_CYCLONEII` (block 73, 30 sites) names I; ledger B-010, B-011.

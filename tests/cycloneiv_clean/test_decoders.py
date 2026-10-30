@@ -190,12 +190,18 @@ def _bim_edges(tr, d):
     return {int(tr.st.edge_ids([rec[ix[a]]], [rec[ix[b]]])[0]) for a, b in gt}
 
 
+def _vio_rows(tr, prog):
+    """programmed LI -> BLOCK_INPUT_MUX edges of the VIO rows (BIM tile y = 0, 91); HIO columns are scored by the gate."""
+    rt = tr.ext.clocks.rt
+    return {e for e in prog if int(rt.y[tr.st.edst[e]]) in (0, 91)}
+
+
 def test_vio_bim_data_edges(tr):
-    """LI -> BLOCK_INPUT_MUX of VIO pad data pins: every ground-truth edge of rb_000..009 is programmed by MIO_LABLINE_TO_DATA gi 0 + SUB_LOC_BIM."""
+    """LI -> BLOCK_INPUT_MUX of VIO pad pins: every ground-truth edge of rb_000..009 is programmed by the IO LABLINE groups (bim.PINS, pin -> BIM from routing.ddb)."""
     tot = collections.Counter()
     for d in DESIGNS:
         bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
-        prog = set(tr.ext.bim.apply(bits).tolist())
+        prog = _vio_rows(tr, set(tr.ext.bim.apply(bits).tolist()))
         ids = _bim_edges(tr, d)
         assert -1 not in ids                                      # every GT BIM edge exists in the (extended) edge table
         tot["gt"] += len(ids)
@@ -213,7 +219,7 @@ def test_vio_bim_specimens(tr):
     for d in sorted(glob.glob(os.path.join(BIM_SPEC, "*", "routing.rcf"))):
         d = os.path.dirname(d)
         bits = T.plane_bits(os.path.join(d, "build.rbf"))
-        prog = set(tr.ext.bim.apply(bits).tolist())
+        prog = _vio_rows(tr, set(tr.ext.bim.apply(bits).tolist()))
         ids = _bim_edges(tr, d)
         tot["gt"] += len(ids)
         tot["matched"] += len(ids & prog)

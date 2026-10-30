@@ -1,13 +1,13 @@
 # Cyclone IV GX decoder rules ledger (#165, 2026-10-30)
 
-Ledger: `reference/rules.tsv` (98 rows). Test: `tests/test_rules_ledger.py` (parse, status on every row, every clean-tree module / JSON table / module-level rule table named, SPECIMEN_ONLY queue shown as xfail with count).
+Ledger: `reference/rules.tsv` (105 rows). Test: `tests/test_rules_ledger.py` (parse, status on every row, every clean-tree module / JSON table / module-level rule table named, SPECIMEN_ONLY queue shown as xfail with count).
 Columns: id, module, rule, derivation (CODE | SPECIMEN | MIXED), source (function@vaddr / vendor data file, plus the chain specimen -> group -> class -> function where one exists), corpus_check (matched / missing / extra / wrong and held-out set), status, notes.
 Method (Dan): single-feature pair diff = exact label -> asmdb group -> group-type name -> `class_groups_table.json` binding -> ASM_* class -> process_atom / ctor / value table -> check the code reproduces the value -> bit pattern.
 Static analysis only. Ghidra read-only snapshot + readable export + cached decompiles; main project never locked.
 
 ## Counts by status
-- CONFIRMED_BY_CODE: 66
-- SPECIMEN_ONLY: 30 (about 10 of these are not decoder rules: oracle plumbing, labels, emission conventions: L-002 L-003 L-004 L-011 L-016 T-005 E-007 I-006 and similar)
+- CONFIRMED_BY_CODE: 70
+- SPECIMEN_ONLY: 33 (about 10 of these are not decoder rules: oracle plumbing, labels, emission conventions: L-002 L-003 L-004 L-011 L-016 T-005 E-007 I-006 and similar)
 - CODE_CONTRADICTS: 0
 - UNKNOWN: 2 (C-003 global-network clock inversion, I-012 VREF pad)
 - Rows citing a vaddr from an earlier doc without a re-read here are marked in notes; re-read this session: F-001 F-007 F-010 F-011 F-012 R-001 R-002 B-004 I-001 O-003.
@@ -33,8 +33,9 @@ Static analysis only. Ghidra read-only snapshot + readable export + cached decom
 - S-02 closed (R-003 decision logic stays ours: ambiguity is real).
 - S-03 Carry-in source and skip-half flag for 0x30 (F-015, F-016): specimen only; no assembler check exists for Stingray.
 - S-04 / S-05 IO joint states, strength, termination: fitter-side values (I-003, I-004, I-005, I-007), plus unread registered-IO CRAM groups (I-010) and unused-pin pull-up (I-009).
-- S-06 BIM index of pad pins (B-005; 1,305 HIO LI -> BIM pips): not in routing.ddb (E-R4); search the placement side.
+- S-06 closed: BIM index of pad pins is in the routing.ddb block interfaces (B-005, E-R6). Remaining from it: B-007 tile offset of VIO L / R, B-008 CE / CLK group -> pin binding, B-009 tile -> CM_ interface, B-011 clock buffer site order (S-12).
 - S-07 PLL placement and defaults (P-002 PLL_k -> (type, path), P-004 unused counter 15 / 15 / 3, P-006): libcomp_asmpll location -> index and counter default branches unread.
 - S-08 M9K / MAC (M-002 M-006 M-007 M-010 M-011): owned by the M9K / MAC agent; recorded only, posted to #169.
 - S-09 Tracer default-bit and structural clock edges (T-003 120 edges, T-004 145,283 edges): no code reading of default-list conduction.
+- S-12 clock buffer site order (B-011); BIM of the clock buffer core inputs (CLKBUF_INTERFACE_COREIN gi 0..24, block 73) not bound to LI -> BIM edges of the CM_* tiles (5 GT edges in the 342-design sample).
 - Not rules (no action): L-002 L-003 L-004 L-011 L-016 T-005 E-004 E-007 I-006.

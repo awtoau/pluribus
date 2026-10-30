@@ -16,13 +16,13 @@ AMBIGUOUS, NONE = -2, -1
 
 
 class Line:
-    def __init__(self, w, names, btype, name, gi=-1, tables=None):
+    def __init__(self, w, names, btype, name, gi=-1, tables=None, n_inputs=None):
         tab = tables or P.load_tables()
         self.g = next(g for g in w.groups() if g["btype"] == btype and names.get(g["type"]) == name and g["gi"] == gi)
         self.n_sites = len(self.g["paths"])
         nxt = w.mux(self.g["data"][0]["nxt"])["bits"] if self.g["data"][0]["nxt"] else None
         first = w.mux(self.g["paths"][0][0])
-        self.n_inputs = len(first["bits2"]) if first["cls"] == S.HETERO_ENCODED else len(nxt) if nxt else 0
+        self.n_inputs = n_inputs if n_inputs is not None else len(first["bits2"]) if first["cls"] == S.HETERO_ENCODED else len(nxt) if nxt else 0
         self.w = w
         self.offs, self.cells, self.pat = [], [], []
         for s in range(self.n_sites):

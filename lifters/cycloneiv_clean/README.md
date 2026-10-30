@@ -8,7 +8,7 @@ Cyclone IV GX (EP4CGX150) address engine rebuilt from vendor-derived facts only.
 - `plane.py`: geometry (A6) and the sof -> rbf closed form (A5). `address_to_plane` = raw address as sof bit index, then A5 (one function for routing and LUT cells); `CANDIDATES` keeps the rejected alternative for the oracles.
 - `sofio.py`: sof / rbf file helpers around `quartus_cpf` (black box).
 - `names.py`: RCF element names (A7).
-- `reg_used.py`: register-used claim per LE (YGR output select x used LE_BUFFER; no dedicated bit exists). `bim.py`: LI -> BLOCK_INPUT_MUX of VIO pad data pins (MIO_LABLINE_TO_DATA gi 0 + SUB_LOC -> BIM labels).
+- `reg_used.py`: register-used claim per LE (YGR output select x used LE_BUFFER; no dedicated bit exists). `bim.py`: LI -> BLOCK_INPUT_MUX of VIO / HIO pad pins (IO LABLINE groups; pin -> BIM from `blockiface.py`, the routing.ddb block interfaces) and BLOCK_INPUT_MUX -> CLKBUF_IN. `clkbuf.py`: clock buffer input select (block 73) and the fixed wires into CLKBUF_IN.
 - `clocks.py`, `lab_control.py`, `muxsel.py`: clock network + register clock lines, LI -> LAB_CONTROL_MUX through the LAB_PIA_TO_INPUT input map, LAB mux selection decode (tests `test_decoders.py`).
 - `tracer.py`: P2. rbf -> programmed edges (4 flag-rule variants), nets, LUT INIT cells, IO default-pattern classes; RCF ground-truth parse. CLI: `python3.15t -m lifters.cycloneiv_clean.tracer <rbf> <out.npz>`.
 - Gate (P3): `scripts/cycloneiv_clean_gate.py`; baseline rows in `gate_runs` (`params.baseline`), log `tmp/logs/cycloneiv_clean_gate.log`, results `tmp/cycloneiv_clean/gate_*.json`.
