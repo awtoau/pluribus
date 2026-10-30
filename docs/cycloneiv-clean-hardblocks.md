@@ -58,7 +58,7 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 - Instance: `mac.instance(x, y)` = column rank * 90 + (Y - 1); 4 MUL columns.
 - Pair builds at two MAC sites (X103_Y87, X43_Y87), 12 features: 32 matched / 3 missing / 2 extra / 0 wrong.
   - Clean one-cell signatures (both columns): `MAC_SIGN_INVERT` gi 0 = signa, gi 1 = signb (unsigned = bit set, signed = cleared); dynamic sign ports set `MAC_PIA_TO_SIGN` gi 0 / 1; 9-bit width sets `MAC_USE_NINE_BIT_DATA_WIDTH_PER_ROW`.
-  - Input / multiplier register: all three give the same signature (`MAC_CLK_FAST_MUX`, `MAC_PIA_TO_CLK`): the clock connection is decoded, which register is enabled is not (missing).
+  - Input / multiplier register: A input register = `MAC_ROW_IREG_*_DATA` gi 0, B = gi 1, output (multiplier) register = `MAC_ROW_OREG_UPPER_DATA` gi 0 + 1 (docs/cycloneiv-clean-mac.md).
   - Output register: `MAC_CLK_FAST_MUX` + `MAC_ROW_OREG_UPPER_DATA`; the second column placed at another instance in the pinned build, so cross-column score is 0 / 3 / 2 / 0.
 - Not decoded (missing): operation mode beyond signed / 9-bit (accumulator, chain, shift, rotate, saturation, rounding), coefficient data, row data input muxes. 210,960 CRAM bits claimed by group, 1 mode field isolated per pair.
 - Dedicated build for the 36x36 / 9x18 / two-multiplier modes exists (`gxhb_mac_w36`, `gxhb_mac_w9x18`, `gxhb_mac_two_mult_w9`) but landed on different instances than any base; not scored.
@@ -77,7 +77,7 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 | PLL_8 | M 20, N 1, c0 4 / 4, c3 8 / 8, other counters bypass |
 | M9K instances with content bits set | 8 of 720 (12,993 of 6,635,520 content bits set); content address map: 0 unmapped |
 | M9K instances with `RAM_USE_TRUE_DUAL_PORT_MODE` set / `RAM_REG_DATA_OUT` set | 364 / 454 |
-| MAC instances with any set control bit | 87 of 360; mode decode = MISSING (542 M9K tiles carry output edges, 0 MAC edges) |
+| MAC instances with any set control bit | 87 of 360, all decoded (registers, signs, pins): docs/cycloneiv-clean-mac.md |
 
 - Port width of an image M9K is not in the config bits (set by wired ports), so content is mapped to mem_init order only; logical (word, bit) needs the width from routing.
 

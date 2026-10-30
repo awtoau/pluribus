@@ -105,6 +105,18 @@ class Clocks:
         ok = ln >= 0
         return np.unique(self.blk[lab[ok], ln[ok]])
 
+    def chain(self, recs):
+        """structural edge ids from the unique parents of the BLK_CLK_BUF records `recs` up to the root (same walk as apply, other sinks)."""
+        got, seen, front = [], set(), np.unique(np.asarray(recs, np.int64))
+        while len(front):
+            pe = self.parent_edge[front]
+            pe = pe[pe >= 0]
+            pe = np.array([e for e in pe.tolist() if e not in seen], np.int64)
+            seen.update(pe.tolist())
+            got.append(pe)
+            front = np.unique(self.st.esrc[pe].astype(np.int64)) if len(pe) else pe
+        return np.unique(np.concatenate(got)) if got else np.zeros(0, np.int64)
+
     def apply(self, bits, edges):
         """edges: programmed real edge ids (one variant).  -> ids with the default-bit edges replaced by the cleared-bit rule and the
         structural edges that carry a used clock added."""

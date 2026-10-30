@@ -59,13 +59,20 @@ RUN_LIMIT_S = 120
 
 
 def vo_ports(path):
+    """-> (top, ins, outs, buses): ins / outs are bit-expanded names (`da[3]` for a bus bit), buses = {name: width} (scalar ports are not in it)."""
     t = open(path).read()
     m = re.search(r"^module (\w+)", t, re.M)
     head = t[t.index("module "):t.index(");", t.index("module "))]
     ports = {p.strip() for p in head[head.index("(") + 1:].replace("\n", " ").split(",")}
-    ins = [p for p in re.findall(r"^input\s+(\S+);", t, re.M) if p in ports]
-    outs = [p for p in re.findall(r"^output\s+(\S+);", t, re.M) if p in ports]
-    return m[1], ins, outs
+    ins, outs, buses = [], [], {}
+    for kind, hi, lo, name in re.findall(r"^(input|output)\s*(?:\[(\d+):(\d+)\])?\s*(\S+);", t, re.M):
+        if name not in ports:
+            continue
+        names = [name] if not hi else [f"{name}[{k}]" for k in range(int(lo), int(hi) + 1)]
+        if hi:
+            buses[name] = int(hi) - int(lo) + 1
+        (ins if kind == "input" else outs).extend(names)
+    return m[1], ins, outs, buses
 
 
 def run_one(cx, d, cycles, seed):
@@ -77,7 +84,7 @@ def run_one(cx, d, cycles, seed):
     nl = emit.Builder(cx, os.path.join(d, "bitstream.rbf"), name, 2).run()
     mine_v = os.path.join(wd, "emit.v")
     open(mine_v, "w").write(emit.verilog(nl))
-    top, ins, outs = vo_ports(os.path.join(d, "postfit.vo"))
+    top, ins, outs, buses = vo_ports(os.path.join(d, "postfit.vo"))
     pins = C.parse_pin(os.path.join(d, "build.pin"))
     nets = T.parse_rcf(os.path.join(d, "routing.rcf"))
     clock_ports, srcmap = set(), {}
@@ -94,22 +101,32 @@ def run_one(cx, d, cycles, seed):
         gt_in.append(p)
     # TB
     lines = ["`timescale 1ps/1ps", "module tb;", "reg clk = 0;"]
+    bus_of = lambda p: p.split("[")[0] if "[" in p else None
     for p in ins:
-        if p not in clock_ports:
+        if bus_of(p) is None and p not in clock_ports:
             lines.append(f"reg r_{p} = 0;")
-    gt_conn = [f".{p}({'clk' if p in clock_ports else 'r_' + p})" for p in ins]
+    for bname, bw in buses.items():
+        if any(q.startswith(bname + "[") for q in ins):
+            lines.append(f"reg [{bw - 1}:0] r_{bname} = 0;")
+        if any(q.startswith(bname + "[") for q in outs):
+            lines.append(f"wire [{bw - 1}:0] g_{bname}, m_{bname};")
+    gt_conn = [f".{p}({'clk' if p in clock_ports else 'r_' + p})" for p in ins if bus_of(p) is None]
+    gt_conn += [f".{b}(r_{b})" for b in buses if any(q.startswith(b + "[") for q in ins)]
     comparable, uncomp = [], collections.Counter()
     for p in outs:
         ball = pins.get(p, (None,))[0]
         io = ports.get(ball)
         if io is not None and io["dir"] == "output" and io.get("drv") is not None:
-            lines.append(f"wire g_{p}, m_{p};")
-            gt_conn.append(f".{p}(g_{p})")
+            if bus_of(p) is None:
+                lines.append(f"wire g_{p}, m_{p};")
+                gt_conn.append(f".{p}(g_{p})")
             comparable.append((p, ball))
         else:
-            lines.append(f"wire g_{p};")
-            gt_conn.append(f".{p}(g_{p})")
+            if bus_of(p) is None:
+                lines.append(f"wire g_{p};")
+                gt_conn.append(f".{p}(g_{p})")
             uncomp["no_pad" if io is None else "undecoded_driver" if io["dir"] == "output" else "dir_" + str(io["dir"])] += 1
+    gt_conn += [f".{b}(g_{b})" for b in buses if any(q.startswith(b + "[") for q in outs)]
     lines.append(f"{top} gt(" + ", ".join(gt_conn) + ");")
     m_conn = []
     for io in nl.ios:
@@ -133,8 +150,11 @@ def run_one(cx, d, cycles, seed):
               f"reg [{len(comparable) or 1}:0] badp = 0;",
               "initial begin", "bad = 0;", f"for (cyc = 0; cyc < {cycles}; cyc = cyc + 1) begin"]
     for p in ins:
-        if p not in clock_ports:
+        if bus_of(p) is None and p not in clock_ports:
             lines.append(f"  r_{p} = $random(seed);")
+    for b in buses:
+        if any(q.startswith(b + "[") for q in ins):
+            lines.append(f"  r_{b} = $random(seed);")
     lines += [f"  #{HALF} clk = 1; #{HALF};", f"  if (cyc >= {WARMUP}) begin"]
     for i, (p, ball) in enumerate(comparable):
         lines.append(f"    if (g_{p} !== m_{p}) begin badp[{i}] = 1; bad = bad + 1; end")

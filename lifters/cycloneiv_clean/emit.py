@@ -22,7 +22,7 @@ import re
 
 import numpy as np
 
-from . import ddb, names
+from . import ddb, mac, names
 from . import plane as P
 
 # source: scripts/cycloneiv_clean_gate.py parse_vo on 16,763 corpus .vo files: every unconnected LUT input whose function depends on it is VCC
@@ -33,6 +33,7 @@ GROUP_LE_INPUT = "LE_LUT_INPUT"  # source: libdb_asmdb arch-group-type table (gi
 LAB_BLOCK = 18                   # source: fields.PLACED
 CLEAR_NONE = 10                  # source: LAB_CLEAR_FAST_MUX aux: input 10 = unconstrained second level (no source)
 F_ROWS = 90                      # source: fields.ROWS_PER_COLUMN
+HALF_ROWS = 18                   # source: macctl.HALF (18 x 18 mode)
 LES_PER_LAB = 16                 # source: LE_LUT_INPUT groups: 16 sites
 # source: routing.rcf roots of input ports on rb_000..009 (10 designs, 0 contradictions; IO_DATAIN / IO_RAW_DATAIN -> Row / Column I/O pad, CLK_BUFFER -> Dedicated Clock pad): element S index = pad SUB_LOC
 PAD_SOURCES = ("IO_DATAIN", "IO_RAW_DATAIN", "CLK_BUFFER")
@@ -86,6 +87,8 @@ class Ctx:
         self.leinp = LeInputs(self.lut)
         from . import ffctl
         self.ffc = ffctl.FfCtl(self.lut, self.rt, self.ext.clocks)
+        from . import macctl
+        self.macctl = macctl.MacCtl(self.lut.walk)
         tile = (rt.x == xs[len(xs) // 2]) & (rt.y == 45)
         if int((tile & (self.enum == names.enum_of("LOCAL_INTERCONNECT"))).sum()) != LI_PER_LAB:
             raise SystemExit("LI_PER_LAB differs from the routing graph")
@@ -202,6 +205,14 @@ class Builder:
         bits = T.plane_bits(self.rbf)
         fired = cx.ext.apply(bits, cx.st.fire(bits, workers=self.workers))
         edges = np.asarray(fired[T.HEADLINE_VARIANT])
+        # MAC clock from a block clock line (MAC_CLK_FAST_MUX): the line's structural parents conduct like the LAB clock sinks
+        md0 = cx.macctl.decode(bits)
+        mcols0 = mac.columns()
+        sel = np.flatnonzero(md0["used"] & (md0["clk_line"] >= 0) & (md0["clk_sel"] < 0))
+        if len(sel):
+            e_blk = names.enum_of("BLK_CLK_BUF")
+            recs = [int(cx.find(e_blk, mcols0[i // F_ROWS], i % F_ROWS + 1, 0, int(md0["clk_line"][i]))) for i in sel]
+            edges = np.unique(np.concatenate([edges, cx.ext.clocks.chain([r for r in recs if r >= 0])]))
         parent, root, used_src, conflict = _roots(cx, edges)
         nl.counts["forest_edges"], nl.counts["forest_fanin_conflicts"] = len(edges), conflict
         cells = cx.lut.cells(bits).astype(np.uint8)                      # [labs, 16, 16]
@@ -256,6 +267,7 @@ class Builder:
 
     # ---- sources -----------------------------------------------------------------------------------------------------------------
     def _signals_prepare(self, nl):
+        self.mac_refs = set()
         self.sig_cache = {}
         self.nl = nl
 
@@ -283,6 +295,9 @@ class Builder:
             if lab is None or i >= 16:
                 return self._ext(r, t, "LOCAL_LINE outside the LAB grid")
             return self._le_out(lab, i, bool(self.ygr[lab, i, 2]), x, y)
+        if t == "DSP_BUFFER":                                   # MAC result bit i (routing.rcf: DSP_BUFFER:X<x>Y<y>S0I<bit> of the MAC tile)
+            self.mac_refs.add((x, y))
+            return (f"mac_{x}_{y}_r[{i}]", ("MAC", x, y, i))
         if t in PAD_SOURCES:
             p = cx.pads.get(("CLK" if t == "CLK_BUFFER" else "IO", x, y, z))      # SUB_LOC = the element's z (S) index
             if p is not None:
@@ -516,6 +531,52 @@ class Builder:
         i = line.select(bits, site[1])
         return int(self.cx.find(names.enum_of("LOCAL_INTERCONNECT"), x, y, 0, i)) if 0 <= i < LI_PER_LAB else -1
 
+    def _mac(self, nl, md, i, x, y):
+        """18 x 18 multiplier model of one MAC tile (macctl.py).  Pins come from the LOCAL_INTERCONNECT records of the tile."""
+        cx = self.cx
+        e_li = names.enum_of("LOCAL_INTERCONNECT")
+
+        def pin(sel, inv=False, idle="1'b0"):
+            if sel < 0:
+                if sel == -2:
+                    nl.und["MAC pin: ambiguous input selection"] += 1
+                return idle
+            rec = int(cx.find(e_li, x, y, 0, int(sel)))
+            if rec < 0:
+                nl.und["MAC pin: selects a LOCAL_INTERCONNECT absent from the graph"] += 1
+                return idle
+            e, _ = self.sig(rec)
+            return f"(~{e})" if inv else e
+        M = dict(x=x, y=y, inst=i, nine=bool(md["nine"][i]), ireg=[bool(v) for v in md["ireg"][i]], oreg=bool(md["oreg"][i]), und=[])
+        M["a"] = [pin(md["data_sel"][i, k], md["data_inv"][i, k]) for k in range(HALF_ROWS)]
+        M["b"] = [pin(md["data_sel"][i, HALF_ROWS + k], md["data_inv"][i, HALF_ROWS + k]) for k in range(HALF_ROWS)]
+        M["sign"] = [pin(md["sign_sel"][i, k], False, "1'b0") if md["sign_sel"][i, k] >= 0 else ("1'b0" if md["unsigned"][i, k] else "1'b1") for k in (0, 1)]
+        any_reg = M["oreg"] or any(M["ireg"])
+        if any_reg:
+            if md["clk_sel"][i] >= 0:
+                M["clk"] = pin(md["clk_sel"][i], bool(md["clk_inv"][i]))
+            elif md["clk_line"][i] >= 0:
+                rec = int(cx.find(names.enum_of("BLK_CLK_BUF"), x, y, 0, int(md["clk_line"][i])))
+                M["clk"] = self.sig(rec)[0] if rec >= 0 else "1'b0"
+                if rec < 0:
+                    M["und"].append("clock line record absent")
+            else:
+                M["clk"] = "1'b0"
+                M["und"].append("clock")
+                nl.und["MAC clock: no PIA_TO_CLK / CLK_FAST_MUX selection"] += 1
+        M["ena"] = pin(md["ena_sel"][i], bool(md["ena_inv"][i]), "1'b1")
+        M["aclr"] = pin(md["aclr_sel"][i], bool(md["aclr_inv"][i]), "1'b0")
+        if M["nine"]:
+            M["und"].append("9-bit rows / multi-MAC mode not modelled")
+            nl.und["MAC: 9-bit row / multi-MAC mode"] += 1
+        nl.counts["mac_oreg"] += M["oreg"]
+        nl.counts["mac_ireg_a"] += M["ireg"][0]
+        nl.counts["mac_ireg_b"] += M["ireg"][1]
+        nl.counts["mac_signed_a_static"] += int(md["sign_sel"][i, 0] < 0 and not md["unsigned"][i, 0])
+        nl.counts["mac_signed_b_static"] += int(md["sign_sel"][i, 1] < 0 and not md["unsigned"][i, 1])
+        nl.counts["mac_sign_dynamic"] += int((md["sign_sel"][i] >= 0).sum())
+        return M
+
     def _close(self, nl):
         """A referenced lc_ / ff_ / co_ signal without a cell is a decode inconsistency: declared as an undecoded source and counted."""
         defined = {L["name"] for L in nl.luts} | {f"co_{L['x']}_{L['y']}_{L['le']}" for L in nl.luts} | {F["name"] for F in nl.ffs}
@@ -527,6 +588,9 @@ class Builder:
             refs.update(p for p in (F["d"], F["clk"]) if p)
         for io in nl.ios:
             refs.update(p for p in (io.get("drv"), io.get("oe")) if p)
+        for M in nl.mac:
+            for e in M["a"] + M["b"] + M["sign"] + [M.get("clk", ""), M["ena"], M["aclr"]]:
+                refs.update(re.findall(r"(?:pad|lc|ff|co|u)_\w+", e))
         have = {io["ball"] for io in nl.ios}
         for r in sorted(refs):
             if r.startswith("pad_") and r[4:] not in have:
@@ -572,11 +636,14 @@ class Builder:
             nl.m9k.append(dict(x=x, y=y, inst=i, content=content[i], ctl=ctl))
         nl.counts["m9k_used"] = len(nl.m9k)
         nl.und["M9K: port widths / connectivity / modes beyond TDP, packed"] += len(nl.m9k)
-        # MAC: same block-boundary element types in a MUL column
-        for x, y in sorted(mtiles):
-            nl.mac.append(dict(x=x, y=y, inst=mac.instance(x, y)))
+        # MAC: used = any control cell set (macctl.py; routing cannot see it: the outputs are DSP_BUFFER elements)
+        md = cx.macctl.decode(bits)
+        mcols = mac.columns()
+        used = set(np.flatnonzero(md["used"]).tolist()) | {mac.instance(x, y) for x, y in self.mac_refs if x in mcols}
+        nl.counts["mac_used_by_bits"], nl.counts["mac_used_by_output_only"] = int(md["used"].sum()), len(used) - int(md["used"].sum())
+        for i in sorted(used):
+            nl.mac.append(self._mac(nl, md, i, mcols[i // F_ROWS], i % F_ROWS + 1))
         nl.counts["mac_used"] = len(nl.mac)
-        nl.und["MAC: mode / registers / connectivity"] += len(nl.mac)
 
 
 def verilog(nl, module="cyc4_top"):
@@ -653,7 +720,21 @@ def verilog(nl, module="cyc4_top"):
         w(f"localparam [9215:0] M9K_{m['x']}_{m['y']}_INIT = 9216'h{hexv:X}; // bit p = RAM_CONTENT mux position p")
         w(f"// UNDECODED: M9K {m['x']},{m['y']} port widths, port wiring, read/write mode")
     for m in nl.mac:
-        w(f"// UNDECODED: MAC x={m['x']} y={m['y']} mode, registers, connectivity (no behavioural multiplier)")
+        n = f"mac_{m['x']}_{m['y']}"
+        w(f"// MAC {n}: 18 x 18, input regs A/B = {m['ireg']}, output reg = {m['oreg']}" + (f" // UNDECODED: {'; '.join(m['und'])}" if m["und"] else ""))
+        w(f"wire [17:0] {n}_a = {{{', '.join(reversed(m['a']))}}};")
+        w(f"wire [17:0] {n}_b = {{{', '.join(reversed(m['b']))}}};")
+        w(f"wire {n}_sa = {m['sign'][0]}, {n}_sb = {m['sign'][1]};")
+        w(f"reg [17:0] {n}_ar = 18'b0, {n}_br = 18'b0; reg [35:0] {n}_q = 36'b0;")
+        w(f"wire [17:0] {n}_ax = {n}_{'ar' if m['ireg'][0] else 'a'};")
+        w(f"wire [17:0] {n}_bx = {n}_{'br' if m['ireg'][1] else 'b'};")
+        w(f"wire signed [18:0] {n}_xa = {{{n}_sa & {n}_ax[17], {n}_ax}}, {n}_xb = {{{n}_sb & {n}_bx[17], {n}_bx}};")
+        w(f"wire signed [37:0] {n}_pw = {n}_xa * {n}_xb;")
+        w(f"wire [35:0] {n}_r = {n}_" + ("q;" if m["oreg"] else "pw[35:0];"))
+        if any(m["ireg"]) or m["oreg"]:
+            ev = f"posedge {m['clk']}" + ("" if m["aclr"] == "1'b0" else f" or posedge {m['aclr']}")
+            clr = "" if m["aclr"] == "1'b0" else f"if ({m['aclr']}) begin {n}_ar <= 18'b0; {n}_br <= 18'b0; {n}_q <= 36'b0; end else "
+            w(f"always @({ev}) {clr}if ({m['ena']}) begin {n}_ar <= {n}_a; {n}_br <= {n}_b; {n}_q <= {n}_pw[35:0]; end")
     w("endmodule")
     return "\n".join(o) + "\n"
 
