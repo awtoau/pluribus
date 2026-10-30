@@ -150,7 +150,7 @@ def test_register_used_claim(tr):
         tot["extra"] += len(got - gt)
         tot["missing"] += len(gt - got)
     report("decoders-register-used", **tot)
-    assert tot["missing"] == 0 and tot["extra"] == 1       # 1 extra LE of 1,684 (not chased); a change either way is a regression or a fix
+    assert tot["missing"] == 0 and tot["extra"] == 1       # decoder-level: 1 extra LE of 1,684 (not chased); a change either way is a regression or a fix
 
 
 def test_ygr_gi_is_le_buffer_parity(tr):
@@ -197,7 +197,7 @@ def test_vio_bim_data_edges(tr):
         bits = T.plane_bits(os.path.join(d, "bitstream.rbf"))
         prog = set(tr.ext.bim.apply(bits).tolist())
         ids = _bim_edges(tr, d)
-        assert -1 not in ids or True
+        assert -1 not in ids                                      # every GT BIM edge exists in the (extended) edge table
         tot["gt"] += len(ids)
         tot["matched"] += len(ids & prog)
         tot["extra"] += len(prog - ids)

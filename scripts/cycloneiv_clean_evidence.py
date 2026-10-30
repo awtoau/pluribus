@@ -28,7 +28,7 @@ log = logging.getLogger("clean_evidence")
 
 
 def gate_rows(conn, commit):
-    """One oracle-compare row per category of the latest full-corpus gate run (headline variant lit_x, baseline False)."""
+    """One oracle-compare row per category of the latest full-corpus gate run (headline variant vendor, baseline False)."""
     runs = conn.execute(select(S.gate_runs).where(S.gate_runs.c.script == GATE).order_by(S.gate_runs.c.id.desc())).fetchall()
     run = next((r for r in runs if (r.params or {}).get("set") == "corpus" and not (r.params or {}).get("baseline")), None)
     if run is None:
@@ -92,7 +92,7 @@ def io_rows(conn, commit):
     """Per (field, pin) CFF pair evidence at the sites where a pair build toggled bits inside the field's asmdb group."""
     import cycloneiv_clean_classes as C
     import lifters.cycloneiv_clean.io_decode as D
-    from lifters.cycloneiv_clean import io as IO
+    from lifters.cycloneiv_clean import cycloneiv_io as IO
     chain, pairs = D.Chain(), IO.io_pairs()
     io = C.io_sets(chain, pairs)
     src = "scripts/cycloneiv_clean_io_pairs.py"

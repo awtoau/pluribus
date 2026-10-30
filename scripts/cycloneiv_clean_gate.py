@@ -19,8 +19,7 @@ Per category: matched / (matched + missing + extra + wrong); a missing connectio
             and no GT LUT = extra.
   register_clock  per GT FF: the tracer's claim for that (LAB, LE) = BLK_CLK_BUF line chosen by LE_CLOCK_SELECT + LAB_CLOCK_FAST_MUX
             (clocks.py); the programmed tree(s) containing that BLK_CLK_BUF all have the GT clock-net root = matched; no line / no tree =
-            missing; some roots match = ambiguous = missing; none match = wrong.  extra = (LAB, LE) with a claimed line in a programmed
-            tree and no FF in the .vo.  The claim needs the register-used decode (reg_used.py: YGR output select x used LE_BUFFER); undecidable = no claim = missing.
+            missing; some roots match = ambiguous = missing; none match = wrong.  extra = every (LAB, LE) with a register claim and no FF in the .vo.  The claim needs the register-used decode (reg_used.py: YGR output select x used LE_BUFFER); undecidable = no claim = missing.
   pins      GT ball set vs balls of IO sites whose CFF key groups equal a decoded default pattern (direction class must agree: else wrong).
 No rule changes between runs: headline variant `vendor`; `vendor_nx` (no destination exclusion check) is reported beside it.
 Log: tmp/logs/cycloneiv_clean_gate.log; results tmp/cycloneiv_clean/gate_<set>.json.
@@ -192,21 +191,30 @@ def score_design(cx, d, fire_workers):
         c = counts()
         c["matched"] = len(G & Pr)
         miss, ext = G - Pr, Pr - G
-        xd = {int(st.edst[e]) for e in ext}
-        W = [e for e in miss if int(st.edst[e]) in xd]
-        wd = {int(st.edst[e]) for e in W}
-        ex = [e for e in ext if int(st.edst[e]) not in wd]
-        c["wrong"], c["extra"], c["missing"] = len(W), len(ex), len(miss) - len(W) + n_unres
+        # wrong = a missing GT edge paired with a surplus edge at the same destination (one pair per missing edge); the rest keep their own column
+        mq, xq = collections.defaultdict(list), collections.defaultdict(list)
+        for e in miss:
+            mq[int(st.edst[e])].append(e)
+        for e in ext:
+            xq[int(st.edst[e])].append(e)
+        W, ex, mset = [], [], []
+        for d_, ms in mq.items():
+            k_ = min(len(ms), len(xq.get(d_, ())))
+            W += ms[:k_]
+            mset += ms[k_:]
+        for d_, xs in xq.items():
+            ex += xs[min(len(xs), len(mq.get(d_, ()))):]
+        c["wrong"], c["extra"], c["missing"] = len(W), len(ex), len(mset) + n_unres
         out["pips_variants"][v] = c
         if v == HEADLINE:
             out["pips"] = c
-            wset, mset = set(W), [e for e in miss if e not in set(W)]
             for kind, es in (("missing", mset), ("extra", ex), ("wrong", W)):
                 for e in es:
                     s_, d_ = int(st.esrc[e]), int(st.edst[e])
                     scope[kind][(cx.tn(s_), cx.tn(d_), int(rt.x[d_]) // REGION, int(rt.y[d_]) // REGION)] += 1
             for (why_, ta, tb), k in unres.items():
                 scope["missing"][(ta, tb, "unresolved:" + why_, -1)] += k
+    out["mux_ambiguous"] = cx.ext.imp.n_ambiguous(bits)       # LAB_CONTROL_MUX selections whose aux / nxt table entry is ambiguous (-2): not decoded
     out["pips_scope"] = {kind: {"|".join(map(str, k)): v for k, v in c.items()} for kind, c in scope.items()}
     # ---- nets
     g = T.Graph(st, fired[HEADLINE])
@@ -297,7 +305,7 @@ def score_design(cx, d, fire_workers):
             rc["missing"] += 1
             why_r["ambiguous_clock_roots"] += 1
     claimed = np.argwhere(blk >= 0)
-    rc["extra"] = sum(1 for i, nn in claimed.tolist() if (i, nn) not in gt_sites_ff and node_roots.get(int(blk[i, nn])))
+    rc["extra"] = sum(1 for i, nn in np.argwhere(ffm).tolist() if (i, nn) not in gt_sites_ff)     # decoder-level: every register claim (reg_used) without a vo register, clock line or not
     out["register_clock"], out["clock_scope"] = rc, dict(why_r)
     # ---- pins
     pins_gt = parse_pin(os.path.join(d, "build.pin"))
@@ -313,8 +321,11 @@ def score_design(cx, d, fire_workers):
         if b not in tr:
             pc["missing"] += 1
             pscope["missing_" + dirn] += 1
-        elif tr[b] & DIR[dirn]:
+        elif tr[b] <= DIR[dirn]:
             pc["matched"] += 1
+        elif tr[b] & DIR[dirn]:
+            pc["missing"] += 1                                  # class spans several directions: ambiguous = missing
+            pscope["ambiguous_" + dirn] += 1
         else:
             pc["wrong"] += 1
     pc["extra"] = sum(1 for b in tr if b not in gt_balls)
@@ -433,6 +444,7 @@ def main():
         log.info("pips %s by (src type, dst type, dst x band, dst y band), top 25 of %d:", kind, len(scope[kind]))
         for k, v in scope[kind].most_common(25):
             log.info("   %7d  %s", v, k)
+    log.info("LAB_CONTROL_MUX ambiguous selections (muxsel -2, not decoded): %d", sum(r["mux_ambiguous"] for r in good))
     for key in ("lut_scope", "clock_scope", "pins_scope"):
         agg = collections.Counter()
         for r in good:

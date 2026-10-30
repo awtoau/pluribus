@@ -74,3 +74,7 @@ class Implicit:
             e = self.eid[k][lab, sel[lab]]
             out.append(e[e >= 0])
         return np.concatenate(out)
+
+    def n_ambiguous(self, bits):
+        """Number of (LAB, k) selections whose first-level bit + second-level state hit an ambiguous table entry (-2): reported, not decoded."""
+        return int(sum((self.mux[k].select(bits) == -2).sum() for k in self.ks))

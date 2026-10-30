@@ -60,7 +60,8 @@ def test_programmed_graph_traces(st, fired):
     roots = g.roots()
     assert roots
     nets = T.tracer_nets(g)
-    assert sum(len(v) for v in nets.values()) >= len(fired["vendor"]) * 0.99 or len(nets) > 0
+    covered = set().union(*[set(v) for v in nets.values()])
+    assert covered <= set(fired["vendor"].tolist()) and len(covered) >= 0.99 * len(fired["vendor"])   # nets cover the programmed edges (loops excepted)
 
 
 def test_lut_cells_cover_every_used_lut(st):

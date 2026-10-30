@@ -4,7 +4,7 @@
 
 - Image is read only; the decompressed plane is a derived file in `tmp/`, removed at exit. No path, name, hash or extracted material in tracked text; counts only.
 - No ground truth exists for this image. Every number below is a decode count or an impossibility check, not a correctness score.
-- Ambiguous / unresolved items are counted as MISSING. Tracer rules unchanged from the gate (headline variant `lit_x`).
+- Ambiguous / unresolved items are counted as MISSING. Tracer rules as the gate (headline variant `vendor`, tracer.py docstring).
 
 ## Mapping to the plane
 
@@ -22,12 +22,11 @@
 | CFF primary-replica disagreements | 0 of 31,060 bits |
 | Set CRAM bits | 2,158,860 |
 
-## Decode (headline variant `lit_x`)
+## Decode (headline variant `vendor`)
 
 | Item | Count |
 |---|---|
-| Programmed routing edges (lit / lit_x / sel / sel_x) | 592,699 / 354,644 / 584,709 / 343,924 |
-| Used routing nodes (lit_x) / net roots | 433,358 / 93,608 |
+| Programmed routing edges / used routing nodes / net roots | rerun pending (`vendor` rule) |
 | LUTs with non-zero INIT | 89,280 of 149,760 LEs (59.6 %); 19 all-ones |
 | LABs with a LUT | 7,077 of 9,360 |
 | LUTs with carry-in flag set | 20,260 |
@@ -49,14 +48,11 @@
 | Check | Image | Quartus-built controls (rb_000..002, same tracer) |
 |---|---|---|
 | Impossible counts (LUT / FF > 149,760) | none | none |
-| Fan-in conflicts, `lit_x` (dst nodes with > 1 programmed driver) | 14,157 of 339,750 (4.2 %) | 352 / 8,424, 260 / 7,064, 279 / 7,223 (3.7 - 4.2 %) |
-| Fan-in conflicts, `sel_x` | 0 | 0 |
-| Fan-in conflicts, `lit` / `sel` | 225,615 / 229,946 | 4,340 - 5,155 / 4,411 - 5,290 |
-| Undriven used nodes (programmed source, no programmed parent, graph gives it a driver) | 19,184 of 93,608 roots (R4 7,052; R24 5,314; C16 4,032; C4 2,673; LAB_CLK 62; LI 51) | 440 - 453 of 1,359 - 1,533 roots |
-| Loops (SCC > 1 node) | 2 (4 nodes) | 0 |
+| Fan-in conflicts, `vendor` (dst nodes with > 1 programmed driver) | rerun pending | 0 of 64,375 on rb_000..009 (`scripts/cycloneiv_clean_fanin.py`) |
+| Undriven used nodes | rerun pending | rerun pending |
+| Loops (SCC > 1 node) | rerun pending | rerun pending |
 
 - Conflicts and undriven nodes are tracer faults (a node cannot have two drivers); the controls show the same rate on designs with known ground truth, so the image sits at the tracer's own error level, not above it.
-- `sel_x` has zero conflicts everywhere but is not the gate headline (fixed before the first GT comparison).
 
 ## Old stack (labelled old, not an oracle; docs/cycloneiv-bitstream.md)
 
