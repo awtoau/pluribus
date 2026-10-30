@@ -127,3 +127,9 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 - This replaces the 'one-hot on a 1-bit mux' reading for REG_DATA_OUT: that group is MAPPED_ENCODED with map [1, 0] (value 0 -> 1, value 1 -> 0), so value 1 stores 0 (matches 102 of 102 checks). E-P3 stands as 'no die-flag inversion'; the cause is the group's value map, not one-hot.
 - `RAM_USAGE_MODE` (MAPPED_ENCODED, 17 bits, map [0x1ff81, 0x1ff81, 0x1ff81, DUMMY, DUMMY]): usage 0 (ROM), 1 (single port), 2 (dual / bidir) all write 0x1ff81; usage 3, 4 illegal. This is why ROM, single, dual and bidir builds read the same 17 bits (`10000001111111111`); the mode is carried by other groups (`RAM_USE_TRUE_DUAL_PORT_MODE`, `RAM_USE_PACKED_MODE`, `RAM_DATA_WRITE_MODE`, ...). The bit-55 question is closed: no distinction exists in this group.
 - `RAM_DATA_WRITE_MODE`: MAPPED_SIMPLE, 6 bits, map [0, 1, 2, 3, 4, 3, 4, 5, 5] (writer values 0..3 from `ASM_RAM_WRITE_OPTION`).
+
+## M9K mode groups from writer rules (#169)
+
+- `RAM_USE_TRUE_DUAL_PORT_MODE` (`ASM_RAM_USE_TRUE_DUAL_PORT_MODE`): value 1 if `RAM_BIDIR_DUAL_PORT`, else `RAM_PACKED`; forced to 1 when `RAM_READ_ONLY` or `RAM_SINGLE_PORT` is set and `RAM_SINGLE_PORT_IMPLEMENTED_IN_SIMPLE_DUAL_PORT` (flag 55) is clear. So ROM, single port and bidir read 1 and simple dual port reads 0; this is the only mode distinction in the CRAM and flag 55 is what separates a single port implemented as simple dual.
+- `RAM_USE_PACKED_MODE` (`ASM_RAM_USE_PACKED_MODE`): `RAM_PACKED` (flag 32), set by widths 32 and 36.
+- Score `score_m9k_modes` (4 altsyncram mode builds + 9 width builds, both groups): 26 matched / 0 missing / 0 extra / 0 wrong. Flag sets per build are the Quartus ram mode of the atom (names `m9k.RAM_FLAGS`); the family / model condition in the first writer is assumed true.

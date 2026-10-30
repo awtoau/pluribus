@@ -63,3 +63,11 @@ def test_select_semantics_against_specimens():
     import pytest
     with pytest.raises(ValueError):
         S.select(walk, ref, 3)
+
+
+def test_mode_groups_from_writer_rules():
+    """TRUE_DUAL_PORT_MODE / PACKED_MODE from the libcomp_asmram writer rules over flag names, vs 4 altsyncram mode builds and 9 width builds."""
+    m = score_module("gxm9k_m_base_s", "gxm9k_hb16_base")
+    rows, tot = m.score_m9k_modes()
+    report("hardblocks_m9k_modes", builds=len(rows), **tot)
+    assert tot["wrong"] == 0 and tot["missing"] == 0 and tot["matched"] >= 24

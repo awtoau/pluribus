@@ -254,6 +254,33 @@ def score_m9k_code_rules():
     return rows, tot
 
 
+def score_m9k_modes():
+    """Mode groups from the writer rules (m9k.true_dual_port_value / packed_mode_value) + asmdb_select vs altsyncram mode builds and the nine hb width builds."""
+    from lifters.cycloneiv_clean import m9k
+    ctx = _ctl_ctx()
+    imap = _inst_map(ctx, 39, m9k.instance(23, 40))
+    cell = {}
+    for c, (nm, gi, pi, bp) in imap.items():
+        if nm in ("RAM_USE_TRUE_DUAL_PORT_MODE", "RAM_USE_PACKED_MODE") and bp == 0:
+            cell[nm] = c
+    F = m9k.flag_bits
+    cases = [("gxm9k_m_base_s", F("RAM_SINGLE_PORT"), 0), ("gxm9k_m_rom", F("RAM_READ_ONLY"), 0), ("gxm9k_m_dual", F("RAM_DUAL_PORT"), 0),
+             ("gxm9k_m_bidir", F("RAM_BIDIR_DUAL_PORT"), 0)]
+    cases += [(f"gxm9k_hb{w}_base", F("RAM_SINGLE_PORT") | (F("RAM_PACKED") if w in (32, 36) else 0), 0) for w in m9k.WIDTHS]
+    rows, tot = [], dict(matched=0, missing=0, extra=0, wrong=0)
+    for n, flags, _ in cases:
+        if not os.path.exists(os.path.join(CORPUS, n, "bitstream.rbf")):
+            continue
+        have = set(_plane_set(n).tolist())
+        r = dict(matched=0, missing=0, extra=0, wrong=0)
+        for nm, val in (("RAM_USE_TRUE_DUAL_PORT_MODE", m9k.true_dual_port_value(flags)), ("RAM_USE_PACKED_MODE", m9k.packed_mode_value(flags))):
+            r["matched" if int(cell[nm] in have) == val else "wrong"] += 1       # ENCODED 1-bit mux: bit0 = value
+        rows.append(dict(build=n, **r))
+        for k in tot:
+            tot[k] += r[k]
+    return rows, tot
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
@@ -274,6 +301,10 @@ def main():
         rows, tot = score_m9k_code_rules()
         res["m9k_code_rules"] = dict(rows=rows, total=tot)
         log.info("M9K code-derived writer rules %d builds %s", len(rows), json.dumps(tot))
+    if which in ("m9kmodes", "all"):
+        rows, tot = score_m9k_modes()
+        res["m9k_modes"] = dict(rows=rows, total=tot)
+        log.info("M9K mode groups (writer rules) %d builds %s", len(rows), json.dumps(tot))
     if which in ("mac", "all"):
         rows, tot = score_mac()
         res["mac"] = dict(rows=rows, total=tot)

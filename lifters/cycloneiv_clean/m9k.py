@@ -191,3 +191,25 @@ RAM_FLAGS = (
     "RAM_BY20",
     "RAM_BY40",
 )
+
+
+def flag_bits(*names):
+    """Flag-name set -> integer mask over the 89 CDB_RAM_FLAG_ENUM bits (bit i = RAM_FLAGS[i])."""
+    return sum(1 << RAM_FLAGS.index(n) for n in names)
+
+
+def true_dual_port_value(flags):
+    # source: ASM_RAM_USE_TRUE_DUAL_PORT_MODE::process_end_of_phase libcomp_asmram (readable export): 1 if RAM_BIDIR_DUAL_PORT else RAM_PACKED;
+    #         forced to 1 when (RAM_READ_ONLY | RAM_SINGLE_PORT) is set and RAM_SINGLE_PORT_IMPLEMENTED_IN_SIMPLE_DUAL_PORT is clear (family / model condition assumed true)
+    if flags >> RAM_FLAGS.index("RAM_BIDIR_DUAL_PORT") & 1:
+        v = 1
+    else:
+        v = flags >> RAM_FLAGS.index("RAM_PACKED") & 1
+    if flags & flag_bits("RAM_READ_ONLY", "RAM_SINGLE_PORT") and not flags >> RAM_FLAGS.index("RAM_SINGLE_PORT_IMPLEMENTED_IN_SIMPLE_DUAL_PORT") & 1:
+        v = 1
+    return v
+
+
+def packed_mode_value(flags):
+    # source: ASM_RAM_USE_PACKED_MODE::process_end_of_phase libcomp_asmram: port A flag bit 32 = RAM_PACKED
+    return flags >> RAM_FLAGS.index("RAM_PACKED") & 1
