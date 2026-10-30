@@ -57,6 +57,7 @@ class M9kCtl:
         o["waddr"] = np.stack([self.calc[("RAM_MS_WRITE_ADDRESS_INPUT", g)].select(bits) for g in WRITE_SLOTS], axis=1)
         raddr = [c for (nm, _g), c in self.calc.items() if nm == "RAM_MS_READ_ADDRESS_INPUT"]
         o["read_groups"] = np.stack([c.select(bits) >= 0 for c in raddr], axis=1).sum(1)
+        o["raddr"] = {g: c.select(bits) for (nm, g), c in self.calc.items() if nm == "RAM_MS_READ_ADDRESS_INPUT"}
         o["be"] = np.stack([self.calc[("RAM_MS_BYTE_ENABLE_INPUT", k)].select(bits) for k in range(4)], axis=1)   # port-A byte enables: gi 0, 1 (16-bit word), training split
         w11 = self.calc[("RAM_PIA_TO_INPUT_YGR", 11)].select(bits)
         w9 = self.calc[("RAM_PIA_TO_INPUT_YGR", 9)].select(bits)

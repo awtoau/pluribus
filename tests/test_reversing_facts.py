@@ -300,6 +300,31 @@ def test_mined_pgmio_ghidra_form_is_another_function():
     assert db.execute("select name from functions where vaddr=?", (0x53be30,)).fetchone()[0].startswith("__tcf_0")
 
 
+def test_mac_block_group_types(walk):
+    """ledger MA-003 / errata E-T4: asmdb block 41 (MAC) has exactly 17 group types, none for accumulate / saturate / round / shift / chain."""
+    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    import cycloneiv_clean_dirt as D
+    gt = D.enum_tables()["arch_group_type"]
+    names = {gt[g["type"]] for g in walk.groups() if g["btype"] == 41}
+    assert len(names) == 17
+    assert not [n for n in names if any(k in n for k in ("SATAC", "SATRS", "SHFTR", "SMODE", "ACCUM", "ROUND", "CHAIN"))]
+
+
+def test_dsp_type_names_map_to_mac_elements():
+    """ledger MA-001: RCF type DSP_BUFFER = element enum 286 (hdr debug name MAC_BUFFER), DSP_CONTROL_INPUT = 380 (MAC_SEC_INPUT)."""
+    from lifters.cycloneiv_clean import names
+    assert names.enum_of("DSP_BUFFER") == 286 and names.enum_of("DSP_CONTROL_INPUT") == 380
+
+
+def test_ram_mapper_x16_skips_parity_lane():
+    """ledger M-015: x16 words use DATAIN idx 0..7 and 9..16 (gi 8 absent); x18 uses 0..17; x1 has 13 address pins (WRITE_ADDRESS 0..7, 12 + DATA gi 12..15)."""
+    from lifters.cycloneiv_clean import ram_mapper as R
+    assert R.data_idx(16) == list(range(8)) + list(range(9, 17))
+    assert R.data_idx(18) == list(range(18))
+    assert len(R.addr_sources(1)) == 13 and len(R.addr_sources(16)) == 9
+    assert R.byte_enable_gi(16) == {0: 0, 1: 1}
+
+
 def test_clkbuf_input_select_writers(db):
     """ledger B-010 / B-011: the clock buffer input select writer, its bit-3 helper and the gid -> index map sit at these ELF vaddrs (nm -C verified)."""
     for vaddr, frag in ((0x2fd9f8, "ASM_CLKBUF_CLK_INPUT_SELECT_CYCLONEII::process_atom"),
