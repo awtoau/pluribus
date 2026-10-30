@@ -372,6 +372,7 @@ def trace(N, pad, tag, nbits, show):
             ents.append(dict(enable=E, ffs=len(mem), bits=sorted(t - 1 for _n, t, _i in mem)))
         regmap[a] = ents
     R["register_map"] = {hex(a): v for a, v in regmap.items()}
+    R["rf_ffs"] = {n: [hex(a), b] for n, (a, b, _i) in RF.items()}
     for a in show:
         log.info("[V] reg %02x write: %s", a, "; ".join("%s %d FFs bits %s" % (e["enable"], e["ffs"], e["bits"]) for e in regmap.get(a, [])) or "none")
     # command byte
@@ -560,7 +561,157 @@ def trace(N, pad, tag, nbits, show):
                                        regs=sorted({k for e in eq if e["root"] in rs for k in e["reg_addresses"]}), consumers=N.cons.get(c, [])[:6]))
             log.info("[V] combiner %s over %d comparators (registers %s): inputs %s tt=%x -> %s", c, len(rs), R["combiners"][-1]["regs"], s,
                      sum(b << i for i, b in enumerate(tt)), N.cons.get(c, [])[:6])
+    R["master"] = master(N, R, RF, {pad, *R["pads"]["frame_cs"], *R["pads"]["bit_clock"]})
     return R
+
+
+def back_hops(N, sigs, n):
+    """[(FFs first reached at hop h, non-FF leaves)] going back through D / enable / sclr / sload / asdata edges."""
+    seen, cur, out = set(), set(sigs), []
+    for _ in range(n):
+        leaves = set()
+        for s in cur:
+            leaves |= N.comb_leaves(s)
+        ffs = {x for x in leaves if x in N.ff} - seen
+        out.append((ffs, {x for x in leaves if x not in N.ff}))
+        seen |= ffs
+        cur = {N.ff[x][k] for x in ffs for k in ("d", "ena", "sclr", "sload", "asdata") if N.ff[x].get(k)}
+    return out
+
+
+def master(N, R, RF, slave_pads, hops=8):
+    """SPI master towards a radio chip: output pads driven by a mode mux (>= 2 select FFs = bits of one write register)."""
+    M = {}
+
+    def rfsrc(x):
+        """register-file (address, bit) behind x: the FF itself or the FF of a one-stage buffer."""
+        if x in RF:
+            return RF[x][:2]
+        F = N.ff.get(x)
+        r = N.red(F["d"]) if F and F["d"] in N.lut else None
+        if r and len(r[0]) == 1 and r[0][0] in RF:
+            return RF[r[0][0]][:2]
+        return None
+    sel_by_addr = collections.defaultdict(list)
+    for io in N.nl.ios:
+        if io["dir"] == "input" or not io.get("drv") or io["drv"] not in N.lut:
+            continue
+        r = N.red(io["drv"])
+        if not r or len(r[0]) < 3:
+            continue
+        sel = [x for x in r[0] if rfsrc(x)]
+        if len(sel) >= 2 and len({rfsrc(x)[0] for x in sel}) == 1:
+            sel_by_addr[rfsrc(sel[0])[0]].append((io["ball"], io["drv"], sel, [x for x in r[0] if x not in sel]))
+    if not sel_by_addr:
+        log.info("no output pad driven by a register-selected mux: no master engine found")
+        M["found"] = False
+        return M
+    mdrv = [io["drv"] for io in N.nl.ios if io["dir"] != "input" and io.get("drv") and io["ball"] in {m["ball"] for m in R.get("miso", [])}]
+    mux_sel = {rfsrc(x)[0] for d in mdrv for x in (N.red(d) or ([], 0))[0] if rfsrc(x)}
+    addr = next((a for a in sel_by_addr if a in mux_sel), max(sel_by_addr, key=lambda a: len(sel_by_addr[a])))
+    muxes = sel_by_addr[addr]
+    M["found"] = True
+    M["mode_register"] = addr
+    M["outputs"] = []
+    internal = []
+    for ball, drv, sel, oth in muxes:
+        s, tt = N.red(drv)
+        bit = {x: rfsrc(x)[1] for x in sel}
+        modes = {}
+        for m in range(1 << len(sel)):
+            tab = {}
+            for v in range(1 << len(s)):
+                env = {x: (v >> i) & 1 for i, x in enumerate(s)}
+                if all(env[x] == (m >> k) & 1 for k, x in enumerate(sorted(sel, key=lambda x: bit[x]))):
+                    tab[tuple(env[x] for x in oth)] = tt[v]
+            dep = [o for k, o in enumerate(oth) if any(tab[a] != tab[tuple(1 - a[j] if j == k else a[j] for j in range(len(oth)))] for a in tab)]
+            modes[m] = dep[0] if len(dep) == 1 else ("const%d" % list(tab.values())[0] if not dep else "+".join(dep))
+        pas = {}
+        for o in oth:
+            cone = back_hops(N, [o], 3)
+            pads = sorted({x[4:] for _f, non in cone for x in non if x.startswith("pad_")})
+            pas[o] = pads
+        M["outputs"].append(dict(ball=ball, driver=drv, select_bits=sorted(bit.values()), modes={str(k): v for k, v in modes.items()}, inputs_to_pads_3hops=pas))
+        for v in modes.values():
+            if isinstance(v, str) and v in N.ff and not pas.get(v):
+                internal.append(v)
+    log.info("[V] mode register %02x bits %s selects %d output muxes: %s", addr, sorted({b for m in M["outputs"] for b in m["select_bits"]}), len(muxes),
+             [(m["ball"], m["modes"], m["inputs_to_pads_3hops"]) for m in M["outputs"]])
+    log.info("[V] radio SPI pad-mux members: %s", " ".join(["pad_" + m["ball"] for m in M["outputs"]] + sorted({x for m in muxes for x in m[2]})))
+    # input pad that also feeds the slave MISO mux and another LUT
+    miso = [io["drv"] for io in N.nl.ios if io["dir"] != "input" and io.get("drv") and io["ball"] in {m["ball"] for m in R.get("miso", [])}]
+    M["miso_in"] = []
+    for d in miso:
+        for x in (N.red(d) or ([], 0))[0]:
+            if x.startswith("pad_") and x[4:] not in slave_pads:
+                M["miso_in"].append(dict(pad=x[4:], consumers=N.cons[x]))
+    log.info("[V] radio MISO input pad(s) (feed the slave MISO mux and the engine): %s", M["miso_in"])
+    # engine
+    H = back_hops(N, internal, hops)
+    eng = set().union(*[f for f, _n in H[:5]])
+    byena = collections.defaultdict(list)
+    for x in eng:
+        byena[N.ff[x].get("ena")].append(x)
+    groups = {str(e): len(v) for e, v in byena.items() if len(v) >= 4 and e}
+    M["engine"] = dict(outputs_internal=internal, ffs_within_5_hops=len(eng), enable_groups=groups)
+    ctr = [(e, v) for e, v in byena.items() if e and len(v) >= 4 and sum(1 for x in v if N.ff[x].get("sclr")) == len(v)]
+    for e, v in ctr:
+        M["engine"].setdefault("counters", []).append(dict(enable=e, ffs=sorted(v), clear=N.ff[v[0]]["sclr"]))
+        leaves = set()
+        for x in v:
+            leaves |= N.comb_leaves(N.ff[x]["d"])
+        vs = sorted(v)
+        for node in {c[:-2] if c.endswith(".d") else c for x in v for c in N.cons[x] if c in N.lut}:
+            sup = N.comb_leaves(node)
+            if sup and sup <= set(v) and len(sup) >= len(v) - 1 and len(sup) > 2:
+                sv = sorted(sup)
+                sols = [b for b in itertools.product((0, 1), repeat=len(sv)) if N.ev(node, dict(zip(sv, b)))]
+                if len(sols) == 1:
+                    M["engine"]["counters"][-1].setdefault("terminal_nodes", []).append(dict(node=node, support=sv, unique_state=list(sols[0])))
+    log.info("[V] engine: %d FFs within 5 stages of the internal outputs; enable groups (>=4 FFs) %s; counters %s", len(eng), groups, M["engine"].get("counters"))
+    log.info("[V] engine start / control enable cone: %s", [(h, sorted({(RF[x][0], RF[x][1]) for x in f if x in RF})) for h, (f, _n) in enumerate(H) if any(x in RF for x in f)][:4])
+    rfh = []
+    for h, (f, non) in enumerate(H):
+        rfh.append(dict(hop=h, ffs=len(f), register_addresses=sorted({RF[x][0] for x in f if x in RF}), pads=sorted(x[4:] for x in non if x.startswith("pad_")),
+                        m9k=sorted(x for x in non if x.startswith("m9k_"))))
+    M["engine"]["backward_hops"] = rfh
+    for e in rfh:
+        if e["register_addresses"] or e["pads"] or e["m9k"]:
+            log.info("[V]   hop %d: %d FFs, registers %s, pads %s, m9k %s", e["hop"], e["ffs"], e["register_addresses"], e["pads"], e["m9k"])
+    # forward reach of registers to pads
+    users = collections.defaultdict(set)
+    for n, F in N.ff.items():
+        for k in ("d", "ena", "sclr", "sload", "asdata"):
+            if F.get(k):
+                for l in N.comb_leaves(F[k]):
+                    users[l].add(n)
+    drvleaf = collections.defaultdict(set)
+    for io in N.nl.ios:
+        if io["dir"] != "input" and io.get("drv"):
+            for l in N.comb_leaves(io["drv"]):
+                drvleaf[l].add(io["ball"])
+    byreg = collections.defaultdict(set)
+    for n, (a, b, _i) in RF.items():
+        byreg[a].add(n)
+    M["register_forward"] = {}
+    for a in sorted(byreg):
+        cur, seen, pads = set(byreg[a]), set(byreg[a]), set()
+        for _ in range(10):
+            nx = set()
+            for s in cur:
+                nx |= users.get(s, set())
+            nx -= seen
+            seen |= nx
+            cur = nx
+        for x in seen:
+            pads |= drvleaf.get(x, set())
+        M["register_forward"][hex(a)] = sorted(pads)
+    muxpads = {m["ball"] for m in M["outputs"]}
+    ro = {m["ball"] for m in R.get("miso", [])}
+    only = sorted(a for a, p in M["register_forward"].items() if p and set(p) <= muxpads | ro and set(p) & (muxpads - ro))
+    M["registers_reaching_only_master_pads"] = only
+    log.info("[V] write registers whose 10-stage forward cone reaches only the master output pads (+ slave MISO): %d %s", len(only), only[:40])
+    return M
 
 
 def _comb_nodes(N, sig):

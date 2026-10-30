@@ -56,7 +56,11 @@ def build():
     L.append(lut("lc_rb", ["ff_a0", "ff_a2", "ff_w0_0", "ff_w1_0"], lambda a0, a2, r1, r5: a0 & (r5 if a2 else r1)))
     ff("ff_rb0", "lc_rb")
     buf("lc_miso", "ff_rb0")
-    ios = [dict(ball="Q", dir="output", drv="lc_miso")]
+    # mode register 5 (addr 5 has FFs ff_w1_0/1): bits 0,1 select the radio-side output mux; pass = slave pad MOSI sample, internal = ff_eng
+    L.append(lut("lc_mo", ["ff_w1_0", "ff_w1_1", "ff_s0", "ff_eng"], lambda m0, m1, p, e: e if (m1 and not m0) else (p if (m0 and not m1) else 0)))
+    ff("ff_eng", "lc_eng")
+    buf("lc_eng", "ff_eng")
+    ios = [dict(ball="Q", dir="output", drv="lc_miso"), dict(ball="X", dir="output", drv="lc_mo")]
     return types.SimpleNamespace(luts=L, ffs=F, ios=ios)
 
 
@@ -70,3 +74,6 @@ def test_toy_spi():
     assert [m["ball"] for m in R["miso"]] == ["Q"]
     assert R["readback_slices"] == ["ff_rb0"] and R["slice_bit"] == {"ff_rb0": 0}
     assert R["readback_leaf_classes"]["rf_only"] > 0
+    M = R["master"]
+    assert M["found"] and M["mode_register"] == 5
+    assert M["outputs"][0]["ball"] == "X" and M["outputs"][0]["modes"]["2"] == "ff_eng"
