@@ -13,7 +13,8 @@ Measured 2026-10-30, Quartus Prime 25.1 SC Lite, EP4CGX150DF31C7.
 - Generation failures (not licence): `altera_fir_compiler_ii` (dspba backend binary needs `libnsl.so.1`, missing on this host), `altera_CORDIC` (HDL generation error with default parameters).
 - `quartus/common/misc/outdated_ip/*.odip` for reed_solomon, viterbi, fft are upgrade placeholders only; the current cores are `rs_ii`, `altera_vit_ii`, `altera_fft_ii`.
 - Catalogue `ip/altera/dsp/`: altera_bch, altera_cic_ii, altera_CORDIC, altera_fft_ii, altera_fir_compiler_ii, altera_fp_acc_custom, altera_fp_functions, altera_fp_matrix_inv, altera_fp_matrix_mult, altera_fpdsp_block, altera_fxp_functions, altera_nco_ii, altera_vit_ii; plus `ip/altera/rs_ii`, `altera_mult_add`. Other `ip/altera/*` are interface / system IP (PLL, LVDS, UART, PCIe, XCVR, memory controllers); not exercised. fp_* / fpdsp need Arria 10 / Stratix 10 hard-FP blocks (not tried).
-- Consequence: Altera DSP IP is usable as a Quartus-side oracle only (fit report resource counts; `quartus_eda` post-fit netlists not tried); it cannot be a decode specimen for our .rbf pipeline.
+- `quartus_eda` (post-fit .vo) on any licensed core: refused, error 204012 "Can't generate netlist output files ... OpenCore Plus time-limited file" (checked on altera_nco_ii, altera_cic_ii). Not worked around. No netlist-level (state-map / polynomial) signature exists for these cores.
+- Consequence: Altera DSP IP is usable as a Quartus-side oracle only, at map/fit report level (section 4); it cannot be a decode specimen for our .rbf pipeline.
 
 ## 2. Open-source candidates
 Reuse rules: read and cite; build and run as external oracle is fine; no GPL/restricted code copied into our tree. Licences read from the repo (GitHub) or the OpenCores overview page (OpenCores entries not verified against a LICENSE file).
@@ -84,3 +85,53 @@ Per-specimen build + extraction results: see `reference/signatures.tsv` (columns
 - Partial (structure present, no polynomial/ordering test): Viterbi K=7 (14 SCCs of 64 FFs = 2^(K-1) states, non-linear ACS, 9 x 8-bit adders), 192-bit interleaver (192-FF shift chain + 192 mux2), 64-pt FFT (8 MAC = 16 mult9, 4 M9K delay lines; twiddles are LUT logic), UART (FSM, 17-bit baud adder).
 - Not recovered / limits: bits per clock of an LFSR is determined only up to 2^j (shared minimal polynomial); the Viterbi 171/133 polynomials are not tested (branch-metric XOR structure not analysed); M9K width/mode is not modelled for TDP/32-bit blocks (content still decodes through `m9k.read_words`).
 - `fft_dit` not built (needs generated twiddle module); `rs_vhdl_cc0` not built.
+
+## 4. Licensed Altera DSP cores: report-level signatures (2026-10-30)
+Source: `quartus_map` + `quartus_fit` only (`scripts/cycloneiv_clean_sig_ipgen.py` generates, `..._sig_netlist.py` builds, `..._sig_reports.py` parses `map.rpt` hierarchy + RAM summary, rows into `reference/signatures.tsv` via `..._sig_tsv.py`). Generated HDL, reports and netlists stay in `tmp/sig/` (gitignored). No bitstream, no netlist, no licence handling.
+- Every time-limited design carries a fixed OpenCore Plus overhead (Signal Tap hub + obfuscated timer wrapper): 242 LE(comb) + 148 FF in the fit totals. Counts below are net of it; M9K / mult9 unaffected.
+- Not obtainable: polynomial / state-map recovery (needs a netlist). Generator polynomials in RS / BCH / Viterbi are generation parameters here, not recovered.
+- Table: LE = combinational functions, FF = dedicated registers, M9K = blocks (fit), mult9 = 9-bit embedded multiplier elements (1 mult18 = 2).
+
+| config | parameters | LE | FF | M9K | mem bits | mult9 |
+|---|---|---|---|---|---|---|
+| fft_vs256_12 | 256-pt, 12-bit, variable streaming | 5079 | 4510 | 14 | 10152 | 32 |
+| fft_vs256_16 | 256-pt, 16-bit, variable streaming | 6023 | 5665 | 16 | 13024 | 40 |
+| altera_fft64 | 64-pt, 16-bit, variable streaming | 4208 | 3919 | 10 | 4012 | 24 |
+| fft_st64_16 | 64-pt, 16-bit, streaming (block FP) | 3412 | 3487 | 24 | 10186 | 24 |
+| fft_bb64_16 | 64-pt, 16-bit, buffered burst (block FP) | 3124 | 3369 | 20 | 8138 | 24 |
+| fft_b64_16 | 64-pt, 16-bit, burst (block FP) | 3111 | 3309 | 12 | 4042 | 24 |
+| ip_nco | large ROM, 32-bit acc, 16-bit ROM addr, 18-bit out, dither | 345 | 178 | 288 | 2359296 | 0 |
+| nco_large_nodither | large ROM, 24-bit acc, 12-bit addr, 12-bit out, no dither | 91 | 88 | 12 | 98304 | 0 |
+| nco_small_rom | small ROM, 24-bit acc, 12-bit addr, 12-bit out | 308 | 237 | 2 | 11264 | 0 |
+| nco_cordic | CORDIC, 24-bit acc, 12-bit out | 1282 | 1249 | 0 | 0 | 0 |
+| ip_cic | interpolator, 12 stages, in 8 | 1185 | 1463 | 3 | 1376 | 0 |
+| cic_dec_s3_r8 | decimator, 3 stages, R=8, in 16 | 341 | 311 | 3 | 1028 | 0 |
+| cic_dec_s5_r16 | decimator, 5 stages, R=16, in 16 | 574 | 630 | 3 | 1424 | 0 |
+| cic_int_s4_r8 | interpolator, 4 stages, R=8, in 12 | 354 | 301 | 2 | 768 | 0 |
+| rs_enc_204_188 (= ip_rs_ii) | RS encoder, check 16 (N=204 and N=255 give identical counts) | 212 | 156 | 0 | 0 | 0 |
+| rs_dec_255_239 | RS decoder, check 16 | 2245 | 970 | 1 | 5120 | 0 |
+| rs_dec_204_188 | RS decoder, N=204, check 16 | 2285 | 970 | 1 | 5120 | 0 |
+| bch_enc_255_239 | BCH encoder m=8 t=2 | 283 | 215 | 2 | 1536 | 0 |
+| bch_enc_255_191 | BCH encoder m=8 t=8 | 359 | 303 | 2 | 1536 | 0 |
+| bch_dec_255_191 | BCH decoder m=8 t=8 | 2913 | 2136 | 13 | 6144 | 0 |
+| ip_bch | BCH encoder m=14 t=40 (N=8784) | 2029 | 1354 | 6 | 32828 | 0 |
+| vit_k7_hard | Viterbi K=7 171/133, 1 soft bit (hard), parallel | 3374 | 1472 | 7 | 34816 | 0 |
+| vit_k7_soft3 | Viterbi K=7 171/133, 3 soft bits, parallel | 4112 | 1752 | 7 | 34816 | 0 |
+| vit_k7_hybrid | Viterbi K=7 171/133, 3 soft bits, hybrid, 4 ACS units | 1270 | 833 | 6 | 5056 | 0 |
+| ip_vit | Viterbi K=3, n=4, parallel (defaults) | 911 | 535 | 5 | 3072 | 0 |
+
+Structure visible in the report hierarchy (counts):
+- FFT, variable streaming: 24-32 registered adders (widths 13-50 bit), mult9 = 8 mult megafunctions (2 mult9 each) + 2-4 mult-add (4 mult9 each) at 64-pt, 16 mult + 2 mult-add at 256-pt 16-bit; ROM 17/5 words (64-pt) or 17/5/65 words (256-pt) x data width = twiddle ROMs (2 each); 6-10 simple-dual-port delay RAMs.
+- FFT, streaming / burst / buffered burst (64-pt): 16 registered adders (10 x 19-bit, 6 x 33-bit), 6 mult-add (24 mult9), 4 shift-taps, 6 ROMs 16 x 16; delay RAM 16 x 32 repeated 16x (streaming), 12x (buffered burst), 4x (burst) is the only M9K-count differentiator (24 / 20 / 12 blocks).
+- NCO: one registered adder = phase accumulator width (32 / 24), 1 counter (3-5 FF), 2 ROMs (sin, cos) each 2^addr x out width (65536x18, 4096x12, 512x11 small-ROM); CORDIC variant: 34 adders (20 x 12-bit, 10 x 16-bit), no ROM, no multiplier.
+- CIC: no adder megafunctions visible (integrators / combs are plain logic); 2-3 delay RAMs (32 x ~2*width, 8 x ~width) are the M9K use; FF count tracks stages x width.
+- RS II encoder: pure logic, 0 RAM, 212 LE / 156 FF, independent of N. Decoder: one 512 x 10 RAM, 970 FF, ~2250 LE.
+- BCH: encoder 2 RAMs (128 x 10, 32 x 10); decoder adds a 256 x 8 ROM (inverse table), 3 shift-taps, 5 more RAMs.
+- Viterbi K=7: 5 RAMs (2 x 256x1, 256x6, 2 x 256x64 = path / decision memory), no multipliers; hard vs 3-bit soft changes LE (+738) and FF (+280), not RAM; hybrid with 4 ACS units uses 8 small 8x8 RAMs and 3x fewer LE.
+
+### Match shapes against the decoded DJI image (counts only)
+Image (`scripts/cycloneiv_clean_sig_image_shapes.py` on the local decode): 36,993 FF, 542 M9K, 87 MAC, 20,260 carry LUTs. Per clock domain (rank by FF): domain 1 = 23,416 FF / 349 M9K / 81 MAC / 5,771 registered carry LUTs; domain 2 = 13,046 FF, no M9K / MAC; domains 3-6 (52-218 FF) none. 193 M9K and 6 MAC have no decoded clock.
+- DSP shape: all 81 clocked MACs sit in domain 1. One 64-pt FFT is 12 mult18 + 10-24 M9K; one 256-pt FFT 16-20 mult18 + 14-16 M9K. FFT-II sized engines are possible there (about 4-7 copies by MAC count) but the M9K (349) and FF (23,416) counts are far above that; MAC shape alone does not identify an FFT.
+- No other core family in section 4 uses a MAC or mult9: NCO, CIC, RS, BCH, Viterbi are shape-compatible with any domain on MAC count.
+- NCO large-ROM (2 ROMs, 12-288 M9K) fits inside domain 1's 349 M9K only as the 288-block default; unmodelled M9Ks (193) prevent a ROM-content test.
+- Viterbi K=7 shape (5-7 M9K, 1,470-1,750 FF, 3,400-4,100 LE) and RS decoder (970 FF, 1 M9K): the image has no matched GF multiplier (`gfmul` 0); the pattern detector does not test non-affine ACS SCCs, so Viterbi is untested. No match is claimed for any core.
