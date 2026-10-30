@@ -12,7 +12,7 @@ import pytest
 
 from conftest import REPO, need, report
 from lifters.cycloneiv_clean import asmdb_walk as W
-from lifters.cycloneiv_clean import io as IO
+from lifters.cycloneiv_clean import cycloneiv_io as IO
 
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 CORPUS = os.path.join(REPO, "corpus", "cycloneiv")

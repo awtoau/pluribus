@@ -14,7 +14,7 @@ import os
 import re
 import struct
 
-from . import io as IO
+from . import cycloneiv_io as IO
 
 SENTINEL = {"pin": 896, "pad": 520}      # object counts from the ddb type tables (DEV_PIN 896, DEV_PAD_BODY 520)
 

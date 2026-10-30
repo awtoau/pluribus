@@ -9,7 +9,7 @@ Builders: `scripts/cycloneiv_clean_options_build.py` (table), `scripts/cycloneiv
 - 160 option bits = 30 group bits + 35 forced + 95 default. Every bit is in exactly one class (0 unlisted).
 - Function decoded: **30 / 160** (13 asmdb option groups). Missing: **130 / 160** (35 forced, 95 default: no group, no setting changed any of them).
 - Group bits: 22 / 30 confirmed by a QSF pair (the setting flips the bit); 8 / 30 (POF id, 11-18) decoded from the assembler + 9 vendor sofs, no QSF setting reaches them.
-- Encoder (`options.encode`) vs 197 pair builds: group bits 5,910 matched / 0 wrong; forced 6,895 / 0; default 18,715 / 0 (value bits, all builds).
+- Encoder (`options.encode`) vs 197 pair builds: group bits 5,910 matched / 0 wrong; forced 6,895 and default 18,715 equal the vendor constant: counted `missing` (no decoded function), 0 wrong (`options.score` columns matched / missing / extra / wrong; value bits, all builds).
   - Pair flips (spec vs reference): matched 74, missing 0, extra 0. Flag half (tag-18 bits 160..319) changed in 0 builds.
   - 0 forced or default bit changed in any build; 22 distinct group bits flipped.
 - Settings tried: 103 pair ids x 2 base designs. 27 change the option register, 71 change nothing in it, 5 rejected by Quartus (illegal value / obsolete pin).

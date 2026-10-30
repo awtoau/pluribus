@@ -35,13 +35,14 @@
 | Register-clock roots | 4,960 distinct clock lines, each with exactly one root; 6 distinct root nets (all `CLKBUF_OUT`); 0 ambiguous |
 | M9K | 6,022 programmed edges out of M4K_BUFFER in 542 tiles (M9K columns); 27 block-input edges, all in LAB columns (24 tiles) |
 | MAC | 0 programmed edges at multiplier columns |
-| IO sites | 456 in chain; 170 with set key bits; 84 classified by default pattern (44 output, 31 input, 9 bidir); 86 set but unclassified = MISSING |
-| Pad -> pin | 84 of 84 classified sites map to a package ball |
-| IO fields on the 84 | bus-hold, direction, pull-up: default (84); slew / drive / open-drain default (53, outputs and bidir); termination default (44); standard 0 decoded = 84 MISSING |
+| IO sites | 456 in chain, 455 map to a package ball (1 VIO site has no pad) |
+| IO site classes (`io_fields`) | used 84 (44 output, 31 input, 9 bidir / tri-state); unused-pin state 362 (weak pull-up 282; output driving ground or unspecified signal 80, CFF-identical); device-fixed pad 4; MISSING 6 (raw patterns equal no table state) |
+| IO fields on the 84 used | direction 84 decoded; pull-up / bus-hold / open-drain / drive: 84 default (OFF / default); slew 53 decoded (all fast, value 2), 31 n/a (input); registered input / output / OE: 84 decoded OFF (CRAM patterns); termination 40 none, 44 ambiguous (none or 50 ohm series: CFF-identical); standard 9 decoded (2.5 V), 75 ambiguous (44 outputs: 2.5 V or SSTL-2 Class I; 31 inputs: 2.5 V, 3.0 / 3.3 V LVTTL / LVCMOS, 3.0-V PCI) |
 | Option bits | 14 of 320 differ from a Quartus-built reference (lanes 0, 1, 3); meaning not decoded: all MISSING |
 
 - M9K mode / width / init, MAC mode / coefficients, PLL, transceiver: not decoded (MISSING). Block-input mux for M9K sits at a coordinate not mapped to the M9K column, so input edges are not attributed.
-- IO field decode matches value rows from the pair builds exactly; a site that equals no row is MISSING. Only sites whose four key groups equal a default pattern are classified, so non-default IO settings are not reached.
+- IO field decode (docs/cycloneiv-clean-io.md, last section): a site is classified only when its joint IOST / strength / clamp groups equal a pair-build or unused-pin state exactly; otherwise MISSING with raw patterns. The 6 MISSING sites are 5 distinct vectors on regular differential pads (stray strength bits, IOST value 7); cause not decoded.
+- Detailed per-site table: local `tmp/cycloneiv_clean/image_io_table.json` (not committed).
 
 ## Sanity statistics
 

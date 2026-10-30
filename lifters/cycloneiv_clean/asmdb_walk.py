@@ -13,7 +13,7 @@ Check: the walk consumes the body exactly and every class count equals the ddb t
 import struct
 from collections import Counter
 
-from . import io as IO
+from . import cycloneiv_io as IO
 
 M32 = 0xFFFFFFFF
 # source: ASMDB_DIE::operator<< pointer-field order (queue order of the declared pointer types decides the pop order)

@@ -218,7 +218,50 @@ def logic(cx, bits, fired_head, g):
     return res
 
 
-def io_sites(cx, plane_path):
+def io_fields(cx, plane_path, bits, val, detail_path=None):
+    """Full per-site field decode (lifters/cycloneiv_clean/io_fields.py): every IO site of the chain -> class + fields; counts only in the result,
+    the per-site table (ball, direction, standard, drive, slew, pull, termination, raw patterns) goes to detail_path (local, not committed)."""
+    from lifters.cycloneiv_clean import io_decode as ID
+    from lifters.cycloneiv_clean import io_fields as IF
+    from lifters.cycloneiv_clean import plane as PL
+    table = json.load(open(ID.DECODE_PATH))
+    dec = IF.Decoder(table)
+    chain = cx.io.chain
+    cram_names = sorted({e["group"] for e in table["cram_values"]})
+
+    def cram_of(site):
+        out = {}
+        for n in cram_names:
+            a = chain.cram.get(site, {}).get(n)
+            if a:
+                r, j, k = PL.address_to_plane(np.asarray(a, np.int64))
+                out[n] = "".join(str(int(b)) for b in bits[np.asarray(r) * PL.BITS_PER_FRAME + (np.asarray(j) - 1) * 8 + np.asarray(k)])
+        return out
+    rows, cnt = [], collections.Counter()
+    fields = collections.defaultdict(collections.Counter)
+    for site in sorted(chain.cff):
+        vec = ID.site_vector(chain, val, site)
+        d = dec.decode(site, vec, cram_of(site))
+        d["ball"] = cx.io.site_ball.get(site)
+        rows.append(d)
+        cnt[d["class"]] += 1
+        if d["class"] == "used":
+            for f in ("direction", "standard", "drive", "slew", "pull-up", "bus-hold", "termination", "open-drain",
+                      "registered-input", "registered-output", "registered-oe"):
+                fields[f][d[f]["status"]] += 1
+            cnt["used_" + d["direction"].get("value", "ambiguous")] += 1
+        elif d["class"] == "unused":
+            cnt["unused_" + "+".join(d["unused_options"])] += 1
+    miss = [r for r in rows if r["class"] == "MISSING"]
+    res = {"sites": len(rows), "classes": dict(cnt), "used_field_status": {k: dict(v) for k, v in sorted(fields.items())},
+           "missing_sites": len(miss), "missing_distinct_raw_vectors": len({json.dumps(r["raw"], sort_keys=True) for r in miss}),
+           "sites_with_ball": sum(1 for r in rows if r["ball"]), "used_with_ball": sum(1 for r in rows if r["class"] == "used" and r["ball"])}
+    if detail_path:
+        json.dump(rows, open(detail_path, "w"), indent=0, default=str)
+    return res
+
+
+def io_sites(cx, plane_path, bits=None):
     val, disagree = cx.io.cff.read(plane_path)
     cl = cx.io.classify(plane_path)
     res = {"cff_bits": int(len(val)), "cff_bits_set": int(val.sum()), "cff_primary_replica_disagreements": disagree,
@@ -276,6 +319,8 @@ def io_sites(cx, plane_path):
             else:
                 fields[setting]["no_value_matches_MISSING"] += 1
     res["field_decode"] = {k: dict(v) for k, v in sorted(fields.items())}
+    if bits is not None:
+        res["fields"] = io_fields(cx, plane_path, bits, val, os.path.join(OUT, "image_io_table.json") if plane_path == PLANE else None)
     res["pin_mapped_sites"] = f"{balls} of {len(cl)} classified sites map to a package ball (pad -> pin via the vendor package table)"
     return res
 
@@ -331,7 +376,7 @@ def analyse(cx, path):
     head = np.asarray(fired[cx.T.HEADLINE_VARIANT])
     res["logic"] = logic(cx, bits, head, g)
     res["blocks"] = blocks(cx, head)
-    res["io"] = io_sites(cx, path)
+    res["io"] = io_sites(cx, path, bits)
     res["hardblocks"] = hardblocks(cx, path)
     return res
 

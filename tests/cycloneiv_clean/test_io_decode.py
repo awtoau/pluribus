@@ -8,7 +8,7 @@ import os
 import pytest
 
 from conftest import REPO, need, report
-from lifters.cycloneiv_clean import io as IO
+from lifters.cycloneiv_clean import cycloneiv_io as IO
 from lifters.cycloneiv_clean import io_decode as D
 
 

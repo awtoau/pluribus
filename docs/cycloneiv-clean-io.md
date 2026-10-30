@@ -1,6 +1,6 @@
 # Cyclone IV GX (EP4CGX150) IO configuration, clean pipeline (2026-10-30, #165)
 
-Code: `lifters/cycloneiv_clean/io.py`. Tests: `tests/cycloneiv_clean/test_io_cff.py` (numbers also in `tmp/logs/cycloneiv_clean_oracles.log`).
+Code: `lifters/cycloneiv_clean/cycloneiv_io.py`. Tests: `tests/cycloneiv_clean/test_io_cff.py` (numbers also in `tmp/logs/cycloneiv_clean_oracles.log`).
 Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cff2rbf.npz` (local).
 
 ## Answer
@@ -13,8 +13,8 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 
 | # | Fact | Source | Count |
 |---|---|---|---|
-| E1 | The assembler bit address carries a space tag: CRAM (bit 31 clear), CFF (`101` top), UNVM (`1001`), OPTION (`10001`), DPRIO (`100001`), literals (`11`) | static decompile of `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, 0x117e50); `io.ADDRESS_SPACES` | 5 spaces + literals |
-| E2 | The vendor die record counts them separately: CRAM 39,040,976, CFF 31,060, UNVM 0, option register 160 | `ASMDB_DIE::operator<<` field order, asmdb body offsets 5/9/13/17; `io.die_head()` | read live in the test |
+| E1 | The assembler bit address carries a space tag: CRAM (bit 31 clear), CFF (`101` top), UNVM (`1001`), OPTION (`10001`), DPRIO (`100001`), literals (`11`) | static decompile of `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, Ghidra 0x117e50 = vaddr 0x17e50 copy; ELF-symbol twin vaddr 0x1a240, identical logic); `cycloneiv_io.ADDRESS_SPACES` | 5 spaces + literals |
+| E2 | The vendor die record counts them separately: CRAM 39,040,976, CFF 31,060, UNVM 0, option register 160 | `ASMDB_DIE::operator<<` field order, asmdb body offsets 5/9/13/17; `cycloneiv_io.die_head()` | read live in the test |
 | E3 | The sof has one section per space: tag 17 CRAM = 12 + ceil(39,040,976 / 8) = 4,880,134 B; tag 21 CFF = 12 + ceil(31,060 / 8) = 3,895 B; tag 18 option = 40 B | `sfl_ep4cgx150.sof` section walk | 4,880,134 / 3,895 / 40 |
 | E4 | asm.ddb holds CRAM only | census of all entries with `io.classify` | 51,565,365 / 51,565,365 CRAM; 0 CFF, 0 UNVM, 0 option; min 3,105, max 39,037,932 < 39,040,976 |
 | E5 | CFF bits land in the rbf periphery frames 1..36, never in CRAM frames (37..) | bit-plane sofs through `quartus_cpf` (same method as A5): 15 planes + 15 complements | 31,060 / 31,060 bits seen, 0 unseen, 124,496 cells, frames 1..36 |
@@ -296,3 +296,48 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 ### Still open
 
 - VREF pad -> pin map (the foreign IOST bit), IOST value of a 3-element site's shared 4th bit, CRAM value patterns of the registered fields, 50 ohm termination and SSTL-2 output (no CFF change), the 4 dedicated-clock pads.
+
+## Value laws from the vendor code, unused-pin states, per-site decode (2026-10-30, #168; code `io_encode.py`, `io_fields.py`, `io_decode.py`; tests `test_io_fields.py`)
+
+### Value -> bit pattern law (static decompile, `reference/ghidra/functions.tsv`; no pair builds)
+
+- `ASM_ARCH_GROUP::mux_select` -> `ASMDB_ARCH_GROUP_STD::select(site, value)`: per mux entry, `mux.select(value)`, every bit inverted when the entry's `arch_value` is 0, chain to the next mux through `next_mux_selection` (0xfffffffb ends).
+- `ASMDB_ENCODED_MUX::select`: mux bit k = `(value >> k) & 1`; value >= 2^nbits = vendor internal error. Pattern element i = value bit i.
+- `ASMDB_ARCH_GROUP_DUMB::select`: bit = `value != 0` (arch_value 1; value > 1 = internal error).
+- All IO groups (IOST, pull-up / pull-down strength, slew, duty cycle = ENCODED, `arch_value` 1; pull-up, bus-hold, PCI clamp, termination select = DUMB, 1) have no inversion and one mux: the full value -> pattern table is `io_encode.all_values` (IOST 8 / 16 values, strength 256 / 512, slew 4), including values no build used. Slew 0 / 1 / 2 = `00` / `10` / `01` follows from the law.
+- IOST mux: 51 sites list the no-bit sentinel `0xfffffffb` as 4th bit (3 CFF bits, values 0..7); the pad-less VIO site lists it 4 times (no IOST). The "shared 4th IOST bit" is absent, not shared.
+- Not code-derived yet: value -> meaning (which IOST / strength value a standard or drive setting selects). `asm_convert_db_to_asm_iost` (libcomp_asm) maps standards to IOST classes by jump table but does not reproduce the measured Stingray output values (2.5 V -> 0 measured, 1 by the function; SSTL-2 out -> 0 measured, 5 by the function); the drive / IOST `get_settings` read a dirt subtree `IO` that the stingray dirt files do not contain. Meaning stays pair-build-labelled (confirmation tier) until that path is found.
+
+### Table hygiene
+
+- `values` entries hold the pattern all sites share or `None` with a `conflict` map (entry void); no modal pattern. Unused-pin states likewise (`vector` None + `conflict`).
+
+### Unused-pin states (builds `scripts/cycloneiv_clean_io_unused.py`, 9 builds; base = pair-build `AS INPUT TRI-STATED`)
+
+| Option | CFF vector at every unused site (IOST width 4 / 3) |
+|---|---|
+| AS INPUT TRI-STATED | IOST `1100` / `110` (value 3), strengths 0, pull-up 0 |
+| WITH WEAK PULL-UP | as above, pull-up 1 |
+| OUTPUT DRIVING GROUND = UNSPECIFIED SIGNAL | strengths all ones (pull-down 9 / pull-up 8 bits), pull-up 0; the two are CFF-identical |
+
+- Device-fixed pads (vector equal in all options and builds): 5 sites incl. the pad-less VIO site (6.324) and nCEO.
+
+### Per-site decode (`io_fields.Decoder`)
+
+- Order: fixed -> unused (all matching options listed) -> used (joint IOST / strength / clamp groups equal a pair-build state; slew, pull-up, bus-hold, open-drain independent) -> MISSING with raw patterns.
+- Direction word from the matching kinds (`in`/`regin` input, `out`/`regout` output, `bidir`/`tri`/`regoe` bidir-or-tristate); a field is `ambiguous_MISSING` with every candidate when states disagree or when a standard with the same IOST is unbuilt for the kind.
+- CFF-indistinguishable pairs found: 2.5 V = 3.0 / 3.3 V LVTTL / LVCMOS / 3.0-V PCI as inputs (IOST `0000`, no strength change); 2.5 V = SSTL-2 Class I as outputs; 50 ohm series termination = none.
+- Registered input / output / OE: CRAM patterns per group from the pair builds (`cram_values`): ON = spec pattern at every site, OFF = base pattern.
+
+### Extra pair builds run (2026-10-30; confirm tier, not discovery)
+
+- `scripts/cycloneiv_clean_io_unused.py`: 9 builds (3 unused-pin options x pins AD25 / C29 / A23).
+- `scripts/cycloneiv_clean_io_std.py`: 196 builds (3.3-V LVCMOS, 3.0-V LVTTL, 3.0-V LVCMOS, 3.0-V PCI on `in` and `bidir`: 176; SSTL-2 Class I on `bidir`: 20), 24 sampled sites (2 ends + 2 interior per bank), 12 jobs, stall guard 60 s, memory lease. 196 ok, 0 failed.
+- Result: those four standards on `in` are CFF-identical to 2.5 V (IOST `0000`, no strength change); on `bidir` they change strengths like the `out` rows; SSTL-2 Class I `bidir` has IOST `101`/`1010` (like `in`).
+
+### Still open
+
+- Value -> meaning from code (see above); drive values beyond 4 / 8 / 12 / 16 mA / min / max and drive under non-2.5-V standards (pair builds: one `CURRENT_STRENGTH_NEW` value per standard, not run: the image uses neither).
+- VREF pad of a pin: pad ddb carries no group field (all fields tested are constant or inconsistent with the 20 observed pin -> VREF owners); hypothesis "nearest VREF pad of the bank by site index" holds 19 of 20 (AH19 -> VREFB4N2 observed, VREFB4N1 nearer): unverified, not used by the decoder. Exact route: one SSTL input pin per build, foreign IOST bit names the pad (~455 builds) or the DEV_PAD serializer fields.
+- 6 image sites with stray strength bits / IOST 7 on differential pads: candidate cause = p / n pair coupling; pair builds proposed (not run, image uses no differential standard): LVDS output on a `p` pin, diff of the `n` and `p` neighbour sites, 3 sites x 2 standards = 6 builds.
+- Registered-IO CRAM groups are tabulated (`cram_values`); the clock / clear source muxes are LABLINE routing (placement-dependent) and not part of the table.

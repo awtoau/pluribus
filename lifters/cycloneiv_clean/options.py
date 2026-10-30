@@ -137,11 +137,21 @@ def decode(value_bits):
 
 
 def score(observed, predicted):
-    """Per class counts of one build: matched (equal), wrong (differ).  Both 160-bit value vectors."""
-    out = {k: dict(matched=0, wrong=0) for k in classes()}
+    """Per class counts of one build, both 160-bit value vectors.
+
+    group class (function decoded): matched (equal) / wrong (differ).
+    forced / default / unlisted (function NOT decoded, prediction = the vendor constant): never `matched` -- equal = missing (nothing explains
+    the bit; it only equals the constant), differ = wrong (the constant is contradicted).  `extra` = 0 at value level (flip_score counts extras).
+    """
+    out = {k: dict(matched=0, missing=0, extra=0, wrong=0) for k in classes()}
     for k, idx in classes().items():
         for i in idx:
-            out[k]["matched" if observed[i] == predicted[i] else "wrong"] += 1
+            if observed[i] != predicted[i]:
+                out[k]["wrong"] += 1
+            elif k == "group":
+                out[k]["matched"] += 1
+            else:
+                out[k]["missing"] += 1
     return out
 
 

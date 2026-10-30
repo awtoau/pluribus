@@ -42,7 +42,7 @@ def test_sampling_plan_covers_every_bank():
 
 
 def test_pair_diffs_consistent(data):
-    from lifters.cycloneiv_clean import io as IO
+    from lifters.cycloneiv_clean import cycloneiv_io as IO
     try:
         cff = IO.Cff()
     except IO.CffMissing as e:

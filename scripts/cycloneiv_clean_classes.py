@@ -32,7 +32,7 @@ import numpy as np
 REPO = os.environ.get("PLURIBUS_REPO") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
-from lifters.cycloneiv_clean import asmdb_walk as W, ddb, fields as F, io as IO, names as N, plane as P  # noqa: E402
+from lifters.cycloneiv_clean import asmdb_walk as W, ddb, fields as F, cycloneiv_io as IO, names as N, plane as P  # noqa: E402
 
 log = logging.getLogger("clean_classes")
 LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_classes.log")

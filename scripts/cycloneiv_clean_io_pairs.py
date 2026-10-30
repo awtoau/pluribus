@@ -32,7 +32,7 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
-from lifters.cycloneiv_clean import io as IO  # noqa: E402
+from lifters.cycloneiv_clean import cycloneiv_io as IO  # noqa: E402
 from lifters.cycloneiv_clean import plane as P  # noqa: E402
 
 OUT = os.path.join(REPO, "tmp", "cycloneiv_clean", "io_pairs")
@@ -45,7 +45,7 @@ AUX_BANKS = (3, 7)             # aux pins live in the first of these that is not
 AUX_NAMES = ("a", "c", "e", "y")
 PIN_DESIGNS = 700              # corpus designs scanned for the pin -> site table
 PERIPHERY_BYTES = P.RBF_HEADER + P.RBF_PRE_FRAMES * P.RBF_FRAME_BYTES
-CFF_BITS = 31060               # source: ASMDB_DIE m_num_cff_bits (io.die_head)
+CFF_BITS = 31060               # source: ASMDB_DIE m_num_cff_bits (cycloneiv_io.die_head)
 # Quartus step backstops = 3x worst of the 50-build pilot (12 parallel jobs, load ~45): map 20.8 s, fit 24.9 s, asm 9.9 s, cpf 2.6 s.
 # fz.run also kills a step silent (no output, no CPU) for 60 s; on expiry it logs step, elapsed and loadavg and the build is recorded FAILED.
 LIMITS = {"quartus_map": 63, "quartus_fit": 75, "quartus_asm": 30, "quartus_cpf": 8}
@@ -253,7 +253,7 @@ def extract(sof, rbf, dest, pin_line):
     np.savez_compressed(dest, cff=cff, opt=opt, cram=cram, peri=peri, pin_line=np.array(pin_line))
 
 
-def build_one(d, kind, pin, aux, assigns, limits):
+def build_one(d, kind, pin, aux, assigns, limits, reserve="AS INPUT TRI-STATED"):
     import cycloneiv_fuzz as fz
     import heavy_guard
     import toolchain
@@ -267,7 +267,7 @@ def build_one(d, kind, pin, aux, assigns, limits):
     open(os.path.join(d, "src", "top.v"), "w").write(verilog(kind))
     qsf = ['set_global_assignment -name FAMILY "Cyclone IV GX"', f"set_global_assignment -name DEVICE {DEVICE}",
            "set_global_assignment -name TOP_LEVEL_ENTITY top", "set_global_assignment -name VERILOG_FILE ../src/top.v",
-           'set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-STATED"',
+           f'set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "{reserve}"',
            "set_global_assignment -name NUM_PARALLEL_PROCESSORS 1"] + qsf_for(pin, aux, assigns)
     open(os.path.join(q, "build.qsf"), "w").write("\n".join(qsf) + "\n")
     open(os.path.join(q, "build.qpf"), "w").write('QUARTUS_VERSION = "25.1"\nPROJECT_REVISION = "build"\n')

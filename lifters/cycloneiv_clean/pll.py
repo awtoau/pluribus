@@ -1,14 +1,14 @@
 """Cyclone IV GX (EP4CGX150) PLL configuration (#169).  Vendor-derived structure, specimen-confirmed.
 
 - PLL config is CFF (periphery frames), not CRAM: every PLL arch group (block types 43 FAST_PLL, 45 GENERAL_PLL) carries CFF-tagged
-  absolute addresses (tag 101, io.ADDRESS_SPACES); `paths[k]` of a group = PLL instance k of that block type.  No instance base needed.
+  absolute addresses (tag 101, cycloneiv_io.ADDRESS_SPACES); `paths[k]` of a group = PLL instance k of that block type.  No instance base needed.
 - Field value = mux bits read LSB first in mux order (bit j of the value = j-th mux bit).
 - Counter encodings (libcomp_asm ASM_PLL_M_HIGH_COUNTER / M_LOW / N_HIGH / OUTPUT_COUNTER_* ::process_atom, static decompile):
   high = (count + 1) >> 1, low = count >> 1 for an uneven split; `*_MULT_FACTOR` group = even 0 / odd 2 / bypass.
 """
 import numpy as np
 
-from . import fields as F, io as IO
+from . import fields as F, cycloneiv_io as IO
 
 PLL_BLOCKS = {43: "FAST_PLL", 45: "GENERAL_PLL"}      # source: libdb_asmdb ASMDB_ARCH_GROUP_BLOCK_TYPE (reference/ghidra/globals.tsv)
 # PLL_k (Quartus location) -> (block type, path index); source: gxhb_pllsite_{1,2,3,4,5,8} builds, PLL_ENABLE_PLL bit set at exactly this path

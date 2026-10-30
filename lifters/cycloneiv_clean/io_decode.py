@@ -12,13 +12,13 @@ import sys
 import numpy as np
 
 from . import asmdb_walk as W
-from . import io as IO
+from . import cycloneiv_io as IO
 from . import pkgpad as K
 from . import plane as P
 
 DECODE_PATH = os.path.join(P.REPO, "databases", "cycloneiv", "io_decode.json")
 BUILDS = os.path.join(P.REPO, "tmp", "cycloneiv_clean", "io_pairs", "builds")
-CFF_TAG = 5                    # top bits of a CFF-tagged asm address (io.ADDRESS_SPACES: 0b101)
+CFF_TAG = 5                    # top bits of a CFF-tagged asm address (cycloneiv_io.ADDRESS_SPACES: 0b101)
 # source: asmdb group types of the IO blocks (reference/ghidra/structs.tsv serializers + libdb_asmdb enum tables) bound to the pair
 # setting by the libcomp_asm process_atom decompiles (docs/cycloneiv-clean-io.md: pin mode, standard, pull / bus-hold, slew, drive)
 FIELD_GROUPS = {
@@ -128,7 +128,7 @@ def _build(pairs, pin, bid):
 
 
 def value_table(chain, pairs):
-    """Decoded table: (setting, value, base kind) -> per CFF group the modal absolute bit pattern over sites (mux element order,
+    """Decoded table: (setting, value, base kind) -> per CFF group the bit pattern all sites share (None = sites disagree, entry void) (mux element order,
     element i = value bit i: slew 0 / 1 / 2 = 00 / 10 / 01).  Entries: primary groups of the field and every group whose pattern
     differs from the base build's; `default` rows = the base builds.  Each entry has `source` (pair build ids, walk group ids)."""
     cache = {}
@@ -140,7 +140,7 @@ def value_table(chain, pairs):
         return cache[(pin, bid)]
     pat = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))      # key -> (group, n) -> pattern -> sites
     srcs = collections.defaultdict(set)
-    for r in _rows(pairs):
+    for r in _rows(pairs) + extra_rows(pairs):
         s = chain.ball_site.get(r["pin"])
         if s is None:
             continue
@@ -159,7 +159,7 @@ def value_table(chain, pairs):
             by = collections.defaultdict(list)
             for (p, (pin, s)), _ in cnt.items():
                 by[p].append(f"{pin}:{s[0]}.{s[1]}")
-            modal = max(by, key=lambda p: len(by[p]))
+            modal = next(iter(by)) if len(by) == 1 else None          # zero tolerance: one pattern at every site or no pattern (no vote)
             primary = key[0] != "default" and name in FIELD_GROUPS.get(key[0], ())
             dk = default[key[2]]
             dmodal = None
@@ -167,13 +167,13 @@ def value_table(chain, pairs):
                 d = collections.defaultdict(list)
                 for (p, ps), _ in pat[dk][(name, n)].items():
                     d[p].append(ps)
-                dmodal = max(d, key=lambda p: len(d[p]))
-            if key[0] != "default" and not primary and modal == dmodal:
+                dmodal = next(iter(d)) if len(d) == 1 else None
+            if key[0] != "default" and not primary and modal is not None and modal == dmodal:
                 continue
             sites = sum(len(v) for v in by.values())
             table.append({"setting": key[0], "value": key[1], "base_kind": key[2], "group": name, "n_elem": n, "primary": primary,
-                          "pattern": modal, "sites_agree": len(by[modal]), "sites": sites,
-                          "deviants": {p: v for p, v in by.items() if p != modal},
+                          "pattern": modal, "sites_agree": len(by[modal]) if modal else 0, "sites": sites,
+                          "conflict": {p: v for p, v in by.items()} if modal is None else {},
                           "source": {"pairs": sorted(srcs[key]), "groups": sorted({g for bt in (5, 6) for g in chain.gid.get((bt, name), [])})}})
     return table
 
@@ -250,12 +250,123 @@ def open_drain(chain, pairs):
     return out
 
 
+UNUSED_DIR = os.path.join(P.REPO, "tmp", "cycloneiv_clean", "io_unused")      # scripts/cycloneiv_clean_io_unused.py builds
+# source: the state-vector groups of an IO site (FIELD_GROUPS values + the PCI clamp group the pair table couples to direction / standard)
+STATE_NAMES = ("MIO_SELECT_IOST_DIRT", "MIO_SET_PULLDOWN_STRENGTH", "MIO_SET_PULLUP_STRENGTH", "MIO_SET_SLEW_RATE", "MIO_USE_PCI_DIODE_CLAMP",
+               "MIO_USE_PULL_UP", "MIO_USE_BUS_HOLD", "MIO_TERMINATION_CONTROL_SELECT", "MIO_PIN_MODE")
+# source: Quartus RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP builds: the base builds use `AS INPUT TRI-STATED`; io_unused builds the other three
+UNUSED_OPTIONS = {"tristate": "AS INPUT TRI-STATED", "pullup": "AS INPUT TRI-STATED WITH WEAK PULL-UP", "gnd": "AS OUTPUT DRIVING GROUND",
+                   "unspec": "AS OUTPUT DRIVING AN UNSPECIFIED SIGNAL"}
+
+
+def site_vector(chain, cff, site):
+    """{state group name: pattern} of one site from a CFF bit array."""
+    return {n: "".join(str(int(cff[a])) for a in chain.cff[site][n]) for n in STATE_NAMES if n in chain.cff[site]}
+
+
+def _used_sites(chain, pairs, pin):
+    sys.path.insert(0, os.path.join(P.REPO, "scripts"))
+    import cycloneiv_clean_io_pairs as M
+    sample = pairs["sample"]
+    aux, _ = M.aux_pins(sample[pin]["bank"], {p: v for p, v in sample.items()})
+    return {chain.ball_site.get(b) for b in [pin] + list(aux.values())} - {None}
+
+
+def unused_states(chain, pairs):
+    """Unused-pin states: for each RESERVE_ALL_UNUSED_PINS option the site vector at the sites no build uses (pin under test and aux pins excluded).
+
+    {"states": [{option, klass (IOST width), vector, sites, source}], "fixed": {site: vector}}.  A site is `fixed` when its vector is equal in
+    every option and every build (a device-fixed pad, not an IO the unused option reaches).  Within one option and IOST width every non-fixed
+    unused site must have the same vector (else `vector` is None and `conflict` lists them)."""
+    obs = collections.defaultdict(lambda: collections.defaultdict(set))          # site -> option -> {vector tuple}
+    srcs = collections.defaultdict(list)
+    for opt in UNUSED_OPTIONS:
+        for pin in sorted(pairs["sample"]) if opt == "tristate" else (sorted(os.listdir(UNUSED_DIR)) if os.path.isdir(UNUSED_DIR) else []):
+            if opt == "tristate":
+                if pin not in ("AD25", "C29", "A23"):
+                    continue
+                z, bid = _build(pairs, pin, "out.STD=2.5_V"), f"io_pairs/{pin}/out.STD=2.5_V"
+            else:
+                f = os.path.join(UNUSED_DIR, pin, opt, "result.npz")
+                z, bid = (np.load(f) if os.path.exists(f) else None), f"io_unused/{pin}/{opt}"
+            if z is None:
+                continue
+            srcs[opt].append(bid)
+            used = _used_sites(chain, pairs, pin)
+            for s in chain.cff:
+                if s not in used:
+                    obs[s][opt].add(tuple(sorted(site_vector(chain, z["cff"], s).items())))
+    if len(srcs) < len(UNUSED_OPTIONS):
+        return {"states": [], "fixed": {}}
+    fixed, klass = {}, collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+    for s, byopt in obs.items():
+        if len(byopt) != len(UNUSED_OPTIONS) or any(len(v) != 1 for v in byopt.values()):
+            continue
+        vecs = {opt: next(iter(v)) for opt, v in byopt.items()}
+        if len(set(vecs.values())) == 1:
+            fixed[s] = dict(next(iter(vecs.values())))
+            continue
+        for opt, v in vecs.items():
+            klass[opt][len(dict(v).get("MIO_SELECT_IOST_DIRT", ""))][v] += 1
+    states = []
+    for opt, byk in sorted(klass.items()):
+        for k, cnt in sorted(byk.items()):
+            unique = len(cnt) == 1                  # zero tolerance: every non-fixed unused site of the class shares one vector, else the state is void
+            vec = next(iter(cnt)) if unique else None
+            states.append({"option": opt, "qsf": UNUSED_OPTIONS[opt], "iost_width": k, "vector": dict(vec) if vec else None,
+                           "sites": sum(cnt.values()), "conflict": [] if unique else [dict(v) for v in cnt],
+                           "source": {"builds": srcs[opt]}})
+    return {"states": states, "fixed": {f"{s[0]}.{s[1]}": {"vector": v, "source": {"builds": sum(srcs.values(), [])}} for s, v in sorted(fixed.items())}}
+
+
+def extra_rows(pairs):
+    """Rows for the extra standard pair builds (scripts/cycloneiv_clean_io_std.py): spec = in / bidir with a replaced IO_STANDARD vs the base kind.
+    Same row layout as pairs["rows"] (setting, value, pin, base, spec, status ok)."""
+    rows = []
+    for pin, v in pairs["sample"].items():
+        d = os.path.join(BUILDS, f"{pin}_{v['site']}")
+        for kind in ("in", "bidir"):
+            base = f"{kind}.STD=2.5_V"
+            for std in ("3.3-V LVCMOS", "3.0-V LVTTL", "3.0-V LVCMOS", "3.0-V PCI") + (("SSTL-2 Class I",) if kind == "bidir" else ()):
+                spec = f"{kind}.STD={std.replace(' ', '_')}"
+                if os.path.exists(os.path.join(d, spec, "result.npz")) and os.path.exists(os.path.join(d, base, "result.npz")):
+                    rows.append({"setting": "standard", "value": std, "pin": pin, "base": base, "spec": spec, "status": "ok", "cff": []})
+    return rows
+
+
+def cram_values(chain, pairs):
+    """CRAM pattern per registered-* setting and IO CRAM group (sof tag 17 index = address): base (setting OFF) and spec (ON) at every site.
+    Entry kept when every site agrees on both patterns (0 deviants); source = pair build ids."""
+    keep = cram_fields(chain, pairs)
+    res = []
+    for st in ("registered-input", "registered-output", "registered-oe"):
+        for name in keep[st]["groups"]:
+            pats = collections.defaultdict(set)
+            bs = []
+            for r in _rows(pairs):
+                s = chain.ball_site.get(r["pin"])
+                if r["setting"] != st or s is None:
+                    continue
+                zb, zs = _build(pairs, r["pin"], r["base"]), _build(pairs, r["pin"], r["spec"])
+                if zb is None or zs is None:
+                    continue
+                bits = chain.cram[s][name]
+                ub, us = (np.unpackbits(z["cram"], bitorder="little") for z in (zb, zs))
+                pats[("base", len(bits))].add("".join(str(int(ub[a])) for a in bits))
+                pats[("spec", len(bits))].add("".join(str(int(us[a])) for a in bits))
+                bs.append(r["spec"])
+            for (role, n), v in sorted(pats.items()):
+                res.append({"setting": st, "group": name, "role": role, "n_elem": n, "patterns": sorted(v),
+                            "source": {"pairs": sorted(set(bs)), "groups": sorted({g for bt in (5, 6) for g in chain.gid.get((bt, name), [])})}})
+    return res
+
+
 def decode(chain=None, pairs=None):
     chain = chain or Chain()
     pairs = pairs or IO.io_pairs()
     anchors = {p: chain.anchor(chain.ball_site[p]) for p in pairs["location"] if chain.ball_site.get(p)}
     return {"cross_check": cross_check(chain, pairs), "values": value_table(chain, pairs), "cram_fields": cram_fields(chain, pairs),
-            "open_drain": open_drain(chain, pairs), "double_groups": double_groups(chain, pairs),
+            "open_drain": open_drain(chain, pairs), "unused": unused_states(chain, pairs), "cram_values": cram_values(chain, pairs), "double_groups": double_groups(chain, pairs),
             "anchor": {"rule": f"lowest CFF bit of {ANCHOR_GROUP} at the site",
                        "equal_to_pair_location": sum(1 for p, a in anchors.items() if a == pairs["location"][p][0]), "sites": len(anchors)}}
 

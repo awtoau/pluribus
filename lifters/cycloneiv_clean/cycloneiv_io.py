@@ -1,10 +1,10 @@
-"""Cyclone IV GX (EP4CGX150) IO configuration: address spaces and the CFF region.  Vendor-derived only (#165).
+"""Cyclone IV GX (EP4CGX150) IO / periphery address spaces and the CFF region.  Vendor-derived only (#165, #168).
 
-Finding: IO pin configuration is NOT in the CRAM address space of asm.ddb.  The assembler addresses five spaces
-(CRAM, CFF, UNVM, option register, DPRIO) by tag bits; asm.ddb holds CRAM only; the 31,060 CFF bits land in the 36
-periphery frames of the rbf.  Evidence and counts: docs/cycloneiv-clean-io.md.  Decoded here: the address tags, the
-die head counts, the CFF bit -> rbf cell table.  NOT decoded: asmdb groups -> IO fields (direction, standard, drive, slew,
-pull), pad -> pin.  No constant below is fitted to a single cell.
+- Address-space tags (CRAM, CFF, UNVM, option register, DPRIO), die head counts, CFF bit -> rbf periphery cells (`Cff`), asmdb body and
+  ddb type-table readers, pair-build table reader (`io_pairs`).
+- IO field layout, value laws and per-site decode live in asmdb_walk.py (groups), io_encode.py (value <-> pattern law from the vendor select code),
+  io_decode.py (pair-build tables), io_fields.py (site decoder); evidence and counts: docs/cycloneiv-clean-io.md.
+- Named cycloneiv_io (not io) so it never shadows the stdlib module when this directory is on sys.path.
 """
 import os
 
@@ -13,7 +13,7 @@ import numpy as np
 from . import plane as P
 
 # a >= 0 -> CRAM bit a; (a & mask) == mask picks the space, index = a & keep; 0xfffffffa..e = DB_ILLEGAL_* markers.
-# source: libcomp_asmcc ASM_BITFIELD::silent_set_bits @ 0x117e50 (static decompile), tag tests in this order
+# source: libcomp_asmcc ASM_BITFIELD::silent_set_bits @ vaddr 0x17e50 (project copy; ELF-symbol twin 0x1a240, identical logic; static decompile), tag tests in this order
 ADDRESS_SPACES = (
     # name, mask (all bits must be set), keep (index bits)
     ("LITERAL", 0xC0000000, 0x3FFFFFFF),

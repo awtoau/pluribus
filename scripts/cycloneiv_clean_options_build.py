@@ -19,7 +19,7 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
 sys.path.insert(0, HERE)
 from lifters.cycloneiv_clean import asmdb_walk as W  # noqa: E402
-from lifters.cycloneiv_clean import io as IO  # noqa: E402
+from lifters.cycloneiv_clean import cycloneiv_io as IO  # noqa: E402
 from lifters.cycloneiv_clean import sofio  # noqa: E402
 import cycloneiv_clean_dirt as D  # noqa: E402
 
@@ -211,7 +211,7 @@ def main():
         n_bits=N, class_counts=cnt, entries=ents, jtag=jtag_section(w, tabs["arch_group_type"]),
         flag_semantics=dict(
             text="sof tag 18 bits 160..319 = ASM_BITFIELD shadow buffer: 1 where the bit was written by set_bits (forced list, option groups), 0 where only silent_set_bits wrote it (default list)",
-            source="libcomp_asmcc ASM_BITFIELD::set_bits @0x118000 (value + written mask + shadow) vs silent_set_bits @0x117e50 (value only), docs/cycloneiv-address-spaces.md 3.2"))
+            source="libcomp_asmcc ASM_BITFIELD::set_bits @Ghidra 0x118000 = vaddr 0x18000 (twin 0x1aca0) (value + written mask + shadow) vs silent_set_bits @Ghidra 0x117e50 = vaddr 0x17e50 (twin 0x1a240) (value only), docs/cycloneiv-address-spaces.md 3.2"))
     json.dump(res, open(OUT, "w"), indent=1)
     log.info("wrote %s: %s", OUT, cnt)
 
