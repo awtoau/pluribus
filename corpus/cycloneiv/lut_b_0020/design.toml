@@ -1,4 +1,0 @@
-top = "top"
-purpose = "lut_mask 0020 at LCCOMB_X1_Y18_N2"
-exercises = ["lut_mask"]
-qsf = ["set_location_assignment LCCOMB_X1_Y18_N2 -to lut", "set_location_assignment PIN_28 -to a", "set_location_assignment PIN_30 -to b", "set_location_assignment PIN_31 -to c", "set_location_assignment PIN_32 -to d", "set_location_assignment PIN_42 -to y"]

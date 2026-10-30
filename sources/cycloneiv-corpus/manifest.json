@@ -1,545 +1,159 @@
 {
-  "entries": [
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 3990,
-        "device": "EP4CE55",
-        "device_source": "INFERRED: NeptUNO board is EP4CE55; no .sof in this corpus to confirm",
-        "frame_bytes": 464,
-        "geometry_supported": false,
-        "header_compressed": false,
-        "periphery_frames": 21,
-        "plane_shape": [
-          4011,
-          3712
-        ],
-        "reader_ok": true,
-        "set_bits": 128373
-      },
-      "bytes": 1861195,
-      "commit": "255e378fc494890ef22474eda6506b89361e3c77",
-      "file": "menu.rbf",
-      "kind": "git",
-      "licence": "none stated (repo); cores derive from GPL MiST/MiSTer code",
-      "name": "neptuno_menu",
-      "path": "menu/menu.rbf",
-      "repo": "delgrom/neptUNOreloaded_Binaries",
-      "retrieved": "2026-10-29T07:16:22+10:00",
-      "sha256": "9fdf082677c3116cc6d33a04201c3a9b222838709af37f7a38ed85a000b3d923",
-      "src": "no HDL in repo",
-      "url": "https://github.com/delgrom/neptUNOreloaded_Binaries/blob/255e378fc494890ef22474eda6506b89361e3c77/menu/menu.rbf",
-      "what": "NeptUNO boot menu core"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 3990,
-        "device": "EP4CE55",
-        "device_source": "INFERRED: NeptUNO board is EP4CE55; no .sof in this corpus to confirm",
-        "frame_bytes": 464,
-        "geometry_supported": false,
-        "header_compressed": false,
-        "periphery_frames": 21,
-        "plane_shape": [
-          4011,
-          3712
-        ],
-        "reader_ok": true,
-        "set_bits": 490768
-      },
-      "bytes": 1861195,
-      "commit": "255e378fc494890ef22474eda6506b89361e3c77",
-      "file": "nes_NeptUNOR.rbf",
-      "kind": "git",
-      "licence": "none stated (repo); NES core GPL-derived",
-      "name": "neptuno_nes",
-      "path": "nes/nes_NeptUNOR.rbf",
-      "repo": "delgrom/neptUNOreloaded_Binaries",
-      "retrieved": "2026-10-29T07:16:23+10:00",
-      "sha256": "1f0fd4a02f9779959016bd0ca64b40bc2613eee6f1d1638d331bbfdc2106b7e8",
-      "src": "no HDL in repo",
-      "url": "https://github.com/delgrom/neptUNOreloaded_Binaries/blob/255e378fc494890ef22474eda6506b89361e3c77/nes/nes_NeptUNOR.rbf",
-      "what": "NES console core"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 3990,
-        "device": "EP4CE55",
-        "device_source": "INFERRED: NeptUNO board is EP4CE55; no .sof in this corpus to confirm",
-        "frame_bytes": 464,
-        "geometry_supported": false,
-        "header_compressed": false,
-        "periphery_frames": 21,
-        "plane_shape": [
-          4011,
-          3712
-        ],
-        "reader_ok": true,
-        "set_bits": 621452
-      },
-      "bytes": 1861195,
-      "commit": "255e378fc494890ef22474eda6506b89361e3c77",
-      "file": "minimig_neptunoR.rbf",
-      "kind": "git",
-      "licence": "none stated (repo); Minimig is GPL",
-      "name": "neptuno_minimig",
-      "path": "minimig-aga/minimig_neptunoR.rbf",
-      "repo": "delgrom/neptUNOreloaded_Binaries",
-      "retrieved": "2026-10-29T07:16:25+10:00",
-      "sha256": "e4bf43ef06bd99c26e8e2e14b14213a54f01faf73fdd6dbd70f01d48728550e7",
-      "src": "no HDL in repo",
-      "url": "https://github.com/delgrom/neptUNOreloaded_Binaries/blob/255e378fc494890ef22474eda6506b89361e3c77/minimig-aga/minimig_neptunoR.rbf",
-      "what": "Amiga (Minimig AGA) core"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 2386,
-        "device": "EP4CE22F17C8",
-        "device_source": "SOF container string of a same-geometry image (die family, not package)",
-        "frame_bytes": 298,
-        "geometry_supported": false,
-        "header_compressed": true,
-        "periphery_frames": 25,
-        "plane_shape": [
-          2411,
-          2384
-        ],
-        "reader_ok": true,
-        "set_bits": 551186
-      },
-      "bytes": 406179,
-      "commit": "23d83be9d7575758aa1923a2af4162ed7a399a5a",
-      "file": "IremM92.rbf",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "sidi_iremm92",
-      "path": "Cores/Arcade/SiDi/IremM92/IremM92.rbf",
-      "repo": "ManuFerHi/SiDi-FPGA",
-      "retrieved": "2026-10-29T07:16:29+10:00",
-      "sha256": "a3740cd1a4d8e37c4814198700e8f33b51aa0bd9c746349c3b0c60c3f4377f59",
-      "src": "no HDL in repo",
-      "url": "https://github.com/ManuFerHi/SiDi-FPGA/blob/23d83be9d7575758aa1923a2af4162ed7a399a5a/Cores/Arcade/SiDi/IremM92/IremM92.rbf",
-      "what": "Irem M92 arcade core (SiDi)"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 6154,
-        "device": "EP4CGX150",
-        "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
-        "frame_bytes": 796,
-        "geometry_supported": true,
-        "header_compressed": true,
-        "periphery_frames": 37,
-        "plane_shape": [
-          6191,
-          6368
-        ],
-        "reader_ok": true,
-        "set_bits": 399649
-      },
-      "asset": "GalaksijaPLUS_poseidon-ep4cgx150.rbf",
-      "bytes": 1412585,
-      "file": "GalaksijaPLUS_poseidon-ep4cgx150.rbf",
-      "kind": "release",
-      "licence": "MIT",
-      "name": "poseidon_galaksija",
-      "repo": "turri21/GalaksijaPLUS_poseidon-ep4cgx150",
-      "retrieved": "2026-10-29T07:16:32+10:00",
-      "sha256": "658b36b365a4d3538459d4f5f6f1d2c79e5687cc0fd0f61acf9ba50d84deebbc",
-      "src": "HDL in the same repo",
-      "tag": "v0.1",
-      "url": "https://github.com/turri21/GalaksijaPLUS_poseidon-ep4cgx150/releases/download/v0.1/GalaksijaPLUS_poseidon-ep4cgx150.rbf",
-      "what": "Galaksija PLUS home computer core"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 6154,
-        "device": "EP4CGX150",
-        "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
-        "frame_bytes": 796,
-        "geometry_supported": true,
-        "header_compressed": true,
-        "periphery_frames": 37,
-        "plane_shape": [
-          6191,
-          6368
-        ],
-        "reader_ok": true,
-        "set_bits": 587794
-      },
-      "asset": "TatungEinstein_poseidon-ep4cgx150_20250405.rbf",
-      "bytes": 1502642,
-      "file": "TatungEinstein_poseidon-ep4cgx150_20250405.rbf",
-      "kind": "release",
-      "licence": "GPL-2.0",
-      "name": "poseidon_einstein",
-      "repo": "turri21/TatungEinstein_poseidon-ep4cgx150",
-      "retrieved": "2026-10-29T07:16:34+10:00",
-      "sha256": "d15c2f1a5a5855aaba038b7edaa2813b2e717d11dcd1276001aa406884436ff0",
-      "src": "HDL in the same repo",
-      "tag": "20250405",
-      "url": "https://github.com/turri21/TatungEinstein_poseidon-ep4cgx150/releases/download/20250405/TatungEinstein_poseidon-ep4cgx150_20250405.rbf",
-      "what": "Tatung Einstein core"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 6154,
-        "device": "EP4CGX150",
-        "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
-        "frame_bytes": 796,
-        "geometry_supported": true,
-        "header_compressed": true,
-        "periphery_frames": 37,
-        "plane_shape": [
-          6191,
-          6368
-        ],
-        "reader_ok": true,
-        "set_bits": 365224
-      },
-      "asset": "scv_psdcgx150_20250918.rbf",
-      "bytes": 1395654,
-      "file": "scv_psdcgx150_20250918.rbf",
-      "kind": "release",
-      "licence": "GPL-2.0",
-      "name": "poseidon_scv",
-      "repo": "turri21/SCV_poseidon-ep4cgx150",
-      "retrieved": "2026-10-29T07:16:36+10:00",
-      "sha256": "0a1acb057d7d54406bb0a8c39f8d01def5a1ea7be7b164f7e78e1cc135baca18",
-      "src": "HDL in the same repo",
-      "tag": "20250918",
-      "url": "https://github.com/turri21/SCV_poseidon-ep4cgx150/releases/download/20250918/scv_psdcgx150_20250918.rbf",
-      "what": "Epoch Super Cassette Vision core"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 6154,
-        "device": "EP4CGX150",
-        "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
-        "frame_bytes": 796,
-        "geometry_supported": true,
-        "header_compressed": true,
-        "periphery_frames": 37,
-        "plane_shape": [
-          6191,
-          6368
-        ],
-        "reader_ok": true,
-        "set_bits": 320332
-      },
-      "bytes": 1374113,
-      "commit": "fe3f486204560ed8cad34cc5af7f89d8d4071b1b",
-      "file": "ComputerSpace_psdcgx150_20260202.rbf",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "poseidon_computerspace",
-      "path": "releases/ComputerSpace_psdcgx150_20260202.rbf",
-      "repo": "turri21/ComputerSpace_poseidon-ep4cgx150",
-      "retrieved": "2026-10-29T07:16:39+10:00",
-      "sha256": "31b39286d9ada9c2b75baaa77c06a3c0d03a5af264d098cd203d25664f79ed76",
-      "src": "HDL in the same repo",
-      "url": "https://github.com/turri21/ComputerSpace_poseidon-ep4cgx150/blob/fe3f486204560ed8cad34cc5af7f89d8d4071b1b/releases/ComputerSpace_psdcgx150_20260202.rbf",
-      "what": "Computer Space arcade core"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 2386,
-        "derived_rbf_sha256": "2a10b8b0d25af443d80cd0a9f08fabec7fda0045715ff45abd12f4e019c7736d",
-        "device": "EP4CE22F17C8",
-        "device_source": "SOF container string",
-        "frame_bytes": 298,
-        "geometry_supported": false,
-        "header_compressed": false,
-        "periphery_frames": 25,
-        "plane_shape": [
-          2411,
-          2384
-        ],
-        "reader_ok": true,
-        "set_bits": 136614,
-        "sof_device": "EP4CE22F17C8"
-      },
-      "bytes": 710848,
-      "commit": "5d35e7c9ed87c805c26e2345af173a6282073add",
-      "file": "joker_tv-0.37.sof",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "joker_tv",
-      "path": "fw/fw-0.37/joker_tv-0.37.sof",
-      "repo": "aospan/libjokertv",
-      "retrieved": "2026-10-29T07:16:44+10:00",
-      "sha256": "5f3cb052e2cda76e2ce13dce8e382ac519bb5ec298df9417ced38776003ff4f1",
-      "src": "HDL in NetUP_Dual_Universal_CI-fpga (GPL-3.0), not this release",
-      "url": "https://github.com/aospan/libjokertv/blob/5d35e7c9ed87c805c26e2345af173a6282073add/fw/fw-0.37/joker_tv-0.37.sof",
-      "what": "Joker TV USB DVB receiver FPGA (real product)"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 1727,
-        "derived_rbf_sha256": "849a00528a610f4381e25c078c3f765a7e9b39ccce4c345867a652dd081ae6b3",
-        "device": "EP4CE6E22C8",
-        "device_source": "SOF container string",
-        "frame_bytes": 210,
-        "geometry_supported": true,
-        "header_compressed": false,
-        "periphery_frames": 25,
-        "plane_shape": [
-          1752,
-          1680
-        ],
-        "reader_ok": true,
-        "set_bits": 114308,
-        "sof_device": "EP4CE6E22C8"
-      },
-      "bytes": 364192,
-      "commit": "3c407bbdcbaa8cb3e8a038d512943dfa7d86b1d3",
-      "file": "fpga.sof",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "ucore_ep4ce6",
-      "path": "Quartus/output_files/fpga.sof",
-      "repo": "microCore-VHDL/uCore-for-Cyclone-IV",
-      "retrieved": "2026-10-29T07:16:46+10:00",
-      "sha256": "0b8c977ad12e81e882ffb261c1b5ba2fc80652d8df6156b53f4799373aa26f95",
-      "src": "VHDL in the same repo",
-      "url": "https://github.com/microCore-VHDL/uCore-for-Cyclone-IV/blob/3c407bbdcbaa8cb3e8a038d512943dfa7d86b1d3/Quartus/output_files/fpga.sof",
-      "what": "uCore stack CPU on RZ-EasyFPGA EP4CE6 board"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 1727,
-        "derived_rbf_sha256": "702f06640f156a098b53158076facb5afecb57380f1aa2e106b27459f6c80545",
-        "device": "EP4CE6F17C8",
-        "device_source": "SOF container string",
-        "frame_bytes": 210,
-        "geometry_supported": true,
-        "header_compressed": false,
-        "periphery_frames": 25,
-        "plane_shape": [
-          1752,
-          1680
-        ],
-        "reader_ok": true,
-        "set_bits": 158975,
-        "sof_device": "EP4CE6F17C8"
-      },
-      "bytes": 380918,
-      "commit": "bb4dec83b13b923a88f7d8b7c86ad733f89c14ca",
-      "file": "nios2_camera_sdram_lcd.sof",
-      "kind": "git",
-      "licence": "MIT",
-      "name": "cam_isp_ep4ce6",
-      "path": "prj_quartus/output_files/nios2_camera_sdram_lcd.sof",
-      "repo": "bxinquan/nios2_cam_isp_demo",
-      "retrieved": "2026-10-29T07:16:48+10:00",
-      "sha256": "74d18ee980df44fc083a2a25c47c329a892b5b03966c91859a21ebcd19d9fc81",
-      "src": "Verilog in the same repo",
-      "url": "https://github.com/bxinquan/nios2_cam_isp_demo/blob/bb4dec83b13b923a88f7d8b7c86ad733f89c14ca/prj_quartus/output_files/nios2_camera_sdram_lcd.sof",
-      "what": "NIOS II camera ISP, SDRAM, LCD"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 1727,
-        "derived_rbf_sha256": "02728067c00e385141dd948ec8091846d37e11c34dbd6c5f06b9cc41261f0748",
-        "device": "EP4CE10F17C8",
-        "device_source": "SOF container string",
-        "frame_bytes": 210,
-        "geometry_supported": true,
-        "header_compressed": false,
-        "periphery_frames": 25,
-        "plane_shape": [
-          1752,
-          1680
-        ],
-        "reader_ok": true,
-        "set_bits": 22572,
-        "sof_device": "EP4CE10F17C8"
-      },
-      "bytes": 358721,
-      "commit": "3ad7aa62e922f7324653c0fc4012e5f119382c9a",
-      "file": "simple_scope.sof",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "scope_ep4ce10",
-      "path": "output_files/simple_scope.sof",
-      "repo": "Norman-w/fpga-simple-oscilloscope",
-      "retrieved": "2026-10-29T07:16:50+10:00",
-      "sha256": "ffa6efffac0e4a3129040d6d820b44cd7d5fc55b83fc522185246e04977b9a3d",
-      "src": "Verilog in the same repo",
-      "url": "https://github.com/Norman-w/fpga-simple-oscilloscope/blob/3ad7aa62e922f7324653c0fc4012e5f119382c9a/output_files/simple_scope.sof",
-      "what": "AD9226 simple oscilloscope"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 1966,
-        "derived_rbf_sha256": "6827e12267d95e51cb4c5d3d4bfd603eec14afeb6d9576991d2801bebabaa505",
-        "device": "EP4CE15F23C8",
-        "device_source": "SOF container string",
-        "frame_bytes": 255,
-        "geometry_supported": false,
-        "header_compressed": false,
-        "periphery_frames": 37,
-        "plane_shape": [
-          2003,
-          2040
-        ],
-        "reader_ok": true,
-        "set_bits": 143526,
-        "sof_device": "EP4CE15F23C8"
-      },
-      "bytes": 503505,
-      "commit": "ada11d0383f6afb0bc94cbe9a48f7e55544441d7",
-      "file": "QMTECH_EP4CE15_50MHz.sof",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "basic52_ep4ce15",
-      "path": "QMTECH_EP4CE15_50MHz.sof",
-      "repo": "mit41301/BASIC-52_EP4CE15F23",
-      "retrieved": "2026-10-29T07:16:52+10:00",
-      "sha256": "0eed736303746ef90c4fdfaa5579f51e49b27b3b33db2cebe2738982fd2bd220",
-      "src": "HDL in the same repo",
-      "url": "https://github.com/mit41301/BASIC-52_EP4CE15F23/blob/ada11d0383f6afb0bc94cbe9a48f7e55544441d7/QMTECH_EP4CE15_50MHz.sof",
-      "what": "BASIC-52 CPU on QMTECH EP4CE15"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 5568,
-        "derived_rbf_sha256": "ecdb0379417afdab0f93780327fd165e6a52c917011189e2ebdd48cc9fe8886c",
-        "device": "EP4CE115F29C7",
-        "device_source": "SOF container string",
-        "frame_bytes": 639,
-        "geometry_supported": false,
-        "header_compressed": false,
-        "periphery_frames": 21,
-        "plane_shape": [
-          5589,
-          5112
-        ],
-        "reader_ok": true,
-        "set_bits": 1843190,
-        "sof_device": "EP4CE115F29C7"
-      },
-      "bytes": 3541342,
-      "commit": "32a68debe30fec857135e5c3e909c58e7e1e1345",
-      "file": "fpgaminer.sof",
-      "kind": "git",
-      "licence": "GPL-3.0",
-      "name": "bitcoin_de2_115",
-      "path": "projects/DE2_115_makomk_serial/quartus_output/fpgaminer.sof",
-      "repo": "progranism/Open-Source-FPGA-Bitcoin-Miner",
-      "retrieved": "2026-10-29T07:16:54+10:00",
-      "sha256": "3dfe3ea543e5aa22b6baf0b5395c63fd552c62a1bcb25e365b3a8d1cc27d7add",
-      "src": "Verilog in the same repo",
-      "url": "https://github.com/progranism/Open-Source-FPGA-Bitcoin-Miner/blob/32a68debe30fec857135e5c3e909c58e7e1e1345/projects/DE2_115_makomk_serial/quartus_output/fpgaminer.sof",
-      "what": "SHA-256 miner on DE2-115"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 5568,
-        "derived_rbf_sha256": "cb1661cc9e4a1d557f8d1da0c8b7c40cfd781eb02e5dbe11b91df31b8d9fea4d",
-        "device": "EP4CE115F29C7",
-        "device_source": "SOF container string",
-        "frame_bytes": 639,
-        "geometry_supported": false,
-        "header_compressed": false,
-        "periphery_frames": 21,
-        "plane_shape": [
-          5589,
-          5112
-        ],
-        "reader_ok": true,
-        "set_bits": 280860,
-        "sof_device": "EP4CE115F29C7"
-      },
-      "bytes": 3541756,
-      "commit": "eec441128fc3ee67f155f07eb6f68b572bca4a5a",
-      "file": "DE2_115_D8M_RTL.sof",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "d8m_tracker_de2_115",
-      "path": "output_files/DE2_115_D8M_RTL.sof",
-      "repo": "delhatch/Red_Tracker",
-      "retrieved": "2026-10-29T07:16:56+10:00",
-      "sha256": "ae8b8d0bc37cd1325edc28f8ada43ac923ce4cf0f84659998e363103cb8882b5",
-      "src": "HDL in the same repo",
-      "url": "https://github.com/delhatch/Red_Tracker/blob/eec441128fc3ee67f155f07eb6f68b572bca4a5a/output_files/DE2_115_D8M_RTL.sof",
-      "what": "D8M camera red-object tracker on DE2-115"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 5568,
-        "device": "EP4CE115F29C7",
-        "device_source": "SOF container string of a same-geometry image (die family, not package)",
-        "frame_bytes": 639,
-        "geometry_supported": false,
-        "header_compressed": true,
-        "periphery_frames": 21,
-        "plane_shape": [
-          5589,
-          5112
-        ],
-        "reader_ok": true,
-        "set_bits": 670689
-      },
-      "bytes": 1213623,
-      "commit": "23d83be9d7575758aa1923a2af4162ed7a399a5a",
-      "file": "NeoGeo_SiDi128.rbf",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "sidi_neogeo",
-      "path": "Cores/Arcade/SiDi/Neogeo/NeoGeo_SiDi128.rbf",
-      "repo": "ManuFerHi/SiDi-FPGA",
-      "retrieved": "2026-10-29T07:17:31+10:00",
-      "sha256": "cecc16ea4c0deb5a0219b16ff6e78f1683d34006c91dff8a86e75e909d098c93",
-      "src": "no HDL in repo",
-      "url": "https://github.com/ManuFerHi/SiDi-FPGA/blob/23d83be9d7575758aa1923a2af4162ed7a399a5a/Cores/Arcade/SiDi/Neogeo/NeoGeo_SiDi128.rbf",
-      "what": "Neo Geo core (SiDi128 board)"
-    },
-    {
-      "analysis": {
-        "cram_crc_ok": true,
-        "cram_frames": 6154,
-        "device": "EP4CGX150",
-        "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
-        "frame_bytes": 796,
-        "geometry_supported": true,
-        "header_compressed": false,
-        "periphery_frames": 37,
-        "plane_shape": [
-          6191,
-          6368
-        ],
-        "reader_ok": true,
-        "set_bits": 278767
-      },
-      "bytes": 4928127,
-      "commit": "8477d223bfbd385ee85f56eb24a8e70e3b1e34e0",
-      "file": "mc2.rbf",
-      "kind": "git",
-      "licence": "none stated (repo)",
-      "name": "neptuno_cgx150_mc2",
-      "path": "sources/Neptuno_firmware/Neptuno_MC2_firmware_1.05v/_MC2_firmware/synth/neptUNO_EP4CGX150/output_files/mc2.rbf",
-      "repo": "distwave/neptuno-ep4cgx150",
-      "retrieved": "2026-10-29T07:17:35+10:00",
-      "sha256": "83c2137a7d269e43648008c6bcfb9e04f5c4b46ff6efe67cf427dec5849b20ae",
-      "src": "HDL in the same repo",
-      "url": "https://github.com/distwave/neptuno-ep4cgx150/blob/8477d223bfbd385ee85f56eb24a8e70e3b1e34e0/sources/Neptuno_firmware/Neptuno_MC2_firmware_1.05v/_MC2_firmware/synth/neptUNO_EP4CGX150/output_files/mc2.rbf",
-      "what": "NeptUNO/MC2 firmware (NIOS II) on EP4CGX150"
-    }
-  ]
+ "entries": [
+  {
+   "analysis": {
+    "cram_crc_ok": true,
+    "cram_frames": 6154,
+    "device": "EP4CGX150",
+    "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
+    "frame_bytes": 796,
+    "geometry_supported": true,
+    "header_compressed": true,
+    "periphery_frames": 37,
+    "plane_shape": [
+     6191,
+     6368
+    ],
+    "reader_ok": true,
+    "set_bits": 399649
+   },
+   "asset": "GalaksijaPLUS_poseidon-ep4cgx150.rbf",
+   "bytes": 1412585,
+   "file": "GalaksijaPLUS_poseidon-ep4cgx150.rbf",
+   "kind": "release",
+   "licence": "MIT",
+   "name": "poseidon_galaksija",
+   "repo": "turri21/GalaksijaPLUS_poseidon-ep4cgx150",
+   "retrieved": "2026-10-29T07:16:32+10:00",
+   "sha256": "658b36b365a4d3538459d4f5f6f1d2c79e5687cc0fd0f61acf9ba50d84deebbc",
+   "src": "HDL in the same repo",
+   "tag": "v0.1",
+   "url": "https://github.com/turri21/GalaksijaPLUS_poseidon-ep4cgx150/releases/download/v0.1/GalaksijaPLUS_poseidon-ep4cgx150.rbf",
+   "what": "Galaksija PLUS home computer core"
+  },
+  {
+   "analysis": {
+    "cram_crc_ok": true,
+    "cram_frames": 6154,
+    "device": "EP4CGX150",
+    "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
+    "frame_bytes": 796,
+    "geometry_supported": true,
+    "header_compressed": true,
+    "periphery_frames": 37,
+    "plane_shape": [
+     6191,
+     6368
+    ],
+    "reader_ok": true,
+    "set_bits": 587794
+   },
+   "asset": "TatungEinstein_poseidon-ep4cgx150_20250405.rbf",
+   "bytes": 1502642,
+   "file": "TatungEinstein_poseidon-ep4cgx150_20250405.rbf",
+   "kind": "release",
+   "licence": "GPL-2.0",
+   "name": "poseidon_einstein",
+   "repo": "turri21/TatungEinstein_poseidon-ep4cgx150",
+   "retrieved": "2026-10-29T07:16:34+10:00",
+   "sha256": "d15c2f1a5a5855aaba038b7edaa2813b2e717d11dcd1276001aa406884436ff0",
+   "src": "HDL in the same repo",
+   "tag": "20250405",
+   "url": "https://github.com/turri21/TatungEinstein_poseidon-ep4cgx150/releases/download/20250405/TatungEinstein_poseidon-ep4cgx150_20250405.rbf",
+   "what": "Tatung Einstein core"
+  },
+  {
+   "analysis": {
+    "cram_crc_ok": true,
+    "cram_frames": 6154,
+    "device": "EP4CGX150",
+    "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
+    "frame_bytes": 796,
+    "geometry_supported": true,
+    "header_compressed": true,
+    "periphery_frames": 37,
+    "plane_shape": [
+     6191,
+     6368
+    ],
+    "reader_ok": true,
+    "set_bits": 365224
+   },
+   "asset": "scv_psdcgx150_20250918.rbf",
+   "bytes": 1395654,
+   "file": "scv_psdcgx150_20250918.rbf",
+   "kind": "release",
+   "licence": "GPL-2.0",
+   "name": "poseidon_scv",
+   "repo": "turri21/SCV_poseidon-ep4cgx150",
+   "retrieved": "2026-10-29T07:16:36+10:00",
+   "sha256": "0a1acb057d7d54406bb0a8c39f8d01def5a1ea7be7b164f7e78e1cc135baca18",
+   "src": "HDL in the same repo",
+   "tag": "20250918",
+   "url": "https://github.com/turri21/SCV_poseidon-ep4cgx150/releases/download/20250918/scv_psdcgx150_20250918.rbf",
+   "what": "Epoch Super Cassette Vision core"
+  },
+  {
+   "analysis": {
+    "cram_crc_ok": true,
+    "cram_frames": 6154,
+    "device": "EP4CGX150",
+    "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
+    "frame_bytes": 796,
+    "geometry_supported": true,
+    "header_compressed": true,
+    "periphery_frames": 37,
+    "plane_shape": [
+     6191,
+     6368
+    ],
+    "reader_ok": true,
+    "set_bits": 320332
+   },
+   "bytes": 1374113,
+   "commit": "fe3f486204560ed8cad34cc5af7f89d8d4071b1b",
+   "file": "ComputerSpace_psdcgx150_20260202.rbf",
+   "kind": "git",
+   "licence": "none stated (repo)",
+   "name": "poseidon_computerspace",
+   "path": "releases/ComputerSpace_psdcgx150_20260202.rbf",
+   "repo": "turri21/ComputerSpace_poseidon-ep4cgx150",
+   "retrieved": "2026-10-29T07:16:39+10:00",
+   "sha256": "31b39286d9ada9c2b75baaa77c06a3c0d03a5af264d098cd203d25664f79ed76",
+   "src": "HDL in the same repo",
+   "url": "https://github.com/turri21/ComputerSpace_poseidon-ep4cgx150/blob/fe3f486204560ed8cad34cc5af7f89d8d4071b1b/releases/ComputerSpace_psdcgx150_20260202.rbf",
+   "what": "Computer Space arcade core"
+  },
+  {
+   "analysis": {
+    "cram_crc_ok": true,
+    "cram_frames": 6154,
+    "device": "EP4CGX150",
+    "device_source": "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150",
+    "frame_bytes": 796,
+    "geometry_supported": true,
+    "header_compressed": false,
+    "periphery_frames": 37,
+    "plane_shape": [
+     6191,
+     6368
+    ],
+    "reader_ok": true,
+    "set_bits": 278767
+   },
+   "bytes": 4928127,
+   "commit": "8477d223bfbd385ee85f56eb24a8e70e3b1e34e0",
+   "file": "mc2.rbf",
+   "kind": "git",
+   "licence": "none stated (repo)",
+   "name": "neptuno_cgx150_mc2",
+   "path": "sources/Neptuno_firmware/Neptuno_MC2_firmware_1.05v/_MC2_firmware/synth/neptUNO_EP4CGX150/output_files/mc2.rbf",
+   "repo": "distwave/neptuno-ep4cgx150",
+   "retrieved": "2026-10-29T07:17:35+10:00",
+   "sha256": "83c2137a7d269e43648008c6bcfb9e04f5c4b46ff6efe67cf427dec5849b20ae",
+   "src": "HDL in the same repo",
+   "url": "https://github.com/distwave/neptuno-ep4cgx150/blob/8477d223bfbd385ee85f56eb24a8e70e3b1e34e0/sources/Neptuno_firmware/Neptuno_MC2_firmware_1.05v/_MC2_firmware/synth/neptUNO_EP4CGX150/output_files/mc2.rbf",
+   "what": "NeptUNO/MC2 firmware (NIOS II) on EP4CGX150"
+  }
+ ]
 }

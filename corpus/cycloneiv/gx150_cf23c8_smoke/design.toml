@@ -1,5 +1,0 @@
-top = "top"
-purpose = "header-bit probe on EP4CGX150CF23C8"
-exercises = ["header"]
-qsf = ["set_global_assignment -name SEED 1"]
-device = "EP4CGX150CF23C8"

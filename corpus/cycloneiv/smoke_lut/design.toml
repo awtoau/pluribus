@@ -1,4 +1,0 @@
-top = "top"
-purpose = "smoke: unconstrained LUT + FF, to learn site and pin names"
-exercises = ["lut_mask", "dffeas"]
-qsf = []
