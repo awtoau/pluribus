@@ -22,7 +22,7 @@ import re
 
 import numpy as np
 
-from . import ddb, m9k, mac, names
+from . import ddb, m9k, mac, macctl, names
 from . import plane as P
 
 # source: scripts/cycloneiv_clean_gate.py parse_vo on 16,763 corpus .vo files: every unconnected LUT input whose function depends on it is VCC
@@ -354,7 +354,7 @@ class Builder:
             return self._le_out(lab, i, bool(self.ygr[lab, i, 2]), x, y)
         if t == "M4K_BUFFER":                                   # M9K port-A data out bit i (routing.rcf: M4K_BUFFER:X<x>Y<y>S0I<bit>)
             self.m9k_refs.add((x, y))
-            return (f"m9k_{x}_{y}_q[{i}]", ("M9K", x, y, i))
+            return (f"m9k_{x}_{y}_o[{i}]", ("M9K", x, y, i))
         if t == "DSP_BUFFER":                                   # MAC result bit i (routing.rcf: DSP_BUFFER:X<x>Y<y>S0I<bit> of the MAC tile)
             self.mac_refs.add((x, y))
             return (f"mac_{x}_{y}_r[{i}]", ("MAC", x, y, i))
@@ -617,11 +617,19 @@ class Builder:
                 return idle
             e, _ = self.sig(rec)
             return f"(~{e})" if inv else e
-        M = dict(x=x, y=y, inst=i, nine=bool(md["nine"][i]), ireg=[bool(v) for v in md["ireg"][i]], oreg=bool(md["oreg"][i]), und=[])
-        M["a"] = [pin(md["data_sel"][i, k], md["data_inv"][i, k]) for k in range(HALF_ROWS)]
-        M["b"] = [pin(md["data_sel"][i, HALF_ROWS + k], md["data_inv"][i, HALF_ROWS + k]) for k in range(HALF_ROWS)]
+        nine = bool(md["nine"][i])
+        M = dict(x=x, y=y, inst=i, nine=nine, ireg=[bool(v) for v in md["ireg"][i]], oreg=bool(md["oreg"][i]), und=[])
+        # units: 18 x 18 = one multiplier on rows 0..35; nine-bit = N0 / N1, 9 x 9 each, product bits 18 n .. 18 n + 17 (DSP_BUFFER index, GT of gxhb_mac_two_mult_w9)
+        M["units"] = []
+        for n in ((0, 1) if nine else (0,)):
+            ar, br = macctl.rows(n, nine)
+            M["units"].append(dict(n=n, w=9 if nine else HALF_ROWS,
+                                   a=[pin(md["data_sel"][i, k], md["data_inv"][i, k]) for k in ar],
+                                   b=[pin(md["data_sel"][i, k], md["data_inv"][i, k]) for k in br],
+                                   ireg=[bool(v) for v in (md["ireg_n"][i, n] if nine else md["ireg"][i])], oreg=bool(md["oreg_n"][i, n] if nine else md["oreg"][i])))
+        M["a"], M["b"] = M["units"][0]["a"], M["units"][0]["b"]
         M["sign"] = [pin(md["sign_sel"][i, k], False, "1'b0") if md["sign_sel"][i, k] >= 0 else ("1'b0" if md["unsigned"][i, k] else "1'b1") for k in (0, 1)]
-        any_reg = M["oreg"] or any(M["ireg"])
+        any_reg = any(u["oreg"] or any(u["ireg"]) for u in M["units"])
         if any_reg:
             if md["clk_sel"][i] >= 0:
                 M["clk"] = pin(md["clk_sel"][i], bool(md["clk_inv"][i]))
@@ -636,9 +644,6 @@ class Builder:
                 nl.und["MAC clock: no PIA_TO_CLK / CLK_FAST_MUX selection"] += 1
         M["ena"] = pin(md["ena_sel"][i], bool(md["ena_inv"][i]), "1'b1")
         M["aclr"] = pin(md["aclr_sel"][i], bool(md["aclr_inv"][i]), "1'b0")
-        if M["nine"]:
-            M["und"].append("9-bit rows / multi-MAC mode not modelled")
-            nl.und["MAC: 9-bit row / multi-MAC mode"] += 1
         nl.counts["mac_oreg"] += M["oreg"]
         nl.counts["mac_ireg_a"] += M["ireg"][0]
         nl.counts["mac_ireg_b"] += M["ireg"][1]
@@ -670,7 +675,11 @@ class Builder:
                 return "1'b0"
             rec = int(cx.find(e_li, x, y, 0, int(sel)))
             return self.sig(rec)[0] if rec >= 0 else "1'b0"
-        data = [pin(mk["data"][i, k]) for k in range(W)]
+        # x16 with byte enables wired: byte 1 sits on RAM_MS_DATA_INPUT gi 9..16 (gi 8 = byte-0 parity lane); see docs/cycloneiv-clean-hardblocks.md
+        shifted = W == 16 and bool((mk["be"][i, :2] >= 0).any())
+        M["gishift"] = shifted
+        gi_of = (lambda k: k + (k >= 8)) if shifted else (lambda k: k)
+        data = [pin(mk["data"][i, gi_of(k)]) for k in range(W)]
         lo = A - 9
         addr = [pin(mk["data"][i, 16 - lo + j]) for j in range(lo)] + [pin(mk["waddr"][i, j]) for j in range(9)] if A >= 9 else []
         ln = cx.m9kctl.clock_line(mk["clk_fast"][i])
@@ -797,9 +806,13 @@ def verilog(nl, module="cyc4_top"):
         w(f"reg {F['name']} = 1'b0;")
     for m in nl.m9k:
         if m.get("modelled"):
-            w(f"wire [{m['W'] - 1}:0] m9k_{m['x']}_{m['y']}_q;")
+            n = f"m9k_{m['x']}_{m['y']}"
+            w(f"wire [{m['W'] - 1}:0] {n}_q;")
+            # _o = output bus indexed by M4K_BUFFER index; x16 with byte enables: bits 8..15 on indices 9..16 (as the input gi shift)
+            w(f"wire [35:0] {n}_o = " + (f"{{20'b0, {n}_q[15:8], 1'b0, {n}_q[7:0]}};" if m.get("gishift") else f"{{{36 - m['W']}'b0, {n}_q}};"))
         else:
             w(f"wire [35:0] m9k_{m['x']}_{m['y']}_q = 36'b0; // UNDECODED: M9K not modelled ({m.get('why', '')})")
+            w(f"wire [35:0] m9k_{m['x']}_{m['y']}_o = m9k_{m['x']}_{m['y']}_q;")
     for m in nl.mac:
         w(f"wire [35:0] mac_{m['x']}_{m['y']}_r;")
     w("// LUTs: localparam INIT bit index = {datad, datac, datab, dataa}; carry mode: C input = carry in, cout = INIT[{1'b0, cin, b, a}]")
@@ -869,20 +882,27 @@ def verilog(nl, module="cyc4_top"):
         w(f"// UNDECODED: M9K {m['x']},{m['y']} port widths, port wiring, read/write mode")
     for m in nl.mac:
         n = f"mac_{m['x']}_{m['y']}"
-        w(f"// MAC {n}: 18 x 18, input regs A/B = {m['ireg']}, output reg = {m['oreg']}" + (f" // UNDECODED: {'; '.join(m['und'])}" if m["und"] else ""))
-        w(f"wire [17:0] {n}_a = {{{', '.join(reversed(m['a']))}}};")
-        w(f"wire [17:0] {n}_b = {{{', '.join(reversed(m['b']))}}};")
+        w(f"// MAC {n}: {'two 9 x 9' if m['nine'] else '18 x 18'}, " + ", ".join(f"N{u['n']} input regs A/B = {u['ireg']} output reg = {u['oreg']}" for u in m["units"]) + (f" // UNDECODED: {'; '.join(m['und'])}" if m["und"] else ""))
         w(f"wire {n}_sa = {m['sign'][0]}, {n}_sb = {m['sign'][1]};")
-        w(f"reg [17:0] {n}_ar = 18'b0, {n}_br = 18'b0; reg [35:0] {n}_q = 36'b0;")
-        w(f"wire [17:0] {n}_ax = {n}_{'ar' if m['ireg'][0] else 'a'};")
-        w(f"wire [17:0] {n}_bx = {n}_{'br' if m['ireg'][1] else 'b'};")
-        w(f"wire signed [18:0] {n}_xa = {{{n}_sa & {n}_ax[17], {n}_ax}}, {n}_xb = {{{n}_sb & {n}_bx[17], {n}_bx}};")
-        w(f"wire signed [37:0] {n}_pw = {n}_xa * {n}_xb;")
-        w(f"assign {n}_r = {n}_" + ("q;" if m["oreg"] else "pw[35:0];"))
-        if any(m["ireg"]) or m["oreg"]:
+        w(f"reg [35:0] {n}_q = 36'b0; wire [35:0] {n}_pw;")
+        regs = []
+        for u in m["units"]:
+            k, W9 = f"{n}_u{u['n']}", u["w"]
+            w(f"wire [{W9 - 1}:0] {k}_a = {{{', '.join(reversed(u['a']))}}};")
+            w(f"wire [{W9 - 1}:0] {k}_b = {{{', '.join(reversed(u['b']))}}};")
+            w(f"reg [{W9 - 1}:0] {k}_ar = {W9}'b0, {k}_br = {W9}'b0;")
+            w(f"wire [{W9 - 1}:0] {k}_ax = {k}_{'ar' if u['ireg'][0] else 'a'};")
+            w(f"wire [{W9 - 1}:0] {k}_bx = {k}_{'br' if u['ireg'][1] else 'b'};")
+            w(f"wire signed [{W9}:0] {k}_xa = {{{n}_sa & {k}_ax[{W9 - 1}], {k}_ax}}, {k}_xb = {{{n}_sb & {k}_bx[{W9 - 1}], {k}_bx}};")
+            w(f"wire signed [{2 * W9 + 1}:0] {k}_p = {k}_xa * {k}_xb;")
+            lo = 18 * u["n"] if m["nine"] else 0
+            w(f"assign {n}_pw[{lo + 2 * W9 - 1}:{lo}] = {k}_p[{2 * W9 - 1}:0];")
+            w(f"assign {n}_r[{lo + 2 * W9 - 1}:{lo}] = " + (f"{n}_q[{lo + 2 * W9 - 1}:{lo}];" if u["oreg"] else f"{n}_pw[{lo + 2 * W9 - 1}:{lo}];"))
+            regs.append((k, u))
+        if any(u["oreg"] or any(u["ireg"]) for u in m["units"]):
             ev = f"posedge {m['clk']}" + ("" if m["aclr"] == "1'b0" else f" or posedge {m['aclr']}")
-            clr = "" if m["aclr"] == "1'b0" else f"if ({m['aclr']}) begin {n}_ar <= 18'b0; {n}_br <= 18'b0; {n}_q <= 36'b0; end else "
-            w(f"always @({ev}) {clr}if ({m['ena']}) begin {n}_ar <= {n}_a; {n}_br <= {n}_b; {n}_q <= {n}_pw[35:0]; end")
+            clr = "" if m["aclr"] == "1'b0" else f"if ({m['aclr']}) begin " + " ".join(f"{k}_ar <= 0; {k}_br <= 0;" for k, _ in regs) + f" {n}_q <= 36'b0; end else "
+            w(f"always @({ev}) {clr}if ({m['ena']}) begin " + " ".join(f"{k}_ar <= {k}_a; {k}_br <= {k}_b;" for k, _ in regs) + f" {n}_q <= {n}_pw; end")
     w("endmodule")
     return "\n".join(o) + "\n"
 

@@ -332,6 +332,10 @@ class Extras:
         self.bim = bim.Implicit(rt, n_real=len(st.esrc))
         st.esrc = np.concatenate([st.esrc, self.bim.esrc])
         st.edst = np.concatenate([st.edst, self.bim.edst])
+        from . import m9k_pia
+        self.pia = m9k_pia.Implicit(lut.walk, rt or ddb.Routing(), n_real=len(st.esrc))
+        st.esrc = np.concatenate([st.esrc, self.pia.esrc])
+        st.edst = np.concatenate([st.edst, self.pia.edst])
         st._key = None
         import sys
         sys.path.insert(0, ddb.SCRIPTS)
@@ -341,7 +345,7 @@ class Extras:
 
     def apply(self, bits, fired):
         """{variant: edge ids} with the clock and LAB-control edges added to every variant."""
-        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits), self.clkbuf.apply(bits)])
+        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits), self.pia.apply(bits), self.clkbuf.apply(bits)])
         return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp])) for v, e in fired.items()}
 
 

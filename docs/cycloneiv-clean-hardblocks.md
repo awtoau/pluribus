@@ -151,3 +151,11 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
   - Wiring seen: 4 blocks with no data pins and no write enable (ROM-like), 3 with separate read-address groups (second port), `RAM_USE_TRUE_DUAL_PORT_MODE` 7 of 8, `RAM_USE_PACKED_MODE` 0 of 8, `RAM_NEW_DATA_MODE` 2 of 8, output register 0 of 8.
   - Not decoded: port B wiring and widths, read-during-write beyond `RAM_NEW_DATA_MODE`, which port reads which half in the dual-port blocks (a x36 view and a 2 x x18 view address the same cells: x36 word w, bits 18..35 = x18 word 256 + w).
 - Emit: `emit.verilog` leaves an unmodelled M9K as a 9,216-bit INIT in mux-position order. The dump writes `emit_with_init.v` (local) with a `$readmemh` ROM of the chosen layout after each such line; emit itself needs a per-block width/depth from the port decode (ROM-like and dual-port modes are not modelled in `_m9k`) before it can carry the INIT natively.
+
+## M9K control-pin edges and x16 byte-enable lanes (2026-10-30, #165, #169)
+
+- Gate gap: LOCAL_INTERCONNECT -> M4K_LEFT_CONTROL_INPUT edges are absent from the routing graph (not_in_graph, 2 per gxm9k design). Fix `m9k_pia.py` (hooked in `tracer.Extras`): `RAM_PIA_TO_INPUT_YGR` gi g (g = 0..11) selects the LOCAL_INTERCONNECT index and drives `M4K_LEFT_CONTROL_INPUT` index g of the same tile (12 groups, 12 records). Test `tests/cycloneiv_clean/test_m9k_pia.py`.
+- Fast gate after the fix (117 designs): pips missing 222 -> 32, extra 182 -> 0; the 4 gxm9k designs 0 missing / 0 extra / 0 wrong in pips and nets. Remaining 32 missing are MAC / PLL (other owners).
+- MEAB block interface (type 1) has 74 BLOCK_INPUT_MUX nodes with no element connections, and the M9K tile has no BLOCK_INPUT_MUX records: data / address / byte-enable pins (`RAM_MS_*`) have no routing element; only the 12 control inputs do.
+- x16 words with byte enables wired: data bits 8..15 sit on `RAM_MS_DATA_INPUT` gi 9..16 and the output bits on M4K_BUFFER indices 9..16 (gi 8 / index 8 = byte-0 parity lane, 9-bit lane layout). Source: specimen `gxm9k_w_byteena` (sim now identical, port compare 0 bad); not yet derived from `cache_ram_mode@0x4a624` / `plot_data_in_mapping`.
+- Emit: output bus `m9k_<x>_<y>_o` (36 bit, indexed by M4K_BUFFER index) wraps `_q`; the lane shift is applied there.
