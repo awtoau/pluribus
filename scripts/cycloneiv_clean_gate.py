@@ -466,11 +466,11 @@ def record(args, good, tot, var):
         for r in good:
             name = r["design"] + suffix
             C.ensure_member(conn, "cycloneiv", name, "oracle-build", commit, device="EP4CGX150",
-                            source_ref=(args.root or "corpus/cycloneiv") + "/" + r["design"], gate_script="scripts/cycloneiv_clean_gate.py",
+                            source_ref=("corpus-rebuild/" + os.path.basename(args.root.rstrip("/")) if args.root else "corpus/cycloneiv") + "/" + r["design"], gate_script="scripts/cycloneiv_clean_gate.py",
                             required=False)
             results[name] = {c: r[c] for c in CATS}
         run = C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_clean_gate.py", commit, results,
-                                params={"set": args.set, "root": args.root, "headline_variant": HEADLINE, "baseline": args.baseline, "tag": args.tag,
+                                params={"set": args.set, "root": "corpus-rebuild/" + os.path.basename(args.root.rstrip("/")) if args.root else None,"headline_variant": HEADLINE, "baseline": args.baseline, "tag": args.tag,
                                         "designs": len(good), "members": sorted(results)},
                                 summary={"totals": tot, "pips_variants": var,
                                          "headline": {c: round(headline(tot[c]), 4) for c in CATS}})
