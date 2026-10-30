@@ -770,6 +770,10 @@ class Builder:
             M.update(ce_core=ce_core, ce_b=ce_b, ce_core_b=ce_core_b, clk_b=clk_b or clk, clk_o=clk_o or clk)
         M["sdp"] = sdp
         words = m9k.read_words_atom36(bitsv) if x36 else m9k.read_words(bitsv, W)
+        if len(words) != 1 << A:                                 # declared depth (class) and content depth (width) must agree, else content would be dropped
+            M["why"] = f"depth {1 << A} (class) != content depth {len(words)} (width {W})"
+            nl.und["M9K: class / width depth mismatch"] += 1
+            return
         M.update(modelled=True, ce=ce, be=be, data=data, addr=addr, raddr=raddr, we=("1'b1" if mk["we"][i] < 0 and not M.get("rom") and (mk["data"][i] >= 0).any() else pin(mk["we"][i])), clk=clk,
                  oreg=bool(mk["oreg_b"][i] if raddr else mk["oreg"][i]),
                  init=[int("".join(str(int(b)) for b in r[::-1]), 2) for r in words])

@@ -37,3 +37,23 @@ def test_mode_classifier():
                     read_groups=np.array(rd), we=np.array([0 if w else -1 for w in we]))
     m = mk([0, 1, 1, 1, 1], [0, 0, 0, 0, 0], [1, 0, 1, 1, 1], [0, 0, 0, 1, 0], [1, 0, 0, 0, 1], [1, 0, 1, 1, 1])
     assert M.modes(m, np.ones(n, bool)) == {0: "sdp", 1: "rom", 2: "single", 3: "tdp", 4: "tdp"}
+
+
+def test_image_init_depth_and_bits():
+    """Every modelled image tile: init list length == declared depth, and no content bit is dropped (needs env PLURIBUS_DJI_IMAGE; counts only)."""
+    import pytest
+    path = os.environ.get("PLURIBUS_DJI_IMAGE")
+    if not path or not os.path.exists(path):
+        pytest.skip("PLURIBUS_DJI_IMAGE not set")
+    import cycloneiv_decompress as cd
+    from lifters.cycloneiv_clean import emit
+    plane = os.path.join(REPO, "tmp", "test_m9k_modes_plane.rbf")
+    open(plane, "wb").write(cd.decompress(open(path, "rb").read(), {}))
+    try:
+        nl = emit.Builder(emit.Ctx(), plane, "image", 2).run()
+    finally:
+        os.remove(plane)
+    mod = [M for M in nl.m9k if M.get("modelled")]
+    assert len(mod) == len(nl.m9k)
+    assert all(len(M["init"]) == 1 << M["A"] for M in mod)
+    assert sum(int(M["content"].sum()) for M in nl.m9k) == sum(bin(v).count("1") for M in mod for v in M["init"])
