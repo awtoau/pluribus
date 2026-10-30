@@ -1,0 +1,468 @@
+{
+ "design": "hl_bigrom_2",
+ "kind": "bigrom",
+ "seed": 2,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {
+  "resource": "60 M9K ROM, unique contents"
+ },
+ "constructs": [
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 8,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom2.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom4.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom6.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom8.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom10.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom12.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom14.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom16.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom18.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom20.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom22.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom24.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom26.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom28.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom30.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom32.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom34.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom36.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom38.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom40.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom42.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom44.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom46.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom48.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom50.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom52.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom54.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom56.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom58.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom60.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom62.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom64.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom66.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom68.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom70.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom72.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom74.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom76.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom78.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom80.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom82.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom84.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom86.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom88.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom90.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom92.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom94.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom96.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom98.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom100.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom102.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom104.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom106.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom108.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom110.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom112.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom114.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom116.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom118.mif"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 32,
+   "init": "rom120.mif"
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 60
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "counters": 1,
+  "m9k": 60,
+  "reg_bits": 9
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 648,
+  "registers": 9,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 54,
+  "mult9": 0,
+  "memory_bits": 491520
+ }
+}

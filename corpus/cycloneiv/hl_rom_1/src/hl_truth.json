@@ -1,0 +1,71 @@
+{
+ "design": "hl_rom_1",
+ "kind": "rom",
+ "seed": 1,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {},
+ "constructs": [
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 7,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 128,
+   "width": 16,
+   "init": "rom1.mif"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 9,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 512,
+   "width": 8,
+   "init": "rom4.mif"
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 2
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "counters": 2,
+  "m9k": 2,
+  "reg_bits": 17
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 17,
+  "registers": 10,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 2,
+  "mult9": 0,
+  "memory_bits": 6144
+ }
+}

@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: lfsr seed 6 (min IO)"
+exercises = ["highlevel", "lfsr"]
+qsf = []
+device = "EP4CGX150DF31C7"

@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: adder seed 7 (min IO)"
+exercises = ["highlevel", "adder"]
+qsf = []
+device = "EP4CGX150DF31C7"

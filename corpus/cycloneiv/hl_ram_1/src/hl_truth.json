@@ -1,0 +1,66 @@
+{
+ "design": "hl_ram_1",
+ "kind": "ram",
+ "seed": 1,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {},
+ "constructs": [
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 10,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "ram",
+   "role": "dut",
+   "ports": "sp",
+   "depth": 1024,
+   "width": 8
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 1
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "counters": 1,
+  "m9k": 1,
+  "reg_bits": 43,
+  "shift_registers": 1
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 45,
+  "registers": 43,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 1,
+  "mult9": 0,
+  "memory_bits": 8192
+ }
+}

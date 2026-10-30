@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: fsm seed 2 (min IO)"
+exercises = ["highlevel", "fsm"]
+qsf = ["set_global_assignment -name STATE_MACHINE_PROCESSING \"USER-ENCODED\""]
+device = "EP4CGX150DF31C7"

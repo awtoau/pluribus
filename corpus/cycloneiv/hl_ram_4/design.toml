@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: ram seed 4 (min IO)"
+exercises = ["highlevel", "counter", "ram"]
+qsf = []
+device = "EP4CGX150DF31C7"

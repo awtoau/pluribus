@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: dpath seed 10 (min IO)"
+exercises = ["highlevel", "equality", "fsm", "shift_register"]
+qsf = ["set_global_assignment -name STATE_MACHINE_PROCESSING \"USER-ENCODED\""]
+device = "EP4CGX150DF31C7"

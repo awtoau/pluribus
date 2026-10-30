@@ -1,0 +1,62 @@
+{
+ "design": "hl_fifo_3",
+ "kind": "fifo",
+ "seed": 3,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {},
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "fifo",
+   "role": "dut",
+   "depth": 512,
+   "width": 18,
+   "parts": [
+    "ram",
+    "counter:wptr",
+    "counter:rptr",
+    "updown_count",
+    "equality:empty",
+    "equality:full"
+   ]
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 4
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "counters": 2,
+  "m9k": 1,
+  "reg_bits": 61,
+  "shift_registers": 1
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 90,
+  "registers": 61,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 1,
+  "mult9": 0,
+  "memory_bits": 9216
+ }
+}

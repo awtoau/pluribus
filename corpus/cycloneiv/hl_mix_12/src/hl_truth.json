@@ -1,0 +1,260 @@
+{
+ "design": "hl_mix_12",
+ "kind": "mix",
+ "seed": 12,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {
+  "composite": "mac->accumulator + down counter"
+ },
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 8,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false
+  },
+  {
+   "kind": "crc",
+   "role": "dut",
+   "width": 16,
+   "poly": "0x1021",
+   "name": "crc16ccitt",
+   "data_width": 8,
+   "bit_order": "msb_first"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 31,
+   "taps": [
+    31,
+    28
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 30,
+   "taps": [
+    30,
+    6,
+    4,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "equality",
+   "role": "dut",
+   "width": 16,
+   "op": "ne",
+   "signed": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 29,
+   "taps": [
+    29,
+    27
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 28,
+   "taps": [
+    28,
+    25
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 16,
+   "op": "addcin"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 27,
+   "taps": [
+    27,
+    5,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 26,
+   "taps": [
+    26,
+    6,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 25,
+   "taps": [
+    25,
+    22
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "mux",
+   "role": "dut",
+   "ways": 8,
+   "width": 8,
+   "style": "index"
+  },
+  {
+   "kind": "mac",
+   "role": "dut",
+   "wa": 9,
+   "wb": 9,
+   "signed": true,
+   "mode": "mult",
+   "mults": 1,
+   "absorbed_regs": "operand/product registers inside the multiplier block"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 22,
+   "op": "accumulate"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 8,
+   "mode": "down",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false
+  },
+  {
+   "kind": "shift_register",
+   "role": "dut",
+   "width": 32,
+   "variant": "sipo"
+  },
+  {
+   "kind": "shift_register",
+   "role": "dut",
+   "width": 16,
+   "variant": "sipo"
+  },
+  {
+   "kind": "crc",
+   "role": "dut",
+   "width": 8,
+   "poly": "0x7",
+   "name": "crc8",
+   "data_width": 8,
+   "bit_order": "msb_first"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 16,
+   "mode": "updown",
+   "step": 1,
+   "enable": true,
+   "load": true,
+   "clear": false
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 24,
+   "op": "addconst"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 8,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 8,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "ram",
+   "role": "dut",
+   "ports": "sdp",
+   "depth": 256,
+   "width": 8
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 14
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "adders": 3,
+  "counters": 5,
+  "m9k": 1,
+  "mac": 1,
+  "muxes": 1,
+  "reg_bits": 534,
+  "shift_registers": 10
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 535,
+  "registers": 447,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 1,
+  "mult9": 1,
+  "memory_bits": 2048
+ }
+}

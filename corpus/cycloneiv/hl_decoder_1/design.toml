@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: decoder seed 1 (min IO)"
+exercises = ["highlevel", "decoder"]
+qsf = []
+device = "EP4CGX150DF31C7"

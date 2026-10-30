@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: fifo seed 8 (min IO)"
+exercises = ["highlevel", "fifo"]
+qsf = []
+device = "EP4CGX150DF31C7"

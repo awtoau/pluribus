@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: bigrom seed 2 (min IO)"
+exercises = ["highlevel", "counter", "rom"]
+qsf = []
+device = "EP4CGX150DF31C7"

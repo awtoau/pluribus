@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: pipe seed 5 (min IO)"
+exercises = ["highlevel", "pipeline"]
+qsf = []
+device = "EP4CGX150DF31C7"

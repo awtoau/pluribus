@@ -1,0 +1,211 @@
+{
+ "design": "hl_mix_4",
+ "kind": "mix",
+ "seed": 4,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {
+  "composite": "shift register->pattern compare->fsm"
+ },
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "equality",
+   "role": "dut",
+   "width": 4,
+   "op": "eq",
+   "signed": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 31,
+   "taps": [
+    31,
+    28
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "mac",
+   "role": "dut",
+   "wa": 9,
+   "wb": 9,
+   "signed": true,
+   "mode": "mult",
+   "mults": 1,
+   "absorbed_regs": "operand/product registers inside the multiplier block"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 22,
+   "op": "accumulate"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 8,
+   "mode": "down",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 30,
+   "taps": [
+    30,
+    6,
+    4,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "pipeline",
+   "role": "dut",
+   "stages": 3,
+   "width": 16,
+   "adders": 0
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 29,
+   "taps": [
+    29,
+    27
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 28,
+   "taps": [
+    28,
+    25
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 27,
+   "taps": [
+    27,
+    5,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 26,
+   "taps": [
+    26,
+    6,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "mac",
+   "role": "dut",
+   "wa": 12,
+   "wb": 16,
+   "signed": false,
+   "mode": "sop",
+   "mults": 2,
+   "absorbed_regs": "operand/product registers inside the multiplier block"
+  },
+  {
+   "kind": "shift_register",
+   "role": "dut",
+   "width": 8,
+   "variant": "sipo"
+  },
+  {
+   "kind": "equality",
+   "role": "dut",
+   "width": 8,
+   "op": "eq_const",
+   "const": 32
+  },
+  {
+   "kind": "fsm",
+   "role": "dut",
+   "states": 3,
+   "encoding": "binary",
+   "state_bits": 2,
+   "edges": 6,
+   "outputs": 0,
+   "reset": "none"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 25,
+   "taps": [
+    25,
+    22
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "mac",
+   "role": "dut",
+   "wa": 8,
+   "wb": 8,
+   "signed": true,
+   "mode": "sop",
+   "mults": 2,
+   "absorbed_regs": "operand/product registers inside the multiplier block"
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 10
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "adders": 3,
+  "counters": 1,
+  "fsms": 1,
+  "mac": 5,
+  "reg_bits": 327,
+  "shift_registers": 9
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 410,
+  "registers": 363,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 0,
+  "mult9": 7,
+  "memory_bits": 0
+ }
+}

@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: regs seed 8 (min IO)"
+exercises = ["highlevel", "register"]
+qsf = []
+device = "EP4CGX150DF31C7"

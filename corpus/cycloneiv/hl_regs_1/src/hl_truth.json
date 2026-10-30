@@ -1,0 +1,114 @@
+{
+ "design": "hl_regs_1",
+ "kind": "regs",
+ "seed": 1,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {},
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 31,
+   "taps": [
+    31,
+    28
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 16,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 8,
+   "enable": false,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 30,
+   "taps": [
+    30,
+    6,
+    4,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 8,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 29,
+   "taps": [
+    29,
+    27
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 8,
+   "enable": false,
+   "sync_clear": true,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 4
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "reg_bits": 163,
+  "shift_registers": 4
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 168,
+  "registers": 163,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 0,
+  "mult9": 0,
+  "memory_bits": 0
+ }
+}

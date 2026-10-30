@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: mix seed 12 (min IO)"
+exercises = ["highlevel", "adder", "counter", "crc", "equality", "mac", "mux", "ram", "shift_register"]
+qsf = []
+device = "EP4CGX150DF31C7"

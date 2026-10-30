@@ -1,0 +1,51 @@
+{
+ "design": "hl_prienc_3",
+ "kind": "prienc",
+ "seed": 3,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {},
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "prienc",
+   "role": "dut",
+   "inputs": 4
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 2
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "reg_bits": 36,
+  "shift_registers": 1
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 36,
+  "registers": 36,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 0,
+  "mult9": 0,
+  "memory_bits": 0
+ }
+}

@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: mux seed 1 (min IO)"
+exercises = ["highlevel", "mux"]
+qsf = []
+device = "EP4CGX150DF31C7"

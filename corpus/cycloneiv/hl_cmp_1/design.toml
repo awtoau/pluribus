@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: cmp seed 1 (min IO)"
+exercises = ["highlevel", "comparator"]
+qsf = []
+device = "EP4CGX150DF31C7"

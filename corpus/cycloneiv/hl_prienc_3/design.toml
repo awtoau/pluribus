@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: prienc seed 3 (min IO)"
+exercises = ["highlevel", "prienc"]
+qsf = []
+device = "EP4CGX150DF31C7"

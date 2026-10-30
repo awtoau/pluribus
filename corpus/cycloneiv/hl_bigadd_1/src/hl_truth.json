@@ -1,0 +1,355 @@
+{
+ "design": "hl_bigadd_1",
+ "kind": "bigadd",
+ "seed": 1,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {
+  "resource": "36 wide arithmetic units"
+ },
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 31,
+   "taps": [
+    31,
+    28
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 30,
+   "taps": [
+    30,
+    6,
+    4,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 29,
+   "taps": [
+    29,
+    27
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 28,
+   "taps": [
+    28,
+    25
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 27,
+   "taps": [
+    27,
+    5,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 26,
+   "taps": [
+    26,
+    6,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 25,
+   "taps": [
+    25,
+    22
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "adder",
+   "role": "dut",
+   "width": 32,
+   "op": "add"
+  },
+  {
+   "kind": "subtractor",
+   "role": "dut",
+   "width": 32,
+   "op": "sub"
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "ge",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "lt",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "lt",
+   "signed": true
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "ge",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "lt",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "lt",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "ge",
+   "signed": true
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "ge",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "lt",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "ge",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "lt",
+   "signed": false
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 32,
+   "op": "ge",
+   "signed": false
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 36
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "adders": 15,
+  "comparators": 12,
+  "reg_bits": 3337,
+  "shift_registers": 8,
+  "subtractors": 9
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 3941,
+  "registers": 3305,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 0,
+  "mult9": 0,
+  "memory_bits": 0
+ }
+}

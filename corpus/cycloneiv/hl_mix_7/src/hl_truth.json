@@ -1,0 +1,153 @@
+{
+ "design": "hl_mix_7",
+ "kind": "mix",
+ "seed": 7,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {
+  "composite": "counter->comparator->fsm->counter"
+ },
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "shift_register",
+   "role": "dut",
+   "width": 6,
+   "variant": "sipo"
+  },
+  {
+   "kind": "equality",
+   "role": "dut",
+   "width": 6,
+   "op": "eq_const",
+   "const": 47
+  },
+  {
+   "kind": "fsm",
+   "role": "dut",
+   "states": 3,
+   "encoding": "binary",
+   "state_bits": 2,
+   "edges": 6,
+   "outputs": 0,
+   "reset": "none"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 31,
+   "taps": [
+    31,
+    28
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 16,
+   "mode": "up",
+   "step": 1,
+   "enable": true,
+   "load": false,
+   "clear": true
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 16
+  },
+  {
+   "kind": "comparator",
+   "role": "dut",
+   "width": 16,
+   "op": "ge",
+   "signed": false
+  },
+  {
+   "kind": "fsm",
+   "role": "dut",
+   "states": 4,
+   "encoding": "binary",
+   "state_bits": 2,
+   "edges": 8,
+   "outputs": 0,
+   "reset": "none"
+  },
+  {
+   "kind": "fifo",
+   "role": "dut",
+   "depth": 128,
+   "width": 16,
+   "parts": [
+    "ram",
+    "counter:wptr",
+    "counter:rptr",
+    "updown_count",
+    "equality:empty",
+    "equality:full"
+   ]
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 30,
+   "taps": [
+    30,
+    6,
+    4,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "fsm",
+   "role": "dut",
+   "states": 5,
+   "encoding": "gray",
+   "state_bits": 3,
+   "edges": 12,
+   "outputs": 3,
+   "reset": "sync"
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 12
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "comparators": 1,
+  "counters": 3,
+  "fsms": 3,
+  "m9k": 1,
+  "reg_bits": 166,
+  "shift_registers": 4
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 203,
+  "registers": 160,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 1,
+  "mult9": 0,
+  "memory_bits": 2048
+ }
+}

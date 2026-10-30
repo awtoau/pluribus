@@ -1,0 +1,61 @@
+{
+ "design": "hl_pipe_4",
+ "kind": "pipe",
+ "seed": 4,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {},
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "pipeline",
+   "role": "dut",
+   "stages": 6,
+   "width": 4,
+   "adders": 0
+  },
+  {
+   "kind": "pipeline",
+   "role": "dut",
+   "stages": 2,
+   "width": 4,
+   "adders": 0
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 2
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "adders": 0,
+  "reg_bits": 65,
+  "shift_registers": 1
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 65,
+  "registers": 65,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 0,
+  "mult9": 0,
+  "memory_bits": 0
+ }
+}

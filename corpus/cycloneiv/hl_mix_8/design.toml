@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: mix seed 8 (min IO)"
+exercises = ["highlevel", "adder", "comparator", "counter", "crc", "fifo", "fsm", "lfsr", "mux", "pipeline", "ram", "register"]
+qsf = ["set_global_assignment -name STATE_MACHINE_PROCESSING \"USER-ENCODED\""]
+device = "EP4CGX150DF31C7"

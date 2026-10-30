@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: shiftreg seed 4 (min IO)"
+exercises = ["highlevel", "shift_register"]
+qsf = []
+device = "EP4CGX150DF31C7"

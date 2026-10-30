@@ -352,13 +352,15 @@ def score_design(cx, d, fire_workers):
 # source: Dan 2026-10-30: rb_006 / rb_009 dropped from the corpus (survivors rb_000..005, 007, 008)
 RB_SURVIVORS = (0, 1, 2, 3, 4, 5, 7, 8)
 # source: Dan 2026-10-30 gate tiers: fast = reference/gate_fast.tsv (100 designs), full = reference/corpus_keep.tsv (kept corpus), dji = image row, extensive = later
-TIER_LISTS = {"fast": "gate_fast.tsv", "full": "corpus_keep.tsv"}
-TIERS = ("fast", "dji", "full", "extensive")
+TIER_LISTS = {"fast": "gate_fast.tsv", "full": "corpus_keep.tsv", "hl": "corpus_keep.tsv"}      # hl = the family-hl rows of corpus_keep.tsv (high-level corpus, #165)
+TIERS = ("fast", "dji", "full", "hl", "extensive")
 
 
 def tier_designs(tier):
     ds = []
     for line in open(os.path.join(REPO, "reference", TIER_LISTS[tier])).read().splitlines()[1:]:
+        if tier == "hl" and line.split("\t")[1:2] != ["hl"]:
+            continue
         d = os.path.join(REPO, "corpus", "cycloneiv", line.split("\t")[0])
         if all(os.path.exists(os.path.join(d, f)) for f in FILES):
             ds.append(d)

@@ -1,0 +1,392 @@
+{
+ "design": "hl_bigregs_2",
+ "kind": "bigregs",
+ "seed": 2,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {
+  "resource": "registers (>= 600)"
+ },
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 31,
+   "taps": [
+    31,
+    28
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 30,
+   "taps": [
+    30,
+    6,
+    4,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 29,
+   "taps": [
+    29,
+    27
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 28,
+   "taps": [
+    28,
+    25
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 27,
+   "taps": [
+    27,
+    5,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 26,
+   "taps": [
+    26,
+    6,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 25,
+   "taps": [
+    25,
+    22
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": true,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": true,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": true,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": true,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": true,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": false,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": true,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": false,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": true,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": true,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": false,
+   "sync_load": false,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": false,
+   "sync_clear": true,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "register",
+   "role": "dut",
+   "width": 32,
+   "enable": true,
+   "sync_clear": false,
+   "sync_load": true,
+   "async_clear": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "dut",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor",
+   "scrambler": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "dut",
+   "width": 48,
+   "taps": [
+    48,
+    47,
+    21,
+    20
+   ],
+   "form": "fibonacci_xnor",
+   "scrambler": false
+  },
+  {
+   "kind": "lfsr",
+   "role": "dut",
+   "width": 64,
+   "taps": [
+    64,
+    63,
+    61,
+    60
+   ],
+   "form": "fibonacci_xnor",
+   "scrambler": true
+  },
+  {
+   "kind": "lfsr",
+   "role": "dut",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor",
+   "scrambler": true
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 28
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "reg_bits": 1173,
+  "shift_registers": 12
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 1856,
+  "registers": 1141,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 0,
+  "mult9": 0,
+  "memory_bits": 0
+ }
+}

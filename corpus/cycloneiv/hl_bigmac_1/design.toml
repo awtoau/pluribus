@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: bigmac seed 1 (min IO)"
+exercises = ["highlevel", "mac"]
+qsf = []
+device = "EP4CGX150DF31C7"

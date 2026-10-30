@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: crc seed 2 (min IO)"
+exercises = ["highlevel", "crc"]
+qsf = []
+device = "EP4CGX150DF31C7"

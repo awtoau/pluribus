@@ -1,0 +1,89 @@
+{
+ "design": "hl_rom_4",
+ "kind": "rom",
+ "seed": 4,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {},
+ "constructs": [
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 8,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 16,
+   "init": "rom1.mif"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 9,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 512,
+   "width": 16,
+   "init": "rom4.mif"
+  },
+  {
+   "kind": "counter",
+   "role": "dut",
+   "width": 8,
+   "mode": "up",
+   "step": 1,
+   "enable": false,
+   "load": false,
+   "clear": false,
+   "role_note": "address"
+  },
+  {
+   "kind": "rom",
+   "role": "dut",
+   "depth": 256,
+   "width": 8,
+   "init": "rom7.mif"
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 3
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "counters": 3,
+  "m9k": 3,
+  "reg_bits": 26
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 22,
+  "registers": 10,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 2,
+  "mult9": 0,
+  "memory_bits": 14336
+ }
+}

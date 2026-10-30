@@ -1,0 +1,5 @@
+top = "top"
+purpose = "highlevel: dpath seed 3 (min IO)"
+exercises = ["highlevel", "adder", "counter", "fifo"]
+qsf = []
+device = "EP4CGX150DF31C7"

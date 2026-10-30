@@ -17,3 +17,4 @@ gxr4	48	hop specimen gxr4_null_rename_s	forced,hop_specimen,routing		48	2	0	0	42
 gxt1	12	tier1 u0@N0 -> u1.dataa	forced,routing	cycloneiv_forced.py	12	12	0	0	0	0
 gxcanary	2	canary: tier0 self-loop	forced,routing	recovery_status.py	2	0	0	0	0	1
 gxt0	2	tier0 self-loop	forced,routing	cycloneiv_forced.py,recovery_status.py	2	2	0	0	0	0
+hl	153	highlevel: adder seed 1 (min IO)	adder,comparator,counter,crc,decoder,equality,fifo,fsm,highlevel,lfsr,mac,mux,pipeline,prienc,ram,register,rom,shift_register,subtractor	cycloneiv_clean_gate.py,cycloneiv_corpus_keep.py,cycloneiv_hl_corpus.py	153	0	0	153	0	0

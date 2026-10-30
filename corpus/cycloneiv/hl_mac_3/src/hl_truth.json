@@ -1,0 +1,154 @@
+{
+ "design": "hl_mac_3",
+ "kind": "mac",
+ "seed": 3,
+ "style": "min",
+ "device": "EP4CGX150DF31C7",
+ "params": {},
+ "constructs": [
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 32,
+   "taps": [
+    32,
+    22,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 31,
+   "taps": [
+    31,
+    28
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "mac",
+   "role": "dut",
+   "wa": 12,
+   "wb": 12,
+   "signed": true,
+   "mode": "mult",
+   "mults": 1,
+   "absorbed_regs": "operand/product registers inside the multiplier block"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 30,
+   "taps": [
+    30,
+    6,
+    4,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 29,
+   "taps": [
+    29,
+    27
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "mac",
+   "role": "dut",
+   "wa": 16,
+   "wb": 8,
+   "signed": true,
+   "mode": "mult",
+   "mults": 1,
+   "absorbed_regs": "operand/product registers inside the multiplier block"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 28,
+   "taps": [
+    28,
+    25
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "mac",
+   "role": "dut",
+   "wa": 8,
+   "wb": 8,
+   "signed": false,
+   "mode": "mac",
+   "mults": 1,
+   "absorbed_regs": "operand/product registers inside the multiplier block"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 27,
+   "taps": [
+    27,
+    5,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "lfsr",
+   "role": "stimulus",
+   "width": 26,
+   "taps": [
+    26,
+    6,
+    2,
+    1
+   ],
+   "form": "fibonacci_xnor"
+  },
+  {
+   "kind": "mac",
+   "role": "dut",
+   "wa": 8,
+   "wb": 8,
+   "signed": false,
+   "mode": "sop",
+   "mults": 2,
+   "absorbed_regs": "operand/product registers inside the multiplier block"
+  },
+  {
+   "kind": "xor_reduce",
+   "role": "observer",
+   "inputs": 4
+  },
+  {
+   "kind": "register",
+   "role": "observer",
+   "width": 1
+  }
+ ],
+ "expected": {
+  "adders": 2,
+  "mac": 5,
+  "reg_bits": 220,
+  "shift_registers": 7
+ },
+ "notes": "expected = counts per lifter report key; roles: dut / stimulus (on-chip LFSR banks) / observer (output XOR)",
+ "fit": {
+  "logic_elements": 262,
+  "registers": 236,
+  "pins": 2,
+  "virtual_pins": 0,
+  "m9k": 0,
+  "mult9": 7,
+  "memory_bits": 0
+ }
+}

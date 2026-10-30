@@ -2,6 +2,7 @@
 """Draft keep list for the EP4CGX150 corpus -> reference/corpus_keep.tsv (design, family, reason). Nothing is deleted here.
 
   python3.15t scripts/cycloneiv_corpus_keep.py      # log: tmp/logs/cycloneiv_corpus_keep.log
+  python3.15t scripts/cycloneiv_corpus_keep.py --append hl     # add one ALL-family to the existing list (the rest untouched)
 Rule (Dan, 2026-10-30): the corpus keeps (1) purpose-built decoder tests, (2) pair builds that are the only evidence of a rule with no
 code source (M9K, MAC, PLL), (3) a seeded sample of N_SAMPLE designs per other family as regression tests. Everything else is rebuildable
 from tag pre-one-die-20261030 and the generators.
@@ -14,7 +15,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.join(REPO, "corpus", "cycloneiv")
 OUT = os.path.join(REPO, "reference", "corpus_keep.tsv")
 N_SAMPLE = 10               # per family (Dan: 50-100 is too many)
-ALL = {"gxcanary": "canary", "gxt0": "tier0 self-loop"}
+ALL = {"gxcanary": "canary", "gxt0": "tier0 self-loop", "hl": "high-level corpus: known source structure"}
 # per-subfamily caps (name prefix up to the 2nd underscore) inside a family; the rest of the family is seeded as usual
 SUB_CAP = {"gx150": {"gx150_sp": 20, "gx150_rb": 30, "gx150_ffc": 30, "*": 1000},
            "gxhb": {"*": 6}}
@@ -26,7 +27,19 @@ def pick(names, n):
     return sorted(names, key=lambda x: hashlib.sha256(("seed1:" + x).encode()).hexdigest())[:n]
 
 
+def append_family(f):
+    """Add the dirs of family f (ALL reason) that are not yet in the existing keep list; every other row stays as is."""
+    have = {r[0] for r in csv.reader(open(OUT), delimiter="\t")}
+    new = [(d, f, ALL[f]) for d in sorted(os.listdir(ROOT)) if d.split("_")[0] == f and d not in have]
+    with open(OUT, "a") as fh:
+        csv.writer(fh, delimiter="\t").writerows(new)
+    print(f"appended {len(new)} {f} designs to {OUT}")
+
+
 def main():
+    import sys
+    if len(sys.argv) == 3 and sys.argv[1] == "--append":
+        return append_family(sys.argv[2])
     fam = {}
     for d in sorted(os.listdir(ROOT)):
         if os.path.isdir(os.path.join(ROOT, d)):

@@ -1,0 +1,88 @@
+module top (
+  input clk,
+  output y
+);
+reg [31:0] stim0;
+reg [30:0] stim1;
+localparam [4:0] ST1_0 = 5'd0;
+localparam [4:0] ST1_1 = 5'd1;
+localparam [4:0] ST1_2 = 5'd2;
+localparam [4:0] ST1_3 = 5'd3;
+localparam [4:0] ST1_4 = 5'd4;
+localparam [4:0] ST1_5 = 5'd5;
+localparam [4:0] ST1_6 = 5'd6;
+localparam [4:0] ST1_7 = 5'd7;
+localparam [4:0] ST1_8 = 5'd8;
+localparam [4:0] ST1_9 = 5'd9;
+localparam [4:0] ST1_10 = 5'd10;
+localparam [4:0] ST1_11 = 5'd11;
+localparam [4:0] ST1_12 = 5'd12;
+localparam [4:0] ST1_13 = 5'd13;
+localparam [4:0] ST1_14 = 5'd14;
+localparam [4:0] ST1_15 = 5'd15;
+localparam [4:0] ST1_16 = 5'd16;
+localparam [4:0] ST1_17 = 5'd17;
+localparam [4:0] ST1_18 = 5'd18;
+reg [4:0] st1;
+reg [2:0] fo2;
+reg [7:0] a3, b4;
+reg [29:0] stim2;
+reg f5;
+reg [3:0] a6, b7;
+reg f8;
+reg [7:0] sr9;
+reg [28:0] stim3;
+reg signed [17:0] ma10;
+reg signed [15:0] mb11;
+reg signed [33:0] mp12;
+reg [27:0] stim4;
+reg [26:0] stim5;
+reg signed [17:0] ma13;
+reg signed [15:0] mb14;
+reg [25:0] stim6;
+reg [24:0] stim7;
+reg y_q;
+always @(posedge clk) stim0 <= {stim0[30:0], ~(stim0[31] ^ stim0[21] ^ stim0[1] ^ stim0[0])};
+always @(posedge clk) stim1 <= {stim1[29:0], ~(stim1[30] ^ stim1[27])};
+always @(posedge clk) begin
+ if (stim1[27] & stim1[6] & stim1[25]) st1 <= ST1_0;
+ else case (st1)
+  ST1_0: st1 <= stim0[26] ? ST1_1 : ST1_5;
+  ST1_1: st1 <= stim0[18] ? ST1_2 : stim0[6] ? ST1_18 : ST1_14;
+  ST1_2: st1 <= stim0[27] ? ST1_3 : stim0[1] ? ST1_2 : ST1_3;
+  ST1_3: st1 <= stim0[7] ? ST1_4 : stim0[16] ? ST1_9 : ST1_14;
+  ST1_4: st1 <= stim0[19] ? ST1_5 : ST1_11;
+  ST1_5: st1 <= stim0[21] ? ST1_6 : ST1_15;
+  ST1_6: st1 <= stim0[25] ? ST1_7 : ST1_2;
+  ST1_7: st1 <= stim0[31] ? ST1_8 : ST1_17;
+  ST1_8: st1 <= stim0[23] ? ST1_9 : stim0[4] ? ST1_15 : ST1_12;
+  ST1_9: st1 <= stim0[2] ? ST1_10 : stim0[20] ? ST1_6 : ST1_2;
+  ST1_10: st1 <= stim0[30] ? ST1_11 : ST1_5;
+  ST1_11: st1 <= stim0[17] ? ST1_12 : stim0[11] ? ST1_16 : ST1_2;
+  ST1_12: st1 <= stim0[12] ? ST1_13 : stim0[0] ? ST1_8 : ST1_5;
+  ST1_13: st1 <= stim0[3] ? ST1_14 : ST1_2;
+  ST1_14: st1 <= stim0[5] ? ST1_15 : stim0[9] ? ST1_12 : ST1_4;
+  ST1_15: st1 <= stim0[10] ? ST1_16 : ST1_10;
+  ST1_16: st1 <= stim1[30] ? ST1_17 : stim1[8] ? ST1_18 : ST1_15;
+  ST1_17: st1 <= stim1[15] ? ST1_18 : stim1[21] ? ST1_11 : ST1_6;
+  ST1_18: st1 <= stim1[10] ? ST1_0 : ST1_16;
+  default: st1 <= ST1_0;
+ endcase
+end
+always @(posedge clk) fo2 <= {(st1 == ST1_16 | st1 == ST1_13 | st1 == ST1_7 | st1 == ST1_1 | st1 == ST1_9), (st1 == ST1_13 | st1 == ST1_9 | st1 == ST1_17 | st1 == ST1_6 | st1 == ST1_11 | st1 == ST1_14), (st1 == ST1_0 | st1 == ST1_4 | st1 == ST1_6 | st1 == ST1_12 | st1 == ST1_7 | st1 == ST1_16 | st1 == ST1_15 | st1 == ST1_10 | st1 == ST1_13)};
+always @(posedge clk) stim2 <= {stim2[28:0], ~(stim2[29] ^ stim2[5] ^ stim2[3] ^ stim2[0])};
+always @(posedge clk) begin a3 <= {(stim1[28] ^ stim1[3]), (stim1[13] ^ stim1[14]), (stim1[2] ^ stim1[29]), (stim1[5] ^ stim1[12]), (stim1[7] ^ stim1[9]), (stim1[0] ^ stim1[19]), (stim1[24] ^ stim1[23]), (stim1[17] ^ stim1[4])}; b4 <= {(stim1[22] ^ stim1[1]), (stim1[11] ^ stim1[16]), (stim1[18] ^ stim1[26]), (stim2[25] ^ stim2[9]), (stim2[14] ^ stim2[24]), (stim2[27] ^ stim2[22]), (stim2[23] ^ stim2[2]), (stim2[4] ^ stim2[17])}; end
+always @(posedge clk) f5 <= a3 > b4;
+always @(posedge clk) begin a6 <= {(stim2[29] ^ stim2[13]), (stim2[11] ^ stim2[7]), (stim2[19] ^ stim2[16]), (stim2[20] ^ stim2[21])}; b7 <= {(stim2[3] ^ stim2[6]), (stim2[5] ^ stim2[8]), (stim2[26] ^ stim2[12]), (stim2[15] ^ stim2[18])}; end
+always @(posedge clk) f8 <= a6 != b7;
+always @(posedge clk) stim3 <= {stim3[27:0], ~(stim3[28] ^ stim3[26])};
+always @(posedge clk) if (stim2[10] & stim2[28]) sr9 <= {stim2[1], stim2[0], stim3[19], stim3[5], stim3[10], stim3[16], stim3[28], stim3[4]}; else sr9 <= {sr9[6:0], sr9[7]};
+always @(posedge clk) stim4 <= {stim4[26:0], ~(stim4[27] ^ stim4[24])};
+always @(posedge clk) stim5 <= {stim5[25:0], ~(stim5[26] ^ stim5[4] ^ stim5[1] ^ stim5[0])};
+always @(posedge clk) begin ma10 <= {(stim3[26] ^ stim3[18]), (stim3[13] ^ stim3[8]), (stim3[2] ^ stim3[24]), (stim3[22] ^ stim3[0]), (stim3[20] ^ stim3[21]), (stim3[1] ^ stim3[12]), (stim3[3] ^ stim3[25]), (stim3[11] ^ stim3[6]), (stim3[27] ^ stim3[9]), (stim3[17] ^ stim3[14]), (stim3[15] ^ stim3[7]), (stim3[23] ^ stim4[11]), (stim4[27] ^ stim4[14]), (stim4[13] ^ stim4[5]), (stim4[19] ^ stim4[22]), (stim4[24] ^ stim4[12]), (stim4[17] ^ stim4[7]), (stim4[16] ^ stim4[8])}; mb11 <= {(stim4[1] ^ stim4[25]), (stim4[6] ^ stim4[15]), (stim4[4] ^ stim4[3]), (stim4[0] ^ stim4[18]), (stim4[2] ^ stim4[10]), (stim4[26] ^ stim4[21]), (stim4[20] ^ stim4[23]), (stim4[9] ^ stim5[16]), (stim5[24] ^ stim5[10]), (stim5[20] ^ stim5[7]), (stim5[15] ^ stim5[14]), (stim5[22] ^ stim5[13]), (stim5[5] ^ stim5[23]), (stim5[4] ^ stim5[9]), (stim5[26] ^ stim5[2]), (stim5[17] ^ stim5[6])}; end
+always @(posedge clk) stim6 <= {stim6[24:0], ~(stim6[25] ^ stim6[5] ^ stim6[1] ^ stim6[0])};
+always @(posedge clk) stim7 <= {stim7[23:0], ~(stim7[24] ^ stim7[21])};
+always @(posedge clk) begin ma13 <= {(stim5[11] ^ stim5[18]), (stim5[0] ^ stim5[1]), (stim5[21] ^ stim5[8]), (stim5[19] ^ stim5[12]), (stim5[25] ^ stim5[3]), (stim6[11] ^ stim6[3]), (stim6[12] ^ stim6[9]), (stim6[6] ^ stim6[14]), (stim6[4] ^ stim6[10]), (stim6[16] ^ stim6[13]), (stim6[23] ^ stim6[1]), (stim6[8] ^ stim6[22]), (stim6[17] ^ stim6[20]), (stim6[21] ^ stim6[2]), (stim6[24] ^ stim6[5]), (stim6[19] ^ stim6[0]), (stim6[18] ^ stim6[7]), (stim6[25] ^ stim6[15])}; mb14 <= {(stim7[5] ^ stim7[20]), (stim7[10] ^ stim7[8]), (stim7[17] ^ stim7[16]), (stim7[2] ^ stim7[15]), (stim7[1] ^ stim7[13]), (stim7[7] ^ stim7[22]), (stim7[6] ^ stim7[4]), (stim7[18] ^ stim7[21]), (stim7[19] ^ stim7[9]), (stim7[14] ^ stim7[12]), (stim7[23] ^ stim7[3]), (stim7[24] ^ stim7[0]), (stim7[11] ^ stim7[5]), (stim5[16] ^ stim1[30]), (stim3[19] ^ stim6[11]), (stim6[3] ^ stim4[11])}; mp12 <= ma10 * mb11 + ma13 * mb14; end
+always @(posedge clk) y_q <= (^st1) ^ (^fo2) ^ f5 ^ f8 ^ (^sr9) ^ (^mp12);
+assign y = y_q;
+endmodule
