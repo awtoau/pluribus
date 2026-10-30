@@ -9,7 +9,7 @@ Sources:
   - ddb_stingray4_hdr.ddb body: one record per element; first string = debug name (-> enum above), later strings =
     description + aliases; the last non-.dxf string is the RCF type name (R4 = H4, C4 = V4, LOCAL_INTERCONNECT = LAB_LINE ...).
   - hdr_int of the name table is not used (not needed).
-Comparison oracle only: tmp/logs/cycloneiv_clean_names_search.json (routing-tree edge consistency); never feeds the table.
+Type list = every type string in corpus/cycloneiv/*/routing.rcf.  Comparison oracle only (optional): tmp/logs/cycloneiv_clean_names_search.json; never feeds the table.
 """
 import json
 import os
@@ -109,6 +109,19 @@ def records(body, dbg2enum):
     return rec
 
 
+def corpus_types():
+    """Every element type string in the corpus routing.rcf files (the names the table must resolve)."""
+    import glob
+    from concurrent.futures import ThreadPoolExecutor
+    pat = re.compile(rb"\b([A-Z][A-Z0-9_]*):X\d+Y\d+S\d+I\d+\b")
+    files = glob.glob(os.path.join(REPO, "corpus", "cycloneiv", "*", "routing.rcf"))
+    with ThreadPoolExecutor(8) as ex:
+        sets = list(ex.map(lambda p: set(pat.findall(open(p, "rb").read())), files))
+    out = {t.decode() for s in sets for t in s}
+    say(f"corpus RCF files: {len(files)}; distinct element types: {len(out)}")
+    return out
+
+
 def main():
     body = b"".join(dd.iter_body(HDR))
     dbg = enum_debug_names()
@@ -155,9 +168,9 @@ def main():
     say(f"ambiguous: {sorted(set(amb))}")
     say(f"no record: {sorted(set(none))}")
 
-    oracle = json.load(open(SEARCH))
+    oracle = json.load(open(SEARCH)) if os.path.exists(SEARCH) else {}
     types = []
-    for t in sorted(oracle):
+    for t in sorted(corpus_types()):
         c = cand.get(t, {})
         rn = {e: v for e, v in c.items() if any(f == "rcf_name" for _, f in v)}
         use = rn or c
@@ -170,6 +183,8 @@ def main():
     # oracle comparison (not a table input)
     agree = diff = 0
     for t in types:
+        if t["type"] not in oracle:
+            continue
         a = oracle[t["type"]]["phaseB"][0]
         strong = a[1] >= 1 and a[2] and a[1] / a[2] >= 0.99
         if not strong:

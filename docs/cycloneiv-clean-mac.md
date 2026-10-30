@@ -1,7 +1,7 @@
 # Cyclone IV GX MAC (embedded multiplier) decode and behavioural emit (#165, 2026-10-30)
 
 Code: `lifters/cycloneiv_clean/macctl.py`, `emit.py` (`Builder._mac`, `verilog()`). Checks: `scripts/cycloneiv_clean_mac_check.py` (structural), `scripts/cycloneiv_clean_mac_sim.py` (multiplier output vs the post-fit `mac_out` bus). Test: `tests/cycloneiv_clean/test_macctl.py`.
-Conditions: EP4CGX150, existing builds only (0 new). All 44 MAC designs of the corpus are the `gxhb_mac*` specimen family; the rules were read off them, so there is no independent MAC design.
+Conditions: EP4CGX150, existing builds only (0 new), 2026-10-30. 18 `gxhb_mac*` specimens plus 19 `hl_*` designs with MAC tiles (hl_* used for the nine-bit register survey and as held-out scoring; the 18x18 rules were read off gxhb_*).
 
 ## Rules
 - Used: any control cell of the instance set. MAC cells are in no default-bit list and read 0 in a MAC-free build; the output elements are `DSP_BUFFER`, which the old edge-based detection never saw (542 M9K tiles, 0 MAC edges). Image: 87 of 360 (was 0 detected).
@@ -10,10 +10,14 @@ Conditions: EP4CGX150, existing builds only (0 new). All 44 MAC designs of the c
 - Registers (earlier \"which register is enabled is not decoded\" was wrong): `MAC_ROW_IREG_{UPPER,LOWER}_DATA` gi 0 = A input register, gi 1 = B input register; `MAC_ROW_OREG_UPPER_DATA` gi 0 and 1 = output register (a multiplier register and an output register give the same bits: one register stage after the multiplier). `MAC_USE_NINE_BIT_DATA_WIDTH_PER_ROW` = 9-bit rows.
 - Clock: `MAC_CLK_FAST_MUX` (7-bit one-hot): bit 0 = the PIA clock path (`MAC_PIA_TO_CLK` = LI index), bits 1..6 = block clock line 0..5 (`BLK_CLK_BUF` of the MAC tile; its structural parents are added in the forest).
 - Result: bit i of the 36-bit product = `DSP_BUFFER` index i of the MAC tile; emitted as `mac_<x>_<y>_r[i]` of a behavioural 18 x 18 signed/unsigned multiplier with the decoded input / output registers (async clear, enable).
-- Not modelled: 9-bit rows, two-multiplier and 36-bit modes (several MAC instances), saturation / rounding / shift (`MAC_*SATAC`, `SHFTR`), sign registers, accumulation.
+- Nine-bit mode (`MAC_USE_NINE_BIT_DATA_WIDTH_PER_ROW`): two 9 x 9 multipliers per tile. N0 = data rows 0..8 (A) / 18..26 (B), N1 = 9..17 / 27..35 (`macctl.rows`); input registers A / B of N0 = `MAC_ROW_IREG_LOWER_DATA` gi 0 / 1, of N1 = `MAC_ROW_IREG_UPPER_DATA` gi 0 / 1; output register of Nn = `MAC_ROW_OREG_UPPER_DATA` gi n; result bits of Nn = `DSP_BUFFER` 18 n .. 18 n + 17. Unselected rows read -1 (single 9 x 9 at N0: rows of N1 empty). N1 output register (gi 1) is unobserved (no corpus design has N1 output-registered).
+- Control pins CLK / SIGNA / SIGNB: `LOCAL_INTERCONNECT -> DSP_CONTROL_INPUT` edges (index 0 / 3 / 4) are not in the routing graph: `mac_pia.py`. CE / CLR (indices 1 / 2) never routed in the corpus: open.
+- Block 41 has 17 asmdb group types (`scripts/cycloneiv_clean_mac_survey.py`); none for accumulate / saturation / rounding / shift / chain, so those modes do not exist in this device's multiplier (E-T4). A 36-bit product is built from several 18 x 18 tiles plus LAB adders (not a MAC mode). Groups never set by a corpus design: `MAC_CLK_INVERT`, `MAC_CE_INVERT`, `MAC_CLR_INVERT`, `MAC_IREG_SIGN`, `MAC_CLR_FAST_MUX`, 19 of 36 `MAC_ROW_DATA_INVERT` (open: small pair builds).
+- Not modelled: sign registers (`MAC_IREG_SIGN`), clock / enable / clear inversion, `MAC_CLR_FAST_MUX`, multi-tile 36-bit composition.
 
 ## Results
-- Structural (44 designs, matched / missing / extra / wrong): mac_inst 47 / 0 / 0 / 0 (incl. the 4 MAC instances of w36), mac_cfg 330 / 0 / 0 / 0, mac_pin 1,450 / 0 / 0 / 18 (the 18 are `two_mult_w9`: two 9-bit multipliers share the row inputs differently).
-- Multiplier output equivalence (iverilog, emit vs post-fit mac_out, 300 random cycles): 42 pass, 0 fail, 2 not modelled (two_mult_w9, w36 has several outs).
-- Pad-level `emit_sim`: all 44 fail on the result pads (BIM pad index of HIO pins not decoded, HIO agent); the multiplier bus itself matches.
-- Image (counts): 87 MAC instances used, output register 29, input register A 53 / B 29, signed A 64 / B 79, dynamic sign pins 0, 2 in 9-bit / multi-MAC mode.
+- Structural, 37 corpus designs with a MAC tile (18 gxhb_*, 19 hl_*; matched / missing / extra / wrong): mac_inst 180 / 0 / 0 / 0 (all four MUL columns, 143 distinct tile sites: the instance order column rank * 90 + Y - 1 is scored by the Quartus post-fit tile locations), mac_cfg 1,470 / 0 / 0 / 0, mac_pin 5,969 / 0 / 0 / 0 (`scripts/cycloneiv_clean_mac_check.py`, 2026-10-30).
+- Routing (fast gate tier, 117 designs): the 5 MAC designs score pips / nets 0 missing / 0 extra / 0 wrong (was 36 extra + 37 missing pips per design: RCF types DSP_BUFFER and DSP_CONTROL_INPUT were absent from `names_table.json`).
+- Multiplier output equivalence (iverilog, emit vs post-fit `mac_out`, 300 random cycles, `scripts/cycloneiv_clean_mac_sim.py`): 18 of 18 gxhb_mac* pass, 0 fail, including the two-multiplier nine-bit design (each `mac_out` compared with its 18-bit slice).
+- Pad-level `emit_sim` on the 18 gxhb_mac* designs: 18 pass.
+- Image (counts): 87 MAC instances used, output register 29, input register A 53 / B 29, signed A 64 / B 79, dynamic sign pins 0, 2 tiles in nine-bit mode (N0 registered 2, N1 registered 1).

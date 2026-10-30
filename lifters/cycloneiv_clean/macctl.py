@@ -25,6 +25,16 @@ ONE = ("MAC_ROW_DATA_INVERT", "MAC_SIGN_INVERT", "MAC_ROW_IREG_UPPER_DATA", "MAC
        "MAC_USE_NINE_BIT_DATA_WIDTH_PER_ROW", "MAC_CLK_INVERT", "MAC_CE_INVERT", "MAC_CLR_INVERT", "MAC_IREG_SIGN")
 ROWS = 36                    # source: MAC_ROW_DATA_INPUT has 36 groups (asmdb walk); 18 rows per operand
 HALF = 18                    # source: 18 x 18 mode: gi < 18 = operand A
+NB = 9                       # source: MAC_USE_NINE_BIT_DATA_WIDTH_PER_ROW: two 9 x 9 multipliers per tile
+
+
+def rows(n, nine):
+    """(operand A rows, operand B rows) of data_sel for multiplier n of a tile.  Nine-bit mode: N0 = rows 0..8 / 18..26, N1 = 9..17 / 27..35.
+    source: row -> DATAA / DATAB pin of every GT route in gxhb_mac_two_mult_w9 (N0 mac_mult7, N1 mac_mult5: all 36 selections distinct) and
+    gxhb_macpa_w9 (single 9 x 9 at N0: rows 9..17 and 27..35 unselected)."""
+    if not nine:
+        return list(range(HALF)), list(range(HALF, 2 * HALF))
+    return list(range(n * NB, n * NB + NB)), list(range(HALF + n * NB, HALF + n * NB + NB))
 
 
 class MacCtl:
@@ -79,6 +89,12 @@ class MacCtl:
         o["ireg"] = np.stack([(self.val(("MAC_ROW_IREG_UPPER_DATA", k), bits) == 1) | (self.val(("MAC_ROW_IREG_LOWER_DATA", k), bits) == 1) for k in (0, 1)], axis=1)
         o["oreg"] = (self.val(("MAC_ROW_OREG_UPPER_DATA", 0), bits) == 1) | (self.val(("MAC_ROW_OREG_UPPER_DATA", 1), bits) == 1)
         o["nine"] = self.val(("MAC_USE_NINE_BIT_DATA_WIDTH_PER_ROW", -1), bits) == 1
+        # per multiplier n (nine-bit mode): input register A / B = IREG_LOWER_DATA gi 0 / 1 (n = 0), IREG_UPPER_DATA gi 0 / 1 (n = 1); output register = OREG_UPPER_DATA gi n.
+        # source: GT dataa_clock / datab_clock / output_clock per mac_mult / mac_out of the 9-bit corpus designs (tmp survey: 0 disagreements for n = 0 over 37 tiles; n = 1 input regs 3 of 3)
+        reg = lambda nm, k: self.val((nm, k), bits) == 1
+        o["ireg_n"] = np.stack([np.stack([reg("MAC_ROW_IREG_LOWER_DATA", k) for k in (0, 1)], axis=1),
+                                np.stack([reg("MAC_ROW_IREG_UPPER_DATA", k) for k in (0, 1)], axis=1)], axis=1)       # [inst, n, A/B]
+        o["oreg_n"] = np.stack([reg("MAC_ROW_OREG_UPPER_DATA", k) for k in (0, 1)], axis=1)
         hot = bits[self.clkfast].astype(np.int64)
         fast = np.where(hot.sum(1) == 1, hot.argmax(1), -1)
         o["clk_fast"] = fast

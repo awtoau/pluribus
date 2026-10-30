@@ -3,7 +3,7 @@
 
   python3.15t scripts/cycloneiv_clean_mac_sim.py [--match 'gxhb_mac*']      (needs cycloneiv_clean_emit_sim.py to have run on the designs: reuses its tb.v / emit.v)
 The result pads of the MAC specimens have no decoded driver (BIM path), so emit_sim reports `none` for them; this compares the multiplier output directly.
-Single-multiplier designs only (one mac_out); multi-MAC modes are listed as not modelled.  Log tmp/logs/cycloneiv_clean_mac_sim.log.
+One MAC tile per design (18 x 18, or one / two 9 x 9: each mac_out compared with its 18-bit slice); several tiles are listed as not modelled.  Log tmp/logs/cycloneiv_clean_mac_sim.log.
 """
 import argparse
 import fnmatch
@@ -25,16 +25,22 @@ def one(name):
     d = os.path.join(REPO, "corpus", "cycloneiv", name)
     wd = os.path.join(S.WORK, name)
     vo = open(os.path.join(d, "postfit.vo")).read()
-    outs = re.findall(r"// Location: DSPOUT_X(\d+)_Y(\d+)_N\d+\ncycloneiv_mac_out (\S+) ", vo)
-    mults = len(re.findall(r"cycloneiv_mac_mult ", vo))
-    if len(outs) != 1 or mults != 1:
-        return "not_modelled", f"{mults} mult / {len(outs)} out"
-    x, y, inst = outs[0]
-    bus = inst.lstrip("\\") + "_DATAOUT_bus"
+    outs = re.findall(r"// Location: DSPOUT_X(\d+)_Y(\d+)_N(\d)\ncycloneiv_mac_out (\S+) ", vo)
+    mults = re.findall(r"cycloneiv_mac_mult (\S+) ", vo)
+    xy = {(o[0], o[1]) for o in outs}
+    if not outs or len(xy) != 1:
+        return "not_modelled", f"{len(mults)} mult / {len(outs)} out in {len(xy)} tiles"
+    x, y = next(iter(xy))
+    nine = "dataa_width = 9;" in vo
+    cmp = []
+    for _, _, n, inst in outs:
+        bus = inst.lstrip("\\") + "_DATAOUT_bus"
+        ref = f"gt.\\{bus} " if inst.startswith("\\") else f"gt.{bus}"
+        lo, w = (18 * (int(n) - 2), 18) if nine else (0, 36)
+        cmp.append(f"({ref}[{w - 1}:0] !== dut.mac_{x}_{y}_r[{lo + w - 1}:{lo}])")
     tb = open(os.path.join(wd, "tb.v")).read()
-    ref = f"gt.\\{bus} " if outs[0][2].startswith("\\") else f"gt.{bus}"
     tb = tb.replace("integer cyc, bad, n;", "integer cyc, bad, n, macbad = 0;")
-    tb = re.sub(r"(if \(cyc >= \d+\) begin)", r"\1 if (" + ref.replace("\\", "\\\\") + f" !== dut.mac_{x}_{y}_r) macbad = macbad + 1;", tb, count=1)
+    tb = re.sub(r"(if \(cyc >= \d+\) begin)", lambda m: m[1] + " if (" + " || ".join(cmp) + ") macbad = macbad + 1;", tb, count=1)
     tb = tb.replace("$finish;", '$display("MACRESULT bad=%0d", macbad); $finish;')
     open(os.path.join(wd, "tb_mac.v"), "w").write(tb)
     vvp = os.path.join(wd, "mac.vvp")
@@ -57,7 +63,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=[logging.StreamHandler(), logging.FileHandler(os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_mac_sim.log"))])
     res = {}
     for n in sorted(os.listdir(S.WORK)):
-        if fnmatch.fnmatch(n, a.match) and os.path.exists(os.path.join(S.WORK, n, "emit.v")):
+        if fnmatch.fnmatch(n, a.match) and os.path.exists(os.path.join(S.WORK, n, "emit.v")) and os.path.exists(os.path.join(REPO, "corpus", "cycloneiv", n, "postfit.vo")):
             res[n] = one(n)
             log.info("%s %s %s", n, *res[n])
     cnt = {}

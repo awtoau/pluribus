@@ -342,6 +342,10 @@ class Extras:
         self.pia = m9k_pia.Implicit(lut.walk, rt or ddb.Routing(), n_real=len(st.esrc))
         st.esrc = np.concatenate([st.esrc, self.pia.esrc])
         st.edst = np.concatenate([st.edst, self.pia.edst])
+        from . import mac_pia
+        self.macpia = mac_pia.Implicit(lut.walk, rt or ddb.Routing(), n_real=len(st.esrc))
+        st.esrc = np.concatenate([st.esrc, self.macpia.esrc])
+        st.edst = np.concatenate([st.edst, self.macpia.edst])
         st._key = None
         import sys
         sys.path.insert(0, ddb.SCRIPTS)
@@ -360,8 +364,10 @@ class Extras:
 
     def apply(self, bits, fired):
         """{variant: edge ids} with the clock and LAB-control edges added to every variant."""
-        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits), self.pia.apply(bits), self.clkbuf.apply(bits), self.pllw.apply(bits), self.pllin.apply(bits)])
-        return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp])) for v, e in fired.items()}
+        imp = np.concatenate([self.imp.apply(bits), self.bim.apply(bits), self.pia.apply(bits), self.macpia.apply(bits), self.clkbuf.apply(bits), self.pllw.apply(bits), self.pllin.apply(bits)])
+        mrec = self.macpia.clock_recs(bits)
+        mclk = self.clocks.chain(mrec) if len(mrec) else np.zeros(0, np.int64)
+        return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp, mclk])) for v, e in fired.items()}
 
 
 # source: io_decode.json `values` rows with setting 'default' (pair builds, docs/cycloneiv-clean-io.md): pattern of each group per base kind

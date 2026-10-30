@@ -356,15 +356,16 @@ def hardblocks(cx, plane_path):
             ctl[f.name] = int(bits[c].any(axis=1).sum())
     res["m9k"] = {"instances": int(len(per)), "content_bits": int(v.size), "content_bits_set": int(per.sum()), "instances_with_content": int((per > 0).sum()),
                   "instances_with_any_control": ctl.most_common() and dict(ctl), "content_unmapped_MISSING": 0}
-    ma = 0
-    mc = 0
-    mflds = [f for f in flds if f.btype == 41 and not f.name.startswith(("MAC_ROW_DATA_INPUT", "MAC_PIA_"))]
-    anyset = np.zeros(len(F.bases(w, 41)), bool)
-    for f in mflds:
-        for site in f.sites:
-            for o in site:
-                anyset |= bits[cell(F.absolute(F.bases(w, 41), o))].any(axis=1)
-    res["mac"] = {"instances": int(len(anyset)), "instances_with_set_control_bits": int(anyset.sum()), "mode_decode": "MISSING (unsigned / 9-bit / registers decoded only as signature bits)"}
+    from lifters.cycloneiv_clean import macctl
+    md = macctl.MacCtl(w).decode(bits)
+    u = md["used"]
+    nine = u & md["nine"]
+    res["mac"] = {"instances": int(len(u)), "instances_with_set_control_bits": int(u.sum()), "nine_bit_tiles": int(nine.sum()),
+                  "input_reg_a": int((u & md["ireg"][:, 0]).sum()), "input_reg_b": int((u & md["ireg"][:, 1]).sum()), "output_reg": int((u & md["oreg"]).sum()),
+                  "signed_a_static": int((u & ~md["unsigned"][:, 0] & (md["sign_sel"][:, 0] < 0)).sum()), "signed_b_static": int((u & ~md["unsigned"][:, 1] & (md["sign_sel"][:, 1] < 0)).sum()),
+                  "dynamic_sign_pins": int(((md["sign_sel"] >= 0) & u[:, None]).sum()),
+                  "nine_bit_n0_regs": int((nine & (md["ireg_n"][:, 0].any(axis=1) | md["oreg_n"][:, 0])).sum()),
+                  "nine_bit_n1_regs": int((nine & (md["ireg_n"][:, 1].any(axis=1) | md["oreg_n"][:, 1])).sum())}
     return res
 
 

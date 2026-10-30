@@ -78,6 +78,17 @@
    "source": "ddb_stingray4_hdr.ddb body offset 71058 (record of element CLKBUF_OUT); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
+   "type": "CLKPIN_TO_PLLCLKIN_MUX",
+   "enum": 528,
+   "status": "vendor",
+   "candidates": [
+    528
+   ],
+   "debug_name": "CLKPIN_TO_PLLCLKIN_MUX",
+   "hdr_offset": 73702,
+   "source": "ddb_stingray4_hdr.ddb body offset 73702 (record of element CLKPIN_TO_PLLCLKIN_MUX); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
    "type": "CLK_BUFFER",
    "enum": 295,
    "status": "vendor",
@@ -87,6 +98,28 @@
    "debug_name": "CLK_BUFFER",
    "hdr_offset": 65242,
    "source": "ddb_stingray4_hdr.ddb body offset 65242 (record of element CLK_BUFFER); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
+   "type": "DSP_BUFFER",
+   "enum": 286,
+   "status": "vendor",
+   "candidates": [
+    286
+   ],
+   "debug_name": "MAC_BUFFER",
+   "hdr_offset": 58254,
+   "source": "ddb_stingray4_hdr.ddb body offset 58254 (record of element MAC_BUFFER); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
+   "type": "DSP_CONTROL_INPUT",
+   "enum": 380,
+   "status": "vendor",
+   "candidates": [
+    380
+   ],
+   "debug_name": "MAC_SEC_INPUT",
+   "hdr_offset": 72427,
+   "source": "ddb_stingray4_hdr.ddb body offset 72427 (record of element MAC_SEC_INPUT); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "GEN_CORE_BUF",
@@ -219,6 +252,72 @@
    "debug_name": "MEAB_SEC_LEFT_INPUT",
    "hdr_offset": 71978,
    "source": "ddb_stingray4_hdr.ddb body offset 71978 (record of element MEAB_SEC_LEFT_INPUT); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
+   "type": "PLLREFCLKMUX",
+   "enum": 1003,
+   "status": "vendor",
+   "candidates": [
+    1003
+   ],
+   "debug_name": "PLLREFCLKMUX",
+   "hdr_offset": 105581,
+   "source": "ddb_stingray4_hdr.ddb body offset 105581 (record of element PLLREFCLKMUX); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
+   "type": "PLL_BUFFER",
+   "enum": 69,
+   "status": "vendor",
+   "candidates": [
+    69
+   ],
+   "debug_name": "PLLBUF",
+   "hdr_offset": 72862,
+   "source": "ddb_stingray4_hdr.ddb body offset 72862 (record of element PLLBUF); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
+   "type": "PLL_CLKIN",
+   "enum": 335,
+   "status": "vendor",
+   "candidates": [
+    335
+   ],
+   "debug_name": "PLL_CLKIN",
+   "hdr_offset": 74176,
+   "source": "ddb_stingray4_hdr.ddb body offset 74176 (record of element PLL_CLKIN); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
+   "type": "PLL_FBOUT",
+   "enum": 359,
+   "status": "vendor",
+   "candidates": [
+    359
+   ],
+   "debug_name": "PLL_FBOUT",
+   "hdr_offset": 81066,
+   "source": "ddb_stingray4_hdr.ddb body offset 81066 (record of element PLL_FBOUT); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
+   "type": "PLL_FEEDBACK_IN",
+   "enum": 336,
+   "status": "vendor",
+   "candidates": [
+    336
+   ],
+   "debug_name": "PLL_FEEDBACK_IN",
+   "hdr_offset": 75841,
+   "source": "ddb_stingray4_hdr.ddb body offset 75841 (record of element PLL_FEEDBACK_IN); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
+  },
+  {
+   "type": "PLL_LOCKED_PIN",
+   "enum": 353,
+   "status": "vendor",
+   "candidates": [
+    353
+   ],
+   "debug_name": "PLL_LOCKED",
+   "hdr_offset": 77159,
+   "source": "ddb_stingray4_hdr.ddb body offset 77159 (record of element PLL_LOCKED); enum = index in libddb_dstr.so DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table"
   },
   {
    "type": "R24",

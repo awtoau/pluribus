@@ -37,17 +37,22 @@ def counts():
 
 def parse_vo(d):
     text = open(os.path.join(d, "postfit.vo")).read()
-    tiles, mults = set(), []
+    tiles, mults, outs = set(), [], {}
     for blk in text.split("\n// Location: ")[1:]:
         head, _, body = blk.partition("\n")
         m = re.match(r"DSP(MULT|OUT)_X(\d+)_Y(\d+)_N(\d+)$", head.strip())
         if not m:
             continue
         tiles.add((int(m[2]), int(m[3])))
+        if m[1] == "OUT":
+            nm = re.match(r"cycloneiv_mac_out (\S+)", body)
+            outs[(int(m[2]), int(m[3]), int(m[4]))] = nm[1] if nm else None
         if m[1] == "MULT":
             nm = re.match(r"cycloneiv_mac_mult (\S+)", body)
             sign = {p: v.strip() for p, v in re.findall(r"\.(signa|signb)\((.*?)\)", body)}
-            mults.append(dict(xy=(int(m[2]), int(m[3])), name=nm[1] if nm else None, sign=sign))
+            mults.append(dict(xy=(int(m[2]), int(m[3])), n=int(m[4]), name=nm[1] if nm else None, sign=sign, out=(int(m[2]), int(m[3]), int(m[4]) + 2)))
+    for mu in mults:
+        mu["out_name"] = outs.get(mu["out"])
     return text, tiles, mults
 
 
@@ -55,28 +60,51 @@ def gt_cfg(text, mult):
     nm = re.escape(mult["name"])
     par = {k: v.strip('"') for k, v in re.findall(r"defparam %s \.(\w+) = (\"?\w+\"?);" % nm, text)}
     sign = mult["sign"]
-    outm = re.search(r"defparam \S*mac_out\d* \.output_clock = \"?(\w+)\"?;", text)
+    outm = re.search(r"defparam %s \.output_clock = \"?(\w+)\"?;" % re.escape(mult["out_name"] or "?"), text)
     return dict(reg_a=par.get("dataa_clock", "none") != "none", reg_b=par.get("datab_clock", "none") != "none",
                 oreg=bool(outm) and outm[1] != "none", nine=par.get("dataa_width") == "9",
                 dyn_a=sign.get("signa", "gnd") not in ("gnd", "vcc"), dyn_b=sign.get("signb", "gnd") not in ("gnd", "vcc"),
                 signed_a=sign.get("signa") == "vcc", signed_b=sign.get("signb") == "vcc")
 
 
+def hier(name):
+    """Hierarchical cell name without the quartus escape and without the `entity:` prefixes of the RCF form (`lpm_mult:Mult4|mult_4et:auto_generated|mac_mult1` = `\\Mult4|auto_generated|mac_mult1`)."""
+    return re.sub(r"(^|\|)\w+:", r"\1", name.strip().lstrip("\\"))
+
+
 def gt_pins(d):
-    """{(x, y): {pin: LI index}} from routing.rcf nets with a dest on a mac_mult cell."""
+    """{(x, y): {mult name: {pin: LI index}}} from routing.rcf nets with a dest on a mac_mult cell.  Data pins: last LOCAL_INTERCONNECT of the net
+    before the dest.  Control pins (CLK / ENA / ACLR / SIGN*): only when the stanza since the previous dest passes DSP_CONTROL_INPUT; LI = the one before it."""
     txt = open(os.path.join(d, "routing.rcf")).read()
-    out = collections.defaultdict(dict)
+    out = collections.defaultdict(lambda: collections.defaultdict(dict))
     for blk in txt.split("signal_name = ")[1:]:
-        lis = re.findall(r"LOCAL_INTERCONNECT:X(\d+)Y(\d+)S\d+I(\d+)", blk)
-        for m in re.finditer(r"dest = \( [^,]*mac_mult\d*, (\w+(?:\[\d+\])?) \)", blk):
-            if lis:
-                x, y, i = lis[-1]
-                out[(int(x), int(y))][m[1]] = int(i)
+        last_li, stanza_li, ctl, stanza_has_ctl = None, None, None, False
+        for ln in blk.split("\n"):
+            m = re.match(r"\s*LOCAL_INTERCONNECT:X(\d+)Y(\d+)S\d+I(\d+)", ln)
+            if m:
+                last_li = stanza_li = (int(m[1]), int(m[2]), int(m[3]))
+            m = re.match(r"\s*DSP_CONTROL_INPUT:X(\d+)Y(\d+)", ln)
+            if m:
+                ctl = stanza_li
+            m = re.match(r"\s*dest = \( ([^,]*mac_mult\d*), (\w+(?:\[\d+\])?) \)", ln)
+            if m:
+                pin = m[2]
+                if pin.startswith("DATA"):
+                    li = last_li
+                else:
+                    li = ctl if stanza_has_ctl else None
+                if li:
+                    out[(li[0], li[1])][hier(m[1])][pin] = li[2]
+            if re.match(r"\s*dest = ", ln) or "branch_point" in ln:
+                stanza_li = None
+                stanza_has_ctl = False
+            elif re.match(r"\s*DSP_CONTROL_INPUT:", ln):
+                stanza_has_ctl = True
     return out
 
 
 def score_design(cx, d, workers):
-    from lifters.cycloneiv_clean import emit, mac
+    from lifters.cycloneiv_clean import emit, mac, macctl
     t0 = time.time()
     out = {c: counts() for c in CATS}
     scope = collections.defaultdict(collections.Counter)
@@ -95,14 +123,18 @@ def score_design(cx, d, workers):
             out["mac_inst"]["extra"] += 1
             scope["mac_inst"]["extra"] += 1
     pins = gt_pins(d)
-    single = len(mults) == 1
+    short = {}
     for mu in mults:
+        short[(mu["xy"], hier(mu["name"] or ""))] = mu
         t = mu["xy"]
-        if t not in mine or not single:
+        if t not in mine:
             continue
         i = mine[t]
+        n = mu["n"]
         g = gt_cfg(text, mu)
-        items = [("reg_a", bool(md["ireg"][i, 0])), ("reg_b", bool(md["ireg"][i, 1])), ("oreg", bool(md["oreg"][i])), ("nine", bool(md["nine"][i])),
+        nine = bool(md["nine"][i])
+        ra, rb, ro = (md["ireg_n"][i, n, 0], md["ireg_n"][i, n, 1], md["oreg_n"][i, n]) if nine else (md["ireg"][i, 0], md["ireg"][i, 1], md["oreg"][i])
+        items = [("reg_a", bool(ra)), ("reg_b", bool(rb)), ("oreg", bool(ro)), ("nine", nine),
                  ("dyn_a", md["sign_sel"][i, 0] >= 0), ("dyn_b", md["sign_sel"][i, 1] >= 0)]
         if not g["dyn_a"]:
             items.append(("signed_a", not md["unsigned"][i, 0]))
@@ -114,26 +146,30 @@ def score_design(cx, d, workers):
             else:
                 out["mac_cfg"]["missing" if g[k] else "extra"] += 1
                 scope["mac_cfg"][f"{k}: gt={g[k]}"] += 1
-    for t, pm in pins.items():
+    for t, mm in pins.items():
         i = mine.get(t)
-        for pin, li in pm.items():
-            m = re.fullmatch(r"DATA([AB])\[(\d+)\]", pin)
-            if m:
-                sel = md["data_sel"][i, (0 if m[1] == "A" else 18) + int(m[2])] if i is not None else -1
-            elif pin in PIN_RCF:
-                key, idx = PIN_RCF[pin]
-                sel = (md[key][i] if idx is None else md[key][i, idx]) if i is not None else -1
-            else:
-                continue
-            c = out["mac_pin"]
-            if sel == li:
-                c["matched"] += 1
-            elif sel < 0:
-                c["missing"] += 1
-                scope["mac_pin"][f"missing:{'CLK' if pin == 'CLK' else 'other'}"] += 1
-            else:
-                c["wrong"] += 1
-                scope["mac_pin"]["wrong"] += 1
+        for mname, pm in mm.items():
+            mu = short.get((t, mname))
+            n = mu["n"] if mu else 0
+            ar, br = macctl.rows(n, bool(md["nine"][i])) if i is not None else (None, None)
+            for pin, li in pm.items():
+                m = re.fullmatch(r"DATA([AB])\[(\d+)\]", pin)
+                if m:
+                    sel = md["data_sel"][i, (ar if m[1] == "A" else br)[int(m[2])]] if i is not None else -1
+                elif pin in PIN_RCF:
+                    key, idx = PIN_RCF[pin]
+                    sel = (md[key][i] if idx is None else md[key][i, idx]) if i is not None else -1
+                else:
+                    continue
+                c = out["mac_pin"]
+                if sel == li:
+                    c["matched"] += 1
+                elif sel < 0:
+                    c["missing"] += 1
+                    scope["mac_pin"][f"missing:{'CLK' if pin == 'CLK' else 'other'}"] += 1
+                else:
+                    c["wrong"] += 1
+                    scope["mac_pin"]["wrong"] += 1
     return dict(design=os.path.basename(d), cats=out, scope={k: dict(v) for k, v in scope.items()}, seconds=round(time.time() - t0, 2))
 
 
