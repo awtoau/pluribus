@@ -91,7 +91,7 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 ## Code-derived MAC writer rules (libcomp_asmmac, #169)
 
 - Table `mac.WRITERS` (function@vaddr). Register flags per signal: flag byte bit 3 = input register (IREG_*), bit 4 = pipeline / multiplier register (PREG_*), bit 5 = output register (OREG_*); IREG / PREG / OREG groups exist for SIGN, SMODE, SATAC, SATRS, SHFTR.
-- Data input / multiplier register selection for dataa / datab is therefore not a clock-fast-mux bit: the `in_a_reg`, `in_b_reg`, `mult_reg` pairs differ in `MAC_ROW_DATA_INPUT` (36 rows x 2 paths, excluded from the control signatures as routing); that group carries the register choice per data bit. Value table for it: not yet derived (missing).
+- `MAC_ROW_DATA_INPUT` is a routing mux: `ASM_MAC_ROW_DATA_INPUT::process_end_of_phase@0x4e0d6` writes the RE index of the row-data source when the source RE type is 0xbf (LAB line); the other source types (0x6ef, 0x7d8/0x7d9, 0x804) write nothing from this group. So the `in_a_reg` / `in_b_reg` / `mult_reg` pair diffs in that group are fitter re-routing, not the register choice. Which group encodes the data-register choice: open (missing); the per-signal I/P/O register flags above cover sign / smode / saturate / shift only.
 - Port-flag word builders for M9K: `CUT_RAM_UTIL::get_ram_mode` is in libdb_cut (not yet in the Ghidra project; import requested); `ASM_SINGLE_RAM_MODEL_YGR_MEAB::cache_ram_mode@0x4a624` copies those flag vectors (bit 14..18, 24..27 masks) into the per-port model.
 
 ## PLL leftovers (code reading, #169)
