@@ -55,13 +55,14 @@ def declared_fks(tbl):
 
 def plan(con):
     have = tables(con)
-    p = {"legacy": [], "recreate": [], "indexes": [], "extra": []}
+    p = {"legacy": [], "recreate": [], "indexes": [], "extra": [], "create": []}
     for old, new in LEGACY.items():
         if old in have:
             p["legacy"].append((old, new))
     for t in schema.metadata.sorted_tables:
         if t.name not in have:
-            continue  # create_all makes it
+            p["create"].append(t.name)  # apply() creates it
+            continue
         why = []
         missing = set(c.name for c in t.columns) - set(cols(con, t.name))
         if missing:
@@ -174,13 +175,13 @@ def main():
     con = sqlite3.connect(a.db, isolation_level=None)
     p = plan(con)
     log(f"db {a.db}: legacy {p['legacy']} recreate {[n for n, _ in p['recreate']]} "
-        f"missing-indexes {p['indexes']} extra-tables {p['extra']}")
+        f"missing-indexes {p['indexes']} new-tables {p['create']} extra-tables {p['extra']}")
     for n, w in p["recreate"]:
         log(f"  {n}: {w}")
     if not a.apply:
         log("dry run; --apply to migrate")
         return
-    if not (p["legacy"] or p["recreate"] or p["indexes"]):
+    if not (p["legacy"] or p["recreate"] or p["indexes"] or p["create"]):
         log("nothing to do")
         return
     if not a.no_backup:

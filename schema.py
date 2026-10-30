@@ -1292,6 +1292,52 @@ coverage_ledger = Table("coverage_ledger", metadata,
 )
 Index("idx_coverage_ledger", coverage_ledger.c.family, coverage_ledger.c.device, coverage_ledger.c.commit)
 
+# Image annotations (#165): named blocks over physical ids (ff_X_Y_N, lc_X_Y_N, m9k_X_Y, mac_X_Y, pll_K, pad_BALL).
+# Local to the family DB (commercial RE); only counts leave the machine.  Writer: scripts/cycloneiv_clean_annotate.py
+annotations = Table("annotations", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("image",         Text, nullable=False),     # netlist label the ids belong to
+    Column("block_id",      Text, nullable=False),     # kind-prefixed counter (SCR001); stable while member_hash is unchanged
+    Column("kind",          Text, nullable=False),     # SCR CRC CNT FSM SPI MEM MAC PLL IO DAT CLK
+    Column("name",          Text, nullable=False),
+    Column("claim",         Text, nullable=False),
+    Column("tag",           Text, nullable=False),     # V traced | I inferred | H hypothesis | U unknown
+    Column("evidence",      Text, nullable=False),     # ';'-separated kind:ref (log trace ledger json script issue doc)
+    Column("date",          Text, nullable=False),     # ISO date
+    Column("member_hash",   Text, nullable=False),     # sha1 of the sorted member ids
+    Column("n_members",     Integer, nullable=False),
+    UniqueConstraint("image", "block_id"),
+)
+
+annotation_members = Table("annotation_members", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("annotation_id", Integer, ForeignKey("annotations.id", ondelete="CASCADE"), nullable=False),
+    Column("image",         Text, nullable=False),
+    Column("obj_kind",      Text, nullable=False),     # ff | lut | m9k | mac | pll | pad | clk
+    Column("obj_id",        Text, nullable=False),     # physical id, never renumbered
+    Column("alias",         Text),                     # optional readable name (emit renames to it)
+)
+Index("idx_annotation_members_obj", annotation_members.c.image, annotation_members.c.obj_id)
+Index("idx_annotation_members_ann", annotation_members.c.annotation_id)
+
+# Counts only, one row per `coverage` run, beside the gate run it was taken next to.
+annotation_coverage = Table("annotation_coverage", metadata,
+    Column("id",            Integer, primary_key=True, autoincrement=True),
+    Column("image",         Text, nullable=False),
+    Column("ts",            DateTime(timezone=True), nullable=False),
+    Column("gate_run_id",   Integer, ForeignKey("gate_runs.id")),
+    Column("ff_total",      Integer, nullable=False),
+    Column("ff_named",      Integer, nullable=False),
+    Column("lut_total",     Integer, nullable=False),
+    Column("lut_named",     Integer, nullable=False),
+    Column("m9k_total",     Integer, nullable=False),
+    Column("m9k_named",     Integer, nullable=False),
+    Column("mac_total",     Integer, nullable=False),
+    Column("mac_named",     Integer, nullable=False),
+    Column("by_tag",        JSON),                     # {tag: {blocks, ff, lut, m9k, mac}}
+)
+Index("idx_annotation_coverage", annotation_coverage.c.image, annotation_coverage.c.ts)
+
 
 # ── Schema management ─────────────────────────────────────────────────────────
 
