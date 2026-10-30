@@ -586,7 +586,7 @@ def run_dji(args):
            "loops_scc_gt1": r["loops"]["scc_gt1"], "self_loop_edges": r["loops"]["self_loop_edges"], "ff_no_clock_line_MISSING": lg["ff_no_clock_line_MISSING"],
            "io_sites_MISSING": res["io"]["fields"]["classes"].get("MISSING", 0), "tier_A_pct": round(100 * sb["tier"]["A"] / sb["set_cells"], 2),
            "explained_ABC_pct": sb["explained_ABC"],
-           "decoded_luts_nonzero_init": lg["luts_nonzero_init"], "decoded_ffs_claimed": lg["les_ff_claimed"], "routing_programmed_edges": r["variants"][r["headline_variant"]]["programmed_edges"],
+           "decoded_luts_nonzero_init": lg["luts_nonzero_init"], "decoded_ffs_claimed": lg["les_ff_claimed"], "ff_clock_fabric_lcm": lg["ff_clock_fabric_lcm"], "ff_clock_fabric_by_lcm": lg["ff_clock_fabric_by_lcm"], "ff_clock_fabric_by_path": lg["ff_clock_fabric_by_path"], "ff_clock_unresolved_MISSING": lg["ff_clock_unresolved_MISSING"], "routing_programmed_edges": r["variants"][r["headline_variant"]]["programmed_edges"],
            "io_classes": res["io"]["fields"]["classes"], "tier_cells": sb["tier"]}
     import cycloneiv_decompress as cd
     import numpy as np
