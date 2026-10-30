@@ -212,6 +212,7 @@ class Builder:
         ffp = ffc | reg_out
         # a LUT exists when its INIT is set or a used output path selects the LUT (a constant-0 LUT); an FF-only LE has no LUT
         lut_p = cells.any(-1) | (ubuf & ygr[..., :2]).any(-1) | (ll_used & ygr[..., 2])
+        self.sel_only = lut_p & ~live        # constant-0 LUT claimed only by a selected LOCAL_LINE: no GT route reaches its pins
         clk = np.where(ffp, cx.ext.clocks.le_blk(bits), -1)
         self.bits, self.edges, self.parent, self.root, self.used_src = bits, edges, parent, root, used_src
         self.cells, self.carry, self.sel, self.ygr, self.ffp, self.lut_p, self.clk = cells, carry, sel, ygr, ffp, lut_p, clk
@@ -313,7 +314,7 @@ class Builder:
                         nl.und["carry chain entering a LAB / previous LE not a LUT"] += 1
                         L["und"] = L.get("und", []) + ["cin"]
                     continue
-                if s == -1:
+                if s == -1 or self.sel_only[lab, le]:
                     L["pins"][gi] = UNCONNECTED
                     nl.counts["lut_pin_unconnected"] += 1
                     continue
