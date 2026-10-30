@@ -101,9 +101,32 @@ class Decoder:
             return {"status": "default" if c[0] == default_label else "decoded", "value": c[0]}
         return {"status": "ambiguous_MISSING", "candidates": c}
 
+    def meaning(self, site, vec):
+        """Integer values of the IOST / strength groups (io_encode law) and the dirt-table entries that carry them (io_dirt): data, not a decode claim."""
+        from . import io_dirt as T
+        from . import io_encode as E
+        blk = {5: "HIO", 6: "VIO"}.get(site[0])
+        tb = T.tables()
+        out = {}
+        iost = vec.get("MIO_SELECT_IOST_DIRT")
+        if iost:
+            v = E.value_of(iost)
+            out["iost_value"] = v
+            out["iost_dirt_standards"] = sorted(k for k, x in tb[("MIO_SELECT_IOST_DIRT", blk)] if x == v)
+        for g, key in (("MIO_SET_PULLDOWN_STRENGTH", "pulldown_value"), ("MIO_SET_PULLUP_STRENGTH", "pullup_value")):
+            if vec.get(g):
+                v = E.value_of(vec[g])
+                out[key] = v
+                out[key + "_dirt_levels"] = sorted(k for k, x in tb[(g, blk)] if x == v)
+        return out
+
     def decode(self, site, vec, cram=None):
         """vec = {group name: pattern string} of the site's CFF groups; cram = {group name: pattern} of its CRAM groups (or None)."""
         out = {"site": list(site), "raw": dict(vec)}
+        try:
+            out["meaning"] = self.meaning(site, vec)
+        except (FileNotFoundError, KeyError):
+            pass
         w = len(vec.get("MIO_SELECT_IOST_DIRT", ""))
         state = {k: vec[k] for k in D.STATE_NAMES if k in vec}          # groups outside the state vector (duty cycle, PLL select, ...) are zero in every build
         if site in self.fixed and self.fixed[site] == state:
