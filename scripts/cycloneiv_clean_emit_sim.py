@@ -90,8 +90,10 @@ def run_one(cx, d, cycles, seed):
     clock_ports, srcmap = set(), {}
     for n in nets:
         nm = n["name"]
-        if nm.endswith("~inputclkctrl") and any(dd[2] == "CLK" for dd in n["dests"]):
+        if nm.endswith("~inputclkctrl") and any(dd[2].startswith("CLK") for dd in n["dests"]):
             clock_ports.add(nm[:-13])             # a clkctrl port that only feeds CLRN / data is driven as data (clock edge and clear edge would coincide)
+        if nm.endswith("~input") and any(dd[2].startswith("CLK") for dd in n["dests"]):
+            clock_ports.add(nm[:-6])                  # clock pad routed through the fabric straight to a block clock pin (M9K / MAC)
         if (nm.endswith("~input") or nm.endswith("~inputclkctrl")) and n["roots"] and n["roots"][0][0] in ("CLKBUF_OUT", "CLK_BUFFER"):
             r = n["roots"][0]
             srcmap[f"u_{r[0].lower()}_{r[1]}_{r[2]}_{r[3]}_{r[4]}"] = nm.replace("~inputclkctrl", "").replace("~input", "")

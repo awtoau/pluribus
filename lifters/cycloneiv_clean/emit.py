@@ -22,7 +22,7 @@ import re
 
 import numpy as np
 
-from . import ddb, mac, names
+from . import ddb, m9k, mac, names
 from . import plane as P
 
 # source: scripts/cycloneiv_clean_gate.py parse_vo on 16,763 corpus .vo files: every unconnected LUT input whose function depends on it is VCC
@@ -89,6 +89,8 @@ class Ctx:
         self.ffc = ffctl.FfCtl(self.lut, self.rt, self.ext.clocks)
         from . import macctl
         self.macctl = macctl.MacCtl(self.lut.walk)
+        from . import m9kctl
+        self.m9kctl = m9kctl.M9kCtl(self.lut.walk)
         tile = (rt.x == xs[len(xs) // 2]) & (rt.y == 45)
         if int((tile & (self.enum == names.enum_of("LOCAL_INTERCONNECT"))).sum()) != LI_PER_LAB:
             raise SystemExit("LI_PER_LAB differs from the routing graph")
@@ -213,6 +215,18 @@ class Builder:
             e_blk = names.enum_of("BLK_CLK_BUF")
             recs = [int(cx.find(e_blk, mcols0[i // F_ROWS], i % F_ROWS + 1, 0, int(md0["clk_line"][i]))) for i in sel]
             edges = np.unique(np.concatenate([edges, cx.ext.clocks.chain([r for r in recs if r >= 0])]))
+        # M9K clock from a block clock line (RAM_CLOCK_FAST_MUX gi 0): same structural parents as the LAB clock sinks
+        mk0 = cx.m9kctl.decode(bits)
+        recs = []
+        mx = m9k.columns()
+        for i in np.flatnonzero((mk0["clk_fast"] != 0).any(axis=1)).tolist():
+            ln = cx.m9kctl.clock_line(mk0["clk_fast"][i])
+            if isinstance(ln, int):
+                r = int(cx.find(names.enum_of("BLK_CLK_BUF"), mx[i // F_ROWS], i % F_ROWS + 1, 0, ln))
+                if r >= 0:
+                    recs.append(r)
+        if recs:
+            edges = np.unique(np.concatenate([edges, cx.ext.clocks.chain(recs)]))
         parent, root, used_src, conflict = _roots(cx, edges)
         nl.counts["forest_edges"], nl.counts["forest_fanin_conflicts"] = len(edges), conflict
         cells = cx.lut.cells(bits).astype(np.uint8)                      # [labs, 16, 16]
@@ -268,6 +282,7 @@ class Builder:
     # ---- sources -----------------------------------------------------------------------------------------------------------------
     def _signals_prepare(self, nl):
         self.mac_refs = set()
+        self.m9k_refs = set()
         self.sig_cache = {}
         self.nl = nl
 
@@ -295,6 +310,9 @@ class Builder:
             if lab is None or i >= 16:
                 return self._ext(r, t, "LOCAL_LINE outside the LAB grid")
             return self._le_out(lab, i, bool(self.ygr[lab, i, 2]), x, y)
+        if t == "M4K_BUFFER":                                   # M9K port-A data out bit i (routing.rcf: M4K_BUFFER:X<x>Y<y>S0I<bit>)
+            self.m9k_refs.add((x, y))
+            return (f"m9k_{x}_{y}_q[{i}]", ("M9K", x, y, i))
         if t == "DSP_BUFFER":                                   # MAC result bit i (routing.rcf: DSP_BUFFER:X<x>Y<y>S0I<bit> of the MAC tile)
             self.mac_refs.add((x, y))
             return (f"mac_{x}_{y}_r[{i}]", ("MAC", x, y, i))
@@ -577,6 +595,51 @@ class Builder:
         nl.counts["mac_sign_dynamic"] += int((md["sign_sel"][i] >= 0).sum())
         return M
 
+    def _m9k(self, nl, M, mk, i, x, y):
+        """Behavioural single-port (port A) memory of one M9K tile (m9kctl.py); anything else is flagged and counted, not modelled."""
+        cx = self.cx
+        W, A, cls = int(mk["W"][i]), int(mk["A"][i]), int(mk["cls"][i])
+        M.update(W=W, A=A, cls=cls, modelled=False)
+        why = None
+        if cls < 0:
+            why = "word-width class not decoded"
+        elif W not in (1, 2, 4, 8, 9, 16, 18):
+            why = f"width {W} (32 / 36 or undecoded) not modelled"
+        elif int(mk["read_groups"][i]):
+            why = "separate read-address groups (dual-port / wide modes) not modelled"
+        if why:
+            M["why"] = why
+            nl.und["M9K: " + why.split(" (")[0]] += 1
+            return
+        e_li = names.enum_of("LOCAL_INTERCONNECT")
+
+        def pin(sel):
+            if sel < 0:
+                return "1'b0"
+            rec = int(cx.find(e_li, x, y, 0, int(sel)))
+            return self.sig(rec)[0] if rec >= 0 else "1'b0"
+        data = [pin(mk["data"][i, k]) for k in range(W)]
+        lo = A - 9
+        addr = [pin(mk["data"][i, 16 - lo + j]) for j in range(lo)] + [pin(mk["waddr"][i, j]) for j in range(9)] if A >= 9 else []
+        ln = cx.m9kctl.clock_line(mk["clk_fast"][i])
+        if isinstance(ln, int):
+            rec = int(cx.find(names.enum_of("BLK_CLK_BUF"), x, y, 0, ln))
+            clk = self.sig(rec)[0] if rec >= 0 else "1'b0"
+        else:                                                   # LOCAL_INTERCONNECT clock: first decoded RAM_PIA_TO_INPUT_YGR clock group
+            clk = pin(mk["pia"][i, int(mk["cg"][i])])
+        be = [pin(mk["be"][i, k]) if mk["be"][i, k] >= 0 else "1'b1" for k in range(2)] if W == 16 else None
+        if W != 16 and (mk["be"][i, :4] >= 0).any():
+            M["why"] = "byte enables of non-16-bit words not modelled"
+            nl.und["M9K: byte enables of non-16-bit words"] += 1
+            return
+        bitsv = M["content"]
+        words = m9k.read_words(bitsv, W)
+        M.update(modelled=True, be=be, data=data, addr=addr, we=pin(mk["we"][i]), clk=clk, oreg=bool(mk["oreg"][i]),
+                 init=[int("".join(str(int(b)) for b in r[::-1]), 2) for r in words])
+        nl.counts["m9k_single_port_modelled"] += 1
+        nl.counts[f"m9k_w{W}"] += 1
+        nl.counts["m9k_oreg"] += M["oreg"]
+
     def _close(self, nl):
         """A referenced lc_ / ff_ / co_ signal without a cell is a decode inconsistency: declared as an undecoded source and counted."""
         defined = {L["name"] for L in nl.luts} | {f"co_{L['x']}_{L['y']}_{L['le']}" for L in nl.luts} | {F["name"] for F in nl.ffs}
@@ -588,6 +651,10 @@ class Builder:
             refs.update(p for p in (F["d"], F["clk"], F.get("ena"), F.get("aclr"), F.get("sclr"), F.get("sload"), F.get("asdata")) if p)
         for io in nl.ios:
             refs.update(p for p in (io.get("drv"), io.get("oe")) if p)
+        for M in nl.m9k:
+            if M.get("modelled"):
+                for e in M["data"] + M["addr"] + [M["we"], M["clk"]] + (M.get("be") or []):
+                    refs.update(re.findall(r"(?:pad|lc|ff|co|u)_\w+", e))
         for M in nl.mac:
             for e in M["a"] + M["b"] + M["sign"] + [M.get("clk", ""), M["ena"], M["aclr"]]:
                 refs.update(re.findall(r"(?:pad|lc|ff|co|u)_\w+", e))
@@ -630,12 +697,15 @@ class Builder:
                 elif x in mcols and 1 <= y <= 90:
                     mtiles.add((x, y))
         content = cx.m9k_content(bits)                               # [720, 9216] mux-position bit values
+        mk = cx.m9kctl.decode(bits)
+        tiles |= {t for t in self.m9k_refs if t[0] in cols}
         for x, y in sorted(tiles):
             i = m9k.instance(x, y)
             ctl = {n: int(bits[c[i]]) for n, c in cx.m9k_ctl.items()}
-            nl.m9k.append(dict(x=x, y=y, inst=i, content=content[i], ctl=ctl))
+            M = dict(x=x, y=y, inst=i, content=content[i], ctl=ctl)
+            self._m9k(nl, M, mk, i, x, y)
+            nl.m9k.append(M)
         nl.counts["m9k_used"] = len(nl.m9k)
-        nl.und["M9K: port widths / connectivity / modes beyond TDP, packed"] += len(nl.m9k)
         # MAC: used = any control cell set (macctl.py; routing cannot see it: the outputs are DSP_BUFFER elements)
         md = cx.macctl.decode(bits)
         mcols = mac.columns()
@@ -672,6 +742,13 @@ def verilog(nl, module="cyc4_top"):
         w(f"wire {L['name']}; wire co_{L['x']}_{L['y']}_{L['le']};")
     for F in nl.ffs:
         w(f"reg {F['name']} = 1'b0;")
+    for m in nl.m9k:
+        if m.get("modelled"):
+            w(f"wire [{m['W'] - 1}:0] m9k_{m['x']}_{m['y']}_q;")
+        else:
+            w(f"wire [35:0] m9k_{m['x']}_{m['y']}_q = 36'b0; // UNDECODED: M9K not modelled ({m.get('why', '')})")
+    for m in nl.mac:
+        w(f"wire [35:0] mac_{m['x']}_{m['y']}_r;")
     w("// LUTs: localparam INIT bit index = {datad, datac, datab, dataa}; carry mode: C input = carry in, cout = INIT[{1'b0, cin, b, a}]")
     for L in nl.luts:
         n = L["name"]
@@ -714,6 +791,22 @@ def verilog(nl, module="cyc4_top"):
         w(f"// PLL_{p['k']}: " + " ".join(f"{k}={list(v) if isinstance(v, tuple) else v}" for k, v in p["params"].items()))
         w(f"// UNDECODED: PLL_{p['k']} input clock and output-to-clock-buffer connectivity")
     for m in nl.m9k:
+        if m.get("modelled"):
+            n = f"m9k_{m['x']}_{m['y']}"
+            W, A = m["W"], m["A"]
+            w(f"// M9K {n}: single port, {W} bit x {1 << A} words, output register = {m['oreg']}")
+            w(f"reg [{W - 1}:0] {n}_mem [0:{(1 << A) - 1}];")
+            w(f"initial begin " + " ".join(f"{n}_mem[{k}] = {W}'h{v:X};" for k, v in enumerate(m["init"])) + " end")
+            w(f"wire [{A - 1}:0] {n}_ad = {{{', '.join(reversed(m['addr']))}}};")
+            w(f"wire [{W - 1}:0] {n}_di = {{{', '.join(reversed(m['data']))}}};")
+            w(f"reg [{A - 1}:0] {n}_ar = 0; reg [{W - 1}:0] {n}_qr = 0;")
+            if m.get("be"):
+                wr = f"if ({m['we']}) begin if ({m['be'][0]}) {n}_mem[{n}_ad][7:0] <= {n}_di[7:0]; if ({m['be'][1]}) {n}_mem[{n}_ad][15:8] <= {n}_di[15:8]; end"
+            else:
+                wr = f"if ({m['we']}) {n}_mem[{n}_ad] <= {n}_di;"
+            w(f"always @(posedge {m['clk']}) begin {n}_ar <= {n}_ad; {wr} {n}_qr <= {n}_mem[{n}_ar]; end")
+            w(f"assign {n}_q = " + (f"{n}_qr;" if m["oreg"] else f"{n}_mem[{n}_ar];"))
+            continue
         bitsv = m["content"]
         hexv = int("".join(str(int(b)) for b in bitsv[::-1]), 2) if bitsv.any() else 0
         w(f"// M9K x={m['x']} y={m['y']} ctl={json.dumps(m['ctl'], sort_keys=True)}")
@@ -730,7 +823,7 @@ def verilog(nl, module="cyc4_top"):
         w(f"wire [17:0] {n}_bx = {n}_{'br' if m['ireg'][1] else 'b'};")
         w(f"wire signed [18:0] {n}_xa = {{{n}_sa & {n}_ax[17], {n}_ax}}, {n}_xb = {{{n}_sb & {n}_bx[17], {n}_bx}};")
         w(f"wire signed [37:0] {n}_pw = {n}_xa * {n}_xb;")
-        w(f"wire [35:0] {n}_r = {n}_" + ("q;" if m["oreg"] else "pw[35:0];"))
+        w(f"assign {n}_r = {n}_" + ("q;" if m["oreg"] else "pw[35:0];"))
         if any(m["ireg"]) or m["oreg"]:
             ev = f"posedge {m['clk']}" + ("" if m["aclr"] == "1'b0" else f" or posedge {m['aclr']}")
             clr = "" if m["aclr"] == "1'b0" else f"if ({m['aclr']}) begin {n}_ar <= 18'b0; {n}_br <= 18'b0; {n}_q <= 36'b0; end else "

@@ -1,0 +1,17 @@
+# Cyclone IV GX M9K single-port decode and behavioural emit (#165, 2026-10-30)
+
+Code: `lifters/cycloneiv_clean/m9kctl.py`, `emit.py` (`Builder._m9k`, `verilog()`), `m9k.py` (content map). Checks: `scripts/cycloneiv_clean_m9k_sim.py` (emitted memory vs the post-fit `ram_block` port-A data-out bus; configuration vs the .vo), `scripts/cycloneiv_clean_emit_sim.py` (pad level). Existing builds only (0 new). Split: a crc32 quarter of the gxm9k_* names is the hold-out; the rules below were read off the other three quarters.
+
+## Rules (training split)
+- Word-width class: `RAM_DATA_WRITE_MODE` (6-bit mapped simple, one-hot index 0..4) = by1, by2, by4, by8/9, by16 and wider. Address width A = 13, 12, 11, 10, 9 for the classes (full depth).
+- Data pin k = `RAM_MS_DATA_INPUT` gi k. Address: 9 high pins = `RAM_MS_WRITE_ADDRESS_INPUT` slots (gi 12, 0..7); the (A - 9) low pins share `RAM_MS_DATA_INPUT` gi 16-(A-9)..15. Width: 1 / 2 / 4 from the class, W = connected data groups - 1 for by8/9, W = connected data groups for by16/18.
+- Write enable = `RAM_PIA_TO_INPUT_YGR` gi 11 (else gi 9). Clock: `RAM_CLOCK_FAST_MUX` (8-bit mapped-encoded, map [0, 1, X.., 6, 10, 18, 34, 66, 130, 2]): value 12 + j (bit 1 + bit 2+j) = block clock line j, otherwise the LOCAL_INTERCONNECT clock = `RAM_PIA_TO_INPUT_YGR` gi 0 (else gi 1; the fast-mux group follows).
+- Output register: `RAM_REG_DATA_OUT` bit clear. Content: `m9k.read_words` (INIT map decoded earlier).
+- Model: input address / data / enable registered on the clock; write at the edge; output = memory at the registered address (unregistered) or one more register.
+- Not modelled (flagged, counted): port B, dual-port / true dual-port / ROM modes, widths 32 / 36, byte enables, clear / clock-enable selects, read-during-write modes other than the default.
+
+## Results (gxm9k_*: 831 designs; hold-out = crc32 quarter, 229 designs)
+- Configuration vs the .vo (width, address width, output register), modelled tiles: 751 / 0 wrong each.
+- Memory output vs post-fit `ram_block` bus (`cycloneiv_clean_m9k_sim.py`): train 502 pass / 44 fail / 56 not modelled; hold-out 187 pass / 18 fail / 24 not modelled; all 689 / 62 / 80. Pad-level `emit_sim`: 690 pass / 141 fail / 0 compile errors (the pad fails include the HIO pad-index decode, which is not the M9K).
+- The 62 memory fails are the `gxm9k_w_*` (48) and `gxm9k_m_*` (14) families, all 16-bit words with `port_a_byte_enable_mask_width` set; the byte-enable pin decode (`RAM_MS_BYTE_ENABLE_INPUT` gi 0 / 1) is in place but the family still fails (w_byteena: 1 of 16 pads bad, w_base_o: 8 of 16): the byte-enable / read-during-write semantics of that model are not resolved. 80 designs are 32 / 36-bit or two-port tiles (flagged, not modelled).
+- Image: 542 M9K tiles carry output edges; 349 decode as modelled single port (x1 286, x2 44, x4 7, x9 10, x18 2, 62 with output register); 193 are flagged (36-pin wide / dual-port 125 + 28, undecodable widths). The M9K dump agent's results (8 populated blocks, widths by wiring) are in docs/cycloneiv-clean-hardblocks.md; the per-block width / mode for those 8 were not cross-checked against this decode.
