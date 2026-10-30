@@ -364,10 +364,14 @@ def stage_evidence(root):
                 if b in cb and s in cb:
                     fills.append((r["id"], cb[b], cb[s], r["build_base"] is None or r["build_spec"] is None))
     filled = 0
-    with db.engine().begin() as conn:
-        for rid, bb, bs, was_missing in fills:
-            conn.execute(update(schema.evidence).where(e.id == rid).values(build_base=bb, build_spec=bs))
-            filled += was_missing
+    # evidence.build_base/spec FKs still name the pre-rename postfit_builds table in existing DBs (CREATE IF NOT EXISTS never alters them)
+    with db.engine().connect() as conn:
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        conn.commit()
+        with conn.begin():
+            for rid, bb, bs, was_missing in fills:
+                conn.execute(update(schema.evidence).where(e.id == rid).values(build_base=bb, build_spec=bs))
+                filled += was_missing
     tot = collections.Counter()
     for c in per.values():
         tot.update(c)
