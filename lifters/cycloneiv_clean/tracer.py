@@ -333,6 +333,8 @@ class Extras:
         self.clocks = clocks.Clocks(st, lut, rt)
         self.imp = lab_control.Implicit(lut, rt, n_real=st.n_edges)
         self.reg = reg_used.RegUsed(lut, st, rt)
+        from . import ffctl
+        self.reg.ffc = ffctl.FfCtl(lut, rt, self.clocks)
         st.esrc = np.concatenate([st.esrc, self.imp.esrc])
         st.edst = np.concatenate([st.edst, self.imp.edst])
         self.bim = bim.Implicit(rt, n_real=len(st.esrc))

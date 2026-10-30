@@ -41,7 +41,8 @@ class RegUsed:
         w, n_ = lut.walk, D.enum_tables()
         bs = F.bases(w, LAB_BLOCK)
         rt = rt or ddb.Routing()
-        self.lut, self.st = lut, st
+        self.lut, self.st, self.rt = lut, st, rt
+        self.ffc = None                                                  # ffctl.FfCtl, set by tracer.Extras (clock-source check)
         self.ygr = [_cells(w, n_, bs, YGR, gi) for gi in (0, 1, 2)]
         self.sync = [_cells(w, n_, bs, s) for s in SYNC]
         # LE_BUFFER record per (LAB, LE, b): exact element key (A7); LAB index = column rank * 90 + Y - 1
@@ -75,4 +76,11 @@ class RegUsed:
         reg_buf = (u & ~y[..., :2]).any(axis=-1)
         local_only = ~u.any(axis=-1) & ~y[..., 2]
         sync = (bits[self.sync[0]] == 1) & (bits[self.sync[1]] == 1)           # source: ffctl.py doc (ASM_LE_USE_SYNC_* writers): the shared bit is set only when an sclr / sload term is connected = a register exists
-        return sync | (configured & (reg_buf | local_only))
+        claim = sync | (configured & (reg_buf | local_only))
+        return claim & self.clock_ok(bits) if self.ffc is not None else claim
+
+    def clock_ok(self, bits):
+        """bool [labs, 16]: the LAB clock mux selected by the LE's LE_CLOCK_SELECT decodes to a source.  source: ASM_LAB_CLOCK_FAST_MUX::process_end_of_phase@0x15e138
+        writes the mux of every signal with a source and ASM_LE_CLOCK_SELECT::process_atom@0x16ba06 selects it per register (ffctl.py): no source = no register."""
+        grp = self.ffc.le_val(bits)["LE_CLOCK_SELECT"].astype(np.int64)
+        return np.take_along_axis(self.ffc.lab_signals(bits)["clk_sel"], grp, axis=1) >= 0
