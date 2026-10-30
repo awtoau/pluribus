@@ -12,12 +12,16 @@ Rules (docs/cycloneiv-clean-m9k.md; pin map read off the training split of the g
 Byte enable (16-bit words): PORTABYTEENAMASKS[k] = RAM_MS_BYTE_ENABLE_INPUT gi k, no connected group = all bytes written.
 Not modelled: B port, dual-port / true-dual-port / ROM modes, widths 32 / 36, byte enables, clear / clock-enable selects, read-during-write modes.
 """
+import json
+import os
+
 import numpy as np
 
 from . import ddb, ffctl, m9k, plane as P
 from . import fields as F
 
 MEAB = m9k.MEAB
+CE_LINES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_ce_lines.json")
 # source: RAM_MS_WRITE_ADDRESS_INPUT group indices in asmdb (walk): gi 0..7 and 12 (9 groups); slot order read off the training split (115 / 115 specimens at A = 9)
 WRITE_SLOTS = (12, 0, 1, 2, 3, 4, 5, 6, 7)
 CLASS_A = (13, 12, 11, 10, 9, 8)    # source: 8192 / (word width class) addresses = 2**A (by1 .. by16); class 5 = by32 / by36 (256 words, m9k.depth)
@@ -41,7 +45,7 @@ class M9kCtl:
             nm = gt.get(g["type"])
             if nm in ("RAM_MS_DATA_INPUT", "RAM_MS_WRITE_ADDRESS_INPUT", "RAM_MS_READ_ADDRESS_INPUT", "RAM_PIA_TO_INPUT_YGR", "RAM_MS_BYTE_ENABLE_INPUT"):
                 self.calc[(nm, g["gi"])] = ffctl.Calc(walk, g, bs, tab)
-            elif nm in ("RAM_DATA_WRITE_MODE", "RAM_CLOCK_FAST_MUX", "RAM_REG_DATA_OUT"):
+            elif nm in ("RAM_DATA_WRITE_MODE", "RAM_CLOCK_FAST_MUX", "RAM_REG_DATA_OUT", "RAM_CE_FAST_MUX", "RAM_CE_SELECT_INPUT", "RAM_CE_INVERT"):
                 c = ffctl._cols(bs, walk.mux(g["paths"][0][0])["bits"], tab)
                 self.cols[(nm, g["gi"])] = np.stack([c[k] for k in sorted(c)], axis=1)
                 if nm == "RAM_CLOCK_FAST_MUX":
@@ -66,9 +70,15 @@ class M9kCtl:
 
         o["we"] = np.where(w11 >= 0, w11, w9)
         o["pia"] = np.stack([self.calc[("RAM_PIA_TO_INPUT_YGR", g)].select(bits) for g in (0, 1)], axis=1)
+        o["pia_all"] = np.stack([self.calc[("RAM_PIA_TO_INPUT_YGR", g)].select(bits) for g in range(12)], axis=1)
         o["cg"] = np.where(o["pia"][:, 0] >= 0, 0, np.where(o["pia"][:, 1] >= 0, 1, 0))
         o["clk_fast"] = np.where(o["cg"][:, None] == 0, bits[self.cols[("RAM_CLOCK_FAST_MUX", 0)]], bits[self.cols[("RAM_CLOCK_FAST_MUX", 1)]]).astype(np.int64)
         o["oreg"] = bits[self.cols[("RAM_REG_DATA_OUT", -1)]][:, 0] == 0
+        # input-side clock enable (ledger M-017): RAM_CE_SELECT_INPUT bit 0 = ENA0 selected; RAM_CE_FAST_MUX gi 0 bit set = alternate PIA line, clear = preferred line
+        ce = json.load(open(CE_LINES))["ce_fast_mux"]["0"]
+        o["ce_in"] = bits[self.cols[("RAM_CE_SELECT_INPUT", -1)]][:, 0] == 1
+        o["ce_line"] = np.where(bits[self.cols[("RAM_CE_FAST_MUX", 0)]][:, 0] == 1, ce[1], ce[0])
+        o["ce_invert"] = bits[self.cols[("RAM_CE_INVERT", 0)]][:, 0] == 1
         nd = (o["data"] >= 0).sum(1)
         o["n_data"] = nd
         cls = o["cls"]

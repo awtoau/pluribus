@@ -371,3 +371,10 @@ def test_pll_limits_are_periods_in_ps():
     a, b = pll.limits("GPLL", 7), pll.limits("GPLL", 8)
     assert a == b and a["vco"][1] == (769, 1666) and a["vco"][2] == (1538, 3333) and a["input"] == (2116, 200000)
     assert pll.limits("MPLL", 7)["vco"][1] == (625, 1666)
+
+
+def test_ram_ce_lines_table():
+    """ledger M-017: ASM_RAM_CE_FAST_MUX ctor (family 14, MEAB): ENA0 / ENA1 prefer PIA line 2 (alternate 3), ENA2 / ENA3 line 4 (alternate 5)."""
+    import json
+    t = json.load(open(os.path.join(REPO, "lifters", "cycloneiv_clean", "ram_ce_lines.json")))["ce_fast_mux"]
+    assert [t[str(g)][:2] for g in range(4)] == [[2, 3], [2, 3], [4, 5], [4, 5]]

@@ -629,13 +629,15 @@ class Builder:
                                    ireg=[bool(v) for v in (md["ireg_n"][i, n] if nine else md["ireg"][i])], oreg=bool(md["oreg_n"][i, n] if nine else md["oreg"][i])))
         M["a"], M["b"] = M["units"][0]["a"], M["units"][0]["b"]
         M["sign"] = [pin(md["sign_sel"][i, k], False, "1'b0") if md["sign_sel"][i, k] >= 0 else ("1'b0" if md["unsigned"][i, k] else "1'b1") for k in (0, 1)]
-        any_reg = any(u["oreg"] or any(u["ireg"]) for u in M["units"])
+        any_reg = any(u["oreg"] or any(u["ireg"]) for u in M["units"]) or bool(md["sreg"][i].any())
         if any_reg:
             if md["clk_sel"][i] >= 0:
                 M["clk"] = pin(md["clk_sel"][i], bool(md["clk_inv"][i]))
             elif md["clk_line"][i] >= 0:
                 rec = int(cx.find(names.enum_of("BLK_CLK_BUF"), x, y, 0, int(md["clk_line"][i])))
                 M["clk"] = self.sig(rec)[0] if rec >= 0 else "1'b0"
+                if md["clk_inv"][i] and rec >= 0:
+                    M["clk"] = f"(~{M['clk']})"
                 if rec < 0:
                     M["und"].append("clock line record absent")
             else:
@@ -644,6 +646,10 @@ class Builder:
                 nl.und["MAC clock: no PIA_TO_CLK / CLK_FAST_MUX selection"] += 1
         M["ena"] = pin(md["ena_sel"][i], bool(md["ena_inv"][i]), "1'b1")
         M["aclr"] = pin(md["aclr_sel"][i], bool(md["aclr_inv"][i]), "1'b0")
+        if md["aclr_sel"][i] < 0 and md["clr_line"][i] >= 0:            # clear from a block clock line (MAC_CLR_FAST_MUX)
+            rec = int(cx.find(names.enum_of("BLK_CLK_BUF"), x, y, 0, int(md["clr_line"][i])))
+            M["aclr"] = (f"(~{self.sig(rec)[0]})" if md["aclr_inv"][i] else self.sig(rec)[0]) if rec >= 0 else "1'b0"
+        M["sreg"] = [bool(v) for v in md["sreg"][i]]
         nl.counts["mac_oreg"] += M["oreg"]
         nl.counts["mac_ireg_a"] += M["ireg"][0]
         nl.counts["mac_ireg_b"] += M["ireg"][1]
@@ -716,14 +722,21 @@ class Builder:
             clk = self.sig(rec)[0] if rec >= 0 else "1'b0"
         else:                                                   # LOCAL_INTERCONNECT clock: first decoded RAM_PIA_TO_INPUT_YGR clock group
             clk = pin(mk["pia"][i, int(mk["cg"][i])])
-        be = [pin(mk["be"][i, k]) if mk["be"][i, k] >= 0 else "1'b1" for k in range(2)] if W == 16 else None
+        # byte-enable mask bit with no connected group: constant low when another mask bit is wired (gxm9k_w_cke_*: portabyteenamasks {gnd, bea[0]}), all bytes written when none is
+        be_any = bool((mk["be"][i, :2] >= 0).any())
+        be = [pin(mk["be"][i, k]) if mk["be"][i, k] >= 0 else ("1'b0" if be_any else "1'b1") for k in range(2)] if W == 16 else None
         if W != 16 and (mk["be"][i, :4] >= 0).any():
             M["why"] = "byte enables of non-16-bit words not modelled"
             nl.und["M9K: byte enables of non-16-bit words"] += 1
             return
         bitsv = M["content"]
+        ce = None
+        if mk["ce_in"][i]:
+            ce = pin(mk["pia_all"][i, int(mk["ce_line"][i])])
+            if mk["ce_invert"][i]:
+                ce = "!" + ce
         words = m9k.read_words(bitsv, W)
-        M.update(modelled=True, be=be, data=data, addr=addr, raddr=raddr, we=pin(mk["we"][i]), clk=clk, oreg=bool(mk["oreg"][i]),
+        M.update(modelled=True, ce=ce, be=be, data=data, addr=addr, raddr=raddr, we=pin(mk["we"][i]), clk=clk, oreg=bool(mk["oreg"][i]),
                  init=[int("".join(str(int(b)) for b in r[::-1]), 2) for r in words])
         nl.counts["m9k_single_port_modelled"] += 1
         nl.counts[f"m9k_w{W}"] += 1
@@ -742,7 +755,7 @@ class Builder:
             refs.update(p for p in (io.get("drv"), io.get("oe")) if p)
         for M in nl.m9k:
             if M.get("modelled"):
-                for e in M["data"] + M["addr"] + [M["we"], M["clk"]] + (M.get("be") or []):
+                for e in M["data"] + M["addr"] + [M["we"], M["clk"]] + (M.get("be") or []) + ([M["ce"].lstrip("!")] if M.get("ce") else []):
                     refs.update(re.findall(r"(?:pad|lc|ff|co|u)_\w+", e))
         for M in nl.mac:
             for e in M["a"] + M["b"] + M["sign"] + [M.get("clk", ""), M["ena"], M["aclr"]]:
@@ -916,7 +929,10 @@ def verilog(nl, module="cyc4_top"):
                 wr = f"if ({m['we']}) begin if ({m['be'][0]}) {n}_mem[{n}_ad][7:0] <= {n}_di[7:0]; if ({m['be'][1]}) {n}_mem[{n}_ad][15:8] <= {n}_di[15:8]; end"
             else:
                 wr = f"if ({m['we']}) {n}_mem[{n}_ad] <= {n}_di;"
-            w(f"always @(posedge {m['clk']}) begin {n}_ar <= {rd}; {wr} {n}_qr <= {n}_mem[{n}_ar]; end")
+            if m.get("ce"):                                     # input clock enable ENA0 gates the address / data / write registers (ledger M-017)
+                w(f"always @(posedge {m['clk']}) begin if ({m['ce']}) begin {n}_ar <= {rd}; {wr} end {n}_qr <= {n}_mem[{n}_ar]; end")
+            else:
+                w(f"always @(posedge {m['clk']}) begin {n}_ar <= {rd}; {wr} {n}_qr <= {n}_mem[{n}_ar]; end")
             w(f"assign {n}_q = " + (f"{n}_qr;" if m["oreg"] else f"{n}_mem[{n}_ar];"))
             continue
         bitsv = m["content"]
@@ -927,7 +943,8 @@ def verilog(nl, module="cyc4_top"):
     for m in nl.mac:
         n = f"mac_{m['x']}_{m['y']}"
         w(f"// MAC {n}: {'two 9 x 9' if m['nine'] else '18 x 18'}, " + ", ".join(f"N{u['n']} input regs A/B = {u['ireg']} output reg = {u['oreg']}" for u in m["units"]) + (f" // UNDECODED: {'; '.join(m['und'])}" if m["und"] else ""))
-        w(f"wire {n}_sa = {m['sign'][0]}, {n}_sb = {m['sign'][1]};")
+        w(f"wire {n}_sa0 = {m['sign'][0]}, {n}_sb0 = {m['sign'][1]}; reg {n}_sar = 1'b0, {n}_sbr = 1'b0;")
+        w(f"wire {n}_sa = {n}_{'sar' if m['sreg'][0] else 'sa0'}, {n}_sb = {n}_{'sbr' if m['sreg'][1] else 'sb0'};")
         w(f"reg [35:0] {n}_q = 36'b0; wire [35:0] {n}_pw;")
         regs = []
         for u in m["units"]:
@@ -943,10 +960,10 @@ def verilog(nl, module="cyc4_top"):
             w(f"assign {n}_pw[{lo + 2 * W9 - 1}:{lo}] = {k}_p[{2 * W9 - 1}:0];")
             w(f"assign {n}_r[{lo + 2 * W9 - 1}:{lo}] = " + (f"{n}_q[{lo + 2 * W9 - 1}:{lo}];" if u["oreg"] else f"{n}_pw[{lo + 2 * W9 - 1}:{lo}];"))
             regs.append((k, u))
-        if any(u["oreg"] or any(u["ireg"]) for u in m["units"]):
+        if any(u["oreg"] or any(u["ireg"]) for u in m["units"]) or any(m["sreg"]):
             ev = f"posedge {m['clk']}" + ("" if m["aclr"] == "1'b0" else f" or posedge {m['aclr']}")
-            clr = "" if m["aclr"] == "1'b0" else f"if ({m['aclr']}) begin " + " ".join(f"{k}_ar <= 0; {k}_br <= 0;" for k, _ in regs) + f" {n}_q <= 36'b0; end else "
-            w(f"always @({ev}) {clr}if ({m['ena']}) begin " + " ".join(f"{k}_ar <= {k}_a; {k}_br <= {k}_b;" for k, _ in regs) + f" {n}_q <= {n}_pw; end")
+            clr = "" if m["aclr"] == "1'b0" else f"if ({m['aclr']}) begin " + " ".join(f"{k}_ar <= 0; {k}_br <= 0;" for k, _ in regs) + f" {n}_q <= 36'b0; {n}_sar <= 1'b0; {n}_sbr <= 1'b0; end else "
+            w(f"always @({ev}) {clr}if ({m['ena']}) begin " + " ".join(f"{k}_ar <= {k}_a; {k}_br <= {k}_b;" for k, _ in regs) + f" {n}_q <= {n}_pw; {n}_sar <= {n}_sa0; {n}_sbr <= {n}_sb0; end")
     w("endmodule")
     return "\n".join(o) + "\n"
 
