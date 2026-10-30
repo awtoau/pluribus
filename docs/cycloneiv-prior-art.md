@@ -43,30 +43,7 @@ Search engines are weak on code; empty results are "not found by this query", no
 
 ## 14sea cross-check (EP4CE6)
 
-Method: `scripts/cycloneiv_prior_art_xcheck.py` imports their `fuzz/config.py` from the gitignored clone (nothing copied), converts their byte addresses to (frame, byte, lane) with our 210-byte frame geometry, and compares with our LE model (`lifters/data/cycloneiv_ep4ce6_geom.json`). Log `tmp/logs/cycloneiv_prior_art_xcheck.log`. Clone at commit 221f790 (2026-09-30). Oracle for our side: Quartus post-fit netlist, 292 EP4CE6 LE cells in `lut_*`, `site_*`, `ho_*`, `ho2_*` (includes sites that trained the model; the fresh held-out `ho2_*` scored 0 bad, see `cycloneiv-bitstream.md`). Theirs: silicon.
-
-| Item | Theirs | Ours | Result |
-|---|---|---|---|
-| File size, preamble, postamble | 368,011 B; 32 B FF; 59 B FF | same | agree |
-| Frame size, CRAM frames | 210 B; frames 25..1751 | F = 210; 25 periphery + 1,727 CRAM | agree |
-| Frame CRC | CRC-16/IBM (poly 0x8005 reflected), init 0xFE54, at frame bytes +208/+209 | poly 0xA001 reflected, init 0xFE54, last 2 bytes | agree |
-| Header | `6A F7 F7 F7 F7 F7 F7 F3 FB` constant at 0x20; 12 design-dependent bytes at 0x29..0x34; checksum at 0x49..0x4A | same 9 bytes in 2 corpus files; bytes 41..52 vary; CRC-16/MODBUS of the 40 option bytes at 0x49..0x4A | agree |
-| Column step | 7,350 B standard | 35 frames x 210 = 7,350 B | agree |
-| Column bases, 27 consecutive LAB-column steps | e.g. X13 to X16 +76,230; X26 to X28 +68,880; X19 to X21 +12,600; X17 to X18 +8,190 | 363 / 328 / 60 / 39 frames = same bytes | agree, 0 of 27 steps differ |
-| Column anchor | period start = base - 136 | their period start frame = our FX[X] - 7 for all 28 columns, byte 24 | agree (offset constant) |
-| LAB columns | 22 whitelist + 6 "jailbreak" (X5, 9, 14, 30, 32, 33), described as M9K/DSP/PLL columns | all 28 are LAB columns in our geometry; our non-LAB columns are X15 (M9K), X20 (multiplier), X27 (M9K) | agree on positions; **disagree on what X5/9/14/30 are**: our LE decode is exact at X3..X33 incl. these (154 cells outside their grid) |
-| LAB columns they never list | none | X1, X2 | we extend; exact on all our cells there |
-| Cells per LE | 8 pairs, one ctrl pair per frame, 2 adjacent bytes, single bit | 8 consecutive frames, 2 adjacent v (bytes) per frame, same lane | agree: cell sets equal on 6,748 / 8,064 sites (83.7%) |
-| Their "data" bytes | +48 B from ctrl, multi-bit, "XOR-linear" | none | **their data bytes are frame bytes 208/209 = the per-frame CRC** (0 of 129,024 mask bits land there). Matches their own later "CRC ghost" note. Our model: one cell per mask bit, no XOR |
-| Y rows | `slot = (Y-2)%3`, base {136, 0, 70}, +3 per group, bit = 7 - group - (slot>0) | VY = 21 + 70 Y in lane-major v (70 v per row) | agree: their slot/group is the 70 v row pitch seen as bytes with lane steps; offset 1 byte (ctrl vs ctrl+1 = the two cells of a pair) |
-| LE N offset | step -2/-6 pattern, extra -12 at N=16 | DN = 0, -3, -8, -11, ... -38 ... -65, mirror for odd LE | agree for 6,748 sites; see lane-join row |
-| **Lane-join zone** | linear address, no lane change | bits at v 206/207 live in lane-7 tail bytes 206/207; v 413, 620, ... similar (`lane_swaps`) | **disagree on 1,316 / 8,064 sites (16.3%)**: rows Y3, 6, 9, 12, 18, 21 at N >= 12. Example X10 Y3 N12: ours (frame 389, byte 206, lane 7), theirs (389, byte 0, lane 6). Evidence favours ours: 16 / 16 corpus cells in this zone decode exactly against the post-fit mask. Bug lead on their side (their N=0-weighted verification would not reach it); untested on silicon by us |
-| LUT mask polarity / order | XOR-linear TT, pair table `TT[7],TT[15]` share a pair | mask bits 2 per frame in k order (0,1 / 2,3 ... 14,15), no inversion | k-to-pair labelling differs (their README puts TT7 and TT15 in one pair; ours puts k14 and k15 in one frame). Same cell sets, so it may be an index convention on their side (their TT index is from minterm labels). Ours is exact on 292 / 292 cells; theirs unchecked on this point |
-| Row 15 | ghost row: absent from fitter; formula validated on silicon at X10 Y15 | no corpus placement at Y15 (X1 Y12..16 are not LEs); VY is linear through Y15 | their Y15 cells equal ours on 176 / 352 sites, rest in the lane-join zone: consistent, not independently tested by us |
-| Row 20 | "does not exist" | real LAB row: `ho2_x16_y20_n2`, `ho2_x26_y20_n4` place and decode exactly (4 cells) | **disagree** on existence; their statement is a fitter-whitelist fact (Quartus 21.1, F17 package). Ours: Quartus 25.1, E22 package. Their formula gives equal cell sets at Y20 on 352 / 352 sites |
-| Rows beyond their grid | Y 2..21 only | Y1, Y22, Y23 exist; ours exact on those cells | we extend; their formula agrees at Y22/Y23 (352 / 352), not at Y1 (0 / 352, formula not meant to extrapolate there) |
-| Compression | not covered | decoder, 70 / 70 pairs | ours only |
-| Routing, FF, M9K | LI/R4/C4 signatures, M9K init codec, silicon | learnt tables, 80-92% on GX150, EP4CE6 routing paused | not compared here |
+Removed with the other-die work: full table in #173. Outcome: frame size, CRC, column step and row pitch agree with 14sea; they disagree on the lane-join zone and row 20 (our side exact against the post-fit netlist). Script `cycloneiv_prior_art_xcheck.py` removed.
 
 ## Licence: what we may reuse
 
@@ -80,7 +57,6 @@ Read and cite facts with credit; run their scripts as an external oracle; do not
 
 ## Recommended actions
 
-- Keep our EP4CE6 LE model; no change needed from this sweep.
 - Cite 14sea as independent confirmation of frame size, CRC, column geometry and row pitch in `cycloneiv-bitstream.md`.
 - Ask the owner (public issue, after Dan's review) whether the lane-join zone and Y20 were tested on silicon; offer the affected site addresses (X10 Y3 N12 is one).
 - Read Ren et al. if the compressed-format coverage (Cyclone III LS, GX) is ever in doubt; our decoder already matches the vendor on 70 / 70.
