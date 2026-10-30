@@ -27,6 +27,7 @@ NCP = 128
 NSYM = NFFT + NCP
 KMAX = 432
 PILOT_RES = (5, 5, 8, 8, 2, 2)  # (k+432) mod 9 per symbol, period 6
+NRM_FLOOR_REL = 0.0  # option: floor the CP-correlation norm at this fraction of its p90 (digital-zero gaps, 5.8 GHz files)
 
 
 def repo_root():
@@ -151,6 +152,8 @@ def cp_metric(y):
 def coarse_sync(y):
     """Symbol-grid offset s0 (mod NSYM), frac CFO (Hz, within +-df/2), correlation quality."""
     M, nrm = cp_metric(y)
+    if NRM_FLOOR_REL > 0:
+        nrm = np.maximum(nrm, NRM_FLOOR_REL * np.percentile(nrm, 90))
     rho = np.abs(M) / nrm
     # fold |M| over the burst core (>= half of max energy) at period NSYM
     core = rho > 0.5 * np.percentile(rho, 99)
