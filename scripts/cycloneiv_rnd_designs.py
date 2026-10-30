@@ -1,4 +1,4 @@
-"""Random RTL designs for the Cyclone IV routing / LAB-control corpus (`rnd_*` in corpus/cycloneiv).
+"""Random RTL designs for the Cyclone IV routing / LAB-control corpus (`gx150_*` in corpus/cycloneiv).
 
 Each design: scalar input pins, a random 4-input LUT network, registers with random controls
 (enable, sync clear, async clear, sync load), adders (carry chains), outputs = XOR groups that
@@ -8,12 +8,7 @@ fitter SEED varies placement and routing.  Seeded: the same name always regenera
 import random
 import re
 
-# (count, LUT nodes range, inputs, outputs): small ones isolate, big ones cover most LABs.
-TIERS = [("s", 40, (20, 120), (8, 24), (4, 16)),
-         ("m", 40, (300, 700), (16, 40), (8, 24)),
-         ("l", 40, (900, 1500), (24, 40), (16, 32))]
-# Sources mostly from the last LOCAL nodes: random global wiring made 2600-node designs
-# unroutable in 10 min on EP4CE6.
+# Sources mostly from the last LOCAL nodes: random global wiring made big designs unroutable.
 LOCAL = 60
 P_LOCAL = 0.85
 
@@ -89,23 +84,7 @@ def rnd_design(seed, n_nodes, n_in, n_out, lut_param=False, pin_async=False):
     return v
 
 
-def rnd_specs():
-    out = {}
-    for tier, count, (lo, hi), (ilo, ihi), (olo, ohi) in TIERS:
-        for j in range(count):
-            seed = 1_000_003 * (ord(tier) - 96) + j
-            r = random.Random(seed)
-            n_nodes, n_in, n_out = r.randrange(lo, hi + 1), r.randrange(ilo, ihi + 1), r.randrange(olo, ohi + 1)
-            v = rnd_design(seed, n_nodes, n_in, n_out)
-            name = f"rnd_{tier}{j:02d}"
-            out[name] = {"top": "top", "verilog": v,
-                         "qsf": [f"set_global_assignment -name SEED {1 + r.randrange(1000)}"],
-                         "purpose": f"random RTL, {n_nodes} LUT nodes, {n_in} in / {n_out} out (routing corpus)",
-                         "exercises": ["routing", "lab_controls", "carry", "io"]}
-    return out
-
-
-GX_DEVICES = {"gx150": "EP4CGX150DF31C7", "gx110": "EP4CGX110DF31C7"}
+GX_DEVICES = {"gx150": "EP4CGX150DF31C7"}
 
 
 SPREAD = 300            # gx150 spread designs
@@ -159,9 +138,8 @@ def gx_specs():
                     'set_global_assignment -name FITTER_EFFORT "FAST FIT"'] + locs,
             "purpose": f"race-free random RTL on EP4CGX150 around LAB X{cx} Y{cy}, {n_nodes} LUT nodes",
             "exercises": ["routing", "lab_controls", "carry", "io", "gate"]}
-    # header-bit probe: same design, other package / speed grade / temperature grade of both dies
-    for tag, dev in (("gx150_cf23c8", "EP4CGX150CF23C8"), ("gx150_df27i7", "EP4CGX150DF27I7"),
-                     ("gx110_cf23c7", "EP4CGX110CF23C7"), ("gx110_df27c8", "EP4CGX110DF27C8")):
+    # header-bit probe: same design, other package / speed grade / temperature grade
+    for tag, dev in (("gx150_cf23c8", "EP4CGX150CF23C8"), ("gx150_df27i7", "EP4CGX150DF27I7")):
         out[f"{tag}_smoke"] = {"top": "top", "verilog": rnd_design(7_000_001, 60, 12, 8), "device": dev,
                                "qsf": ["set_global_assignment -name SEED 1"],
                                "purpose": f"header-bit probe on {dev}", "exercises": ["header"]}

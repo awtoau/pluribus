@@ -86,7 +86,7 @@ def pool_cap(jobs):
 
 def prefix_of(name):
     t = name.split("_")
-    return "_".join(t[:2]) if t[0] in ("gx150", "gx110", "site", "ff", "rnd", "lut", "ho", "ho2") and len(t) > 1 else t[0]
+    return "_".join(t[:2]) if t[0] == "gx150" and len(t) > 1 else t[0]
 
 
 def enumerate_designs():
@@ -301,7 +301,7 @@ def plane_keys(root, design, cache):
     if design in cache:
         return cache[design]
     d = root / design
-    dev = tomllib.loads((d / "design.toml").read_text()).get("device", "EP4CE6E22C8")
+    dev = tomllib.loads((d / "design.toml").read_text()).get("device", "EP4CGX150DF31C7")
     pl = cc.cram_plane((d / "bitstream.rbf").read_bytes(), cg.load(cg.die_of(dev)))
     cache[design] = (np.unique(np.asarray(pl.keys, np.int64)), int(pl.shape[1]))
     return cache[design]

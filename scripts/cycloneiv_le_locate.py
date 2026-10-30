@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.15t
 """Locate LAB tiles in the CRAM of any Cyclone IV die from ordinary builds (no per-site sweeps).
 
-Uses the EP4CE6 LE layout rule (cycloneiv_le_model), which is per LAB and assumed die-independent:
+Uses the per-LAB LE layout rule (DK below), assumed die-independent within the die:
 mask bit k of LE N at frame F - k//2, and within one bit-lane at byte B + DN[N] + s*dv(k)
 (s = -1 for odd LE pairs).  Per LAB tile with >= MIN_LUTS placed LUTs (post-fit .vo: location +
 lut_mask), search every (frame F, lane, byte B) for the one where all predicted mask bits equal the
@@ -28,7 +28,7 @@ import cycloneiv_decompress as cd  # noqa: E402
 
 log = logging.getLogger("cycloneiv_le_locate")
 MIN_LUTS = 6
-# EP4CE6 per-LAB rule (docs/cycloneiv-bitstream.md "LE address model"): v offset of LE N/2, and per
+# per-LAB rule (docs/cycloneiv-bitstream.md "LE address model"): v offset of LE N/2, and per
 # mask bit k (frame delta, v delta).  In one bit-lane v == byte.
 DN = [0, -3, -8, -11, -16, -19, -24, -27, -38, -41, -46, -49, -54, -57, -62, -65]
 DK = [(0, 0), (0, -1), (-1, -1), (-1, 0), (-2, 0), (-2, -1), (-3, -1), (-3, 0),

@@ -10,7 +10,6 @@ import numpy as np
 import cycloneiv_corpus as cc
 import cycloneiv_decompress as cd
 import cycloneiv_geom as cg
-import cycloneiv_le_model as lm
 import ref_cycloneiv_decompress as ref
 
 REPO = Path(__file__).resolve().parent.parent
@@ -23,8 +22,7 @@ def ref_cram_plane(rbf_bytes, geom):
     u = ref.decompress(rbf_bytes, info)
     f, r, n = info["frame"], info["periphery_frames"], info["cram_frames"]
     nfr = r + n
-    vmap = cc.vmap_for(f, tuple(geom.lane_bytes) if geom else (lm.TOP,) + (lm.LANE,) * 7,
-                       tuple(map(tuple, geom.lane_swaps)) if geom else ())
+    vmap = cc.vmap_for(f, tuple(geom.lane_bytes), tuple(map(tuple, geom.lane_swaps)))
     nv = len(vmap)
     parts = []
     for fr in range(1, nfr):

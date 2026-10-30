@@ -258,8 +258,7 @@
   "117": "IOR"
  },
  "devices": [
-  "EP4CGX150",
-  "EP4CGX110"
+  "EP4CGX150"
  ],
  "die": "ep4cgx150",
  "dk": {},

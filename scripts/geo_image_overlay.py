@@ -447,7 +447,7 @@ def other_images(C, g, nper, meta_img, sm_img):
         raw = Path(p).read_bytes()
         try:
             plane, sm, meta = load_image(raw, g)
-        except Exception as e:                                              # other die: reported in ce_images
+        except Exception as e:                                              # not a GX150 image: skipped
             continue
         if meta["nfr"] != meta_img["nfr"]:
             continue
@@ -462,32 +462,6 @@ def other_images(C, g, nper, meta_img, sm_img):
     fr = k // NV
     res["_set_in_all_6_images"] = dict(cells=int(len(k)), per_class={IDS[c - 1]: int(n) for c, n in enumerate(np.bincount(C.cls[k], minlength=NCLS)) if n and c},
                                       in_periphery_frames=int((fr < meta_img["nper"]).sum()), distinct_frames=int(len(np.unique(fr))))
-    return res
-
-
-def ce_images():
-    """EP4CE (and other-die) images: frame-level polarity numbers only (no tile geometry used)."""
-    import cycloneiv_decompress as cd
-    res = {}
-    for p in sorted(glob.glob(str(REPO / "sources/cycloneiv-corpus/*/*.rbf"))):
-        name = Path(p).parent.name
-        try:
-            info = {}
-            u = cd.decompress(Path(p).read_bytes(), info)
-        except Exception as e:
-            res[name] = dict(error=str(e)[:80]); continue
-        F, nper, ncram = info["frame"], info["periphery_frames"], info["cram_frames"]
-        nfr = nper + ncram
-        a = np.frombuffer(u, np.uint8)
-        fr_bits = lambda f, lo, hi: np.unpackbits(a[cd.PREAMBLE + f * F + lo:cd.PREAMBLE + f * F + hi])
-        hdr = int(fr_bits(0, 0, F).sum())
-        per = sum(int(fr_bits(f, 0, F).sum()) for f in range(1, nper))
-        data = [int(fr_bits(f, 0, F - 2).sum()) for f in range(nper, nfr)]
-        crc = sum(int(fr_bits(f, F - 2, F).sum()) for f in range(nper, nfr))
-        d = np.array(data) / ((F - 2) * 8)
-        res[name] = dict(frame_bytes=F, periphery_frames=nper - 1, cram_frames=ncram, header_frac=hdr / (F * 8),
-                         periphery_frac=per / max((nper - 1) * F * 8, 1), cram_data_frac=float(sum(data) / (ncram * (F - 2) * 8)),
-                         crc_frac=crc / (ncram * 16), cram_frames_over_half=int((d > .5).sum()), cram_max_frame_frac=float(d.max()))
     return res
 
 
@@ -548,7 +522,6 @@ def main():
             enc = encoding(C, sm, plane, g, tiles, meta, H, Hs)
             enc["outside_tiles"] = extra
             enc["other_gx150_images"] = other_images(C, g, nper, meta, sm)
-            enc["other_die_images"] = ce_images()
             (GEO / "image_encoding.json").write_text(json.dumps(enc, indent=1))
             log.info("wrote image_encoding.json")
 

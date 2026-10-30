@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Fetch third-party Cyclone IV (EP4CE*/EP4CGX*) configuration images, record provenance, test the reader.
+"""Fetch third-party Cyclone IV (EP4CGX150) configuration images, record provenance, test the reader.
 
 Purpose: independent gates for the Cyclone IV decoder (docs/recovery-process.md Phase 1).  Images are
 other people's binaries: downloaded for interop testing, never committed.  Committed:
@@ -39,18 +39,6 @@ CPF_TIMEOUT_S = 60      # quartus_cpf sof->rbf on <= 4 MB; ~2 s measured on the 
 
 # kind "git": raw file at repo/path (HEAD commit pinned at fetch).  kind "release": asset of a release tag.
 CANDIDATES = [
-    dict(name="neptuno_menu", kind="git", repo="delgrom/neptUNOreloaded_Binaries", path="menu/menu.rbf",
-         licence="none stated (repo); cores derive from GPL MiST/MiSTer code", src="no HDL in repo",
-         what="NeptUNO boot menu core"),
-    dict(name="neptuno_nes", kind="git", repo="delgrom/neptUNOreloaded_Binaries", path="nes/nes_NeptUNOR.rbf",
-         licence="none stated (repo); NES core GPL-derived", src="no HDL in repo", what="NES console core"),
-    dict(name="neptuno_minimig", kind="git", repo="delgrom/neptUNOreloaded_Binaries",
-         path="minimig-aga/minimig_neptunoR.rbf", licence="none stated (repo); Minimig is GPL",
-         src="no HDL in repo", what="Amiga (Minimig AGA) core"),
-    dict(name="sidi_neogeo", kind="git", repo="ManuFerHi/SiDi-FPGA", path="Cores/Arcade/SiDi/Neogeo/NeoGeo_SiDi128.rbf",
-         licence="none stated (repo)", src="no HDL in repo", what="Neo Geo core (SiDi128 board)"),
-    dict(name="sidi_iremm92", kind="git", repo="ManuFerHi/SiDi-FPGA", path="Cores/Arcade/SiDi/IremM92/IremM92.rbf",
-         licence="none stated (repo)", src="no HDL in repo", what="Irem M92 arcade core (SiDi)"),
     dict(name="poseidon_galaksija", kind="release", repo="turri21/GalaksijaPLUS_poseidon-ep4cgx150",
          asset="GalaksijaPLUS_poseidon-ep4cgx150.rbf", licence="MIT", src="HDL in the same repo",
          what="Galaksija PLUS home computer core"),
@@ -66,24 +54,6 @@ CANDIDATES = [
     dict(name="neptuno_cgx150_mc2", kind="git", repo="distwave/neptuno-ep4cgx150",
          path="sources/Neptuno_firmware/Neptuno_MC2_firmware_1.05v/_MC2_firmware/synth/neptUNO_EP4CGX150/output_files/mc2.rbf",
          licence="none stated (repo)", src="HDL in the same repo", what="NeptUNO/MC2 firmware (NIOS II) on EP4CGX150"),
-    dict(name="joker_tv", kind="git", repo="aospan/libjokertv", path="fw/fw-0.37/joker_tv-0.37.sof",
-         licence="none stated (repo)", src="HDL in NetUP_Dual_Universal_CI-fpga (GPL-3.0), not this release",
-         what="Joker TV USB DVB receiver FPGA (real product)"),
-    dict(name="ucore_ep4ce6", kind="git", repo="microCore-VHDL/uCore-for-Cyclone-IV", path="Quartus/output_files/fpga.sof",
-         licence="none stated (repo)", src="VHDL in the same repo", what="uCore stack CPU on RZ-EasyFPGA EP4CE6 board"),
-    dict(name="cam_isp_ep4ce6", kind="git", repo="bxinquan/nios2_cam_isp_demo",
-         path="prj_quartus/output_files/nios2_camera_sdram_lcd.sof", licence="MIT",
-         src="Verilog in the same repo", what="NIOS II camera ISP, SDRAM, LCD"),
-    dict(name="scope_ep4ce10", kind="git", repo="Norman-w/fpga-simple-oscilloscope",
-         path="output_files/simple_scope.sof", licence="none stated (repo)", src="Verilog in the same repo",
-         what="AD9226 simple oscilloscope"),
-    dict(name="basic52_ep4ce15", kind="git", repo="mit41301/BASIC-52_EP4CE15F23", path="QMTECH_EP4CE15_50MHz.sof",
-         licence="none stated (repo)", src="HDL in the same repo", what="BASIC-52 CPU on QMTECH EP4CE15"),
-    dict(name="bitcoin_de2_115", kind="git", repo="progranism/Open-Source-FPGA-Bitcoin-Miner",
-         path="projects/DE2_115_makomk_serial/quartus_output/fpgaminer.sof", licence="GPL-3.0",
-         src="Verilog in the same repo", what="SHA-256 miner on DE2-115"),
-    dict(name="d8m_tracker_de2_115", kind="git", repo="delhatch/Red_Tracker", path="output_files/DE2_115_D8M_RTL.sof",
-         licence="none stated (repo)", src="HDL in the same repo", what="D8M camera red-object tracker on DE2-115"),
 ]
 
 log = logging.getLogger("cycloneiv_corpus_fetch")
@@ -191,7 +161,6 @@ def sof_device(p):
 # SOF = read from a .sof container in this corpus; INFERRED = geometry vs our own lane model / board.
 STATIC_SIGS = {
     (796, 37, 6154): ("EP4CGX150", "INFERRED: frame 796 = 793-byte lanes of lifters/data/cycloneiv_ep4cgx150_geom.json; boards are EP4CGX150"),
-    (464, 21, 3990): ("EP4CE55", "INFERRED: NeptUNO board is EP4CE55; no .sof in this corpus to confirm"),
 }
 
 

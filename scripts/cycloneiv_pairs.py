@@ -25,7 +25,7 @@ import toolchain  # noqa: E402
 LIMIT_S = 60
 MIN_GB = 3
 OUT = REPO / "tmp" / "cycloneiv" / "pairs"
-FAMILY_GLOBS = ("*_ep3c*.sof", "*_ep4ce*.sof", "*_ep4cgx*.sof")
+FAMILY_GLOBS = ("*_ep4cgx*.sof",)
 
 
 def main():

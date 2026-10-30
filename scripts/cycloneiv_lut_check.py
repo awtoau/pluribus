@@ -3,7 +3,7 @@
 .vo lut_mask, per design.  Per mask bit: matched / missing (site off the geometry) / wrong.
 
 - Mask bit k of LE (X, Y, le): frame FX[X] + df(k), v = VY[Y] + DN[le] + s*dv(k), s = -1 for odd
-  LEs (EP4CE6 LE model, cycloneiv_le_locate.DK).
+  LEs (cycloneiv_le_locate.DK).
 - Arithmetic-mode cells (sum_lutc_input = cin) are scored too, as their own row.
 
   python3.15t scripts/cycloneiv_lut_check.py --designs 'gx150_*'

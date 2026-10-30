@@ -1,7 +1,7 @@
 """Cyclone IV corpus loader: CRAM as a (frame, v) bit plane, RCF routing edges, post-fit .vo atoms.
 
-- CRAM plane: frame index as in cycloneiv_fuzz_analyze (header frame = 0); v = vertical position
-  within a frame (cycloneiv_le_model.v_of: lane 7 first).  Periphery frames included.
+- CRAM plane: frame index (header frame = 0); v = vertical position
+  within a frame (Geom.v_of: lane 7 first).  Periphery frames included.
 - RCF: every net's routing tree as edges (src node -> dst node).  Node forms:
     ("W", type, x, y, s, i)        routing element TYPE:XxYySsIi
     ("WB", type, x, y, s, path)    block-port element TYPE:XxYySsB:path
@@ -21,7 +21,6 @@ CORPUS = REPO / "corpus" / "cycloneiv"
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_decompress as cd  # noqa: E402
-import cycloneiv_le_model as lm  # noqa: E402
 import cyclonev_vo_parse as vp  # noqa: E402
 
 vp.OUT_PORTS.update({
@@ -180,8 +179,7 @@ def _plane_setup(rbf_bytes, geom):
     info = {}
     u = cd.decompress(rbf_bytes, info)
     f, r, n = info["frame"], info["periphery_frames"], info["cram_frames"]
-    vmap = vmap_for(f, tuple(geom.lane_bytes) if geom else (lm.TOP,) + (lm.LANE,) * 7,
-                    tuple(map(tuple, geom.lane_swaps)) if geom else ())
+    vmap = vmap_for(f, tuple(geom.lane_bytes), tuple(map(tuple, geom.lane_swaps)))
     return u, f, r, r + n, vmap
 
 
@@ -223,8 +221,8 @@ def cram_plane_scalar(rbf_bytes, geom=None):
 def vmap_for(f, lane_bytes, swaps=()):
     """frame bit -> v (lane-major, lane 7 first).  Bits outside the lane model (lane tails,
     periphery CRC bytes) get v >= sum(lane_bytes).  swaps = ((v, byte, lane), ...): the raw bit
-    (byte, lane) takes position v and the bit that held v takes its column (EP4CE6: LE bits at
-    the lane joins live in the lane tail bytes)."""
+    (byte, lane) takes position v and the bit that held v takes its column (LE bits at
+    the lane joins can live in the lane tail bytes)."""
     vmap = np.full(f * 8, -1, dtype=np.int64)
     extra = sum(lane_bytes)
     for b in range(f * 8):
@@ -247,7 +245,7 @@ def vmap_for(f, lane_bytes, swaps=()):
 def device_of(name):
     import tomllib
     t = tomllib.loads((CORPUS / name / "design.toml").read_text())
-    return t.get("device", "EP4CE6E22C8")
+    return t.get("device", "EP4CGX150DF31C7")
 
 
 def geom_of(name):
@@ -255,10 +253,39 @@ def geom_of(name):
     return cg.load(cg.die_of(device_of(name)))
 
 
+def vo_top_module(path):
+    """Cyclone IV .vo extras the Cyclone V parser rejects: the SDF annotate line, the
+    `hard_block` instance and module (config pins only).  Every other line still goes through
+    the strict parser.  Filtered copy -> tmp/cycloneiv/vo/<design>.vo."""
+    out, skip = [], False
+    lines = path.read_text().split("\n")
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        if ln.startswith("initial $sdf_annotate("):
+            i += 1
+            continue
+        if ln.startswith("hard_block auto_generated_inst("):
+            while not lines[i].rstrip().endswith(");"):
+                i += 1
+            i += 1
+            continue
+        if ln.startswith("module hard_block"):
+            skip = True
+        if not skip:
+            out.append(ln)
+        if skip and ln.strip() == "endmodule":
+            skip = False
+        i += 1
+    dst = REPO / "tmp" / "cycloneiv" / "vo" / (path.parent.name + ".vo")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text("\n".join(out))
+    return dst
+
+
 def top_module_only(path):
     """Filtered .vo; GX atoms (cycloneiv_*) renamed to the E names (cycloneive_*): same cells."""
-    import cycloneiv_fuzz_analyze as fa
-    p = fa.top_module_only(path)
+    p = vo_top_module(path)
     t = p.read_text()
     t2 = re.sub(r"\bcycloneiv_", "cycloneive_", t)
     if t2 != t:

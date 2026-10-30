@@ -365,6 +365,8 @@ def register(family, corpus, ibis_dir, all_reports=False, devices=None, geom=Non
     corp = collect_corpus(corpus, all_reports) if corpus and Path(corpus).is_dir() else {}
     ibis = collect_ibis(ibis_dir, devices) if ibis_dir and Path(ibis_dir).is_dir() else {}
     devs = sorted(set(corp) | set(ibis))
+    if family == "cycloneiv":
+        devs = [d for d in devs if d.startswith("EP4CGX150")]   # one die (#173)
     if devices:
         devs = [d for d in devs if d in devices]
     commit = E.git_head(REPO)
@@ -405,7 +407,7 @@ def main():
     ap.add_argument("--corpus", default=str(REPO / "corpus" / "cycloneiv"))
     ap.add_argument("--ibis-dir", default=None, help="default: <quartus>/eda/ibis from toolchain.quartus_bin()")
     ap.add_argument("--all-reports", action="store_true", help="parse every distinct fit.rpt/.pin (conflict sweep), not one per device")
-    ap.add_argument("--devices", default=None, help="comma list, e.g. EP4CGX150DF31,EP4CE6E22")
+    ap.add_argument("--devices", default=None, help="comma list, e.g. EP4CGX150DF31")
     a = ap.parse_args()
     ibis = a.ibis_dir
     if ibis is None:

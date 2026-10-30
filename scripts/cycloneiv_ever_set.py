@@ -3,7 +3,7 @@
 
   python3.15t scripts/cycloneiv_ever_set.py [--extra IMAGE ...]
 Designs = every corpus/cycloneiv build with a bitstream.rbf on a GX150 plane (6191 frames x 6368) + the third-party
-.rbf under sources/cycloneiv-corpus + --extra images; others (EP4CE6 ...) have another plane and are skipped.
+.rbf under sources/cycloneiv-corpus + --extra images.
 The inventory reads the bitmap: unknown cells set in none = "projected unused" (triage sub-line of unknown, not a claim).
 Threads only, one memory lease per job.  Log tmp/logs/cycloneiv_ever_set.log.  Issue #141.
 """
