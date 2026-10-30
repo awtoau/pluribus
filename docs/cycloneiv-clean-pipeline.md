@@ -7,7 +7,7 @@ Rebuild of the placement/lift stack from vendor-derived facts only. The layered 
 - First pass: lift the image to simple Verilog with the current-Quartus-derived decoders.
 - Later passes: use the corpus built with older Quartus versions to see what differs by version.
 - Not litigated at this stage: who built an image, other tools, forced settings. Status answers stay simple.
-- Die scope (Dan, 2026-10-30): EP4CGX150 only. Solve one die, then the others. Gates, claims and coverage count EP4CGX150 designs only; designs on other devices (EP4CGX110, early EP4CE6-default experiments with no device key) are outside the scored set.
+- Die scope (Dan, 2026-10-30): the headline is EP4CGX150 (the DJI die). Gates, claims and coverage are reported per device; other devices (EP4CGX110, other packages, early designs with no device key) get separate rows and are never mixed into the headline. Nothing is deleted or excluded.
 
 ## Accepted inputs (each with its evidence)
 
