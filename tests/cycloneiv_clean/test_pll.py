@@ -26,4 +26,27 @@ def test_bandwidth_table_predicts_loop_filter():
     except (FileNotFoundError, ImportError) as e:
         import pytest
         pytest.skip(str(e))
-    assert len(rows) == 10 and pll.bandwidth_settings(16, 2, rows) == (1, 27, 0) and pll.bandwidth_settings(112, 2, rows) == (1, 8, 0)
+    assert len(rows) == 10 and pll.bandwidth_settings(16, 2) == (1, 27, 0) and pll.bandwidth_settings(112, 2) == (1, 8, 0) and pll.bandwidth_settings(10, 2, 'high') == (3, 27, 0)
+
+
+def test_bandwidth_tables_reproduce_all_builds():
+    """M * post -> (ICP, R, C) from the two vendor text tables vs the netlist of every altpll build (28 of 28)."""
+    import os
+    import re
+    from conftest import REPO
+    from lifters.cycloneiv_clean import pll
+    corpus = os.path.join(REPO, "corpus", "cycloneiv")
+    names = [n for n in (os.listdir(corpus) if os.path.isdir(corpus) else []) if n.startswith("gxhb_pll") and os.path.exists(os.path.join(corpus, n, "postfit.vo"))]
+    if len(names) < 20:
+        import pytest
+        pytest.skip("local data missing: corpus/cycloneiv/gxhb_pll*")
+    ok = 0
+    for n in names:
+        t = open(os.path.join(corpus, n, "postfit.vo")).read()
+        g = lambda k: re.search(r"pll1 \." + k + r" = \"?([^\";]*)", t)      # noqa: E731
+        if not g("m"):
+            continue
+        want = (int(g("charge_pump_current_bits")[1]), int(g("loop_filter_r_bits")[1]), int(g("loop_filter_c_bits")[1]))
+        assert pll.bandwidth_settings(int(g("m")[1]), int(g("vco_post_scale")[1]), g("bandwidth_type")[1]) == want, n
+        ok += 1
+    assert ok >= 20

@@ -98,7 +98,7 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 
 - `libcomp_asmpll` is the 28 nm (Arria V / Cyclone V) PLL set; the Cyclone IV GX writers are `ASM_PLL_*` / `ASM_SINGLE_PLL_MODEL_STINGRAY` in libcomp_asm.
 - Loop filter R / C, charge pump and VCO post-scale are now decoded and scored. Netlist `loop_filter_r_bits`, `loop_filter_c_bits`, `charge_pump_current_bits`, `vco_post_scale` equal the CFF field values (`PLL_LOOP_FILTER_R`, `_C`, `PLL_CHARGE_PUMP_CURRENT`; `PLL_VCO_DIVIDE_BY_2` stores NOT(post_scale == 2) by the one-hot rule). PLL score: 28 builds, 308 matched / 0 missing / 0 extra / 0 wrong.
-- Physical values: vendor text tables `ddb_stingray_basic.pll` (`pll.basic_tables`: field value -> current / resistor / capacitor, e.g. R field 27 = 4000 ohm, 8 = 14000, 24 = 6000; CP field 1 = 20, 3 = 40) and the bandwidth settings table `ddb_stingray_bandwidth_gpll.pll` (`pll.bandwidth_rows`: 10 rows, M * post-scale range -> ICP / R / C field values). The table reproduces ICP / R / C of 27 of 28 builds; the `high` bandwidth build (ICP 3 instead of 1) is outside the table, high-bandwidth rule not located (missing).
+- Physical values: vendor text tables `ddb_stingray_basic.pll` (`pll.basic_tables`: field value -> current / resistor / capacitor, e.g. R field 27 = 4000 ohm, 8 = 14000, 24 = 6000; CP field 1 = 20, 3 = 40) and the bandwidth settings table `ddb_stingray_bandwidth_gpll.pll` (`pll.bandwidth_rows`: 10 rows, M * post-scale range -> ICP / R / C field values). Low / medium bandwidth use the GPLL table (ICP 1); high bandwidth takes the ICP 3 rows of `ddb_stingray_bandwidth_mpll.pll` (same R / C, input-frequency range column differs). `pll.bandwidth_settings(m, post, bandwidth)` reproduces ICP / R / C of 28 of 28 builds.
 - The earlier statement that these values are an index into a device-DB element table (`get_cp_and_lp_value@0x1b1e2a`) stands for the code path, but the data is also available as the text tables above; the element-descriptor decoder is not needed for them.
 - Switchover, scan, lock detect, areset / pfdena input muxes: groups present (`PLL_CLOCK_SWITCH_*`, `PLL_SCAN_*`, `PLL_LOCK_*`, 16-bit input muxes whose value is an RE index like the M9K input muxes); writers not yet decompiled: missing.
 
@@ -106,3 +106,17 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 
 - `DEV_ELEMENT_DESC_BODY::operator<<@0x168f60` field order: bool vector (49 bits), 15 ints (i32 deltas), 11 strings, 36 x `vector<vector<int>>` (`m_2d_int_data`, key = `DEV_ELEMENT_DESC_2D_INT_DATA_ENUM` < 0x24; `get_2d_int_data@0x84810` returns slot `key`), `m_locations` (ptr vector), `m_location_enums` (i32 deltas), ports (ptr vector), one int, then four enum-valid bool vectors (49, 30, 11, 36 bits). Tables can also be set from text (`set_2d_int_data_from_string@0x85000`).
 - Not decoded: the element objects in `ddb_stingray4_hdr.ddb` (xz payload, 108,689 bytes). A direct parse of the field order above from the 49-bit bool-vector marker found 2 objects that parse and neither carries 2D data; the object-stream start / ptr-tag framing (DEV_BASIC_INFO root) is not yet located. Loop-filter / charge-pump / bandwidth tables remain missing.
+
+## Plain-text / data files of the Quartus install for Cyclone IV GX (sweep, #169)
+
+| file (quartus/common/devinfo/cycloneivgx unless noted) | holds | used |
+|---|---|---|
+| `ddb_stingray_basic.pll` | PLL structure limits; field value -> physical tables (charge pump, loop-filter R / C); counter limits; reconfig scan-chain order; lock-window / lock defaults | yes (`pll.basic_tables`) |
+| `ddb_stingray_bandwidth_{gpll,mpll}.pll` | M * post-scale range -> ICP / R / C field values (ICP 1 and 3) | yes (`pll.bandwidth_settings`) |
+| `ddb_stingray{1..4}[_v1,_v2].pll`, `ddb_stingray.pll` (include list) | per part / speed grade PLL timing limits (vco, pfd, input / output min / max) | no (timing only) |
+| `ddb_stingray_*.dxf` (ram, dsp, pll, io, io_group, lab, le, clkbuf, quad*) and `ddb_yeager_*.dxf`, `ddb_arm_meab.dxf` | CAD drawings of block structure: layers, port names, lines (PORTS / SIMPLE layers); geometry and connectivity only, no bit mappings found | no |
+| `ddb_stingray.ref` | die grid (nx, ny) and per-site type map (EP4CGX15 header) | no |
+| `ddb_stingray*_timing.ddb`, `_mv_*.ddb` | timing models | no |
+| `quartus/eda/ibis/cycloneivgx_ibis_*.xml`, `cycloneivgx_package_rlc.xml` | IBIS electrical models per IO standard / drive / slew (names, not bit values) | no |
+| `quartus/eda/hspice/cycloneivgx_hspo.hsd` | HSPICE option set | no |
+- No plain-text table for M9K modes, MAC modes or IO drive / slew bit values exists in the install: the field encodings for those come from code (writers) and the asmdb groups. The PLL switchover, scan and lock-detect muxes are RE-index routing muxes (same writer pattern as the M9K input muxes), not tables.
