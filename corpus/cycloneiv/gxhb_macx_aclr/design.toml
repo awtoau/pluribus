@@ -1,0 +1,8 @@
+top = "top"
+purpose = "macx aclrglob vs aclr (base)"
+exercises = ["m9k"]
+qsf = ["set_global_assignment -name SEED 1", "set_location_assignment DSPMULT_X103_Y87_N0 -to mac|auto_generated|ded_mult1|mac_mult2", "set_location_assignment DSPOUT_X103_Y87_N2 -to mac|auto_generated|ded_mult1|mac_out3", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
+device = "EP4CGX150DF31C7"
+tool = "quartus"
+tool_version = "25.1"
+built = "2026-10-30"

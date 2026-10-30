@@ -43,6 +43,46 @@ MAC_SPECS = [
 ]
 MAC_NULL = [("null_seed", {})]
 
+# --- MACX (#169): control-group pairs at one pinned site.  Every design has the same ports (clk, en, rst, sa, sb, da, db); one connection differs per pair.
+# Features are expressed as netlist inversions / port connections the fitter may absorb into MAC groups (CLK / CE / CLR invert, IREG_SIGN, clear fast mux, data invert)
+MACX_SITE = (103, 87)
+MACX_REG = {"input_register_a0": "UNREGISTERED", "output_register": "CLOCK0"}
+MACX_SPECS = [   # (name, base name, parameter overrides, connection overrides, extra qsf)
+    ("base0", None, MACX_REG, {}, []),
+    ("clkinv", "base0", MACX_REG, {"clk": "~clk"}, []),
+    ("ena", "base0", dict(MACX_REG), {"ena": "en"}, []),
+    ("enainv", "ena", dict(MACX_REG), {"ena": "~en"}, []),
+    ("aclr", "base0", dict(MACX_REG, output_aclr="ACLR0"), {"aclr": "rst"}, []),
+    ("aclrinv", "aclr", dict(MACX_REG, output_aclr="ACLR0"), {"aclr": "~rst"}, []),
+    ("aclrglob", "aclr", dict(MACX_REG, output_aclr="ACLR0"), {"aclr": "rst"}, ["set_instance_assignment -name GLOBAL_SIGNAL GLOBAL_CLOCK -to rst"]),
+    ("aclrloc", "aclr", dict(MACX_REG, output_aclr="ACLR0"), {"aclr": "rst"}, ["set_instance_assignment -name GLOBAL_SIGNAL OFF -to rst"]),
+    ("dynsab", None, {"port_signa": "PORT_USED", "port_signb": "PORT_USED"}, {"signa": "sa", "signb": "sb"}, []),
+    ("sregab", "dynsab", {"port_signa": "PORT_USED", "port_signb": "PORT_USED", "signed_register_a": "CLOCK0", "signed_register_b": "CLOCK0"}, {"signa": "sa", "signb": "sb"}, []),
+    ("sregb", "dynsab", {"port_signa": "PORT_USED", "port_signb": "PORT_USED", "signed_register_b": "CLOCK0"}, {"signa": "sa", "signb": "sb"}, []),
+    ("plain", None, {}, {}, []),
+    ("invda", "plain", {}, {"da": "~da"}, []),
+    ("invdb", "plain", {}, {"db": "~db"}, []),
+]
+
+
+def macx_design(prm, conn, seed=1):
+    prm = dict(MAC_BASE, **prm)
+    pl = ",\n    ".join(f".{k}({v if isinstance(v, int) else chr(34) + v + chr(34)})" for k, v in prm.items())
+    pl += ',\n    .intended_device_family("Cyclone IV GX"),\n    .lpm_type("altmult_add")'
+    c = {**dict(clk="clk", ena="1'b1", aclr="1'b0", da="da", db="db"), **conn}
+    ports = [f".clock0({c['clk']})", f".ena0({c['ena']})", f".aclr0({c['aclr']})", f".dataa({c['da']})", f".datab({c['db']})"]
+    if "signa" in c:
+        ports.append(f".signa({c['signa']})")
+    if "signb" in c:
+        ports.append(f".signb({c['signb']})")
+    ports.append(".result(r)")
+    v = ("module top(input clk, input en, input rst, input sa, input sb, input [17:0] da, input [17:0] db, output [35:0] r);\n"
+         f"  altmult_add #(\n    {pl}\n  ) mac (\n    {', '.join(ports)});\nendmodule\n")
+    x, y = MACX_SITE
+    loc = [f"set_location_assignment DSPMULT_X{x}_Y{y}_N0 -to mac|auto_generated|ded_mult1|mac_mult2",
+           f"set_location_assignment DSPOUT_X{x}_Y{y}_N2 -to mac|auto_generated|ded_mult1|mac_out3"]
+    return v, [f"set_global_assignment -name SEED {seed}"] + loc
+
 
 def mac_design(prm, seed=1):
     n, wa, wb, wr = prm["number_of_multipliers"], prm["width_a"], prm["width_b"], prm["width_result"]
@@ -150,6 +190,19 @@ def specs(which):
                 vb = mac_design(MAC_BASE)
                 vs = mac_design(dict(MAC_BASE, **ov), seed=2 if nm == "null_seed" else 1)
                 out.append((f"gxhb_macp{tag}_base", f"gxhb_macp{tag}_{nm}", (vb[0], vb[1] + loc), (vs[0], vs[1] + loc), f"mac {nm} pinned {tag}"))
+    elif which == "macx":
+        by = {n: (prm, conn, q) for n, _, prm, conn, q in MACX_SPECS}
+        for nm, base, prm, conn, q in MACX_SPECS:
+            if base is None:
+                continue
+            bp, bc, bq = by[base]
+            vb, vs = macx_design(bp, bc), macx_design(prm, conn)
+            out.append((f"gxhb_macx_{base}", f"gxhb_macx_{nm}", (vb[0], vb[1] + bq), (vs[0], vs[1] + q), f"macx {nm} vs {base}"))
+        # N1 output / input register of the two-multiplier nine-bit design (unpinned: the base is the existing gxhb_mac_two_mult_w9)
+        b2 = dict(MAC_BASE, number_of_multipliers=2, width_a=9, width_b=9, width_result=18)
+        for nm, ov in (("two_out_reg", {"output_register": "CLOCK0"}), ("two_in_reg", {"input_register_a0": "CLOCK0", "input_register_b0": "CLOCK0"}),
+                       ("two_mult_reg", {"multiplier_register0": "CLOCK0"})):
+            out.append(("gxhb_mac_two_mult_w9", f"gxhb_mac_{nm}", mac_design(b2), mac_design(dict(b2, **ov)), f"mac {nm}"))
     elif which == "pllsite":
         for k in range(1, 9):
             out.append(("gxhb_pll_base", f"gxhb_pllsite_{k}", pll_design(PLL_BASE),
@@ -181,7 +234,7 @@ def write_all(which):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("cmd", choices=["gen", "build"])
-    ap.add_argument("set", choices=["mac", "macpin", "pll", "pllsite", "pllmp"])
+    ap.add_argument("set", choices=["mac", "macpin", "macx", "pll", "pllsite", "pllmp"])
     ap.add_argument("--jobs", type=int, default=12)
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)

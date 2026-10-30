@@ -60,6 +60,8 @@ class MacCtl:
         fm = [g for g in walk.groups() if g["btype"] == MAC_BLOCK and gt.get(g["type"]) == "MAC_CLK_FAST_MUX"][0]
         # MAC_CLK_FAST_MUX: SIMPLE mux (no input map): bit j hot = block clock line j (ASMDB_SIMPLE_MUX::select one-hot)
         self.clkfast = np.stack([c for _, c in sorted(ffctl._cols(bs, walk.mux(fm['paths'][0][0])['bits'], tab).items())], axis=1)
+        fc = [g for g in walk.groups() if g["btype"] == MAC_BLOCK and gt.get(g["type"]) == "MAC_CLR_FAST_MUX"][0]
+        self.clrfast = np.stack([c for _, c in sorted(ffctl._cols(bs, walk.mux(fc['paths'][0][0])['bits'], tab).items())], axis=1)
 
     def val(self, key, bits):
         c, av = self.one[key]
@@ -71,6 +73,7 @@ class MacCtl:
         for key, (c, _av) in self.one.items():
             u |= bits[c] == 1
         u |= (bits[self.clkfast] == 1).any(axis=1)
+        u |= (bits[self.clrfast] == 1).any(axis=1)
         for ca in list(self.calc.values()):
             for lv in ca.cols:
                 for cc in lv.values():
@@ -100,7 +103,11 @@ class MacCtl:
         o["clk_fast"] = fast
         # bit 0 = the PIA (LOCAL_INTERCONNECT) clock path, bits 1..6 = block clock line 0..5 (gxhb_mac*_out_reg: bit 6 <-> BLK_CLK_BUF index 5)
         o["clk_line"] = np.where(fast >= 1, fast - 1, -1)
+        hot = bits[self.clrfast].astype(np.int64)
+        o["clr_line"] = np.where(hot.sum(1) == 1, hot.argmax(1) - 1, -1)      # MAC_CLR_FAST_MUX: same layout as MAC_CLK_FAST_MUX (bit 0 PIA, bits 1..6 = lines 0..5)
+        # polarity (gxhb_macx_{clkinv,ena,enainv,aclr,aclrinv}: ~clk -> CLK_INVERT 1; ena = en -> CE_INVERT 0, ~en -> 1; aclr = rst -> CLR_INVERT 1, ~rst -> 0)
+        o["sreg"] = np.stack([self.val(("MAC_IREG_SIGN", k), bits) == 1 for k in (0, 1)], axis=1)     # signa / signb register (gxhb_macx_sregab / sregb)
         o["clk_inv"] = self.val(("MAC_CLK_INVERT", 0), bits) == 1
         o["ena_inv"] = self.val(("MAC_CE_INVERT", 0), bits) == 1
-        o["aclr_inv"] = self.val(("MAC_CLR_INVERT", 0), bits) == 1
+        o["aclr_inv"] = self.val(("MAC_CLR_INVERT", 0), bits) == 0
         return o

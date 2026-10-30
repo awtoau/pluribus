@@ -514,3 +514,20 @@ hl_shiftreg_3	hl	high-level corpus: known source structure
 hl_shiftreg_4	hl	high-level corpus: known source structure
 hl_shiftreg_5	hl	high-level corpus: known source structure
 hl_shiftreg_6	hl	high-level corpus: known source structure
+gxhb_mac_two_in_reg	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_mac_two_mult_reg	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_mac_two_out_reg	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_aclr	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_aclrglob	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_aclrinv	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_aclrloc	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_base0	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_clkinv	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_dynsab	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_ena	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_enainv	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_invda	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_invdb	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_plain	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_sregab	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
+gxhb_macx_sregb	gxhb	MAC control-group pair builds (clk/ce/clr invert, clear fast mux, sign register, data invert, N1 registers; ledger MA-004)
