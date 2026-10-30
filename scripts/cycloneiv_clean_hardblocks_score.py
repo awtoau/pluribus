@@ -54,7 +54,8 @@ def score_pll(names=None):
         if (k, bt, path) not in used:
             r["missing"] += 1
         d = pm.params(vals, bt, path)
-        want = {"m": int(p["m"]), "n": int(p["n"]), "charge_pump": int(p["charge_pump_current_bits"])}
+        want = {"m": int(p["m"]), "n": int(p["n"]), "charge_pump": int(p["charge_pump_current_bits"]),
+                "loop_filter_r": int(p["loop_filter_r_bits"]), "loop_filter_c": int(p["loop_filter_c_bits"]), "vco_post_scale": int(p["vco_post_scale"])}
         for c in range(5):
             want[f"c{c}"] = ("bypass", 0, 0, 0) if p[f"c{c}_mode"] == "bypass" else ("counter", int(p[f"c{c}_high"]), int(p[f"c{c}_low"]), int(p[f"c{c}_initial"]))
         for key, w in want.items():
