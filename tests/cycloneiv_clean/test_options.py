@@ -41,7 +41,8 @@ def test_rbf_cells_only_in_frame0_value_half():
     es = O.entries()
     assert not any(e["rbf_cells_flag"] for e in es)                      # tag-18 flag half never reaches the rbf
     assert all(c[0] == 0 for e in es for c in e["rbf_cells"])            # option cells sit in rbf frame 0
-    assert sum(bool(e["rbf_cells"]) for e in es) == 35                    # the 35 propagating bits of docs/cycloneiv-address-spaces.md 3.2
+    assert sum(bool(e["rbf_cells"]) for e in es) == 32                    # 35 plane-derived minus bits 71 / 106 / 112 (header CRC artifacts)
+    assert not any(c[1] in (41, 42) for e in es for c in e["rbf_cells"])  # header CRC bytes are no option storage
 
 
 def test_groups_match_live_asmdb():

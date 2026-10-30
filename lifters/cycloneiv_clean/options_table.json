@@ -1035,11 +1035,6 @@
      0,
      30,
      1
-    ],
-    [
-     0,
-     41,
-     3
     ]
    ],
    "rbf_cells_flag": [],
@@ -1883,13 +1878,7 @@
    "sof_flag_bit": 231,
    "vendor_value": 1,
    "vendor_flag": 0,
-   "rbf_cells": [
-    [
-     0,
-     42,
-     2
-    ]
-   ],
+   "rbf_cells": [],
    "rbf_cells_flag": [],
    "pairs": [],
    "klass": "default",
@@ -2276,11 +2265,6 @@
      0,
      14,
      3
-    ],
-    [
-     0,
-     42,
-     5
     ]
    ],
    "rbf_cells_flag": [],
@@ -2501,13 +2485,7 @@
    "sof_flag_bit": 266,
    "vendor_value": 1,
    "vendor_flag": 0,
-   "rbf_cells": [
-    [
-     0,
-     41,
-     1
-    ]
-   ],
+   "rbf_cells": [],
    "rbf_cells_flag": [],
    "pairs": [],
    "klass": "default",
@@ -2597,13 +2575,7 @@
    "sof_flag_bit": 272,
    "vendor_value": 1,
    "vendor_flag": 0,
-   "rbf_cells": [
-    [
-     0,
-     41,
-     5
-    ]
-   ],
+   "rbf_cells": [],
    "rbf_cells_flag": [],
    "pairs": [],
    "klass": "default",

@@ -78,3 +78,20 @@ Tiers (a set cell is in exactly one): A = placed by a gate-scored class (LUT INI
 - Calibration against truth (rb_000..009): the A tier's gate rates are pips 99.5..99.8 %, nets 95.8..98.3 %, LUT INIT 100 %, register-clock 99.1..100 %. So an A-tier set bit is placed by a decoder whose pip output is ~99.7 % right; "placed" is not "correct": gaps are missing pips (gate `missing` > 0), nets (pins 72 %), and any bit that a decoder places but the gate does not score (all of C, most of B).
   - Image estimate: validated-correct set bits ~ 56.5 % x ~0.997 = ~56 % (pips) with LUT INIT exact; the 36.7 % in C is placed, meaning unknown; the proxy cannot see decoded-but-wrong bits in tiers B and C.
 - Limits: set-bit counts weight every bit equally (a routing mux spends 2-3 bits per pip, a LUT 16 bits); D / E are not the 12.5 M vendor-residue (that counts unset cells too).
+
+## Residue set bits by region (2026-10-30, `scripts/cycloneiv_clean_residue_regions.py`, log `tmp/logs/residue_regions.log`)
+
+- Image: 2,178,780 plane cells set; 2,157,165 claimed; 1,695 set cells with no vendor claim (0.08 % of set cells; 19,920 further set cells are periphery / CFF cells outside the CRAM claim mask, scored by the IO tiers; explained A+B+C share stays 99.05 % per the table above). 1,654 of the 1,695 are also set in the corpus.
+- Regions (set in all 134 EP4CGX150 gate builds / in none / varies; package F484 / F672 / F896 pattern over the 20 package builds, 1 = set in all builds of that package):
+
+| region | cells | set in all / none / varies | package pattern (top) |
+|---|---|---|---|
+| band edge rows v 0..2 (top) | 537 | 349 / 38 / 150 | 111: 399, 110: 48, 011: 41, 000: 27 |
+| band edge rows v 6341..6343 (bottom) | 544 | 347 / 44 / 153 | 111: 404, 011: 48, 110: 42, 010: 20 |
+| pre-column frames 0..20 | 476 | 274 / 57 / 145 | 111: 323, 000: 44, 110: 38, 011: 21 |
+| band other rows | 68 | 0 / 49 / 19 | 000: 66 |
+| tile, JTAG block frames 6134..6145 | 66 | 29 / 23 / 14 | 111: 37, 000: 29 |
+| LAB tile other | 4 | 3 / 0 / 1 | 111: 4 |
+
+- Edge rows: rows 1, 2, 6341, 6342 are constant (set in every build); rows 0 and 6343 vary with the design; not a frame parity (agreement 63 % = chance). Cells sit at column-local frames 0, 11, 12, 21, 25, 26 of LAB columns (and the M9K equivalents).
+- About 300 of 1,695 follow the package (110 / 011 / 010 patterns) = unbonded-pad dependent; `ASM_IO_OE_INVERT::process_end_of_phase`@0x185ca4 writes only the claimed IO_OE_INVERT group by pin type (K-012), so it does not explain these.

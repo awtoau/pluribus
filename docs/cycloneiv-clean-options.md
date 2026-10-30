@@ -22,8 +22,10 @@ Builders: `scripts/cycloneiv_clean_options_build.py` (table), `scripts/cycloneiv
   - `set_bits` (libcomp_asmcc vaddr 0x1aca0; 0x18000 is its PLT stub) writes the value, a "written" mask and the shadow buffer (= flag half); `silent_set_bits` (vaddr 0x1a240; 0x17e50 is its PLT stub) writes the value only.
   - flag 0 <=> default-list bit (95); flag 1 <=> forced-list or group bit (65). Vendor sof: 95 / 95 match (`test_flag_half_is_default_list`).
 - Value half: 1 for every forced and default bit in all 197 builds and all vendor GX sofs.
-- rbf: option cells only in rbf frame 0 (`cff2rbf.npz` `option` table); flag half never reaches the rbf. 35 value bits have cells; 125 do not.
-  - With cells: group 28 (0, 2-6, 8-10, 12-18, 27-34, 91-93, 128), forced 3 (7, 38, 94), default 4 (71, 106, 112, 130). Total 35.
+- rbf: option cells only in rbf frame 0 (`cff2rbf.npz` `option` table); flag half never reaches the rbf. 32 value bits have cells; 128 do not.
+  - Cells in frame-0 bytes 41, 42 are the header CRC-16 (`cycloneiv_decompress.hdr_crc_ok`), dropped from the table: bits 71, 106, 112 (their only cell) and the second cell of bits 29 and 93 were bit-plane artifacts (E-R10).
+  - Single-bit flips of the vendor sof (`scripts/cycloneiv_clean_option_header_flip.py`): 7 -> lane 1 bit 7, 38 -> lane 1 bit 38, 94 -> lane 3 bit 14, 130 -> lane 4 bit 10 (direct copy into the header, plus CRC); 71 / 106 / 112 change no header byte.
+  - With cells: group 28 (0, 2-6, 8-10, 12-18, 27-34, 91-93, 128), forced 3 (7, 38, 94), default 1 (130). Total 32.
   - Cell counts > 1: bit 8 = 15 cells, bits 29 and 93 = 2 cells each (the table in the json has every cell).
 - Polarity rule (8 dumb groups): `arch` byte 0 -> bit = NOT setting (7 groups: 0, 2, 3, 4, 5, 91, 93); `arch` 1 -> bit = setting (bit 6). 8 / 8 consistent with pairs.
 
@@ -117,7 +119,12 @@ Source: `libcomp_asm` `ASM_JTAG_*` classes, asmdb groups (block CONTROL), pairs 
 
 ## 9. Open
 
-- Function of the 130 forced / default bits (7 of them reach the rbf header: 7, 38, 94 forced; 71, 106, 112, 130 default). No group, no setting, no decompiled writer. Candidates: the cpf header overlay (die variant, length, flag bits) and constants of the config controller.
+- Function of the 130 forced / default bits (4 of them reach the rbf header as direct copies: 7, 38, 94 forced; 130 default; all constant 1 in the vendor sofs, 134 corpus builds and the image). No group, no setting, no decompiled writer.
+- Header bits that are not option-register bits (quartus_cpf, `scripts/cycloneiv_clean_header_probe.py`, same sof):
+  - lane 1 bit 35 = compression flag (1 = uncompressed); length field lanes 2 / 3 follow it.
+  - lane 1 bits 36, 37 = configuration mode: `-m ASx1` clears both (1 -> 0); `-m PS` / `FPP` leave them 1; `ASx4` / `PPS` / `PPA` / `AP` rejected for this device. The image has both clear (active serial).
+  - lane 0 bits 8..31 = USERCODE checksum (content-dependent); bytes 41, 42 = header CRC.
+  - Image vs a corpus build: 14 header bits differ = lane 0 checksum, lane 1 bits 35 / 36 / 37, lanes 2 / 3 length; 0 option-register bit differs from the vendor value except the group bits set by the image's own options.
 - Bit 11 (POF id LSB) has no rbf cell; bits 12-18 do. Bit 129 has none.
 - `ASM_OPTION_REG_SELECT_SPI_PIN_STATE` value table vs the observed AS default (2) and tri-state (0): the decompile maps flash mode 1 to 2 and flash mode 0 + tri-state to 0; which flash mode the base build runs is not read from the decompile.
 - JTAG block presence flips 20 unclaimed CRAM cells (combinational base); not decoded.

@@ -100,11 +100,19 @@ def vendor_tag18():
     raise ValueError("no tag 18")
 
 
+# source: scripts/cycloneiv_decompress.py hdr_crc_ok: header = 40 bytes after the sync (frame-0 byte 1..40), CRC-16 at bytes 41, 42.
+# Single-bit flips (scripts/cycloneiv_clean_option_header_flip.py): bits 71 / 106 / 112 change no header byte at all, so their plane-derived
+# CRC-byte cells (and the 2nd cell of bits 29 / 93) are artifacts of the bit-plane method, not storage.
+HDR_CRC_BYTES = (41, 42)
+
+
 def rbf_cells():
-    """tag-18 bit index (0..319) -> [(frame, byte, bit)] rbf cells (cff2rbf option table, quartus_cpf bit planes)."""
+    """tag-18 bit index (0..319) -> [(frame, byte, bit)] rbf cells (cff2rbf option table, quartus_cpf bit planes), header CRC bytes dropped."""
     t = np.load(IO.CFF_TABLE_PATH)["option"]
     out = {}
     for f, b, k in zip(*np.nonzero(t >= 0)):
+        if f == 0 and int(b) in HDR_CRC_BYTES:
+            continue
         out.setdefault(int(t[f, b, k]), []).append([int(f), int(b), int(k)])
     return out
 
