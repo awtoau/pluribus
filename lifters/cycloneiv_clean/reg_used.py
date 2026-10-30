@@ -82,8 +82,8 @@ class RegUsed:
         nz = self.lut.cells(bits).sum(axis=2) > 0
         reg_buf = (u & ~y[..., :2]).any(axis=-1)                              # a used LE_BUFFER selects the register output: the register exists (same test as emit.py `reg_out`)
         live = nz | sync | (u & y[..., :2]).any(axis=-1)                       # LEs whose LE_LUT_INPUT pins count as consumers (emit.py `live`)
-        local_only = ~u.any(axis=-1) & ~y[..., 2] & self.local_used(bits, edges, live | reg_buf)
-        claim = sync | reg_buf | (nz & local_only)
+        local_reg = ~y[..., 2] & self.local_used(bits, edges, live | reg_buf)        # consumed LOCAL_LINE with the register output selected (emit.py `ll_used & ~ygr[2]`), also next to a used LUT buffer
+        claim = sync | reg_buf | local_reg
         return claim & self.clock_ok(bits) if self.ffc is not None else claim
 
     def local_used(self, bits, edges, live):

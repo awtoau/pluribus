@@ -45,24 +45,33 @@ def main():
     tiles = pll.pll_tiles()
     e_clk = names.enum_of("PLL_CLKIN")
     log.info("enabled PLLs: %s", sorted(en))
+    def desc(r):
+        t, x, y, z, i = cx.tn(r), *cx.rt.element(r)[1:]
+        return f"{t}@X{x}Y{y}S{z}I{i}"
+
+    def walk(r, path, depth, found):
+        """every programmed-parent chain from `r` up to a pad (all parents, not the first)."""
+        if depth > 14:
+            return
+        t = cx.tn(r)
+        if t in PADS:
+            p = pads.get(("CLK" if t == "CLK_BUFFER" else "IO", int(cx.rt.x[r]), int(cx.rt.y[r]), int(cx.rt.element(r)[3])))
+            found.append((path + [desc(r)], p[1] if p else "unmapped"))
+            return
+        for q in parent.get(r, []):
+            walk(q, path + [desc(r)], depth + 1, found)
+
     for icd, (_, _, (x, y)) in sorted(tiles.items()):
         if icd not in en:
             continue
         for d in np.flatnonzero((cx.enum == e_clk) & (cx.rt.x == x) & (cx.rt.y == y)).tolist():
-            hops, cur = [], d
-            for _ in range(8):
-                ps = parent.get(cur, [])
-                if not ps:
-                    break
-                cur = ps[0]
-                t = cx.tn(cur)
-                hops.append(t)
-                if t in PADS:
-                    z = int(cx.rt.element(cur)[3])
-                    p = pads.get(("CLK" if t == "CLK_BUFFER" else "IO", int(cx.rt.x[cur]), int(cx.rt.y[cur]), z))
-                    hops.append("ball " + (p[1] if p else "unmapped"))
-                    break
-            log.info("PLL_%d PLL_CLKIN index %d: %s", icd, int(cx.rt.element(d)[4]), " <- ".join(hops) if hops else "no programmed driver")
+            ps = parent.get(d, [])
+            log.info("PLL_%d PLL_CLKIN index %d: %d programmed parents %s", icd, int(cx.rt.element(d)[4]), len(ps), [desc(q) for q in ps])
+            found = []
+            walk(d, [], 0, found)
+            log.info("   pad chains: %d; balls %s", len(found), sorted({b for _, b in found}))
+            for path, b in found[:6]:
+                log.info("   ball %s via %s", b, " <- ".join(path))
 
 
 if __name__ == "__main__":
