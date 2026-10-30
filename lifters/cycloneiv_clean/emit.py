@@ -100,7 +100,8 @@ class Ctx:
         self.li_rec = np.stack([self.find(e_li, self.lx, self.ly, 0, i) for i in range(LI_PER_LAB)], axis=1)
         self.buf_rec = self.ext.reg.buf                               # [labs, 16, 2]
         self.e_buf = e_buf
-        self.pads = self._pads()
+        self._pads_by = {}
+        self.pads = self.pads_of(896)
         self._hard_tables()
         self.lab_of = {(int(x), int(y)): i for i, (x, y) in enumerate(zip(self.lx, self.ly))}
 
@@ -140,18 +141,30 @@ class Ctx:
         j = np.minimum(np.searchsorted(self.skeys, q), len(self.skeys) - 1)
         return np.where(self.skeys[j] == q, self.order[j], -1)
 
-    def _pads(self):
-        """{('IO' | 'CLK', x, y, SUB_LOC): (io site | None, ball)}: Row / Column I/O pads (io chain) and Dedicated Clock pads (pkgpad site string)."""
+    def pads_of(self, count):
+        """Pad table of one package (pin count 484 / 672 / 896), cached."""
+        if count not in self._pads_by:
+            self._pads_by[count] = self._pads(count)
+        return self._pads_by[count]
+
+    def pinmap(self):
+        if getattr(self, "_pinmap", None) is None:
+            from . import io_pins
+            self._pinmap = io_pins.PinMap(self.io, self.io_dec)
+        return self._pinmap
+
+    def _pads(self, count=896):
+        """{('IO' | 'CLK', x, y, SUB_LOC): (io site | None, ball)} of one package: Row / Column I/O pads (pad table order -> IO site) and Dedicated Clock pads."""
         from . import pkgpad as K
         out = {}
-        for site, b in ((s, b) for b, s in self.io.chain.ball_site.items() if s):
-            m = re.fullmatch(r"X(\d+)Y(\d+)SUB_LOC(\d+)", self.io.chain.site_pad[site][0])
-            out[("IO",) + tuple(map(int, m.groups()))] = (site, b)
-        pins, pads = K.pins(), K.pads()
-        for i, j in K.pin_pad_rank(pins).items():
+        pins, pads = K.pins(count), K.pads()
+        pad_site = {j: s for s, j in K.io_site_pads(pads).items()}
+        for i, j in K.pin_pad(pins).items():
+            m = re.fullmatch(r"X(\d+)Y(\d+)SUB_LOC(\d+)", pads[j]["strs"][1])
             if pads[j]["strs"][3] == "Dedicated Clock":
-                m = re.fullmatch(r"X(\d+)Y(\d+)SUB_LOC(\d+)", pads[j]["strs"][1])
                 out[("CLK",) + tuple(map(int, m.groups()))] = (None, pins[i]["strs"][0])
+            elif j in pad_site:
+                out[("IO",) + tuple(map(int, m.groups()))] = (pad_site[j], pins[i]["strs"][0])
         return out
 
     def desc(self, r):
@@ -168,6 +181,7 @@ class Netlist:
         self.und = collections.Counter()                              # cause -> count
         self.counts = collections.Counter()
         self.nets = set()                                             # distinct root records referenced by an emitted sink
+        self.package, self.package_pins, self.package_info = "F896", 896, {}   # set by Builder.run (--package)
 
 
 def _roots(ctx, edges):
@@ -195,15 +209,43 @@ def _roots(ctx, edges):
 
 
 class Builder:
-    def __init__(self, ctx, rbf, label=None, workers=4):
-        self.cx, self.rbf = ctx, rbf
+    def __init__(self, ctx, rbf, label=None, workers=4, package="auto"):
+        self.cx, self.rbf, self.package = ctx, rbf, package
         self.label = label or os.path.basename(os.path.dirname(os.path.abspath(rbf)))
         self.workers = workers
+
+    def _choose_package(self, nl):
+        """--package auto|F484|F672|F896: auto = pkginfer (refuses to guess: F896 then, with a warning); a given package that disagrees with the inferred one is used and warned about."""
+        import logging
+        from . import pkginfer
+        log = logging.getLogger("cycloneiv_clean_emit")
+        inf = pkginfer.infer(self.cx.pinmap(), self.cx.io_dec, np.fromfile(self.rbf, np.uint8))
+        nl.package_info = {"inferred": inf["package"], "exact": inf["exact"], "reason": inf["reason"], "ground_sites": inf["ground_sites"]}
+        if self.package == "auto":
+            if inf["package"] is None:
+                log.warning("package inference: %s; using F896", inf["reason"])
+            nl.package = inf["package"] or "F896"
+        else:
+            nl.package = self.package
+            if inf["package"] != self.package:
+                log.warning("package %s given but the bitstream is consistent with %s (%s)", self.package, inf["package"], inf["reason"])
+        nl.package_pins = pkginfer.PACKAGES[nl.package]
+        nl.package_info["used"] = nl.package
+        log.info("package used: %s (inferred %s, exact %s)", nl.package, inf["package"], inf["exact"])
+
+    @staticmethod
+    def _const_out(chain, bits, site):
+        """Output pad whose data source selects no LOCAL_INTERCONNECT / BLOCK_INPUT_MUX = constant driver 1 xor MIO_DATA_INVERT[0]
+        (case builds, HIO and VIO, 2 pads each: constant 1 '00', constant 0 '10', data-driven '00')."""
+        from . import plane as PL
+        r, j, k = PL.address_to_plane(np.asarray(chain.cram[site]["MIO_DATA_INVERT"], np.int64))
+        return 1 - int(bits[np.asarray(r) * PL.BITS_PER_FRAME + (np.asarray(j) - 1) * 8 + np.asarray(k)][0])
 
     def run(self):
         cx = self.cx
         T = cx.T
         nl = Netlist(self.label)
+        self._choose_package(nl)
         bits = T.plane_bits(self.rbf)
         fired = cx.ext.apply(bits, cx.st.fire(bits, workers=self.workers))
         edges = np.asarray(fired[T.HEADLINE_VARIANT])
@@ -317,7 +359,7 @@ class Builder:
             self.mac_refs.add((x, y))
             return (f"mac_{x}_{y}_r[{i}]", ("MAC", x, y, i))
         if t in PAD_SOURCES:
-            p = cx.pads.get(("CLK" if t == "CLK_BUFFER" else "IO", x, y, z))      # SUB_LOC = the element's z (S) index
+            p = cx.pads_of(nl.package_pins).get(("CLK" if t == "CLK_BUFFER" else "IO", x, y, z))      # SUB_LOC = the element's z (S) index
             if p is not None:
                 return (f"pad_{p[1]}", ("PAD", p[1]))
             return self._ext(r, t, f"{t} with no package ball")
@@ -485,6 +527,7 @@ class Builder:
         dec = cx.io_dec
         chain = cx.io.chain
         val, _ = cx.io.cff.read(self.rbf)
+        site_ball = {p[0]: p[1] for k, p in cx.pads_of(nl.package_pins).items() if k[0] == "IO"}
         pos = {}
         for site, (name, fn) in chain.site_pad.items():
             m = re.fullmatch(r"X(\d+)Y(\d+)SUB_LOC(\d+)", name)
@@ -504,7 +547,7 @@ class Builder:
                 if d["class"] == "MISSING":
                     nl.und["IO site: pattern matches no decoded class"] += 1
                 continue
-            ball = next((b for b, s in chain.ball_site.items() if s == site), None)
+            ball = site_ball.get(site)
             if ball is None or site not in pos:
                 nl.und["used IO site without package ball"] += 1
                 continue
@@ -523,16 +566,20 @@ class Builder:
                         io["drv"], io["drv_prod"] = self.sig(rec)
                         io["drv_rec"] = rec
                     else:
-                        io["und"].append("output data: BLOCK_INPUT_MUX not programmed")
-                        nl.und["VIO output pad: data mux not programmed / SUB_LOC not mapped"] += 1
+                        io["const"] = self._const_out(chain, bits, site)
+                        nl.counts["VIO output pad: constant driver"] += 1
+                        if io["dir"] != "output":
+                            io["und"].append("tri-state pad with constant data: OE not emitted")
                 else:
                     li = self._hio_li(cx.hio_data, bits, site, x, y)
                     if li >= 0:
                         io["drv"], io["drv_prod"] = self.sig(li)
                         io["drv_rec"] = li
                     else:
-                        io["und"].append("output data: HIO MIO_LABLINE_TO_DATA selects no LOCAL_INTERCONNECT")
-                        nl.und["HIO output pad: data mux selects no LOCAL_INTERCONNECT"] += 1
+                        io["const"] = self._const_out(chain, bits, site)
+                        nl.counts["HIO output pad: constant driver"] += 1
+                        if io["dir"] != "output":
+                            io["und"].append("tri-state pad with constant data: OE not emitted")
             if io["dir"] == "bidir-or-tristate":
                 li = self._hio_li(cx.hio_oe, bits, site, x, y) if site[0] == 5 else -1
                 sub = B.vio_pin(k, "OE") if site[0] == 6 else None
@@ -729,6 +776,7 @@ def verilog(nl, module="cyc4_top"):
     outputs = {io["ball"]: io for io in nl.ios if io["dir"] == "output"}
     others = {io["ball"]: io for io in nl.ios if io["dir"] not in ("input", "output")}
     w(f"// pluribus cycloneiv_clean emit: {nl.label}")
+    w(f"// package ball table: {nl.package} (inferred {nl.package_info.get('inferred')}, exact {nl.package_info.get('exact')})")
     w("// flat structural netlist; `// UNDECODED:` lines mark pieces the decoders do not cover (counts below)")
     w("// FF model (dffeas): async clear, then on clk edge with ena: sclr -> 0, sload -> asdata, else d; power-up 0; controls decoded per FF (ffctl.py)")
     for k, v in sorted(nl.und.items()):
@@ -786,7 +834,9 @@ def verilog(nl, module="cyc4_top"):
         pn = f"pad_{io['ball']}"
         info = " ".join(f"{k}={v}" for k, v in io["fields"].items() if v not in (None, "OFF"))
         w(f"// IO {pn} site {io['x']},{io['y']},{io['k']} dir={io['dir']} {info}" + (" // UNDECODED: " + "; ".join(io["und"]) if io["und"] and io["dir"] == "input" else ""))
-        if io["dir"] == "output" and io["drv"] is not None:
+        if io["dir"] == "output" and io.get("const") is not None:
+            w(f"assign {pn} = 1'b{io['const']};")
+        elif io["dir"] == "output" and io["drv"] is not None:
             w(f"assign {pn} = {io['drv']};")
         elif io["dir"] == "bidir-or-tristate" and io.get("drv") is not None and io.get("oe") is not None:
             w(f"assign {pn} = {io['oe']} ? {io['drv']} : 1'bz;")
@@ -841,4 +891,5 @@ def summary(nl):
     c = nl.counts
     return {"luts": len(nl.luts), "luts_carry_mode": sum(1 for L in nl.luts if L["mode"] == "cin"), "ffs": len(nl.ffs),
             "nets_referenced": len(nl.nets), "io_pads": len(nl.ios), "pll": len(nl.pll), "m9k": len(nl.m9k), "mac": len(nl.mac),
+            "package": nl.package_info,
             "undecoded_sources": len(nl.srcs), "undecoded": dict(nl.und), "counts": dict(c)}

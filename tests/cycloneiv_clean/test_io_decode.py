@@ -101,10 +101,8 @@ def test_cram_fields(table):
 
 def test_double_group_bits(table):
     dg = table["double_groups"]
-    report("io_decode_double_groups", **dg)
-    assert set(dg) == {"4521", "6952"}
-    for v in dg.values():
-        assert v["g1_changed"] == 0 and v["g2_changed"] == v["rows"]      # the value sits in the second cell group
+    report("io_decode_double_groups", n=len(dg))
+    assert dg == {}                  # every bit has one 4-cell group; the old second groups were frame-end check cells (E-R8)
 
 
 def test_open_drain_is_pin_mode_bit(table):

@@ -53,8 +53,7 @@ def test_pair_diffs_consistent(data):
     report("io_pairs_consistency", rows=len(ok), no_build=len(data["rows"]) - len(ok), sof_diff_not_in_rbf_first_group=len(bad),
            replica_bad=sum(r["replica_bad"] for r in ok))
     assert not any(r["replica_bad"] for r in ok)
-    # a sof CFF bit missing from the rbf diff must be a double-group bit (multiplicity 8): its value sits in the second group
-    assert all(any(cff.count[x] == 8 for x in r["cff"]) for r in bad)
+    assert not bad                    # every sof CFF bit of a pair diff is in the rbf diff (single data group per bit)
 
 
 def test_pair_results_recorded(data):

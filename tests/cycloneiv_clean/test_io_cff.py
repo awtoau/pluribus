@@ -75,7 +75,7 @@ def test_cff_table(cff):
     frames = sorted(set(cff.cells[:, 0].tolist()))
     report("io_cff_table", bits=cff.n_bits, multiplicity=dict(mult), frames=[frames[0], frames[-1]], cells=len(cff.cells))
     assert cff.n_bits == want and (cff.count > 0).all()           # every vendor CFF bit seen, none unseen
-    assert set(mult) == {4, 8}
+    assert set(mult) == {4}                                          # check groups (frame-end parity cells) dropped by cycloneiv_clean_cff_tables.data_groups
     assert frames[0] >= 1 and frames[-1] < P.RBF_PRE_FRAMES        # periphery frames only, never a CRAM frame
     assert (cff.primary[..., 1] < P.RBF_FRAME_BYTES).all()
 

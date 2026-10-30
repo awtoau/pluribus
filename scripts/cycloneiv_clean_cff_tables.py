@@ -5,7 +5,7 @@ Method (same as cycloneiv_sof2rbf_tables.py): bit-plane sofs, sof tag bit i = bi
 A periphery cell that flips with every plane/complement pair carries one tag bit; its index is read from the planes.
 Cells that do not flip are template constants.  Cells claimed by two tag bits are counted and reported (no bijection assumed).
 Output: databases/cycloneiv/cff2rbf.npz (local, not committed).  Log: tmp/logs/cycloneiv_clean_cff_tables.log
-usage: python3.15t scripts/cycloneiv_clean_cff_tables.py
+usage: python3.15t scripts/cycloneiv_clean_cff_tables.py [--groups-only]   (groups-only: re-run the data-group step on the existing npz)
 """
 import gzip
 import logging
@@ -27,6 +27,8 @@ WORK = os.path.join(REPO, "tmp", "cff_tables")
 # source: sof tag 21 = 12-byte header + ceil(31,060 / 8) bytes; 31,060 = ASMDB_DIE m_num_cff_bits (asmdb body offset 9)
 # source: sof tag 18 = 40 bytes; asmdb m_num_option_reg_bits = 160 (asmdb body offset 17)
 TAGS = {21: dict(skip=12, nbits=31060, name="cff"), 18: dict(skip=0, nbits=320, name="option")}
+# source: observed in the 60 flip-resolved two-group bits: the check group lies in the last 8 bytes of its frame (bytes 788..795 = frame bytes 796 - 8)
+END_BYTE = P.RBF_FRAME_BYTES - 8
 PERIPHERY_BYTES = P.RBF_HEADER + P.RBF_PRE_FRAMES * P.RBF_FRAME_BYTES
 
 
@@ -87,15 +89,81 @@ def run_tag(tag, src):
     return idx
 
 
+def data_groups(idx, src):
+    """Drop cells that are not storage of their tag bit (#168).  A tag bit with two cell groups (64 bits) has one data group and one
+    frame-end check group whose plane-derived index collided with the bit's index; the data group is the one that changes when that tag bit
+    alone is flipped in a real sof (check groups sit in other frames and respond to other bits).  Returns idx with the check cells set to -1."""
+    idx = idx.copy()
+    d0 = bytearray(gzip.decompress(open(src, "rb").read()))
+    off, _ln = sections(d0)[21]
+    base = os.path.join(WORK, "g_base")
+    os.makedirs(WORK, exist_ok=True)
+
+    def rbf_of(d, name):
+        d = bytearray(d)
+        d[-2:] = struct.pack("<H", S.sof_crc(bytes(d[:-2])))
+        with open(base + ".sof", "wb") as f:
+            f.write(gzip.compress(bytes(d), 1))
+        S.to_rbf(base + ".sof", base + ".rbf")
+        out = periphery_bits(base + ".rbf").astype(np.int8)
+        os.remove(base + ".sof")
+        os.remove(base + ".rbf")
+        return out
+    ref = rbf_of(d0, "ref")
+    multi = [b for b in np.unique(idx[idx >= 0]) if (idx == b).sum() > 4]
+    for b in multi:
+        d = bytearray(d0)
+        d[off + 12 + b // 8] ^= 1 << (b % 8)
+        changed = rbf_of(d, "flip") != ref
+        cells = np.argwhere(idx == b)
+        keep = [bool(changed[tuple(c)]) for c in cells]
+        # a group is data when all of its 4 cells changed (groups = consecutive runs of 4 in argwhere order)
+        for g in range(0, len(cells), 4):
+            if not all(keep[g:g + 4]):
+                for c in cells[g:g + 4]:
+                    idx[tuple(c)] = -1
+    # both groups responded (flip also moved the check group): the check group responds to another bit stored in the OTHER group's frame
+    for b in [b for b in multi if (idx == b).sum() > 4]:
+        cells = np.argwhere(idx == b)
+        groups = [cells[:4], cells[4:]]
+        verdict = []
+        for g in (0, 1):
+            other_frame = int(groups[1 - g][0][0])
+            j = next(int(x) for x in np.unique(idx[other_frame][idx[other_frame] >= 0]) if x != b and (idx == x).sum() == 4)
+            d = bytearray(d0)
+            d[off + 12 + j // 8] ^= 1 << (j % 8)
+            verdict.append(bool(rbf_of(d, "flip")[tuple(groups[g][0])] != ref[tuple(groups[g][0])]))      # True: group g moved with an unrelated bit -> check group
+        if verdict.count(True) == 1:
+            for c in groups[verdict.index(True)]:
+                idx[tuple(c)] = -1
+    # still two groups (flip test inconclusive): same structure as the 60 flip-resolved cases (data group < byte END, check group in the last 8 bytes)
+    for b in [b for b in multi if (idx == b).sum() > 4]:
+        cells = np.argwhere(idx == b)
+        ends = [bool((cells[g:g + 4][:, 1] >= END_BYTE).all()) for g in (0, 4)]
+        if ends.count(True) == 1:
+            for c in cells[(4 if ends[1] else 0):(8 if ends[1] else 4)]:
+                idx[tuple(c)] = -1
+    log.info("check groups dropped for %d multi-group bits; cells left per bit: %s", len(multi), sorted({int((idx == b).sum()) for b in multi}))
+    return idx
+
+
 def main():
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(message)s", handlers=[
         logging.StreamHandler(), logging.FileHandler(os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_cff_tables.log"), mode="w")])
     src = S.programmer_sof(SRC)
     os.makedirs(WORK, exist_ok=True)
+    if "--groups-only" in sys.argv:
+        z = dict(np.load(os.path.join(REPO, "databases", "cycloneiv", "cff2rbf.npz")))
+        z["cff"] = data_groups(z["cff"], src).astype(np.int32)
+        np.savez(os.path.join(REPO, "databases", "cycloneiv", "cff2rbf.npz"), **z)
+        shutil.rmtree(WORK, ignore_errors=True)
+        return
     out = {}
     for tag, spec in TAGS.items():
         idx = run_tag(tag, src)
+        if tag == 21:
+            idx = data_groups(idx, src)
         cells = int((idx >= 0).sum())
         uniq = len(np.unique(idx[idx >= 0]))
         log.info("tag %d (%s): %d bits, %d periphery cells carry a tag bit, %d distinct bits seen, %d bits unseen",

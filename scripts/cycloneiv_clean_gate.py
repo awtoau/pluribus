@@ -560,7 +560,8 @@ def regression(args, tot):
 
 # dji tier: figure -> True when a rise is worse
 DJI_FIGURES = {"crc_frames_failed": True, "header_crc_bad": True, "fanin_conflict_nodes": True, "undriven_used_nodes": True, "loops_scc_gt1": True,
-               "self_loop_edges": True, "ff_no_clock_line_MISSING": True, "io_sites_MISSING": True, "tier_A_pct": False, "explained_ABC_pct": False}
+               "self_loop_edges": True, "ff_no_clock_line_MISSING": True, "io_sites_MISSING": True, "tier_A_pct": False, "explained_ABC_pct": False,
+               "package_ground_bonded": True, "package_unbonded_not_ground": True, "package_exact": False}
 
 
 def run_dji(args):
@@ -581,6 +582,14 @@ def run_dji(args):
            "explained_ABC_pct": sb["explained_ABC"],
            "decoded_luts_nonzero_init": lg["luts_nonzero_init"], "decoded_ffs_claimed": lg["les_ff_claimed"], "routing_programmed_edges": r["variants"][r["headline_variant"]]["programmed_edges"],
            "io_classes": res["io"]["fields"]["classes"], "tier_cells": sb["tier"]}
+    import cycloneiv_decompress as cd
+    import numpy as np
+    from lifters.cycloneiv_clean import pkginfer
+    pk = pkginfer.infer_bytes(np.frombuffer(bytes(cd.decompress(open(image, "rb").read(), {})), np.uint8))
+    best = pk["per_package"].get(pk["package"]) if pk["package"] else min(pk["per_package"].values(), key=lambda c: c["ground_bonded"] + c["unbonded_not_ground"] + c["used_unbonded"])
+    fig.update({"package_inferred": pk["package"], "package_exact": int(pk["exact"]), "package_ground_sites": pk["ground_sites"],
+                "package_unbonded": best["unbonded"], "package_ground_unbonded": best["ground_unbonded"], "package_ground_bonded": best["ground_bonded"],
+                "package_unbonded_not_ground": best["unbonded_not_ground"], "package_used_unbonded": best["used_unbonded"]})
     log.info("dji figures %s", json.dumps(fig))
     prev = last_run("dji", "primary", "dji")
     bad = []

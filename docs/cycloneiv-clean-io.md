@@ -438,17 +438,37 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 
 - Confidence: high for F672 versus F484 / F896 (the ground-state set equals the F672 unbonded set exactly: 80 + 2 = 82). The speed grade and temperature grade are not encoded. The inference rests on the build rule above (20 builds, 0 exceptions); the assembler code that picks the state for an unbonded pad is not located.
 
-### MISSING IO sites (13: 12 pads + the pad-less VIO site) vs the experiments
+### MISSING IO sites: resolved (CFF check groups, E-R8, K-006)
 
-- The 12 pads (pin-file function): N21 R16n, H25 R6n, AE10 B3p (DATA7), AJ6 B12n, AD16 B40p, AE19 B46n, AG18 B47p, AG19 B48n, AG20 B52p, Y19 B54p, A23 T51p, G14 T33p. All DIFFIO pads; none is VREF, DQS, DPCLK or RUP/RDN. Banks: B6 2, B3 2, B4 6, B7 1, B8 1. The bank-4 clustering is real (6 of 12) but follows frame placement, below.
-- The deviation reproduces in all 20 builds with no design dependence: a fixed extra bit in `MIO_SET_PULLUP_STRENGTH` / `_PULLDOWN_STRENGTH` (11 sites), `MIO_SELECT_IOST_DIRT` bit 3 (B12n; the bit is shared with the neighbour site (6, 30)), `MIO_PIN_MODE` = 1 (AE10 = DATA7, a dual-purpose configuration pad). In the ground state the extra bit is cleared instead of set (XOR with the state vector), seen at AD16 and G14 in unbonded builds.
-- Frame position: the 11 strength-bit deviations all sit in the last 8 bytes (788..795) of their periphery frame. Strength bits in that region: 73 of 7,752, spread over 43 of 456 sites; the 11 deviating sites are among those 43, the other 413 sites show none. Lead: cell mapping of the last two replica groups of each periphery frame (`cycloneiv_io.Cff` primary-replica read), not an electrical property of the pad. Not resolved.
-- Image: 5 of its 6 MISSING sites equal the build deviation (same bit, same state); site (6, 206) (T51p) carries the extra bit at another index (pull-up bit 7 in the image, bit 4 in all builds): the "constant per site" claim fails for this site, so the frame-end lead (above) stays a lead.
-- The manual review row A7 stays open: no VREF mechanism, and the pin file gives no function type that separates the 12 pads.
+- Cause: 64 CFF tag bits had two 4-cell rbf groups in `cff2rbf.npz`; the first group was read as the value. For 61 of them the first group lies in bytes 788..795 of a frame and is a check cell of cpf, not storage of the bit (plane-derived index collided with the bit's index).
+- Evidence (hints from kept data, then confirmed on the vendor tool):
+  - `io_decode.json` `double_groups` (pair builds): first group changed 0 times, second group every time (2 bits).
+  - Strength-bit deviations of the 11 MISSING strength sites all sit in bytes 788..795 (73 of 7,752 strength bits, 43 of 456 sites; 11 of the 43 deviated).
+  - Flip of one tag bit alone in a real sof (quartus_cpf): the second (data) group changes; the first group does not; a check group in a later frame changes instead (59 of 64). The remaining 3 resolved by the end-of-frame position, same as the 60 resolved cases (data group below byte 788, check group in the last 8 bytes).
+  - Parity: in 80 builds the end-of-frame groups equal the lane parity of bytes 0..787 in 100 of 169 (frame, lane) groups (hint only; the check coverage is not decoded).
+- Fix: `scripts/cycloneiv_clean_cff_tables.py data_groups` (also `--groups-only` on an existing table); Cff has one 4-cell group per bit (31,060 / 31,060).
+- Result: MISSING IO sites 13 -> 0 in all 20 package builds and 6 -> 0 in the image (site (6,206) index difference, AE10 DATA7 PIN_MODE=1, the B12n IOST bit and the 2 MISSING unbonded F672 pads were all check cells). Pins gate fast tier 4,660 / 4,660 matched (0 missing, 0 extra, 0 wrong).
+- The earlier "VREF-pad overlap", "bank 4 / consecutive DIFFIO" and "foreign IOST bit = IOST bit of the VREF pad" explanations are not needed for these sites. The 92 foreign standard bits of the cross-check section were computed with the old table and are to be re-derived (`io_decode.write()` was re-run; the cross-check numbers in that section are the old ones).
 
 ### Dual-purpose configuration pads (pin file `Configuration Function`, `minpu` F896 build)
 
 - Fixed pattern independent of the design: AE7 nCEO, A3 DATA0, G9 DATA1 / ASDO, B4 nCSO (the 4 device-fixed IO pads; the fifth fixed site is the pad-less VIO site).
 - Ordinary unused sites (weak pull-up): AE8 INIT_DONE, AD6 CRC_ERROR, AE4 / AE5 DATA5 / DATA6, AF28 DEV_OE, AF27 DEV_CLRn, C2 DATA4, D1 DATA3, H9 DATA2, A4 CLKUSR.
-- AE10 DATA7 is the exception: `MIO_PIN_MODE` 1 in every build (MISSING class); not explained by the pin file. In the image this site is not MISSING.
-- Not tested: the "HIO output pads" and "VIO output 1" remain as in the open list above; the experiments did not build them.
+- AE10 DATA7: the earlier `MIO_PIN_MODE` 1 was a check cell; with the data groups it is an ordinary unused site.
+
+
+### Package inference and emit (2026-10-30, #172; `pkginfer.py`, `emit.py --package`, ledger K-007)
+
+- `pkginfer.infer`: package P is consistent iff no ground-state IO site is bonded in P, no used site is unbonded in P and every unbonded IO pad of P is ground-state; exactly one consistent package is returned, zero or several -> None (refuses to guess; emit then uses F896 with a warning).
+- Tests (`test_pkginfer.py`): 20 / 20 package builds inferred correctly; image F672, exact (82 ground sites = 82 unbonded F672 pads; with the data groups no MISSING site is left, 80 of the 82 were never in doubt, the other 2 are now strict ground).
+- `scripts/cycloneiv_clean_emit.py --package auto|F484|F672|F896` (default auto): the ball table of the chosen package is used for the pad table and used-site balls; the package used is logged, written to the Verilog header and to the summary (`package`); a given package that disagrees with the inferred one is used and warned about.
+- Image emit with F672 (local output): 85 IO pads, used IO sites without package ball 0; with F896 the same netlist carries 69 of 85 different ball names (16 coincide), so the earlier F896-named image Verilog was wrong.
+- Pins on the three package builds (`emit_check`, ball oracle `build.pin`): io_dir 147 matched, io_data 100 %.
+- Dji gate figures added: `package_inferred`, `package_exact`, `package_ground_bonded`, `package_unbonded_not_ground` (regression = rise), `package_unbonded` / `package_ground_unbonded`; image: F672, exact 1, 82 / 82 unbonded covered, 0 bonded ground sites.
+
+### Constant output pads (HIO 5, VIO 1 of the image; `scripts/cycloneiv_hio_cases.py`, 17 builds in `tmp/hiocases`)
+
+- The 6 outputs the emit left undecoded are constant drivers: bank-5 / bank-3 DIFFIO pads whose data mux selects no LOCAL_INTERCONNECT / BLOCK_INPUT_MUX.
+- Case builds (EP4CGX150DF27I7, output on AA23 / AA24 and VIO AB8, drivers register, comb, feed-through, register chain, 1'b1, 1'b0): constant drivers reproduce "selects no LI" (4 of 4 HIO, 2 of 2 VIO); data-driven outputs never do. `MIO_DATA_INVERT`: constant 1 `00`, constant 0 `10`, data-driven `00`. Rule: constant = 1 xor `MIO_DATA_INVERT[0]` (emit `_const_out`).
+- Image: 5 HIO + 1 VIO constant outputs decoded; HIO / VIO undecoded output pads 5 + 1 -> 0. The differential-site question (6 sites) was the MISSING artefact above; the 6 pads are bank-5 single-ended outputs, 5 of them with the p/n partner an input.
+- Not decoded: which constant a pad carries when OE is registered (tri-state pads get an UNDECODED note).

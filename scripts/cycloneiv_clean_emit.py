@@ -28,6 +28,7 @@ def main():
     ap.add_argument("--image", action="store_true", help="input is a compressed image (cycloneiv_decompress)")
     ap.add_argument("--summary")
     ap.add_argument("--label")
+    ap.add_argument("--package", default="auto", choices=["auto", "F484", "F672", "F896"], help="ball table: auto = inferred from the bitstream (pkginfer)")
     a = ap.parse_args()
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=[logging.StreamHandler(), logging.FileHandler(LOG)])
@@ -45,7 +46,7 @@ def main():
         with heavy_guard.lease(gb, "cyc4_clean_emit", log):
             cx = emit.Ctx()
             log.info("context %.1fs", time.time() - t0)
-            nl = emit.Builder(cx, rbf, a.label or ("image" if a.image else None)).run()
+            nl = emit.Builder(cx, rbf, a.label or ("image" if a.image else None), package=a.package).run()
             text = emit.verilog(nl)
             open(a.out, "w").write(text)
     finally:
