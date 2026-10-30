@@ -154,7 +154,7 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
 - Which stingray is which (`device.db`, SQLite, names base64): STINGRAY1 = EP4CGX15, STINGRAY2 = GX30 (V1 = GX22), STINGRAY3 = GX75 (V1 GX50, V2 GX30A), STINGRAY4 = EP4CGX150 (149,760 LEs), STINGRAY4_V1 = EP4CGX110 (109,424 LEs). Same ddb files (`ddb_stingray4_*`) serve both.
 - Header bit meaning (settled): the option lanes of `quartus_cpf` .rbf output for 6 of our builds (`cycloneiv_header_probe.py`):
   - lane 1 = `f8 00 20 0d ff` on every EP4CGX150 build (DF31C7, CF23C8, DF27I7); bit 23 = die variant (other variant: #173).
-  - lane 0 = `00 73|74 xx yy ff`: byte 2..3 change per build (usercode / checksum); byte 1 = 0x74 on the F484 (CF23) builds and 0x73 on the F672 / F896 builds, so it follows package.
+  - lane 0 = `00 xx yy zz ff`: bits 8..31 = JTAG USERCODE, a byte-sum checksum of the bitfield (`PGMIO_BITFIELD::compute_checksum` @0x3b6240), equal to sof tag 19; content-dependent, not a package field (E-R7).
   - lanes 2..3 identical across all six builds.
   - A third-party compressed image has lane 1 = `c0 00 20 0d ff` (first byte differs: option bits; bytes 1..3 = `00 20 0d` as on GX150), so it is the EP4CGX150 variant (full die).
 - stingray4 hdr.ddb payload (107 KB): chip description database (device name "EP4CGX150", family, node-type names such as LE_BUFFER, LAB_LINE, C16, GLOBAL_CLK_H; file names `stingray4.ww19.asm.rba`, `stingray4_dirt.xml`). It carries `frame_bits` (u32 0x18c8 = 6344 for stingray4, at body offset 0x54) and no other .rbf header field.

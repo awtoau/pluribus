@@ -396,3 +396,59 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 - Remaining 346 missing = site class `MISSING` at 13 IO sites (constant per-site foreign bit in a strength / IOST / clamp group; 151 of them were counted matched by the old default-pattern key-group test, which ignored the strength groups). Open: VREF-pad overlap.
 - Perfect designs (missing = extra = wrong = 0): pins 3,306 / 3,589; all five categories 2,835 / 3,589 (`scripts/cycloneiv_clean_gate_perfect.py`).
 - Gate tiers (`--tier`): fast = `reference/gate_fast.tsv` (100 designs, ~50 s), full = `reference/corpus_keep.tsv`, dji = image row (env `PLURIBUS_DJI_IMAGE`, figures only), extensive = not built. Regression = any fault column above the last run of the same tier (exit 4).
+
+## Package: what the bitstream encodes (2026-10-30, #168, #172; code `pinfile.py`, `scripts/cycloneiv_pkgtest*.py`, `cycloneiv_clean_pin_xcheck.py`, `cycloneiv_clean_image_pkg.py`; tests `test_pinfile.py`; ledger K-001..K-005, errata E-R7)
+
+### Answer
+
+- No header lane, option bit or sof option byte encodes the package or the speed grade. Only effects: (1) pads with no ball in the package get a distinct IO state, (2) USERCODE (a content checksum) moves with the contents, (3) the sof (not the rbf) carries the part name string.
+- Third-party image: consistent with F672 (DF27) only (section below).
+
+### Experiment (`tmp/pkgtest`, local; 20 builds, EP4CGX150 CF23C8/C7/I7, DF27C7/I7, DF31C7/I7; designs `loc` = 16-bit adder with PIN_ locations of the same pin-file rows (ball per package), `free` = same RTL fitter-placed, `min` = 1 in / 1 out, `minpu` = `min` with the default weak pull-up option)
+
+- Header frame: lane 0 bits 8..31 differ (USERCODE); lanes 1..7 identical in 20 / 20 builds. Lane 0 byte 1 takes 0x71..0x74 inside one package and speed grade, so E-R7: it is a checksum, not a package field. Code: `PGMIO_BITFIELD::set_auto_usercode`@0x3b6540 -> `compute_checksum`@0x3b6240 (libpgm_pgmio) sums masked bytes of the bitfield and the CFF bytes; no pin-count input. rbf lane 0 equals sof tag 19 (checked on 2 sofs).
+- sof (re-run `quartus_asm` on copies): tag 2 = part name string (`...CF23...` vs `...DF31...`), tag 36 = SLD project XML with the device name, tag 19 = USERCODE; tag 18 (option register, 40 bytes) identical across packages. None of tags 2 / 36 is in the rbf.
+- Speed grade (C7/C8/I7, same package): CFF bits identical (0 differ); CRAM differs only as placement/routing noise (44..108 frames). No option or CFF bit encodes the speed grade.
+- Package-dependent CFF bits (constant within each package over all 20 builds, different between packages): 3,604 bits, all in the IO strength groups (`MIO_SET_PULLUP_STRENGTH` / `_PULLDOWN_STRENGTH`, blocks 5 and 6) = the unbonded-pad state. Package-consistent differences outside the IO sites: single bits in GX_RX_* / GX_ICDR_* / GX_HIP / PLL_* groups (<= 8 bits between packages); not decoded, meaning open (`scripts/cycloneiv_pkgtest_consistent.py`).
+- Package-consistent CRAM differences are `MIO_DATA_INVERT` / `MIO_OE_INVERT` of the unbonded sites (F484 vs F672 465 cells = 155 sites x 3 cells; the rest are unattributed CRAM cells (routing noise floor 40..310 bytes between builds of one package)).
+
+### Unbonded pads (no ball in the package)
+
+| Package | IO pads without a ball (Row + Column I/O) | dedicated clock pads without ball | transceiver pads without ball |
+|---|---|---|---|
+| F896 | 0 | 0 | 0 |
+| F672 | 82 (59 + 23) | 0 | 0 |
+| F484 | 201 (150 + 51) | 4 | 16 |
+
+- Every IO pad without a ball is written as the "output driving ground = unspecified" unused state: strengths all ones (pull-down 9 / pull-up 8 bits), pull-up 0, CRAM `MIO_DATA_INVERT` 11, `MIO_OE_INVERT` 0. Bonded unused pads: tri-state / weak pull-up (QSF option) with DATA_INVERT 00, OE_INVERT 1. The option set in the QSF does not change the unbonded state.
+- Counts: F484 builds 198 pads in that state + 3 MISSING-class sites (the ground vector with the site's extra bit, below) = 201 / 201; F672 builds 80 or 81 + 1..2 MISSING-class = 82 / 82. 0 bonded pads in the ground state in any build.
+- Dedicated clock pads (blocks 60 / 61) with no ball keep the ordinary unused state: they cannot discriminate packages.
+- The ground and the "driving ground" user option are CFF-identical; the unbonded state differs from a user-chosen ground only if the CRAM pair differs: not tested (user ground builds: `scripts/cycloneiv_clean_io_unused.py`, CRAM not compared).
+
+### Image
+
+- Image: 475 pads with a site: used 87 (incl. 3 clock), unused weak pull-up 282, ground / unspecified 80, clock-pad unused 17, fixed 3, MISSING 6.
+- Per package (bonded set from the pkg ddb):
+
+| Package | ground-state sites that are bonded | unbonded pads not in ground state: used / MISSING / other | verdict |
+|---|---|---|---|
+| F484 | 18 | 27 used, 5 MISSING, 107 weak pull-up, 4 clock pads | excluded |
+| F672 | 0 | 0 used, 2 MISSING (ground vector with one cleared bit), 0 other | all 82 unbonded pads accounted for |
+| F896 | 80 (no unbonded pads exist) | - | excluded |
+
+- Confidence: high for F672 versus F484 / F896 (the ground-state set equals the F672 unbonded set exactly: 80 + 2 = 82). The speed grade and temperature grade are not encoded. The inference rests on the build rule above (20 builds, 0 exceptions); the assembler code that picks the state for an unbonded pad is not located.
+
+### MISSING IO sites (13: 12 pads + the pad-less VIO site) vs the experiments
+
+- The 12 pads (pin-file function): N21 R16n, H25 R6n, AE10 B3p (DATA7), AJ6 B12n, AD16 B40p, AE19 B46n, AG18 B47p, AG19 B48n, AG20 B52p, Y19 B54p, A23 T51p, G14 T33p. All DIFFIO pads; none is VREF, DQS, DPCLK or RUP/RDN. Banks: B6 2, B3 2, B4 6, B7 1, B8 1. The bank-4 clustering is real (6 of 12) but follows frame placement, below.
+- The deviation reproduces in all 20 builds with no design dependence: a fixed extra bit in `MIO_SET_PULLUP_STRENGTH` / `_PULLDOWN_STRENGTH` (11 sites), `MIO_SELECT_IOST_DIRT` bit 3 (B12n; the bit is shared with the neighbour site (6, 30)), `MIO_PIN_MODE` = 1 (AE10 = DATA7, a dual-purpose configuration pad). In the ground state the extra bit is cleared instead of set (XOR with the state vector), seen at AD16 and G14 in unbonded builds.
+- Frame position: the 11 strength-bit deviations all sit in the last 8 bytes (788..795) of their periphery frame. Strength bits in that region: 73 of 7,752, spread over 43 of 456 sites; the 11 deviating sites are among those 43, the other 413 sites show none. Lead: cell mapping of the last two replica groups of each periphery frame (`cycloneiv_io.Cff` primary-replica read), not an electrical property of the pad. Not resolved.
+- Image: 5 of its 6 MISSING sites equal the build deviation (same bit, same state); site (6, 206) (T51p) carries the extra bit at another index (pull-up bit 7 in the image, bit 4 in all builds): the "constant per site" claim fails for this site, so the frame-end lead (above) stays a lead.
+- The manual review row A7 stays open: no VREF mechanism, and the pin file gives no function type that separates the 12 pads.
+
+### Dual-purpose configuration pads (pin file `Configuration Function`, `minpu` F896 build)
+
+- Fixed pattern independent of the design: AE7 nCEO, A3 DATA0, G9 DATA1 / ASDO, B4 nCSO (the 4 device-fixed IO pads; the fifth fixed site is the pad-less VIO site).
+- Ordinary unused sites (weak pull-up): AE8 INIT_DONE, AD6 CRC_ERROR, AE4 / AE5 DATA5 / DATA6, AF28 DEV_OE, AF27 DEV_CLRn, C2 DATA4, D1 DATA3, H9 DATA2, A4 CLKUSR.
+- AE10 DATA7 is the exception: `MIO_PIN_MODE` 1 in every build (MISSING class); not explained by the pin file. In the image this site is not MISSING.
+- Not tested: the "HIO output pads" and "VIO output 1" remain as in the open list above; the experiments did not build them.
