@@ -80,3 +80,10 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 | MAC instances with any set control bit | 87 of 360; mode decode = MISSING (542 M9K tiles carry output edges, 0 MAC edges) |
 
 - Port width of an image M9K is not in the config bits (set by wired ports), so content is mapped to mem_init order only; logical (word, bit) needs the width from routing.
+
+## Code-derived M9K writer rules (libcomp_asmram, #169)
+
+- Select rule: `ASMDB_SIMPLE_MUX::select@0x8c4ac`: mux_select(value) writes every mux bit, bit i = (i == value) (one-hot). Physical cell = NOT written bit for the groups checked (die-flag inversion not yet traced in code).
+- Writers decompiled (function@vaddr, table `m9k.WRITERS`): `ASM_RAM_USAGE_MODE@0x1efc6`, `_B@0x1f106`, `ASM_RAM_REG_DATA_OUT@0x7de60`, `ASM_RAM_NEW_DATA_MODE@0x1f6fe`, `ASM_RAM_IS_ROM_ONLY@0x1fa72`, `ASM_RAM_WRITE_OPTION@0x1fd68`, `ASM_RAM_MS_DATA_INPUT@0x6663e` (port input mux value = RE line index of the port source).
+- Check (`score_m9k_code_rules`): REG_DATA_OUT and NEW_DATA_MODE expected from the build parameter via the rule, 51 builds, 102 matched / 0 missing / 0 extra / 0 wrong.
+- Not yet code-derived (still pair-derived, missing as code): port-input mux value tables (flags word fields come from `ASM_RAM_MODEL_YGR_MEAB`), byte enables, clock / clear / CE selects, packed mode; MAC (`ASM_MAC_*::process_end_of_phase`, `ASM_MAC_MODEL::process_atom_mac_mult@0x5e232`, `_mac_out@0x5e42e`) and PLL leftovers (libcomp_asmpll) are decompiled-to-do.

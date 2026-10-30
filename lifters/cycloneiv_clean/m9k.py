@@ -83,3 +83,17 @@ def read_words(bitvals, width):
     w = np.repeat(np.arange(depth(width)), width)
     b = np.tile(np.arange(width), depth(width))
     return bitvals[pos_of_index(index(width, w, b))].reshape(depth(width), width)
+
+
+# source: ASMDB_SIMPLE_MUX::select libdb_asmdb@0x8c4ac (static decompile): mux_select(value) writes every mux bit, bit i = (i == value), one-hot
+SELECT_RULE = "one-hot"
+# source: ASM_RAM_*::process_end_of_phase libcomp_asmram (static decompile, function@vaddr): value written per EAB by each writer
+WRITERS = {
+    "RAM_USAGE_MODE": ("ASM_RAM_USAGE_MODE::process_end_of_phase@0x1efc6", "port A flags: bit1 -> 0; else bit4 -> 1; else (flags & 0x40000008) or bit31 -> 2"),
+    "RAM_USAGE_MODE_B": ("ASM_RAM_USAGE_MODE_B::process_end_of_phase@0x1f106", "same rule on port B flags"),
+    "RAM_REG_DATA_OUT": ("ASM_RAM_REG_DATA_OUT::process_end_of_phase@0x7de60", "(port A flags >> 9) & 1"),
+    "RAM_NEW_DATA_MODE": ("ASM_RAM_NEW_DATA_MODE::process_end_of_phase@0x1f6fe", "1 iff (flags2 & 0x6000) and ((flags & 0x40000010) or (flags1 & 1))"),
+    "RAM_IS_ROM_ONLY": ("ASM_RAM_IS_ROM_ONLY::process_end_of_phase@0x1fa72", "1 iff both ports are intrinsic ROM"),
+    "RAM_DATA_WRITE_MODE": ("ASM_RAM_WRITE_OPTION::process_end_of_phase@0x1fd68", "flags2: 0x20000 branch; 0x8000 -> 3, 0x10000 -> 2, else 1; 0x40000 -> 2 (family 0x34 only)"),
+    "RAM_MS_DATA_INPUT": ("ASM_RAM_MS_DATA_INPUT::process_end_of_phase@0x6663e", "value = RE line index of the port source, + PIA lines per EAB (+ extra lines) by RE type"),
+}

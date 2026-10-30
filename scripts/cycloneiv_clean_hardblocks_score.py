@@ -219,6 +219,40 @@ def score_m9k_ctl():
     return rows, tot
 
 
+def score_m9k_code_rules():
+    """Code-derived writer rules (m9k.WRITERS) vs gxm9k_w_* WYSIWYG builds: expected value from the top.v parameter, one-hot select,
+    physical bit = NOT(written bit) (observed polarity; the die-flag inversion is not yet traced in code)."""
+    from lifters.cycloneiv_clean import m9k
+    ctx = _ctl_ctx()
+    rows, tot = [], dict(matched=0, missing=0, extra=0, wrong=0)
+    for n in sorted(os.listdir(CORPUS)):
+        if not n.startswith("gxm9k_w_") or not os.path.exists(os.path.join(CORPUS, n, "bitstream.rbf")):
+            continue
+        t = open(os.path.join(CORPUS, n, "design.toml")).read()
+        mm = re.search(r"M9K_X(\d+)_Y(\d+)_N0", t)
+        v = open(os.path.join(CORPUS, n, "src", "top.v")).read()
+        inst = m9k.instance(int(mm[1]), int(mm[2]))
+        imap = _inst_map(ctx, 39, inst)
+        cells = {}
+        for c, (nm, gi, pi, bp) in imap.items():
+            if nm in ("RAM_REG_DATA_OUT", "RAM_NEW_DATA_MODE") and bp == 0:
+                cells[nm] = c
+        have = set(_plane_set(n).tolist())
+        want = {"RAM_REG_DATA_OUT": 1 if "port_a_data_out_clock" in v else 0,
+                "RAM_NEW_DATA_MODE": 1 if re.search(r'port_a_read_during_write_mode\("old_data"\)', v) else 0}
+        r = dict(matched=0, missing=0, extra=0, wrong=0)
+        for nm, val in want.items():
+            if nm not in cells:
+                r["missing"] += 1
+                continue
+            phys = int(cells[nm] in have)
+            r["matched" if phys == 1 - val else "wrong"] += 1
+        rows.append(dict(build=n, **r))
+        for k in tot:
+            tot[k] += r[k]
+    return rows, tot
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
@@ -235,6 +269,10 @@ def main():
         log.info("M9K content %d specimens %s", len(rows), json.dumps(tot))
         for r in rows[:12]:
             log.info("  %s", json.dumps(r))
+    if which in ("m9kcode", "all"):
+        rows, tot = score_m9k_code_rules()
+        res["m9k_code_rules"] = dict(rows=rows, total=tot)
+        log.info("M9K code-derived writer rules %d builds %s", len(rows), json.dumps(tot))
     if which in ("mac", "all"):
         rows, tot = score_mac()
         res["mac"] = dict(rows=rows, total=tot)
