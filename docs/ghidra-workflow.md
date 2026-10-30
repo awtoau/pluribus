@@ -82,4 +82,5 @@ One step for a new agent: `python3 scripts/ghidra_apply_names.py readable` (clas
 - `emulate <lib> <0xVADDR> <maxSteps> <arg|A..B> ...`: P-code sweep of a pure table function (RDI, RSI, RDX, RCX, R8, R9) -> `readable/emulate_<lib>_<vaddr>.tsv` (arg..., rax, status). A call out of the function body stops the run (`fault:call`): only leaf functions work.
 - `export-gdt <lib>`: `/pluribus` enums + structs + vtbl structs as `readable/pluribus_<lib>.gdt` for the GUI (File > Open File Archive).
 - Index of what exists: [ghidra-readable-index.md](ghidra-readable-index.md) (`python3 scripts/ghidra_readable_index.py`).
-- `silent_set_bits` / `set_bits` in libcomp_asmcc exist twice with identical logic: ELF symbols vaddr 0x1a240 / 0x1aca0 and project copies vaddr 0x17e50 / 0x18000 (Ghidra 0x117e50 / 0x118000). Cite as "vaddr 0x1a240 (ELF symbol)" and name the twin.
+- `silent_set_bits` / `set_bits` in libcomp_asmcc: one function each, ELF vaddr 0x1a240 / 0x1aca0. 0x17e50 / 0x18000 (Ghidra 0x117e50 / 0x118000) are their PLT stubs, not twins (errata E-U1). Cite the ELF vaddr only.
+- Verify every `name@vaddr` with `nm -C <lib>.so` before tagging; a Ghidra-form value (+0x100000) can resolve to an unrelated symbol (errata E-U4). Mined candidates and their verification: `reference/ghidra/mined.tsv`.

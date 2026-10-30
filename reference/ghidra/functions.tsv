@@ -95,3 +95,96 @@ libcomp_asmio	63960	ASMIO_MIO_SET_SLEW_RATE::process_atom		#168, docs/cycloneiv-
 libdb_asmdb	8c334	ASMDB_HETEROGENEOUS_ENCODED_MUX::select		#165, lifters/cycloneiv_clean/asmdb_select.py	value = ASMDB_MUX::get_bit_value(m_map_mux, value), then ASMDB_ENCODED_MUX::select; class 20 of the asmdb ddb (9,750 muxes); used by every HIO MIO_LABLINE_TO_* group.
 libdb_asmdb	868e8	ASMDB_MUX::get_bit_value		#165, lifters/cycloneiv_clean/asmdb_select.py	m_mux_bits[index]; index >= size is an internal error.
 libcomp_asmio	4d874	ASMIO_MIO_LABLINE_TO_DATA::process_atom		#165, lifters/cycloneiv_clean/io_line.py	Pad data pin: value passed to ASM_ARCH_GROUP::mux_select(group, io index, value) is ASM_RE_PROXY::get_index of the first useful RE source (LOCAL_INTERCONNECT index of the pad tile for 0..37).
+libcomp_asm	15e138	ASM_LAB_CLOCK_FAST_MUX::process_end_of_phase		mined a2d52f0c #165	LAB clock fast mux writer: gi k first level = LAB_CONTROL_MUX 0..3 and BLK_CLK_BUF line 4..9 (ledger F-002)
+libcomp_asm	15f628	ASM_LAB_ENABLE_CE::process_atom		mined a2d52f0c #165	LAB_ENABLE_CE group: gi k = 1 iff clock-enable k is used (ledger F-004)
+libcomp_asm	158d76	ASM_LAB_INVERT::process_end_of_phase		mined a2d52f0c #165	LAB_INVERT group i <- look_up_signal_polarity(signal i) (ledger F-012)
+libcomp_asm	1563ae	ASM_SINGLE_LAB_MODEL_BASE::look_up_signal_polarity		mined a2d52f0c #165	Signal polarity: xor for source classes in mask 0x1f80 (ledger F-013). Class is ASM_SINGLE_LAB_MODEL_BASE, not ASM_LAB_MODEL_BASE (errata E-U2)
+libcomp_asm	161508	ASM_SINGLE_LAB_MODEL_BASE::ASM_SINGLE_LAB_MODEL_BASE		mined a8fcefe4 #165	LAB model base ctor; family jump table 0x3cd61c indexed by base_family-6, {0xe,0x30} share a handler (ledger F-016)
+libcomp_asm	165038	ASM_LAB_MODEL_CUDA::ASM_LAB_MODEL_CUDA		mined a2d52f0c #165	CUDA LAB model ctor (model IV GX uses): 9 VIRTUAL_LAB_LINE entries at 0x3cd760, masks clk ce clk ce sload sclr aclr aclr sload2 (ledger F-012)
+libcomp_asm	166e26	ASM_LAB_MODEL_TITAN::ASM_LAB_MODEL_TITAN		mined a8fcefe4 #165	TITAN LAB model ctor: 11-line VIRTUAL_LAB_LINE table at 0x3cda00, line 5 = clock; NOT the IV GX table (errata E-T1)
+libcomp_asm	16ba06	ASM_LE_CLOCK_SELECT::process_atom		mined a2d52f0c #165	LE_CLOCK_SELECT writes the LAB clock signal index; no polarity bit (ledger F-007)
+libcomp_asm	16b05c	ASM_LE_LUT_FUNCTION::process_atom		mined a5199360 #165	LE_LUT_FUNCTION: forwards the post-fit LUT mask to mux_select, no permutation (ledger D-002/E-A5)
+libcomp_asm	16c186	ASM_LE_USE_CARRY::process_atom		mined a2d52f0c #165	LE_USE_CARRY: value 1 (bit clear when arch 0) = carry-in connected (ledger F-011)
+libcomp_asm	16c464	ASM_LE_LUT_INPUT::process_atom		mined a56afc29 #165	LE_LUT_INPUT: gi 0..3 = DATAA..DATAD, value = RE index of the source (ledger E-002/B-001)
+libcomp_asm	16e326	ASM_LE_REG_OUT_YGR::process_end_of_phase		mined a2d52f0c #165	LE_REG_OUT_YGR end-of-phase writer (ledger R-001)
+libcomp_asm	16e66a	ASM_LE_REG_OUT_YGR::process_atom		mined a2d52f0c #165	LE_REG_OUT_YGR path mapping gi 0/1/2, value = registered + 1 (ledger R-001)
+libcomp_asm	10a830	ASM_MODEL_GENERATOR_STINGRAY::create_models		mined a2d52f0c #165	Stingray model registration: registers ASM_LAB_MODEL_CUDA, ASM_GID_MONITOR, ASM_MAC_MODEL, ASM_PLL_MODEL_STINGRAY, ASM_RAM_MODEL_YGR_MEAB, ASM_CLOCKSPINE_MODEL, base ASM_LUT_PORT_MAPPER; no carry-chain monitor (ledger F-016/L-018)
+libcomp_asm	102824	ASM_LUT_PORT_MAPPER::get_iterm		mined a2d52f0c #165	Base LUT port mapper: get_iterm(atom, port) = the atom input, identity, no C/D swap (ledger L-018)
+libcomp_asm	1b1e2a	ASM_SINGLE_PLL_MODEL_STINGRAY::get_cp_and_lp_value		mined a360be7f #165	PLL charge-pump / loop-filter value: returns the position of the input parameter in a row of the PLL element 2D int table (row 0 or 1 by a flag); table content not read from code
+libcomp_asm	2fd9f8	ASM_CLKBUF_CLK_INPUT_SELECT_CYCLONEII::process_atom		mined afb33afb #171	CLKBUF_CLK_INPUT_SELECT_CYCLONEII (block 73, 30 sites): value = CLKBUF_IN index of the source (ledger B-010)
+libcomp_asm	fb2b6	ASM_CARRY_CHAIN_MONITOR_BASIC::validate_chain_le_locations		mined a2d52f0c #165	Carry chain monitor: accepts base families 6, 0xe, 0x10, 0x38 only, none for 0x30 (ledger F-015/F-016, errata E-T2)
+libcomp_asmcc	1aca0	ASM_BITFIELD::set_bits		mined a7f826d6 #169	Real ASM_BITFIELD::set_bits (0x18000 is a PLT stub): value + written mask + shadow buffer (this+0x10) = tag-18 flag half (ledger O-001, errata E-U1)
+libcomp_asmcc	2cc36	ASM_RE_PROXY::get_first_useful_re_source		mined afb33afb #171	ASM_RE_PROXY: skips the BIM index; mux_select takes the LI index (errata E-R6)
+libdb_asmdb	7a566	ASMDB_ARCH_GROUP_CALC::select		mined a2d52f0c #165	CALC arch group select: base + offset groups (LAB/MEAB/MAC) (ledger B-002/L-010)
+libdb_asmdb	7b28c	ASMDB_ARCH_GROUP_STLMAP::select		mined a2d52f0c #165	STLMAP arch group select (ledger L-010)
+libdb_asmdb	8bec8	ASMDB_SIMPLE_BANK_MUX::select		mined a2d52f0c #165	Mux class 21/SIMPLE_BANK select (ledger B-004)
+libdb_asmdb	8bfac	ASMDB_ENCODED_BANK_MUX::select		mined a2d52f0c #165	Mux class 21 ENCODED_BANK: value bit k drives bank_size bits [bank_size*k..] (ledger B-004)
+libdb_asmdb	86bc4	ASMDB_RAM_MUX::select		mined a2d52f0c #169	Mux class 22 RAM_MUX select (overload 1 of 2, other 0x8bdca): bit i = (value>>i)&1, flipped when polarity mux bit i set (ledger B-004)
+libdb_asmdb	8bdca	ASMDB_RAM_MUX::select		mined a2d52f0c #169	Mux class 22 RAM_MUX select (overload 2 of 2, bool variant) (ledger B-004)
+libdb_asmdb	8c4ac	ASMDB_SIMPLE_MUX::select		mined a360be7f #169	SIMPLE_MUX select: one-hot, bit i written (i == value) (ledger M-004/B-003)
+libdb_asmdb	8c36e	ASMDB_DECISION_MUX::select		mined a360be7f #169	DECISION_MUX select (ledger B-003)
+libdb_asmdb	8c5b8	ASMDB_MAPPED_SIMPLE_MUX::select		mined a2d52f0c #165	MAPPED_SIMPLE_MUX select (ledger B-002/B-003)
+libdb_asmdb	9b658	ASMDB_INDEX_MAP_WRAPPER::operator<<		mined acc6d895 #169	ASMDB_INDEX_MAP_WRAPPER serializer (stlmap group index map)
+libcomp_asmio	74d96	ASMIO_MIO_TERMINATION_CONTROL_SELECT::process_atom		mined a2d52f0c #168	MIO_TERMINATION_CONTROL_SELECT writer (IO termination; fitter value written as is)
+libcomp_asmram	1efc6	ASM_RAM_USAGE_MODE::process_end_of_phase		mined a360be7f #169	RAM_USAGE_MODE port A: flags bit1->0; else bit4->1; else (flags&0x40000008) or bit31->2 (ledger M-003)
+libcomp_asmram	1f106	ASM_RAM_USAGE_MODE_B::process_end_of_phase		mined a360be7f #169	RAM_USAGE_MODE_B: same rule on port B flags (ledger M-003)
+libcomp_asmram	7de60	ASM_RAM_REG_DATA_OUT::process_end_of_phase		mined a360be7f #169	RAM_REG_DATA_OUT: value = flag bit 9 (RAM_REG_DATA_OUT) of port A flags; group MAPPED_ENCODED map [1,0] (errata E-P3)
+libcomp_asmram	1f6fe	ASM_RAM_NEW_DATA_MODE::process_end_of_phase		mined a360be7f #169	RAM_NEW_DATA_MODE: set when same-port feed-through flags (bits 77/78 region, word2 0x6000) and mode bits 4/30/32 (ledger M-003)
+libcomp_asmram	1fa72	ASM_RAM_IS_ROM_ONLY::process_end_of_phase		mined a360be7f #169	RAM_IS_ROM_ONLY: value = is_intrinsic_rom(port A) and is_intrinsic_rom(port B)
+libcomp_asmram	1fd68	ASM_RAM_WRITE_OPTION::process_end_of_phase		mined a360be7f #169	RAM_WRITE_OPTION: values 0..3 (ledger M-003)
+libcomp_asmram	6663e	ASM_RAM_MS_DATA_INPUT::process_end_of_phase		mined a360be7f #169	RAM_MS_DATA_INPUT: port-input mux value = RE line index of the port source plus PIA/extra-line offsets by RE type (ledger M-007)
+libcomp_asmram	4066c	ASM_RAM_MODEL_YGR_MEAB::process_atom		mined a360be7f #169	RAM model process_atom: dispatch and port-usage bookkeeping only; no bit tables
+libcomp_asmram	3e9ec	ASM_SINGLE_RAM_MODEL_BASE::process_ram_atom		mined a360be7f #169	ASM_SINGLE_RAM_MODEL_BASE::process_ram_atom: dispatch and port-usage bookkeeping only
+libcomp_asmram	4a624	ASM_SINGLE_RAM_MODEL_YGR_MEAB::cache_ram_mode		mined a360be7f #169	Caches per-port RAM flag vectors (QTL_BOOL_VECTOR) from CUT_RAM_UTIL::get_ram_mode(atom,port) at model+0x240 (port A) and +0x250 (port B); port B path clears BIDIR_DUAL_PORT and width flags BY1..BY40 then restores those set in the port-B vector; calls update_ram_flags
+libcomp_asmram	6142c	ASM_SINGLE_RAM_MODEL_YGR_MEAB::cache_pia_usage		mined a360be7f #169	ASM_SINGLE_RAM_MODEL_YGR_MEAB virtual: cache_pia_usage
+libcomp_asmram	447fc	ASM_SINGLE_RAM_MODEL_YGR_MEAB::plot_data_in_mapping		mined a360be7f #169	ASM_SINGLE_RAM_MODEL_YGR_MEAB virtual: plot_data_in_mapping
+libcomp_asmmac	2ded6	ASM_MAC_IREG_SIGN::process_end_of_phase		mined a360be7f #169	MAC_IREG_SIGN writer (ledger M-009)
+libcomp_asmmac	2e4ee	ASM_MAC_PREG_SIGN::process_end_of_phase		mined a360be7f #169	MAC_PREG_SIGN writer (ledger M-009)
+libcomp_asmmac	2ed7e	ASM_MAC_OREG_SHFTR::process_end_of_phase		mined a360be7f #169	MAC_OREG_SHFTR writer (ledger M-009)
+libcomp_asmmac	501b0	ASM_MAC_IREG_SMODE::process_end_of_phase		mined a360be7f #169	MAC_IREG_SMODE writer (ledger M-009)
+libcomp_asmmac	50d56	ASM_MAC_USAGE_MODE::process_end_of_phase		mined a360be7f #169	MAC_USAGE_MODE writer (ledger M-009)
+libcomp_asmmac	55e98	ASM_MAC_PIA_TO_CLK::process_end_of_phase		mined a360be7f #169	MAC_PIA_TO_CLK writer (ledger M-009)
+libcomp_asmmac	579e0	ASM_MAC_CLK_INVERT::process_end_of_phase		mined a360be7f #169	MAC_CLK_INVERT writer (ledger M-009)
+libcomp_asmmac	5e232	ASM_MAC_MODEL::process_atom_mac_mult		mined a360be7f #169	MAC model process_atom_mac_mult: computes MAC location and mode only; adds no bit tables
+libcomp_asmmac	5e42e	ASM_MAC_MODEL::process_atom_mac_out		mined a360be7f #169	MAC model process_atom_mac_out: computes MAC location and mode only
+libcomp_asmmac	4e0d6	ASM_MAC_ROW_DATA_INPUT::process_end_of_phase		mined a360be7f #169	MAC_ROW_DATA_INPUT: writes only the RE index of a LAB-line source (RE type 0xbf); does NOT choose the data register (errata E-P4)
+libcomp_asmmac	4e264	ASM_MAC_ROW_DATA_INVERT::process_end_of_phase		mined a360be7f #169	MAC_ROW_DATA_INVERT writer
+libdb_cdb_atom_ygr	16dfe0	CDB_ATOM_YGR_EC::set_ram_mode		mined a360be7f #169	CDB_ATOM_YGR_EC::set_ram_mode: sets RAM flag bits (CDB_RAM_FLAG_ENUM) on the atom
+libdb_cdb_atom_ygr	16e180	CDB_ATOM_YGR_EC::clear_ram_mode		mined a360be7f #169	CDB_ATOM_YGR_EC::clear_ram_mode: clears RAM flag bits on the atom
+libdb_cut	2fb590	CUT_ATOM_LE::create_util		mined a2d52f0c #165	CUT_ATOM_LE::create_util: LE util factory (family 0x30 -> CUT_ATOM_CUDA_LE) (ledger D-002)
+libdb_cut	2fc120	CUT_ATOM_CUDA_LE::get_assembler_lutmask		mined a2d52f0c #165	CUDA LE get_assembler_lutmask: four invert_input + complement, no pin permutation (ledger D-002, errata E-T3)
+libddb_dev	15afa0	DEV_ELEMENT_DESC::operator<<		mined ae9e5da9 #165	DEV_ELEMENT_DESC serializer
+libddb_dev	168f60	DEV_ELEMENT_DESC_BODY::operator<<		mined a360be7f #169	DEV_ELEMENT_DESC_BODY serializer: 49 bools, 11 strings, 36 2D int tables (counts equal the astr DEV_ELEMENT_DESC_*_DATA enums)
+libddb_dev	165170	DEV_PAD_BODY::operator<<		mined acc6d895 #168	DEV_PAD_BODY serializer
+libddb_dev	84810	DEV_ELEMENT_DESC_BODY::get_2d_int_data		mined a360be7f #169	DEV_ELEMENT_DESC_BODY::get_2d_int_data: slot lookup, key below 0x24
+libddb_dev	80940	DEV_ELEMENT_DESC::get_2d_int_data		mined ae9e5da9 #165	DEV_ELEMENT_DESC::get_2d_int_data
+libddb_dev	85000	DEV_ELEMENT_DESC_BODY::set_2d_int_data_from_string		mined a360be7f #169	DEV_ELEMENT_DESC_BODY::set_2d_int_data_from_string: 2D tables can be set from text
+libddb_dygr	2cfca0	DYGR_ROUTE_BLOCK_INTERFACE::operator<<		mined afb33afb #171	DYGR_ROUTE_BLOCK_INTERFACE serializer: 28 interfaces then 983 nodes (ledger B-005/B-013)
+libddb_dygr	2c7190	DYGR_ROUTE_BLOCK_INTERFACE_NODE::operator<<		mined afb33afb #171	DYGR_ROUTE_BLOCK_INTERFACE_NODE serializer (element, index, alias, connections) (ledger B-005)
+libddb_dygr	2c6fd0	DYGR_ROUTE_BLOCK_INTERFACE_CONNECTION::operator<<		mined afb33afb #171	DYGR_ROUTE_BLOCK_INTERFACE_CONNECTION serializer (ledger B-009)
+libpgm_pgmio	3b6540	PGMIO_BITFIELD::set_auto_usercode		mined acaefa6d #172	Auto USERCODE: calls compute_checksum; rbf header lane 0 bits 8..31; no package input (ledger K-002)
+libpgm_pgmio	3b6240	PGMIO_BITFIELD::compute_checksum		mined acaefa6d #172	Byte-sum checksum of the bitfield (CRAM + CFF bytes) (ledger K-002)
+libpgm_pgmio	43be30	PGMIO_F2P::reverse_address_counter_frames		mined a600c77e #165	rbf side: per-device table (0x1c-byte records, u16 count; start = u16@0 + u16@0xe, length = u16@0x10, 0 skipped) -> reverses frame order inside each range; source is the pcf file info
+libpgm_pgmio	42cf60	PGMIO_F2P::get_pgmio_f2p_flip_bits		mined abaf1eea #165	SEU-simulation flip-bit option list (not part of normal bit layout)
+libpgm_pgmio	425a90	PGMIO_F2P::flip_frame_bits		mined abaf1eea #165	SEU bit flipping
+libpgm_pgmio	425ba0	PGMIO_F2P::get_flipped_bits_list		mined abaf1eea #165	SEU flipped-bit list
+libpgm_pgmio	3b47f0	PGMIO_BITFIELD::write_bitstream_by_location		mined a600c77e #165	Plain LSB-first bit-range copy (offset,count), no mapping; 3 callers, all in write_zb_icb_data_for_sof (ICB option data); no CRAM caller
+libpgm_pgmio	496240	PGMIO_POFIO::write_pof		mined abaf1eea #165	POF writer (decompiles to a stub; callees marked non-returning, read by disassembly)
+libpgm_pgmio	4a0f00	PGMIO_ASSEMBLER_SCRIBE::write_all_files		mined abaf1eea #165	Programming-file writer entry (overload 1 of 2, other 0x5a4ac0); decompiles to a stub
+libpgm_pgmio	4a4ac0	PGMIO_ASSEMBLER_SCRIBE::write_all_files		mined abaf1eea #165	Programming-file writer entry (overload 2 of 2); decompiles to a stub
+libpgm_pgmio	5e5040	PGMIO_POF2_IO::write_sof_data		mined abaf1eea #165	sof data writer: checksum + memmove only, no per-bit/per-frame loop (sof CRAM payload = bitfield bytes)
+libpgm_pgmio	43acd0	PGMIO_F2P::make_ygr1es_cff_frame		mined a3087e35 #167	Frame maker for a different family (ygr1es CFF frame); not analysed for Cyclone IV
+libpgm_pgmio	3b1650	PGMIO_BITFIELD::get_base_address		mined a6b40db5 #165	PGMIO_BITFIELD::get_base_address (overload 1 of 2, other 0x3b1670): plain getter of the array start, 0 when unset; no per-row/column base added
+libpgm_pgmio	3b1670	PGMIO_BITFIELD::get_base_address		mined a6b40db5 #165	PGMIO_BITFIELD::get_base_address (overload 2 of 2)
+libpgm_npcf	29428	NPCF_MANAGER::convert_sof_frame_to_bs_frame		mined a156b85e #165	sof frame -> bs frame index conversion (data-driven; frame/lane/padding come from data files)
+libpgm_npcf	29362	NPCF_MANAGER::convert_bs_frame_to_sof_frame		mined a156b85e #165	bs frame -> sof frame index conversion
+libpgm_npcf	28c08	NPCF_MANAGER::get_quartus_cram_map_path		mined a156b85e #165	Locates the family CRAM map CSV for (family, RBA cram type)
+libpgm_npcf	18e76	NPCF_DATA_SERVER::get_device_fid		mined a156b85e #165	NPCF device fid loader (data file, not compiled-in)
+libpgm_npcf	1c56c	NPCF_DATA_SERVER::get_device_rba		mined a156b85e #165	NPCF device rba loader (data file)
+libpgm_npcf	193c6	NPCF_DATA_SERVER::get_family_cram_map		mined a156b85e #165	NPCF family cram map loader (data file)
+libpgm_fbgen	128d00	FBGEN_SBLOCK::write_option_bits		mined a156b85e #165	FBGEN option-bit writer (newer-family frame builder; Cyclone IV applicability unchecked)
+libpgm_fbgen	129460	FBGEN_SBLOCK::calculate_and_write_crc		mined a156b85e #165	FBGEN CRC calculation + write
+libpgm_common	3134c	PGM_COMMON::convert_dat_to_rbf		mined a156b85e #165	PGM_COMMON::convert_dat_to_rbf helper
+libpgm_common	19934	PGM_COMMON::calculate_crc16		mined a156b85e #165	PGM_COMMON::calculate_crc16 (candidate for sof/rbf CRC16 rule L-004; not compared)
+libpgm_pof	ad22b	pof_create_floorplan2sof		mined a156b85e #165	pof_create_floorplan2sof: POF/SOF protobuf container (newer families), not the Cyclone IV bit layout
+libatm_astr	d87034	astr_get_debug_string		mined a360be7f #169	astr_get_debug_string: enum value -> debug name (CDB_RAM_FLAG_ENUM table at 0x185b800)

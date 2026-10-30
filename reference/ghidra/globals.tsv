@@ -4,3 +4,17 @@ libdb_asmdb	f54e0	ASMDB_TRANSLATOR::m_asmdb_arch_group_type_user_string_table	po
 libdb_asmdb	fe6a0	ASMDB_TRANSLATOR::m_asmdb_arch_group_block_type_debug_string_table	pointer[543]	0x10f8	#168 c5	ASMDB_ARCH_GROUP_BLOCK_TYPE enum -> name: 5 HIO, 6 VIO, 18 LAB, 39 MEAB, 41 MAC, 60 DEDICATED_CLOCK, 61 DEDICATED_NEGATIVE_CLOCK, 227 HSSI_STRIP (the 8 IV block types)
 libdb_asmdb	eb020	ASMDB_TRANSLATOR::m_asmdb_dirt_type_debug_string_table	pointer[304]	0x980	#168 c5	dirt node type enum -> name (ROOT 2, INDEX_CACHE 23, ARCH_GROUPS 30, IO 153, ...)
 libddb_dstr	477980	DSTR_TRANSLATOR::m_dev_element_enum_debug_string_table	pointer[2716]	0x54e0	scripts/cycloneiv_clean_names_vendor.py	char*[2716], index = DEV_ELEMENT_ENUM
+libatm_astr	185b800	ASTR_CDB_RAM_FLAG_ENUM_TRANSLATOR::m_debug_string_table	pointer[89]	0x2c8	mined a360be7f #169	index = CDB_RAM_FLAG_ENUM bit (ledger M-005); width flags 14-18, 39-42, 85-88
+libatm_astr	185b460	ASTR_CDB_RAM_PORT_ENUM_TRANSLATOR::m_debug_string_table	pointer[3]	0x18	mined a360be7f #169	0 A, 1 B, 2 BOTH
+libatm_astr	185bb20	ASTR_CDB_RAM_FEED_THROUGH_MODE_ENUM_TRANSLATOR::m_debug_string_table	pointer[5]	0x28	mined a360be7f #169	OLD NEW DONT_CARE CONSTRAINED_DONT_CARE NEW_A_OLD_B
+libatm_astr	185b480	ASTR_CDB_RAM_PHYSICAL_MODE_ENUM_TRANSLATOR::m_debug_string_table	pointer[18]	0x90	mined a360be7f #169	RAM_PHYSICAL_* input/output clock, CE_ENA, ADDRESS_CLEAR, OUTPUT_CLEAR
+libatm_astr	185bb80	ASTR_CDB_RAM_BLOCK_TYPE_ENUM_TRANSLATOR::m_debug_string_table	pointer[4]	0x20	mined a360be7f #169	SMALL MEDIUM LARGE AUTO
+libatm_astr	185b420	ASTR_CDB_RAM_SAFE_WRITE_ENUM_TRANSLATOR::m_debug_string_table	pointer[4]	0x20	mined a360be7f #169	ERR_ON_2CLK PORT_SWAP RESTRUCTURE VERIFIED_SAFE
+libatm_astr	1859f00	ASTR_CDB_PLL_PARAMETER_TYPE_ENUM_TRANSLATOR::m_debug_string_table	pointer[10]	0x50	mined a360be7f #169	COUNTER CHARGE_PUMP_CURRENT LOOP_FILTER_R LOOP_FILTER_C VCO_POST_SCALE ...
+libatm_astr	185a160	ASTR_CDB_PLL_COUNTER_PARAMETER_TYPE_ENUM_TRANSLATOR::m_debug_string_table	pointer[7]	0x38	mined a360be7f #169	COUNTER_BYPASS ODD_EVEN HIGH LOW NOMINAL SS_BYPASS SS_COUNT
+libatm_astr	185f460	ASTR_DEV_ELEMENT_DESC_STRING_DATA_ENUM_TRANSLATOR::m_debug_string_table	pointer[11]	0x58	mined a360be7f #169	element descriptor string slots (11)
+libatm_astr	185f4c0	ASTR_DEV_ELEMENT_DESC_INT_DATA_ENUM_TRANSLATOR::m_debug_string_table	pointer[30]	0xf0	mined a360be7f #169	element descriptor int slots (30)
+libatm_astr	185f5c0	ASTR_DEV_ELEMENT_DESC_BOOL_DATA_ENUM_TRANSLATOR::m_debug_string_table	pointer[49]	0x188	mined a360be7f #169	element descriptor bool slots (49)
+libatm_astr	185f760	ASTR_DEV_ELEMENT_DESC_2D_INT_DATA_ENUM_TRANSLATOR::m_debug_string_table	pointer[36]	0x120	mined a360be7f #169	element descriptor 2D int table slots (36): RAM_*_PORT_CONFIG 2-5, PLL_CHARGE_PUMP_CURRENT 6, PLL_LOOP_FILTER_RESISTOR 7, PLL_LOOP_FILTER_HIGH_FREQUENCY_CAPACITOR 8
+libcomp_asm	3cd760	ASM_LAB_MODEL_CUDA_VIRTUAL_LAB_LINES	int[45]	0xb4	mined a2d52f0c #165	9 x VIRTUAL_LAB_LINE (5 u32); field 1 mask 4,2,4,2,0x40,0x20,8,8,0x40 = clk ce clk ce sload sclr aclr aclr sload2
+libcomp_asm	3cda00	ASM_LAB_MODEL_TITAN_VIRTUAL_LAB_LINES	int[55]	0xdc	mined a8fcefe4 #165	11 x VIRTUAL_LAB_LINE; line 5 is a clock: not the IV GX table (errata E-T1)
