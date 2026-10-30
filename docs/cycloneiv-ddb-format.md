@@ -188,7 +188,7 @@ Same container and stream layer as routing.ddb (type id << 2 = NEW pointer tag, 
 - Instance cells found: LAB 9,360 (104 columns x 90 rows), M9K 720 (8 x 90), MUL 360 (4 x 90). Row r = Y - 1; LAB columns paired with the instance cell vector ascending with X (rank 0 = lowest X; A3, `docs/cycloneiv-clean-pipeline.md`).
   - `hi[r] = 6252 - 70 r`.
 - LUT INIT bits: address = `(hi[r] + dx) * 6154 + lo[c] + dy` as the vendor formula reads (`ASMDB_BLOCK_INFO::calculate_bits_traditional` @ libdb_asmdb 0x8e8a4, key 1 cell = `hi << 16 | lo`), `(dx, dy)` = blkrba `(x_cum, y_cum)` of `RBLUT{k}`; 1,023 / 1,023 sites match the oracle with no sign flip and no constant. One local table serves all 9,360 LABs.
-  - Earlier local-bit, frame-offset and column-anchor statements are removed (fitted to the retired model; the pool vectors' extra 3 frames are not in the oracle, E-A3 in `docs/reversing-errata.md`).
+  - Earlier local-bit, frame-offset and column-anchor statements are removed (fitted to the retired model; a +3 seen in the first pool extraction does not exist in the clean walk, E-A3 in `docs/reversing-errata.md`).
 - Open: IO column cells, the second per-instance vector, calc-group to block association and the mux class pools other than the LAB LUT run are not decoded.  The 88 double-offset frames next to M9K / MUL are expected where two instances' local ranges overlap (not yet shown).
 - Dirt file (3 KB): 3 small classes (string / integer / inner), not decoded.
 

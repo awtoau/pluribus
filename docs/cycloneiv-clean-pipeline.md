@@ -23,7 +23,7 @@ Rebuild of the placement/lift stack from vendor-derived facts only. The layered 
 
 ## Open (not assumed)
 
-- A3: decode's own `y_cum` convention and the +3 between the decoded pool vectors and the model (`y_cum + 3`) are not derived statically (E-A3).
+- A3: the former +3 between decoded pool vectors and the model came from the first pool extraction (list bases chained across BLOCK_INFOs); the clean walk (`asmdb_walk.py`) gives LE_LUT_FUNCTION addresses = model with no constant (E-A3).
 - Address cells for M9K, MUL, IO; second per-instance vector; exclusion bit group; the 277 calc groups.
 - Legacy `.sof` writer not decompiled (identity unverified there).
 - No Quartus-built `.sof` with content inside the mirror blocks.

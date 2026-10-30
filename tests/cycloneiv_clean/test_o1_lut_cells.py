@@ -77,7 +77,7 @@ def test_o1_bit_order_is_complement_of_a_pin_swap(model, tables):
 
 
 def test_o1_all_cells(model, tables):
-    """The 2,396,160 LUT-bit cells of the validated model: distinct, inside the CRAM, equal to the asmdb decode minus its pool offset."""
+    """The 2,396,160 LUT-bit cells of the validated model: distinct, inside the CRAM, valid for the vendor formula as read."""
     m = model
     c, r, le, k = np.meshgrid(*[np.arange(n) for n in (M.COLS, M.ROWS_, M.LES, M.KS)], indexing="ij")
     a = M.addresses(c, r, le, k, m["hi0"], m["lo"], m["dx"], m["dy"], 1, 1).ravel()
@@ -86,10 +86,7 @@ def test_o1_all_cells(model, tables):
     inside = int(((a >= 0) & (a < P.N_BITS)).sum())
     report("O1-all", cells=N, in_cram=inside, distinct=len(np.unique(cell)))
     assert a.size == N and inside == N and len(np.unique(cell)) == N
-    if os.path.exists(os.path.join(os.path.dirname(M.BODY), "lut_asm_addr.npy")):
-        pool = np.load(os.path.join(os.path.dirname(M.BODY), "lut_asm_addr.npy"))
-        # the decoded pool vectors carry y_cum + 3; the oracle needs y_cum (see #165)
-        assert (pool - a == 3).all()
+    # asmdb side: the clean walk's LE_LUT_FUNCTION absolute addresses equal this model with no constant (test_fields.py::test_lut_specimens_exact)
 
 
 def test_o1_address_to_plane_is_sof_identity(tables):
