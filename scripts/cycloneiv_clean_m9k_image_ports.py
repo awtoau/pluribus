@@ -25,9 +25,19 @@ def main():
     path = os.environ.get("PLURIBUS_DJI_IMAGE")
     if not path or not os.path.exists(path):
         raise SystemExit("PLURIBUS_DJI_IMAGE not set or missing")
-    from lifters.cycloneiv_clean import emit
-    cx = emit.Ctx()
-    nl = emit.Builder(cx, path, "image", 2).run()
+    import cycloneiv_decompress as cd
+    from lifters.cycloneiv_clean import emit, m9k_usage
+    plane = os.path.join(REPO, "tmp", "m9k_image_plane.rbf")
+    open(plane, "wb").write(cd.decompress(open(path, "rb").read(), {}))      # the image is a compressed payload: Builder reads the decompressed plane (read-only on the image)
+    try:
+        cx = emit.Ctx()
+        b = emit.Builder(cx, plane, "image", 2)
+        nl = b.run()
+        u = m9k_usage.usage(cx, b.bits, b.edges)
+    finally:
+        os.remove(plane)
+    for k, v in m9k_usage.summary(u).items():
+        log.info("usage %s %d", k, v)
     cnt = collections.Counter()
     for m in nl.m9k:
         cnt["m9k_tiles_with_ports"] += 1

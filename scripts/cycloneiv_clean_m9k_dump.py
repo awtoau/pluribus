@@ -306,8 +306,11 @@ def run_image(out):
             mk = cx.m9kctl.decode(b.bits)
             cols = m9k.columns()
             pop = np.flatnonzero(content.sum(1) > 0)
+            from lifters.cycloneiv_clean import m9k_usage
+            usage = m9k_usage.summary(m9k_usage.usage(cx, b.bits, b.edges, mk))
+            log.info("usage (lifters/cycloneiv_clean/m9k_usage.py): %s", usage)
             res = {"m9k_instances": int(len(content)), "tiles_used_by_emit": len(nl.m9k), "populated_blocks": int(len(pop)),
-                   "content_bits_total": int(content.size), "content_bits_set": int(content.sum()), "blocks": []}
+                   "usage": usage, "content_bits_total": int(content.size), "content_bits_set": int(content.sum()), "blocks": []}
             emitted = {(M["x"], M["y"]): M for M in nl.m9k}
             for i in pop.tolist():
                 x, y = cols[i // 90], i % 90 + 1
