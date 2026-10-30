@@ -16,7 +16,7 @@ Scripts: `scripts/cycloneiv_clean_image_build.py` (netlist pickle + flat Verilog
 | verilator lint | 146 s, 8.0 GB, 0 errors | 115 s, 7.4 GB, 0 errors |
 | verilator `--binary --timing --threads 6 -O1` build | 167..266 s, 8.1..10.2 GB | 90..147 s, 7.4 GB |
 | verilator run (20,000 clocks, 6 clocks) | 2.4..3.0 s with FF probes (~7 k clocks/s) | 0.6 s without probes (~33 k clocks/s) |
-| iverilog -g2012 compile | killed at the 1,500 s limit (5 GB) at line 2.64 M of 3.05 M | see log |
+| iverilog -g2012 compile | killed at the 1,500 s limit (5 GB) at line 2.64 M of 3.05 M | killed at the 900 s limit (4.1 GB) |
 - Choice: verilator. iverilog is not usable on the image-size netlist.
 
 ## Results
