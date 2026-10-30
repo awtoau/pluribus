@@ -34,7 +34,10 @@ def main():
     import cycloneiv_decompress as cd
     import heavy_guard
     from lifters.cycloneiv_clean import emit, rtl
-    plane = os.path.join(a.out, "plane.rbf")
+    # per-process name: two concurrent builds (even with different --out) must not race on
+    # a shared plane.rbf; the old fixed name let one process's `finally: os.remove` delete
+    # a sibling process's still-open plane mid-run (FileNotFoundError in pkginfer.infer).
+    plane = os.path.join(a.out, f"plane.{os.getpid()}.rbf")
     open(plane, "wb").write(cd.decompress(open(a.image, "rb").read(), {}))
     t0 = time.time()
     gb = heavy_guard.JOB_GB["cyc4_clean_gate_base"] + 4 * heavy_guard.JOB_GB["cyc4_clean_gate_worker"]
@@ -52,7 +55,8 @@ def main():
                 open(os.path.join(a.out, "rtl.v"), "w").write(text)
                 res["rtl_seconds"] = round(time.time() - t1, 1)
     finally:
-        os.remove(plane)
+        if os.path.exists(plane):
+            os.remove(plane)
     log.info("%s", json.dumps({k: v for k, v in res.items() if k != "summary"}))
     json.dump(res, open(os.path.join(a.out, "build.json"), "w"), indent=1, default=str)
 
