@@ -221,7 +221,7 @@ def score_m9k_ctl():
 
 def score_m9k_code_rules():
     """Code-derived writer rules (m9k.WRITERS) vs gxm9k_w_* WYSIWYG builds: expected value from the top.v parameter, one-hot select,
-    physical bit = NOT(written bit) (observed polarity; the die-flag inversion is not yet traced in code)."""
+    stored as written; flag bit 9 / NEW_DATA flag polarity measured (stored bit = 1 - registered / old-data)."""
     from lifters.cycloneiv_clean import m9k
     ctx = _ctl_ctx()
     rows, tot = [], dict(matched=0, missing=0, extra=0, wrong=0)

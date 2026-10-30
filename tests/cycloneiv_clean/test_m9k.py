@@ -34,7 +34,7 @@ def test_control_signatures_cross_site():
 
 
 def test_code_derived_writer_rules():
-    """libcomp_asmram writer rules (REG_DATA_OUT, NEW_DATA_MODE; one-hot select; physical bit = NOT written bit) vs gxm9k_w_* builds."""
+    """libcomp_asmram writer rules (REG_DATA_OUT, NEW_DATA_MODE; one-hot select; stored as written) vs gxm9k_w_* builds."""
     m = score_module("gxm9k_w_base_o", "gxm9k_w_rdw_old")
     rows, tot = m.score_m9k_code_rules()
     report("hardblocks_m9k_code_rules", builds=len(rows), **tot)
