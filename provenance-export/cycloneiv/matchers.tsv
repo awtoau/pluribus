@@ -1,12 +1,12 @@
 id	kind	name	version	code_ref	parameters	training_evidence	created_commit
-affine-v1	deterministic	affine address law fitted on measured parents	1	pattern_matchers:AffineLaw			d0cc27e92083f3761fa5666094569916043704a6
-asmdb-io-site-v1	deterministic	IO site field bits = asmdb group bits of the site (anchor + fixed offsets)	1	lifters/cycloneiv_clean/io_decode.py:Chain			d0cc27e92083f3761fa5666094569916043704a6
-blkrba-control-v1	deterministic	control cell at tile-relative (dy - 22, 2 - dx) of the vendor LAB table	1	scripts/cycloneiv_blkrba_hold.py			d0cc27e92083f3761fa5666094569916043704a6
-class-generalise-v1	deterministic	class-wide generalisation from >=2 agreeing positions	1	pattern_matchers:TileClassTranslate	json:{"min_positions":2}		d0cc27e92083f3761fa5666094569916043704a6
-clock-polarity-fit-v1	statistical	greedy LAB clock-polarity fit (Jaccard 0.85)	1	cycloneiv_route_learn			d0cc27e92083f3761fa5666094569916043704a6
-clock-polarity-v1	deterministic	LAB clock-polarity cell at (FX-6, vy-30)	1	scripts/cycloneiv_bit_hunter.py			d0cc27e92083f3761fa5666094569916043704a6
-llm-proposer-v1	llm-proposed	Claude-API proposer (candidates only; checked before registration)	1	pattern_proposer_llm:propose			d0cc27e92083f3761fa5666094569916043704a6
-lut-anchor-v1	deterministic	LUT INIT anchor law (DK offsets from LE anchor)	1	cycloneiv_le_locate:DK			d0cc27e92083f3761fa5666094569916043704a6
-m9k-offset-v1	deterministic	M9K cell (frame,v) = reference-site cell + (FX[x]-FX[23], vpitch*(y-40))	1	scripts/cycloneiv_m9k.py:site_offsets			d0cc27e92083f3761fa5666094569916043704a6
-tile-translate-v1	deterministic	tile-class translation by (frame, v) offset	1	pattern_matchers:TileClassTranslate			d0cc27e92083f3761fa5666094569916043704a6
-vendor-ddb-v1	deterministic	routing.ddb / asm.ddb decode (group k == edge k)	1	cycloneiv_ddb_map	json:{"rule":"group k == edge k"}		d0cc27e92083f3761fa5666094569916043704a6
+affine-v1	deterministic	affine address law fitted on measured parents	1	pattern_matchers:AffineLaw			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+asmdb-io-site-v1	deterministic	IO site field bits = asmdb group bits of the site (anchor + fixed offsets)	1	lifters/cycloneiv_clean/io_decode.py:Chain			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+blkrba-control-v1	deterministic	control cell at tile-relative (dy - 22, 2 - dx) of the vendor LAB table	1	scripts/cycloneiv_blkrba_hold.py			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+class-generalise-v1	deterministic	class-wide generalisation from >=2 agreeing positions	1	pattern_matchers:TileClassTranslate	json:{"min_positions":2}		16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+clock-polarity-fit-v1	statistical	greedy LAB clock-polarity fit (Jaccard 0.85)	1	cycloneiv_route_learn			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+clock-polarity-v1	deterministic	LAB clock-polarity cell at (FX-6, vy-30)	1	scripts/cycloneiv_bit_hunter.py			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+llm-proposer-v1	llm-proposed	Claude-API proposer (candidates only; checked before registration)	1	pattern_proposer_llm:propose			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+lut-anchor-v1	deterministic	LUT INIT anchor law (DK offsets from LE anchor)	1	cycloneiv_le_locate:DK			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+m9k-offset-v1	deterministic	M9K cell (frame,v) = reference-site cell + (FX[x]-FX[23], vpitch*(y-40))	1	scripts/cycloneiv_m9k.py:site_offsets			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+tile-translate-v1	deterministic	tile-class translation by (frame, v) offset	1	pattern_matchers:TileClassTranslate			16e4f394fbc7c030be18fe34ff1d754c4ebfb084
+vendor-ddb-v1	deterministic	routing.ddb / asm.ddb decode (group k == edge k)	1	cycloneiv_ddb_map	json:{"rule":"group k == edge k"}		16e4f394fbc7c030be18fe34ff1d754c4ebfb084

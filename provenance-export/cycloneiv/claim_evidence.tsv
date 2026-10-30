@@ -13,10 +13,6 @@ ref:cycloneivEP4CGX150bitCLASS:1c5c3175034fe6ee70	ref:cycloneivEP4CGX150sp
 ref:cycloneivEP4CGX150bitCLASS:1d-a17ff7b764cbc3c61	ref:cycloneivEP4CGX150derived-tableblkrba LAB bit-position table (vendor ddb decode)vendor-analysis/altera/inventory/s1	parent
 ref:cycloneivEP4CGX150bitCLASS:1d-b43cc4a75249633f9	ref:cycloneivEP4CGX150auditblkrba control names vs measured LAB control cellsscripts/cycloneiv_blkrba_named.py	refute
 ref:cycloneivEP4CGX150bitCLASS:1d-b43cc4a75249633f9	ref:cycloneivEP4CGX150derived-tableblkrba LAB bit-position table (vendor ddb decode)vendor-analysis/altera/inventory/s1	parent
-ref:cycloneivEP4CGX150bitCLASS:1d-c4a9ec7a4dcec0d97	ref:cycloneivEP4CGX150specimen-pairhold_1x1_enablkrba_hold:ena	parent
-ref:cycloneivEP4CGX150bitCLASS:1d-c4a9ec7a4dcec0d97	ref:cycloneivEP4CGX150specimen-pairhold_1x1_sclrblkrba_hold:sclr	parent
-ref:cycloneivEP4CGX150bitCLASS:1d-c4a9ec7a4dcec0d97	ref:cycloneivEP4CGX150specimen-pairhold_30x20_enablkrba_hold:ena	parent
-ref:cycloneivEP4CGX150bitCLASS:1d-c4a9ec7a4dcec0d97	ref:cycloneivEP4CGX150specimen-pairhold_30x20_sclrblkrba_hold:sclr	parent
 ref:cycloneivEP4CGX150bitCLASS:1d-de9d4df4b5829e0a3	ref:cycloneivEP4CGX150derived-tableblkrba LAB bit-position table (vendor ddb decode)vendor-analysis/altera/inventory/s1	parent
 ref:cycloneivEP4CGX150bitCLASS:3ff9eb66f4095ee9c	ref:cycloneivEP4CGX150specimen-pairgxll100x75_00_02evidence/cycloneiv/cycloneiv_forced_lab_100x75.json	direct
 ref:cycloneivEP4CGX150bitCLASS:3ff9eb66f4095ee9c	ref:cycloneivEP4CGX150specimen-pairgxll100x75_00_04evidence/cycloneiv/cycloneiv_forced_lab_100x75.json	direct
@@ -6633,10 +6629,6 @@ ref:cycloneivEP4CGX150bitLE_BUFFER->LI:gxnb6x10d2_30_248bcf111af8f25d68	ref:
 ref:cycloneivEP4CGX150bitLE_BUFFER->LI:gxnb6x10d2_30_26d053ef199c57e13a	ref:cycloneivEP4CGX150specimen-pairgxnb6x10d2_30_26evidence/cycloneiv/cycloneiv_forced_gxnb6x10d2.json	direct
 ref:cycloneivEP4CGX150bitLE_BUFFER->LI:gxnb6x10d2_30_2847728ba56440ea8f	ref:cycloneivEP4CGX150specimen-pairgxnb6x10d2_30_28evidence/cycloneiv/cycloneiv_forced_gxnb6x10d2.json	direct
 ref:cycloneivEP4CGX150bitLE_BUFFER->LI:gxnb6x10d2_30_304fcc3893c74ae875	ref:cycloneivEP4CGX150specimen-pairgxnb6x10d2_30_30evidence/cycloneiv/cycloneiv_forced_gxnb6x10d2.json	direct
-ref:cycloneivEP4CGX150bitLE_BUFFER->LI:hold_1x1_ena5f2827d4d601475b	ref:cycloneivEP4CGX150specimen-pairhold_1x1_enablkrba_hold:ena	direct
-ref:cycloneivEP4CGX150bitLE_BUFFER->LI:hold_1x1_sclr743b14c7f1a804b0	ref:cycloneivEP4CGX150specimen-pairhold_1x1_sclrblkrba_hold:sclr	direct
-ref:cycloneivEP4CGX150bitLE_BUFFER->LI:hold_30x20_enae0b3c39a0ebfd697	ref:cycloneivEP4CGX150specimen-pairhold_30x20_enablkrba_hold:ena	direct
-ref:cycloneivEP4CGX150bitLE_BUFFER->LI:hold_30x20_sclr3ce91ddba7290c72	ref:cycloneivEP4CGX150specimen-pairhold_30x20_sclrblkrba_hold:sclr	direct
 ref:cycloneivEP4CGX150bitLOCAL_LINE:role-tablef8448760f9fa9051	ref:cycloneivEP4CGX150specimen-pairgxll_00_02evidence/cycloneiv/cycloneiv_forced_lab.json	direct
 ref:cycloneivEP4CGX150bitLOCAL_LINE:src0:snk10:DATAD27ffb5e942a5a76e	ref:cycloneivEP4CGX150specimen-pairgxll37x60_00_10evidence/cycloneiv/cycloneiv_forced_lab_37x60.json	direct
 ref:cycloneivEP4CGX150bitLOCAL_LINE:src0:snk10:DATAD52807a9ffd7a2fdf	ref:cycloneivEP4CGX150specimen-pairgxll_00_10evidence/cycloneiv/cycloneiv_forced_lab.json	direct
