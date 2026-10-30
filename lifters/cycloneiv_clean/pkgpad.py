@@ -137,11 +137,55 @@ def _body(name):
     return IO.asmdb_body(os.path.normpath(os.path.join(sofio.quartus_bin(), "..", "common", "devinfo", "cycloneivgx", name)))
 
 
-def pins():
-    """The 896 DEV_PIN objects of the EP4CGX150 F896 package (ddb_stingray4fbga896_pkg.ddb)."""
-    b = _body("ddb_stingray4fbga896_pkg.ddb")
-    fresh = lambda: {"id": 0, "bool": 0, "ints": [0] * 25, "vec": [0] * 7, "enum": [0] * 5}
-    return _scan(b, _read_pin, fresh, SENTINEL["pin"], 4396, 14600)
+def _pkg_pin_count(name):
+    """DEV_PIN object count of a pkg ddb: its type-table trailer (xz) lists `DEV_PIN` with the count."""
+    import lzma
+    import sys
+    from . import sofio
+    sys.path.insert(0, os.path.join(IO.P.REPO, "scripts"))
+    import cyclonev_ddb_decode as dd
+    path = os.path.normpath(os.path.join(sofio.quartus_bin(), "..", "common", "devinfo", "cycloneivgx", name))
+    t = lzma.decompress(open(path, "rb").read()[dd.read_header(path).body_end:])
+    o = 2
+    for _ in range(struct.unpack_from("<H", t, 0)[0]):
+        _i, _sz, _crc, cnt, _ver, nl = struct.unpack_from("<HIIIII", t, o)
+        o += 22
+        if t[o:o + nl - 1] == b"DEV_PIN":
+            return cnt
+        o += nl - 1
+    raise ValueError("no DEV_PIN in " + name)
+
+
+def package_pins(device):
+    """Pin count of an Altera part name (EP4CGX150DF31C7 -> 896): `part.pin_count` of the Quartus device.db (names are base64)."""
+    import base64
+    import sqlite3
+    from . import sofio
+    path = os.path.normpath(os.path.join(sofio.quartus_bin(), "..", "common", "devinfo", "device.db"))
+    c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    for n, k in c.execute("select name, pin_count from part"):
+        if base64.b64decode(n).decode() == device:
+            return k
+    raise ValueError("part not in device.db: " + device)
+
+
+_PINS = {}
+
+
+def pins(count=896):
+    """The DEV_PIN objects of one EP4CGX150 package (ddb_stingray4fbga<count>_pkg.ddb); default F896.  Start offset = exact-consumption scan."""
+    if count not in _PINS:
+        name = f"ddb_stingray4fbga{count}_pkg.ddb"
+        assert _pkg_pin_count(name) == count, (name, count)
+        fresh = lambda: {"id": 0, "bool": 0, "ints": [0] * 25, "vec": [0] * 7, "enum": [0] * 5}
+        _PINS[count] = _scan(_body(name), _read_pin, fresh, count, 0 if count != 896 else 4396, 20000 if count != 896 else 14600)
+    return _PINS[count]
+
+
+def pin_pad(pin_list):
+    """-> {pin index: pad index} for any package: a pad-bearing pin's single pad_raw element is the pad's 0-based index in the die pad table.
+    (F896: element k of the k-th pad-bearing pin = k, so equal to pin_pad_rank.)"""
+    return {i: p["pad_raw"][0] for i, p in enumerate(pin_list) if p["pad_raw"]}
 
 
 def pads():

@@ -361,6 +361,24 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 - Differential builds (`scripts/cycloneiv_clean_io_lvds.py`): LVDS input on a `p` pad: IOST 11 on p and n, clamp 0. RSDS_E_3R / mini-LVDS_E_3R / PPDS_E_3R outputs on a `p` pad (3 pads x 3 standards, 9 ok; LVDS and mini-LVDS outputs and mini-LVDS inputs are refused by the fitter): IOST 3 (dirt `*_3R` = 3) at p, `USE_PSEUDO_DIFFERENTIAL_OUTPUT` bit on p and n, strength bits on both (p: pull-down bits 0 1 2 4 5 6, pull-up bits 0 1 2 6; n: pull-down 4 6, pull-up 5 6) and slew bit 1 on n; the three standards are CFF-identical.
 - The 6 image sites with stray bits (IOST 3 or 7, single strength bits, ground state minus one bit) match none of these patterns: still MISSING.
 
+## Pins gate: cause audit and full-class scoring (2026-10-30, #168, #165; code `io_pins.py`, `scripts/cycloneiv_clean_pins_audit.py`, test `test_io_pins.py`)
+
+- Old gate pins (default-pattern classifier, run 26, EP4CGX150DF31C7 x 4,006 + 1 F484 design): 20,875 matched / 5,591 missing / 18 extra / 0 wrong.
+- Missing by cause (`pins_audit`, same member set):
+
+| Cause | Count | Fix |
+|---|---|---|
+| `~ALTERA_DCLK~` (B3, pad class UDCLK, dedicated configuration pin; Quartus lists it as an output in every build) | 4,006 | not a design port: excluded from the GT ball set, counted in `pins_scope.excluded_config_pseudo_ports` |
+| Dedicated clock pads used as inputs (12 balls; no IO site in the HIO / VIO chain) | 1,367 | asmdb blocks 60 / 61 decoded (below) |
+| IO site class `MISSING` (one foreign bit in a strength group; VREF-pad overlap, open item) | 195 | open |
+| F484 design scored with the F896 ball table | 23 | per-package tables (`pkgpad.pins(count)`) |
+
+- Non-default standards / drive / direction / bidir: 0 of the missing (the default-pattern classifier already matched them; the 18 old extras were the F484 design).
+- Dedicated clock pads: block 60 (DEDICATED_CLOCK) = the 10 `DIFFCLK_<n>p` pads, block 61 (DEDICATED_NEGATIVE_CLOCK) = the 10 `DIFFCLK_<n>n` pads, each in pad-table order. Groups per site: `MIO_SELECT_IOST_DIRT` (4 CFF bits in 60, 3 + sentinel in 61) and `MIO_USE_PCI_DIODE_CLAMP`. Input state = (IOST, clamp) of the `in` / `regin` pair states, unused = the RESERVE_ALL_UNUSED_PINS state, same tables as HIO / VIO. Check (oracle, not fitted): gx150_rb_078 uses 12 clock pads; exactly those 12 classify used / input, the other 8 unused (`test_io_pins.py`).
+- Packages: part -> pin count from `device.db` `part.pin_count` (484 / 672 / 896); pkg ddb DEV_PIN count from the xz type trailer; pad index of a pin = `pad_raw[0]` (equals the pad-bearing rank in F896). E-R1 corrected.
+- Score definition: pins matched = site class `used` and direction word equal. Standard is not scored; CFF-identical standards (2.5 V = 3.0 / 3.3 V LVTTL / LVCMOS / PCI inputs; 2.5 V = SSTL-2 Class I outputs) are one equivalence class, counted in `pins_scope.matched_standard_equivalence_class`. Direction candidates > 1 = missing (`ambiguous_direction`).
+- Emit: still F896-only ball map (`Ctx._pads`); clock-pad inputs are emitted from routing (`dir_source routing`).
+
 ## Block interfaces (routing.ddb, #171, E-R6)
 
 - Pool: 28 `DYGR_ROUTE_BLOCK_INTERFACE` objects, then 983 `_NODE` objects (registration order = NEW tags of the interface vectors). `lifters/cycloneiv_clean/blockiface.py` parses it (cache `tmp/ddb/<die>_block_interfaces.json`).
@@ -371,3 +389,10 @@ Modal CFF bit offsets from the site anchor (min bit of the site's location signa
 - Pins bound to asm groups in `bim.PINS`: DATA gi 0 / 1, OE, CLR, SCLR, INREG CE, OUTREG CE. Unbound: OEREG CE, INREG / OUTREG CLK (ledger B-008).
 - The assembler never writes a BIM index: `ASM_RE_PROXY::get_first_useful_re_source` skips the BIM and `mux_select` takes the LI index.
 - Clock buffers (`clkbuf.py`): CLKBUF_IN (z 28..33, index I) has one parent; group `CLKBUF_CLK_INPUT_SELECT_CYCLONEII` (block 73, 30 sites) names I; ledger B-010, B-011.
+
+### Pins gate result (2026-10-30, gate_runs id 27, EP4CGX150DF31C7, run-14 member set minus 417 designs removed from the corpus during the run)
+
+- 3,589 designs scored: pins 21,621 matched / 346 missing / 0 extra / 0 wrong (98.42 %); old classifier on the 4,006-design set: 20,875 / 5,591 / 18 / 0.
+- Remaining 346 missing = site class `MISSING` at 13 IO sites (constant per-site foreign bit in a strength / IOST / clamp group; 151 of them were counted matched by the old default-pattern key-group test, which ignored the strength groups). Open: VREF-pad overlap.
+- Perfect designs (missing = extra = wrong = 0): pins 3,306 / 3,589; all five categories 2,835 / 3,589 (`scripts/cycloneiv_clean_gate_perfect.py`).
+- Gate tiers (`--tier`): fast = `reference/gate_fast.tsv` (100 designs, ~50 s), full = `reference/corpus_keep.tsv`, dji = image row (env `PLURIBUS_DJI_IMAGE`, figures only), extensive = not built. Regression = any fault column above the last run of the same tier (exit 4).

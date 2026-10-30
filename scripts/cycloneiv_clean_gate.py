@@ -20,7 +20,11 @@ Per category: matched / (matched + missing + extra + wrong); a missing connectio
   register_clock  per GT FF: the tracer's claim for that (LAB, LE) = BLK_CLK_BUF line chosen by LE_CLOCK_SELECT + LAB_CLOCK_FAST_MUX
             (clocks.py); the programmed tree(s) containing that BLK_CLK_BUF all have the GT clock-net root = matched; no line / no tree =
             missing; some roots match = ambiguous = missing; none match = wrong.  extra = every (LAB, LE) with a register claim and no FF in the .vo.  The claim needs the register-used decode (reg_used.py: YGR output select x used LE_BUFFER); undecidable = no claim = missing.
-  pins      GT ball set vs balls of IO sites whose CFF key groups equal a decoded default pattern (direction class must agree: else wrong).
+  pins      GT design-port balls (build.pin x .vo ports, minus `~ALTERA_*~` configuration pseudo-ports, counted in pins_scope) vs the package
+            ball -> site map of the design's part (device.db pin count -> pkg ddb) and the full io_fields class of the site (clock pads: blocks
+            60 / 61).  matched = site `used` and direction word equal; direction candidates > 1 = missing (`ambiguous_direction`); site not used /
+            no site = missing; direction differs = wrong; extra = `used` site whose ball is no design port.  Standard is NOT scored: CFF-identical
+            standards (2.5 V = 3.0 / 3.3 V LVTTL / LVCMOS / PCI inputs) are one equivalence class, counted in pins_scope `matched_standard_equivalence_class`.
 No rule changes between runs: headline variant `vendor`; `vendor_nx` (no destination exclusion check) is reported beside it.
 Log: tmp/logs/cycloneiv_clean_gate.log; results tmp/cycloneiv_clean/gate_<set>.json.
 """
@@ -55,8 +59,10 @@ OUT = os.path.join(REPO, "tmp", "cycloneiv_clean")
 PORTS = ("DATAA", "DATAB", "DATAC", "DATAD")
 
 
-# source: io_decode.json default-pattern base kinds (in / regin, out / regout, bidir / regoe / tri) vs build.pin direction column
-DIR = {"input": {"in", "regin"}, "output": {"out", "regout"}, "bidir": {"bidir", "regoe", "tri"}}
+# source: io_fields.DIRECTION direction words (pair-build kinds) vs the build.pin direction column
+DIRWORD = {"input": "input", "output": "output", "bidir": "bidir-or-tristate"}
+# source: Quartus pseudo-ports `~ALTERA_DCLK~` (dedicated configuration pin DCLK, listed as an output in every build): not a design port
+CONFIG_PSEUDO = "~ALTERA_"
 
 
 def counts():
@@ -137,6 +143,8 @@ class Ctx:
         self.ext = T.Extras(self.st, self.lut, self.rt)
         self.st.edge_ids([0], [0])          # build the (src, dst) key index (after the implicit edges are appended) before worker threads start
         self.io = T.Io()
+        from lifters.cycloneiv_clean import io_decode as ID, io_fields as IF, io_pins as IP
+        self.pm = IP.PinMap(self.io, IF.Decoder(json.load(open(ID.DECODE_PATH))))
         self.enum = np.where(self.rt.tpl >= 0, self.rt.enum[np.maximum(self.rt.tpl, 0)].astype(np.int32), -1)
         self.tname = {v: k for k, v in names.enums().items()}
         blk = names.enum_of("BLK_CLK_BUF")
@@ -307,28 +315,33 @@ def score_design(cx, d, fire_workers):
     claimed = np.argwhere(blk >= 0)
     rc["extra"] = sum(1 for i, nn in np.argwhere(ffm).tolist() if (i, nn) not in gt_sites_ff)     # decoder-level: every register claim (reg_used) without a vo register, clock line or not
     out["register_clock"], out["clock_scope"] = rc, dict(why_r)
-    # ---- pins
+    # ---- pins: full io_fields classification per package ball (io_pins.PinMap)
     pins_gt = parse_pin(os.path.join(d, "build.pin"))
-    gt_balls = {b: dirn for nm_, (b, dirn) in pins_gt.items() if nm_ in ports}
-    cl = cx.io.classify(os.path.join(d, "bitstream.rbf"))
-    tr = {}
-    for s, kinds in cl.items():
-        b = cx.io.site_ball.get(s)
-        if b:
-            tr[b] = kinds
+    gt_balls = {b: dirn for nm_, (b, dirn) in pins_gt.items() if nm_ in ports and not nm_.startswith(CONFIG_PSEUDO)}
+    all_balls = {b for nm_, (b, dirn) in pins_gt.items() if nm_ in ports}
+    dev = re.search(r"device = (\w+);", open(os.path.join(d, "routing.rcf")).read(600))[1]
+    val_cff, _ = cx.io.cff.read(os.path.join(d, "bitstream.rbf"))
+    cls = cx.pm.classify(val_cff, dev)
     pc, pscope = counts(), collections.Counter()
     for b, dirn in gt_balls.items():
-        if b not in tr:
+        c = cls.get(b)
+        if c is None:
             pc["missing"] += 1
-            pscope["missing_" + dirn] += 1
-        elif tr[b] <= DIR[dirn]:
+            pscope["missing_no_site"] += 1
+        elif c["class"] != "used":
+            pc["missing"] += 1
+            pscope["missing_site_" + c["class"]] += 1
+        elif c["dir"] == "ambiguous":
+            pc["missing"] += 1                                  # direction candidates > 1: ambiguous = missing
+            pscope["ambiguous_direction"] += 1
+        elif c["dir"] == DIRWORD[dirn]:
             pc["matched"] += 1
-        elif tr[b] & DIR[dirn]:
-            pc["missing"] += 1                                  # class spans several directions: ambiguous = missing
-            pscope["ambiguous_" + dirn] += 1
+            if c["std_ambiguous"]:
+                pscope["matched_standard_equivalence_class"] += 1
         else:
             pc["wrong"] += 1
-    pc["extra"] = sum(1 for b in tr if b not in gt_balls)
+    pc["extra"] = sum(1 for b, c in cls.items() if c["class"] == "used" and b not in all_balls)
+    pscope["excluded_config_pseudo_ports"] = len(all_balls) - len(gt_balls)
     out["pins"], out["pins_scope"] = pc, dict(pscope)
     out["seconds"] = round(time.time() - t0, 2)
     return out
@@ -336,9 +349,47 @@ def score_design(cx, d, fire_workers):
 
 # ---- run ------------------------------------------------------------------------------------------------------------------------------
 
+# source: Dan 2026-10-30: rb_006 / rb_009 dropped from the corpus (survivors rb_000..005, 007, 008)
+RB_SURVIVORS = (0, 1, 2, 3, 4, 5, 7, 8)
+# source: Dan 2026-10-30 gate tiers: fast = reference/gate_fast.tsv (100 designs), full = reference/corpus_keep.tsv (kept corpus), dji = image row, extensive = later
+TIER_LISTS = {"fast": "gate_fast.tsv", "full": "corpus_keep.tsv"}
+TIERS = ("fast", "dji", "full", "extensive")
+
+
+def tier_designs(tier):
+    ds = []
+    for line in open(os.path.join(REPO, "reference", TIER_LISTS[tier])).read().splitlines()[1:]:
+        d = os.path.join(REPO, "corpus", "cycloneiv", line.split("\t")[0])
+        if all(os.path.exists(os.path.join(d, f)) for f in FILES):
+            ds.append(d)
+        else:
+            log.warning("tier %s: %s incomplete / missing, skipped", tier, os.path.basename(d))
+    return ds
+
+
+def design_device(d):
+    """design.toml `device` of a corpus design ('' = no key: early designs default to Cyclone IV E, out of the EP4CGX150 scope)."""
+    import tomllib
+    try:
+        return tomllib.load(open(os.path.join(d, "design.toml"), "rb")).get("device", "")
+    except (OSError, ValueError):
+        return ""
+
+
+# source: Dan 2026-10-30 scope rule: headline = EP4CGX150 (the DJI die) on the F896 part (the pad / ball tables of the clean pipeline); other packages of the die are separate rows, never mixed in
+SCOPES = {"primary": lambda dev: dev.startswith("EP4CGX150DF31"), "other_pkg": lambda dev: dev.startswith("EP4CGX150") and not dev.startswith("EP4CGX150DF31")}
+
+
 def discover(args):
+    ds = _discover(args)
+    return [d for d in ds if SCOPES[args.scope](design_device(d))]
+
+
+def _discover(args):
     if args.set == "rb10":
-        return [os.path.join(REPO, "corpus", "cycloneiv", f"gx150_rb_{i:03d}") for i in range(10)]
+        return [os.path.join(REPO, "corpus", "cycloneiv", f"gx150_rb_{i:03d}") for i in RB_SURVIVORS]
+    if args.tier in TIER_LISTS:
+        return tier_designs(args.tier)
     ds = []
     for d in sorted(glob.glob(os.path.join(args.root, "*"))):
         if not os.path.isdir(d) or not all(os.path.exists(os.path.join(d, f)) for f in FILES):
@@ -353,7 +404,7 @@ def discover(args):
         ds.append(d)
     if args.members_run:
         # exact member set of an earlier recorded run (gate_runs.params.members, else its gate_results rows): like-with-like comparison
-        want = run_members(args.members_run)
+        want = [m for m in run_members(args.members_run) if SCOPES[args.scope](design_device(os.path.join(REPO, "corpus", "cycloneiv", m.split("@")[0])))]
         have = {os.path.basename(d) + "@" + os.path.basename(args.root.rstrip("/")): d for d in ds}
         missing = [m for m in want if m not in have]
         if missing:
@@ -375,11 +426,13 @@ def run_members(run_id):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--set", choices=("rb10", "corpus"), required=True)
+    ap.add_argument("--set", choices=("rb10", "corpus"), default="corpus")
+    ap.add_argument("--tier", choices=TIERS, help="fast = reference/gate_fast.tsv; dji = image row (env PLURIBUS_DJI_IMAGE); full = reference/corpus_keep.tsv; extensive = not built yet")
     ap.add_argument("--root", help="corpus-rebuild stamp directory (read only)")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--stride", type=int, default=1, help="every n-th complete design in name order (deterministic sample)")
     ap.add_argument("--members-run", type=int, help="score exactly the designs recorded in this gate_runs id (needs PLURIBUS_SQLITE_PATH)")
+    ap.add_argument("--scope", choices=tuple(SCOPES), default="primary", help="primary = EP4CGX150DF31 (F896); other_pkg = other EP4CGX150 packages")
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--record", action="store_true", help="write gate_runs / gate_results (PLURIBUS_SQLITE_PATH)")
     ap.add_argument("--tag", default="")
@@ -389,6 +442,14 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler(LOG)])
+    if args.tier == "extensive":
+        raise SystemExit("tier extensive: extreme-design list not built yet")
+    if args.tier == "dji":
+        raise SystemExit(run_dji(args))
+    if args.tier and not args.tag:
+        args.tag = "_" + args.tier
+    if not args.tier and args.set == "corpus" and not args.root:
+        raise SystemExit("--root (or --tier fast|full) required for --set corpus")
     ds = discover(args)
     log.info("set=%s designs=%d workers=%d", args.set, len(ds), args.workers)
     import heavy_guard
@@ -460,8 +521,89 @@ def main():
     path = os.path.join(OUT, f"gate_{args.set}{args.tag}.json")
     json.dump(res, open(path, "w"), indent=0, default=str)
     log.info("wrote %s", path)
+    reg = regression(args, tot)
     if args.record:
         record(args, good, tot, var)
+    if reg:
+        raise SystemExit(4)
+
+
+def last_run(tier, scope, set_name):
+    """summary of the latest gate_runs row of the same tier / scope / set (PLURIBUS_SQLITE_PATH), else None."""
+    if not os.environ.get("PLURIBUS_SQLITE_PATH"):
+        return None
+    import db
+    import schema
+    from sqlalchemy import select
+    with db.engine().connect() as conn:
+        for r in conn.execute(select(schema.gate_runs).where(schema.gate_runs.c.script == "scripts/cycloneiv_clean_gate.py").order_by(schema.gate_runs.c.id.desc())):
+            p = r.params if isinstance(r.params, dict) else json.loads(r.params or "{}")
+            if p.get("tier") == tier and p.get("scope", "primary") == scope and p.get("set") == set_name:
+                return r.id, (r.summary if isinstance(r.summary, dict) else json.loads(r.summary or "{}"))
+    return None
+
+
+def regression(args, tot):
+    """Rule: any fault column (missing / extra / wrong) of any category above the last run of the SAME tier = regression (logged, exit 4)."""
+    tier = args.tier or args.set
+    prev = last_run(tier, args.scope, args.set)
+    if not prev:
+        log.info("regression: no earlier run of tier %s", tier)
+        return False
+    rid, summ = prev
+    bad = [(c, k, summ["totals"][c][k], tot[c][k]) for c in CATS for k in ("missing", "extra", "wrong") if c in summ.get("totals", {}) and tot[c][k] > summ["totals"][c][k]]
+    for c, k, a, b in bad:
+        log.error("REGRESSION vs run %s: %s %s %d -> %d", rid, c, k, a, b)
+    log.info("regression vs run %s (tier %s): %s", rid, tier, "FAIL" if bad else "none")
+    return bool(bad)
+
+
+# dji tier: figure -> True when a rise is worse
+DJI_FIGURES = {"crc_frames_failed": True, "header_crc_bad": True, "fanin_conflict_nodes": True, "undriven_used_nodes": True, "loops_scc_gt1": True,
+               "self_loop_edges": True, "ff_no_clock_line_MISSING": True, "io_sites_MISSING": True, "tier_A_pct": False, "explained_ABC_pct": False}
+
+
+def run_dji(args):
+    """Image row: counts / percentages only (no image data in the DB).  Regression = a figure worse than the last dji run."""
+    image = os.environ.get("PLURIBUS_DJI_IMAGE")
+    if not image:
+        raise SystemExit("tier dji: env PLURIBUS_DJI_IMAGE required")
+    import subprocess
+    import cycloneiv_clean_image as IMG
+    res = IMG.run(image, 0)
+    subprocess.run([sys.executable, os.path.join(REPO, "scripts", "cycloneiv_clean_setbits.py"), "--n", "1"], check=True, cwd=REPO)
+    sb = json.load(open(os.path.join(OUT, "setbits.json")))["third_party_image"]
+    c, r, lg = res["container"], res["routing"], res["logic"]
+    fig = {"crc_frames_failed": c["cram_frame_crc_total"] - c["cram_frame_crc_pass"], "header_crc_bad": int(not c["header_crc_ok"]),
+           "fanin_conflict_nodes": r["variants"][r["headline_variant"]]["fanin_conflict_nodes"], "undriven_used_nodes": r["undriven_used_nodes"],
+           "loops_scc_gt1": r["loops"]["scc_gt1"], "self_loop_edges": r["loops"]["self_loop_edges"], "ff_no_clock_line_MISSING": lg["ff_no_clock_line_MISSING"],
+           "io_sites_MISSING": res["io"]["fields"]["classes"].get("MISSING", 0), "tier_A_pct": round(100 * sb["tier"]["A"] / sb["set_cells"], 2),
+           "explained_ABC_pct": sb["explained_ABC"],
+           "decoded_luts_nonzero_init": lg["luts_nonzero_init"], "decoded_ffs_claimed": lg["les_ff_claimed"], "routing_programmed_edges": r["variants"][r["headline_variant"]]["programmed_edges"],
+           "io_classes": res["io"]["fields"]["classes"], "tier_cells": sb["tier"]}
+    log.info("dji figures %s", json.dumps(fig))
+    prev = last_run("dji", "primary", "dji")
+    bad = []
+    if prev:
+        old = prev[1].get("figures", {})
+        for k, worse_up in DJI_FIGURES.items():
+            if k in old and ((fig[k] > old[k]) if worse_up else (fig[k] < old[k])):
+                bad.append((k, old[k], fig[k]))
+                log.error("REGRESSION vs run %s: %s %s -> %s", prev[0], k, old[k], fig[k])
+    else:
+        log.info("regression: no earlier dji run")
+    if args.record:
+        import db
+        import schema
+        from provenance import corpus as C
+        from provenance import evidence_io as E
+        schema.init()
+        with db.engine().begin() as conn:
+            E.ensure_family(conn, "cycloneiv")
+            rid = C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_clean_gate.py", E.git_head(REPO), {},
+                                    params={"set": "dji", "tier": "dji", "scope": "primary", "tag": args.tag}, summary={"figures": fig})
+        log.info("recorded gate_runs id %s (dji)", rid)
+    return 4 if bad else 0
 
 
 def record(args, good, tot, var):
@@ -471,7 +613,7 @@ def record(args, good, tot, var):
     from provenance import evidence_io as E
     schema.init()
     commit = E.git_head(REPO)
-    suffix = "" if args.set == "rb10" else "@" + os.path.basename(args.root.rstrip("/"))
+    suffix = "@" + os.path.basename(args.root.rstrip("/")) if args.root else ""
     results = {}
     with db.engine().begin() as conn:
         E.ensure_family(conn, "cycloneiv")
@@ -482,7 +624,7 @@ def record(args, good, tot, var):
                             required=False)
             results[name] = {c: r[c] for c in CATS}
         run = C.record_gate_run(conn, "cycloneiv", "scripts/cycloneiv_clean_gate.py", commit, results,
-                                params={"set": args.set, "root": "corpus-rebuild/" + os.path.basename(args.root.rstrip("/")) if args.root else None,"headline_variant": HEADLINE, "baseline": args.baseline, "tag": args.tag,
+                                params={"set": args.set, "root": "corpus-rebuild/" + os.path.basename(args.root.rstrip("/")) if args.root else None,"headline_variant": HEADLINE, "baseline": args.baseline, "tag": args.tag, "scope": args.scope, "tier": args.tier or args.set,
                                         "designs": len(good), "members": sorted(results)},
                                 summary={"totals": tot, "pips_variants": var,
                                          "headline": {c: round(headline(tot[c]), 4) for c in CATS}})
