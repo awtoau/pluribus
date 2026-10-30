@@ -120,3 +120,10 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 | `quartus/eda/ibis/cycloneivgx_ibis_*.xml`, `cycloneivgx_package_rlc.xml` | IBIS electrical models per IO standard / drive / slew (names, not bit values) | no |
 | `quartus/eda/hspice/cycloneivgx_hspo.hsd` | HSPICE option set | no |
 - No plain-text table for M9K modes, MAC modes or IO drive / slew bit values exists in the install: the field encodings for those come from code (writers) and the asmdb groups. The PLL switchover, scan and lock-detect muxes are RE-index routing muxes (same writer pattern as the M9K input muxes), not tables.
+
+## Mux select semantics from code (`asmdb_select.py`, #169)
+
+- `ASMDB_*_MUX::select` (libdb_asmdb): SIMPLE@0x8c4ac one-hot; ENCODED@0x8c0ba bit k = (value >> k) & 1; MAPPED_SIMPLE@0x8c5b8 / MAPPED_ENCODED@0x8c19a look the value up in the group's map mux first (a SIMPLE mux whose bit list is the table), then select; DECISION@0x8c36e writes the lower / upper half with its two settings; RAM_MUX@0x86bc4 encoded with a polarity mux. Classes 20 (heterogeneous), 21 (bank), 22 (RAM), 24 (STL mapped) not implemented.
+- This replaces the 'one-hot on a 1-bit mux' reading for REG_DATA_OUT: that group is MAPPED_ENCODED with map [1, 0] (value 0 -> 1, value 1 -> 0), so value 1 stores 0 (matches 102 of 102 checks). E-P3 stands as 'no die-flag inversion'; the cause is the group's value map, not one-hot.
+- `RAM_USAGE_MODE` (MAPPED_ENCODED, 17 bits, map [0x1ff81, 0x1ff81, 0x1ff81, DUMMY, DUMMY]): usage 0 (ROM), 1 (single port), 2 (dual / bidir) all write 0x1ff81; usage 3, 4 illegal. This is why ROM, single, dual and bidir builds read the same 17 bits (`10000001111111111`); the mode is carried by other groups (`RAM_USE_TRUE_DUAL_PORT_MODE`, `RAM_USE_PACKED_MODE`, `RAM_DATA_WRITE_MODE`, ...). The bit-55 question is closed: no distinction exists in this group.
+- `RAM_DATA_WRITE_MODE`: MAPPED_SIMPLE, 6 bits, map [0, 1, 2, 3, 4, 3, 4, 5, 5] (writer values 0..3 from `ASM_RAM_WRITE_OPTION`).
