@@ -74,4 +74,5 @@ class RegUsed:
         configured = (self.lut.cells(bits).sum(axis=2) > 0) | ((bits[self.sync[0]] == 1) & (bits[self.sync[1]] == 1))
         reg_buf = (u & ~y[..., :2]).any(axis=-1)
         local_only = ~u.any(axis=-1) & ~y[..., 2]
-        return configured & (reg_buf | local_only)
+        sync = (bits[self.sync[0]] == 1) & (bits[self.sync[1]] == 1)           # source: ffctl.py doc (ASM_LE_USE_SYNC_* writers): the shared bit is set only when an sclr / sload term is connected = a register exists
+        return sync | (configured & (reg_buf | local_only))

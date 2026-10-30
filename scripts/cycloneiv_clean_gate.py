@@ -143,6 +143,8 @@ class Ctx:
         self.ext = T.Extras(self.st, self.lut, self.rt)
         self.st.edge_ids([0], [0])          # build the (src, dst) key index (after the implicit edges are appended) before worker threads start
         self.io = T.Io()
+        from lifters.cycloneiv_clean import ffctl as FC
+        self.ffc = FC.FfCtl(self.lut, self.rt, self.ext.clocks)
         from lifters.cycloneiv_clean import io_decode as ID, io_fields as IF, io_pins as IP
         self.pm = IP.PinMap(self.io, IF.Decoder(json.load(open(ID.DECODE_PATH))))
         self.enum = np.where(self.rt.tpl >= 0, self.rt.enum[np.maximum(self.rt.tpl, 0)].astype(np.int32), -1)
@@ -279,8 +281,10 @@ def score_design(cx, d, fire_workers):
         for last, cell, port, rp in n["dests"]:
             if port == "CLK":
                 gt_clk[cell] = rs
+    gt_clk_h = {re.sub(r"\w+:", "", k): v for k, v in gt_clk.items()}       # RCF hierarchy `altmult_add:mac|mult_add_0di1:auto_generated|x` = vo `mac|auto_generated|x`
     rc, why_r = counts(), collections.Counter()
-    blk = cx.ext.clocks.le_blk(bits)                    # tracer claim: BLK_CLK_BUF record per (LAB, LE) from LAB clock mux + LE_CLOCK_SELECT
+    # claim per (LAB, LE): clock source record from LAB clock mux gi (LE_CLOCK_SELECT): BLK_CLK_BUF line, or a LAB_CONTROL_MUX (fabric clock; ffctl.py)
+    blk = np.take_along_axis(cx.ffc.lab_signals(bits)["clk_rec"], cx.ffc.le_val(bits)["LE_CLOCK_SELECT"].astype(np.int64), axis=1)
     ffm = cx.ext.reg.ff(bits, fired[HEADLINE])          # register-used claim (reg_used.py); undecidable = no claim
     blk = np.where(ffm, blk, -1)
     gt_sites_ff = set()
@@ -288,7 +292,7 @@ def score_design(cx, d, fire_workers):
     for name, (x, y, nn) in ffs.items():
         i = cx.lut.lab(x, y)
         gt_sites_ff.add((i, nn))
-        gr = gt_clk.get(name) or gt_clk.get(qname.get(name))
+        gr = gt_clk.get(name) or gt_clk.get(qname.get(name)) or gt_clk_h.get(name) or gt_clk_h.get(qname.get(name))
         if not gr:
             rc["missing"] += 1
             why_r["gt_clock_unresolved"] += 1
