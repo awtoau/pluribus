@@ -1,0 +1,5 @@
+top = "top"
+purpose = "register feedback (LE_USE_REGISTER_FEEDBACK) + independent sload/ASDATA source on one LE (#183)"
+exercises = ["ctrl", "asdata", "register_feedback"]
+qsf = ["set_location_assignment LCCOMB_X46_Y46_N30 -to sKA", "set_location_assignment LCCOMB_X46_Y46_N28 -to sL", "set_location_assignment LCCOMB_X46_Y46_N26 -to sM", "set_location_assignment LCCOMB_X46_Y46_N0 -to l0", "set_location_assignment FF_X46_Y46_N1 -to r0", "set_location_assignment LCCOMB_X10_Y10_N0 -to fl", "set_location_assignment FF_X10_Y10_N1 -to far1", "set_location_assignment FF_X10_Y12_N1 -to far2", "set_location_assignment PIN_A11 -to D", "set_location_assignment PIN_A15 -to D2", "set_location_assignment PIN_B9 -to y0", "set_location_assignment PIN_A13 -to yf1", "set_location_assignment PIN_A14 -to yf2", "set_global_assignment -name AUTO_GLOBAL_CLOCK OFF", "set_global_assignment -name AUTO_GLOBAL_REGISTER_CONTROLS OFF", "set_global_assignment -name SEED 1", "set_global_assignment -name FITTER_EFFORT \"FAST FIT\""]
+device = "EP4CGX150DF31C7"

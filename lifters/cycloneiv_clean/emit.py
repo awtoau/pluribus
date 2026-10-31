@@ -386,21 +386,24 @@ class Builder:
         entry, or a selection resolving to a record absent from the graph). Carry mode does NOT exclude ASDATA: the image has sload FFs
         whose LE is simultaneously carry mode (gi 2 = cin for the comb function) and has a resolvable, non-carry ASDATA value on the same
         LE_LUT_INPUT gi 2 mux bits (register-mode read of CDB_ATOM iterm 0x20 vs comb iterm 0xe -- two different logical uses of one mux).
-        Same physical mux as the LUT's DATAC input (ASM_LE_LUT_INPUT::process_atom@0x16c464), so an LE whose DATAC is its own register
-        (LE_USE_REGISTER_FEEDBACK, F-010) resolves the same way for ASDATA as it already does for the LUT pin."""
+        The plain LE_LUT_INPUT/LI-LL lookup runs FIRST (F-020 pt2, #183): LE_USE_REGISTER_FEEDBACK (F-010) is a fact about the LUT's own
+        comb DATAC pin, not about this LE's independent sload/ASDATA mux -- of 5,237 image LEs where the sload path has the bit set, 5,228
+        have a plain lookup that resolves to a real, different signal (DJI AF3 SHA-1 engine's a..e/W-schedule feedback via M9K reads) that
+        LE_USE_REGISTER_FEEDBACK-first wrongly discarded as a self-loop (own Q tied to own D forever, awtoau/pluribus#183). Only the 9 image
+        LEs the plain lookup can't resolve at all fall back to register feedback, same as it already did before F-020 added the two branches
+        below it."""
+        s = int(self.sel[lab, le, 2])
+        if not (s == -1 or self.sel_only[lab, le] or s < 0):
+            rec = int(self.cx.li_rec[lab, s]) if 0 <= s < LI_PER_LAB else \
+                int(self.cx.ll_rec[lab, s - LI_PER_LAB]) if LI_PER_LAB <= s < LI_PER_LAB + 16 else -1
+            if rec >= 0:
+                sig, prod = self.sig(rec)
+                return sig, prod, rec
         if self.lev["LE_USE_REGISTER_FEEDBACK"][lab, le]:
             return f"ff_{x}_{y}_{le}", ("FF", x, y, le), None     # own-register feedback has no LI/LL record (ASM_LE_USE_REGISTER_FEEDBACK@0x16c294)
-        s = int(self.sel[lab, le, 2])
         if s == -1 or self.sel_only[lab, le]:
             return UNCONNECTED, None, None        # no first-level selection: same "tie high" convention as the LUT's own DATAC pin (lut_pin_unconnected)
-        if s < 0:
-            return None, None, None               # ambiguous table entry (-2): genuinely undecoded, same as the LUT pin
-        rec = int(self.cx.li_rec[lab, s]) if 0 <= s < LI_PER_LAB else \
-            int(self.cx.ll_rec[lab, s - LI_PER_LAB]) if LI_PER_LAB <= s < LI_PER_LAB + 16 else -1
-        if rec < 0:
-            return None, None, None
-        sig, prod = self.sig(rec)
-        return sig, prod, rec
+        return None, None, None                   # ambiguous table entry (-2), or a selection resolving to a record absent from the graph
 
     # ---- logic -------------------------------------------------------------------------------------------------------------------
     def _logic(self, nl):
