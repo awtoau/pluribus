@@ -1,0 +1,20 @@
+# DJI Lightbridge ground FPGA (m2001, rev 01) -- third-party EP4CGX150 image, pin usage vs the
+# firmware-derived model.  NOT a drop-in load.py --board config: the cycloneiv_clean pipeline is
+# env-var-driven (PLURIBUS_DJI_IMAGE), not wired into load.py's board-config mechanism the way
+# machxo2/ecp5 boards are (boards/README.md's [files]/lifter schema doesn't list cycloneiv_clean).
+# This directory documents the board's pin/net findings in the same tracked-existence convention
+# as the other boards/<name>/ dirs; the bitstream itself stays out of tree via the env var below.
+[board]
+name    = "DJI Lightbridge ground FPGA (m2001, rev 01)"
+device  = "EP4CGX150"
+package = "F672"          # DF27; image consistent with F672 (docs/altera/cycloneIV/cycloneiv-clean-io.md, pkginfer)
+lifter  = "cycloneiv_clean"
+top     = "cyc4_top"
+
+[files]
+pins_tsv = "pins.tsv"
+nets_tsv = "nets.tsv"
+
+# bitstream stays in the vendor store; path via environment, nothing copied
+[bitstreams.m2001]
+bin = "$PLURIBUS_DJI_IMAGE"

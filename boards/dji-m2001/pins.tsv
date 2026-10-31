@@ -1,0 +1,94 @@
+# Re-checked against docs/lightbridge-fpga.md (post-F-021/post-tail-strip) and a fresh run of
+# scripts/cycloneiv_clean_pad_roles.py against the current lift.  Not all rows are confident:
+# some are intentionally left "unverifiable, inferred only" rather than forced to an answer --
+# see each row's own confidence/tag columns, and docs/altera/cycloneIV/ for the fuller write-ups
+# this table's confirmed findings feed (lightbridge-fpga.md, the DJI structural-finding issues).
+# package F672 (DF27); device EP4CGX150
+# COLUMN FORMAT: ball bank site(x,y,z) diffio_fn dir label function confidence(3=U 5=I 8=V) tag chip_ref chip_pin chip_signal net_in net_out note
+# tag: V = consistent with firmware-read fact and netlist structure, I = inferred, U = unknown
+A11	B8	50,91,2	DIFFIO_T32n	in	FX3_FLAG_A	input; drives write enable of 64 M9K, reaches all DQ/ctl outputs	5	I	FX3		CTL4/5 flag?			flag or handshake input; which flag U
+A12	B8	53,91,2	DIFFIO_T34n, DQS5T/CQ5T#, DPCLK15	out	FX3_SLWR_n?	idle high; NOT(a) or NOT(b) selected by S2, forced high in S1&S2 (read state); its net is the enable of the 8-bit register B2 decodes; flag A11 in cone	5	I	FX3	CTL	SLWR#			write-side strobe; pair with D10 (SLWR#/PKTEND#) U
+A6	B8	46,91,2	DIFFIO_T29n	out	FX3_A1_or_A0?	idle low; equals state net S2 (gates the strobes and the DQ output mux); address lines select thread (read vs write)	5	I	FX3		A1/A0			top-side outputs next to the DQ bus; B2 is in a core-generated clock domain with 65 M9K in its cone
+AA25	B5	117,22,0	DIFFIO_R50p, DQS3R/CQ3R#, DPCLK7	in	AD9363_RX_13	CONFIRMED bus member: clk=u_clkbuf_out_0_46_30_0/pos, cone[:2]=[1,0], consumers=1 (pad_roles.py recheck 2026-10-31) -- matches the other 12 confirmed members below, NOT the 8 no-sink pads this draft originally lumped in	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs (see RECHECK_NOTES.md "RX bus split")
+AA26	B5	117,26,0	DIFFIO_R47p	in	RX_bus_claim_UNCONFIRMED	STALE: structural recheck finds clk=[], consumers=0, cone=[0] -- NO consumer in the current lift at all, not merely "sink not decoded" as the draft text claimed. Structurally identical to A5/AA22 (already flagged nosink_in by the draft itself), not to the confirmed RX-bus pads	3	U	AD9363		RX_D/CTRL_OUT? (UNCONFIRMED)			was grouped with the AD9363 RX bus; pad_roles.py shows it has no sink -- may be mis-assigned to the bus, or genuinely unused on this board revision
+AA7	B3	8,0,0	DIFFIO_B4p	out	SPI_MISO	STALE->FIXED: docs/lightbridge-fpga.md section 6 (V-tagged) identifies AA7/AA8/AA9/AB11 as the MCU SPI SLAVE interface (MOSI AB11, SCK AA8, CS AA9 active low, MISO AA7), explicitly calling an AD9363-relay/AG12 reading stale. pad_roles.py confirms AA7 is an isolated `through_out` with a deep [14,27,3341] fan-in cone (readback from the 208x8 register file), NOT part of either AD9363 output-bus signature class	8	V	MCU		MISO			corrected from draft's "AD9363_SPI_OUT_0 (weak)"; see docs/lightbridge-fpga.md #6
+AA8	B3	10,0,1	DIFFIO_B4n	in	SPI_SCK	STALE->FIXED: see AA7 row. pad_roles.py: in_cone=[1,2], no direct FF, paired structurally with AA9 (both simple lightly-loaded control inputs) -- consistent with SCK+CS, not AD9363_SPI_SDO	8	V	MCU		SCK			corrected from draft's "AD9363_SPI_SDO? (weak)"; see docs/lightbridge-fpga.md #6
+AA9	B3	26,0,0	DIFFIO_B15n	in	SPI_CS_n	STALE->FIXED: see AA7 row. pad_roles.py: in_cone=[1,2], no direct FF, identical signature to AA8 -- active-low CS per the doc	8	V	MCU		CS (active low)			corrected from draft's "MCU_STROBE?"; see docs/lightbridge-fpga.md #6
+AB11	B3	32,0,1	DIFFIO_B19p	in	SPI_MOSI	STALE->FIXED: see AA7 row. pad_roles.py: in_cone=[1,2] but direct_ff=1, consumers=2 (distinct from AA8/AA9 -- feeds the actual shift register, more load than a bare control strobe), consistent with MOSI	8	V	MCU		MOSI			corrected from draft's "MCU_ENABLE_RESET?"; see docs/lightbridge-fpga.md #6
+AB23	B5	117,7,0	DIFFIO_R60p	in	RX_bus_claim_UNCONFIRMED	STALE: same as AA26 -- clk=[], consumers=0, cone=[0], no sink in current lift	3	U	AD9363		RX_D/CTRL_OUT? (UNCONFIRMED)			see AA26 note
+AB26	B5	117,22,1	DIFFIO_R50n	in	AD9363_RX_12	CONFIRMED bus member: direct_ff=1, consumers=2, clk/cone otherwise matches the 13-pad confirmed group (see RECHECK_NOTES.md) -- the direct_ff difference from AA25-style members is a minor, explainable variant, not a different group	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+AB8	B3	10,0,0	DIFFIO_B5p	out	bank5_out_unconfirmed	UNVERIFIABLE: pad_roles.py groups this with 5 other const/undecoded-source bank-5/4 outputs (AA23/AA24/AB24/AC23/U23), NOT with AA7/AC8 as a 3-pad SPI-relay group as the draft claimed -- that specific 3-output grouping is not structurally supported this pass	3	U						draft's "weak: 3 outputs + AA8 input contiguous" grouping not confirmed; downgraded to unverifiable pending a fresh trace
+AC24	B5	117,8,0	DIFFIO_R59n	in	RX_bus_claim_UNCONFIRMED	STALE: same as AA26 -- no sink in current lift	3	U	AD9363		RX_D/CTRL_OUT? (UNCONFIRMED)			see AA26 note
+AC25	B5	117,21,0	DIFFIO_R51p	in	RX_bus_claim_UNCONFIRMED	STALE: same as AA26 -- no sink in current lift	3	U	AD9363		RX_D/CTRL_OUT? (UNCONFIRMED)			see AA26 note
+AC26	B5	117,21,1	DIFFIO_R51n	in	RX_bus_claim_UNCONFIRMED	STALE: same as AA26 -- no sink in current lift	3	U	AD9363		RX_D/CTRL_OUT? (UNCONFIRMED)			see AA26 note
+AC8	B3	12,0,1	DIFFIO_B5n	out	bank5_out_unconfirmed	UNVERIFIABLE: same as AB8 -- not structurally grouped with AA7 as claimed	3	U						see AB8 note
+AD25	B5	117,17,0	DIFFIO_R54p	in	RX_bus_claim_UNCONFIRMED	STALE: same as AA26 -- no sink in current lift	3	U	AD9363		RX_D/CTRL_OUT? (UNCONFIRMED)			see AA26 note
+AD26	B5	117,17,1	DIFFIO_R54n	in	RX_bus_claim_UNCONFIRMED	STALE: same as AA26 -- no sink in current lift	3	U	AD9363		RX_D/CTRL_OUT? (UNCONFIRMED)			see AA26 note
+AE26	B5	117,11,0	DIFFIO_R57n	in	RX_bus_claim_UNCONFIRMED	STALE: same as AA26 -- no sink in current lift	3	U	AD9363		RX_D/CTRL_OUT? (UNCONFIRMED)			see AA26 note
+AF3	B3	8,0,1	DIFFIO_B3n	bidir	AF3_1WIRE	CONFIRMED (independent of this pass): docs/lightbridge-fpga.md #8/#11a -- this is the AF3 single-wire DS28E01-class authentication engine pad, not generic "SPI MISO". pad_roles.py: bidir, clk=u_clkbuf_out_57_91_29_0 (the dedicated B14-fed domain), matches doc exactly	8	V	engine (AF3)		1-Wire bus			corrected label only (draft's "SPI_MISO?" guess predates the AF3 engine finding); doc is authoritative
+B14	B8	57,91,1	CLKIO9, DIFFCLK_5p	in	clk_ext_b14	CONFIRMED: docs/lightbridge-fpga.md #10 -- dedicated external clock pad feeding both PLLs AND the AF3 engine's own clock buffer; draft's "SPI_SCK?" label is wrong, this is a clock pin, not an MCU SPI signal	8	V			external clock source			corrected label from draft's "SPI_SCK?"; see docs/lightbridge-fpga.md #10 and nets.tsv clk_ext_b14
+B2	B8	21,91,1	DIFFIO_T10p	out	FX3_SLCS_n?	idle low = asserted all the time; goes high for count 0x01 of an 8-bit register in a core-generated clock domain	5	I	FX3	CTL	SLCS#			active-low CS idle asserted; weak
+B9	B8	28,91,1	DIFFIO_T14n	out	FX3_SLOE_or_SLRD_n	idle high; low only in state S1&S2 when ff_20_47_12=1 and ff_25_83_14=0; flag D13 in cone	8	V	FX3	CTL	SLOE#/SLRD#			which of the two U
+D10	B8	21,91,3	DIFFIO_T9p, DQS1T/CQ1T#, DPCLK17	out	FX3_PKTEND_n?	idle high; same mux as A12 with an independent 2-stage register chain; no flag in cone	5	I	FX3	CTL	PKTEND#/SLWR#			top-side outputs next to the DQ bus; B2 is in a core-generated clock domain with 65 M9K in its cone
+D12	B8	32,91,0	DIFFIO_T18n	out	FX3_SLRD_or_SLOE_n	idle high; low only in state S1&S2 (same state that releases the DQ OE) when ff_25_83_14=0 and ff_20_47_13=1; flag D13 in cone	8	V	FX3	CTL	SLRD#/SLOE#			which of the two U
+D13	B8	39,91,2	DIFFIO_T23n	in	FX3_FLAG_B	input; 25 FFs, reaches only B9 and D12 outputs	5	I	FX3		CTL4/5 flag?			second flag candidate
+E12	B8	39,91,3	DIFFIO_T23p	out	FX3_A0_or_A1?	idle low; function of S1 and ff9 (state decode), active high	5	I	FX3		A0/A1			top-side outputs next to the DQ bus; B2 is in a core-generated clock domain with 65 M9K in its cone
+E2	B8	3,91,2	PLL8_CLKOUTp	out	FX3_PCLK	FPGA-driven GPIF clock: toggle FF (xor with enable FF) whose phase gates the enable (lc_22_50_6) of the FSM FFs, so the FSM advances at PCLK = main/2; firmware GPIF_CONFIG 0x80000380 = sync, clock on CLK pin	8	V	FX3	CLK	PCLK			forwarded divided clock next to the DQ bus; destination (FX3 PCLK vs AD9363 FB_CLK) I
+E25	B6	117,72,0	DIFFIO_R11p	out	AD9363_TXD_0	CONFIRMED bus member (12-pad group): pad_roles.py out_clk0/out_cone=[4,31,67] identical across E25 E26 F26 G25 G26 H24 H25 H26 J26 K26 L25 L26 -- fully uniform, no outliers	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+E26	B6	117,72,1	DIFFIO_R11n	out	AD9363_TXD_1	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+F26	B6	117,66,1	DIFFIO_R15n	out	AD9363_TXD_5	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+G25	B6	117,70,1	DIFFIO_R12n	out	AD9363_TXD_3	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+G26	B6	117,66,0	DIFFIO_R15p	out	AD9363_TXD_4	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+H24	B6	117,70,0	DIFFIO_R12p	out	AD9363_TXD_2	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+H25	B6	117,65,0	DIFFIO_R16p	out	AD9363_TXD_6	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+H26	B6	117,65,1	DIFFIO_R16n	out	AD9363_TXD_7	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+J26	B6	117,60,2	DIFFIO_R21p	out	AD9363_TXD_8	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+K26	B6	117,59,0	DIFFIO_R21n	out	AD9363_TXD_9	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+L25	B6	117,57,1	DIFFIO_R24p	out	AD9363_TXD_10	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+L26	B6	117,56,0	DIFFIO_R24n	out	AD9363_TXD_11	CONFIRMED bus member; see E25 note	8	V	AD9363		TX_D?			one of 12 structurally-uniform TX outputs
+M25	B6	117,55,1	DIFFIO_R26p	in	AD9363_RX_CLK_OR_FRAME?	input on bank 6 / clock pad CLKIO7 (DIFFCLK_3p), sampled by 106 FFs on both main-clock edges, reaches R22 output. Note: pad_roles.py's SIMPLE in_cone[:2]=[1,0] for this ball under the default depth-3 walk does not show the 106-FF fan-out the draft describes -- likely a different walk depth/direction than the draft's original trace; UNVERIFIABLE which figure is current without a deeper re-trace	5	I	AD9363		DATA_CLK / RX_FRAME			N25 = dedicated clock pin used as data, not a clock-buffer source; cone-size discrepancy with pad_roles.py's quick check flagged, not resolved this pass
+N25	B6	None,None,None	CLKIO7, DIFFCLK_3p	in	AD9363_RX_CLK_OR_FRAME?	pad_roles.py: in_cone[:3]=[1,1,3] -- an outlier among the claimed RX-bus pads (much shallower than the draft's "106 FFs" claim), consistent with the draft's OWN separate treatment of N25 as a clock pad used as data, not a bus member	5	I	AD9363		DATA_CLK / RX_FRAME			see M25 note; N25's distinct shape from the 13-pad RX bus is a reassuring consistency check, not a new finding
+T19	B5	117,27,1	DIFFIO_R46n	in	RX_bus_outlier	STRUCTURAL OUTLIER within the claimed RX bus: pad_roles.py in_cone[:3]=[8,8,38] -- much deeper fan-out than the 13 confirmed uniform members (cone=[1,0]) and than the 8 no-sink members (cone=[0]). A third, distinct shape. Draft's own note ("T19 -> 146 FFs -> AA7") already flagged this pad as different from its peers; this pass confirms it structurally	5	I	AD9363		RX_D/CTRL_OUT? (OUTLIER)			do not lump with either RX-bus subgroup; needs its own trace
+T24	B5	117,36,1	DIFFIO_R39p	in	AD9363_RX_1	CONFIRMED bus member (direct_ff=1 variant, same as AB26/U25/W25); see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+T25	B5	117,35,0	DIFFIO_R39n	in	AD9363_RX_0	CONFIRMED bus member; see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+U25	B5	117,35,1	DIFFIO_R40p	in	AD9363_RX_3	CONFIRMED bus member (direct_ff=1 variant); see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+U26	B5	117,34,0	DIFFIO_R40n	in	AD9363_RX_2	CONFIRMED bus member; see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+V26	B5	117,31,0	DIFFIO_R43n	in	AD9363_RX_4	CONFIRMED bus member; see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+W24	B5	117,31,1	DIFFIO_R44p	in	AD9363_RX_7	CONFIRMED bus member; see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+W25	B5	117,29,0	DIFFIO_R44n	in	AD9363_RX_6	CONFIRMED bus member (direct_ff=1 variant); see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+W26	B5	117,32,1	DIFFIO_R43p	in	AD9363_RX_5	CONFIRMED bus member; see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+Y24	B5	117,24,0	DIFFIO_R48p	in	AD9363_RX_11	CONFIRMED bus member; see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+Y25	B5	117,24,1	DIFFIO_R48n	in	AD9363_RX_10	CONFIRMED bus member; see AA25 note	8	V	AD9363		RX_D/CTRL_OUT?			one of 13 structurally-uniform RX inputs
+A5	B8	37,91,2	DIFFIO_T21n	in	top_in_nosink	input site, no decoded sink	3	U						no consumer in the decoded netlist (undecoded M9K/MAC ports possible); CONFIRMED still nosink by pad_roles.py recheck (clk=[], consumers=0) -- structurally identical to the 8 reclassified RX-bus-claim rows above (AA26 etc), supporting the idea these 8 may belong in the SAME unresolved bucket as A5/AA22, not in the RX bus
+AA22	B4	115,0,0	RDN2	in	RDN2	dedicated OCT calibration pin RDN2 decoded as used input, no sink	3	U						dedicated pin, not a user interface; decode of this site may be a misclassification; CONFIRMED still nosink by pad_roles.py recheck
+AA23	B5	117,6,0	DIFFIO_R61p, DQS5R/CQ5R#, DPCLK6	out	bank5_out_5	bank 5 outputs R49-R61 (U22 small cone; AE25 wide cone; U23 AC23 AB24 AA23 AA24 data mux undecoded)	3	U						data source undecoded for 5 of 7; UNVERIFIABLE this pass, pad_roles.py groups it with 5 other out_const/undecoded-source outputs, consistent with the draft but not independently resolved further
+AA24	B5	117,6,1	DIFFIO_R61n	out	bank5_out_6	same as AA23	3	U						see AA23 note
+AB12	B3	37,0,1	DIFFIO_B23p	out	bottom_out_2	bottom outputs B19n, B21p, B23p; small / wide cones	3	U						UNVERIFIABLE this pass
+AB24	B5	117,7,1	DIFFIO_R60n	out	bank5_out_4	same as AA23	3	U						see AA23 note
+AC10	B3	34,0,1	DIFFIO_B21p	out	bottom_out_1	bottom outputs B19n, B21p, B23p; small / wide cones	3	U						UNVERIFIABLE this pass
+AC11	B3	32,0,0	DIFFIO_B19n	out	bottom_out_0	bottom outputs B19n, B21p, B23p; small / wide cones	3	U						UNVERIFIABLE this pass
+AC23	B5	117,10,1	DIFFIO_R59p	out	bank5_out_3	same as AA23	3	U						see AA23 note
+AD13	B3	48,0,2	DIFFIO_B32n	in	in_misc_1	bottom inputs B10p, B32n: 9 FFs each, 76 / 46 FF cone, reach no pad	3	U	MCU		UART RX / GPIO?			no decoded UART structure; UNVERIFIABLE this pass
+AD20	B4	95,0,2	DIFFIO_B61p	out	bank4_out_0	bank 4 outputs B61p,B67n,B69n,B70n,B70p: wide-cone class (925-926 FFs, 1 M9K)	3	U						same cone class as AD9363_TXD; no model interface of this width; UNVERIFIABLE this pass
+AD21	B4	106,0,0	DIFFIO_B67n	out	bank4_out_1	same as AD20	3	U						see AD20 note
+AD22	B4	108,0,0	DIFFIO_B69n, DQS0B/CQ1B, DPCLK5	out	bank4_out_2	same as AD20	3	U						see AD20 note
+AD23	B4	111,0,2	DIFFIO_B70p	out	bank4_out_4	same as AD20	3	U						see AD20 note
+AD24	B4	111,0,1	DIFFIO_B70n	out	bank4_out_3	same as AD20	3	U						see AD20 note
+AD5	B3	19,0,1	DIFFIO_B10p	in	in_misc_0	bottom inputs B10p, B32n: 9 FFs each, 76 / 46 FF cone, reach no pad	3	U	MCU		UART RX / GPIO?			no decoded UART structure; UNVERIFIABLE this pass
+AE25	B5	117,13,1	DIFFIO_R57p	out	bank5_out_2	same as AA23	3	U						see AA23 note
+P19	B5	117,43,0	DIFFIO_R34p	out	AD9363_CTL_0	bank 5 outputs R34-R38; mixed cones (69-930 FFs)	3	U	AD9363		TX_FRAME/FB_CLK/ENABLE/TXNRX?			R22 reads CLKIO7; R25 and R20 are in the wide-cone class; UNVERIFIABLE this pass
+P20	B5	117,43,1	DIFFIO_R34n	out	AD9363_CTL_1	same as P19	3	U	AD9363		TX_FRAME/FB_CLK/ENABLE/TXNRX?			see P19 note
+R19	B5	117,38,1	DIFFIO_R38p, DQS1R/CQ1R#, DPCLK8	out	AD9363_CTL_4	same as P19	3	U	AD9363		TX_FRAME/FB_CLK/ENABLE/TXNRX?			see P19 note
+R20	B5	117,36,0	DIFFIO_R38n	out	AD9363_CTL_5	same as P19	3	U	AD9363		TX_FRAME/FB_CLK/ENABLE/TXNRX?			see P19 note
+R22	B5	117,42,1	DIFFIO_R35p	out	AD9363_CTL_2	same as P19	3	U	AD9363		TX_FRAME/FB_CLK/ENABLE/TXNRX?			see P19 note
+R25	B5	117,41,1	DIFFIO_R36p	out	AD9363_CTL_3	same as P19	3	U	AD9363		TX_FRAME/FB_CLK/ENABLE/TXNRX?			see P19 note
+U22	B5	117,23,1	DIFFIO_R49n	out	bank5_out_0	same as AA23	3	U						see AA23 note
+U23	B5	117,18,1	DIFFIO_R53n	out	bank5_out_1	same as AA23	3	U						see AA23 note
+A3	B8	26,91,0	DIFFIO_T13p	bidir	FX3_DQ_5	CONFIRMED (8-pad group, pad_roles.py recheck): out_clk0/out_cone=[18,31,20] and in_clk/in_cone=[1,1] identical across A3 A4 B4 C2 C3 C4 D2 D3 -- fully uniform, no outliers	8	V	FX3		DQ?			one of 8 structurally-uniform FX3 DQ bidir pads; bit-to-ball order still U
+A4	B8	30,91,3	DIFFIO_T15n, DQS3T/CQ3T#, DPCLK16	bidir	FX3_DQ_6	CONFIRMED bus member; see A3 note	8	V	FX3		DQ?			one of 8 structurally-uniform FX3 DQ bidir pads
+B4	B8	28,91,0	DIFFIO_T15p	bidir	FX3_DQ_7	CONFIRMED bus member; see A3 note	8	V	FX3		DQ?			one of 8 structurally-uniform FX3 DQ bidir pads
+C2	B8	10,91,1	DIFFIO_T2n	bidir	FX3_DQ_2	CONFIRMED bus member; see A3 note	8	V	FX3		DQ?			one of 8 structurally-uniform FX3 DQ bidir pads
+C3	B8	12,91,1	DIFFIO_T3n	bidir	FX3_DQ_0	CONFIRMED bus member; see A3 note	8	V	FX3		DQ?			one of 8 structurally-uniform FX3 DQ bidir pads
+C4	B8	24,91,0	DIFFIO_T11n	bidir	FX3_DQ_4	CONFIRMED bus member; see A3 note	8	V	FX3		DQ?			one of 8 structurally-uniform FX3 DQ bidir pads
+D2	B8	8,91,0	DIFFIO_T2p	bidir	FX3_DQ_3	CONFIRMED bus member; see A3 note	8	V	FX3		DQ?			one of 8 structurally-uniform FX3 DQ bidir pads
+D3	B8	10,91,0	DIFFIO_T3p	bidir	FX3_DQ_1	CONFIRMED bus member; see A3 note	8	V	FX3		DQ?			one of 8 structurally-uniform FX3 DQ bidir pads

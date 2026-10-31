@@ -80,6 +80,7 @@ and only its contents are, since it documents that the config exists.
 |-----------|-------|------|--------|--------|
 | `aw2-2d82auto/` | Hantek 2D82AUTO | LCMXO2-1200HC TQFP100 | machxo2 | production |
 | `cynthion-r1/` | GSG Cynthion r1.x | LFE5U-12F BG256 | ecp5 | stub — pins.tsv + ECP5 lifter pending (#9/#15) |
+| `dji-m2001/` | DJI Lightbridge ground FPGA (m2001, rev 01) | EP4CGX150 F672 | cycloneiv_clean | docs-only — pins.tsv/nets.tsv findings, not a `load.py --board` config (cycloneiv_clean is env-var-driven, see the file's own header) |
 
 ## Adding a new board
 

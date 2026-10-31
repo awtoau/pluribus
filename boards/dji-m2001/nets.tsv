@@ -1,0 +1,21 @@
+# Re-checked against the current lift (post-F-021/post-tail-strip).  No row is structurally wrong;
+# FF counts on the two biggest domains drifted slightly from the original draft (expected: F-021
+# touched ~5,228 LEs' ASDATA resolution, which can reassign a handful of FFs' effective clock/role
+# -- a small drift here is a consequence of that known fix, not a new finding).
+# net  name  type  confidence  freq_mhz  source  ff_count  notes
+u_clkbuf_out_0_46_30_0	clk_main	clk	inferred		CLKBUF input select 10 (no decoded edge; PLL_BUFFER class by elimination)	23084 (was 23338+48neg in draft; small drift, see header note)	all 349 modelled M9K; DQ bus, ctl outputs, most logic
+u_clkbuf_out_0_46_31_0	clk_pll_b	clk	inferred		CLKBUF input select 11 (PLL class by elimination)	12259 (was 12950 in draft; small drift, see header note)	76 M9K at depth 0
+u_clkbuf_out_57_91_33_0	clk_pll_c	clk	inferred		CLKBUF input select 10	52 (matches draft's 39+13 total exactly)	retimes the 12 bank-6 outputs (pos and neg edge FFs)
+u_clkbuf_out_57_91_29_0	clk_ext_b14	clk	confirmed		CLK_BUFFER (dedicated pad B14, CLKIO9/DIFFCLK_5p), select 0	218 (EXACT match to draft)	only external pad in domain: AF3; 2 M9K
+u_clkbuf_out_57_91_30_0	clk_ext_b14_b	clk	confirmed		CLK_BUFFER (pad B14), select 1	0 (confirmed)	no FF uses it
+u_clkbuf_out_0_46_33_0	clk_core_a	clk	confirmed		BLOCK_INPUT_MUX (core-driven), select 4	141 (was 136+1neg=137 in draft; small drift, see header note)	source signal not decoded
+u_clkbuf_out_0_46_29_0	clk_core_b	clk	confirmed		BLOCK_INPUT_MUX, select 4	119 (matches draft's 100+19 total exactly)	B2 output domain; 65 M9K at depth 4
+u_clkbuf_out_0_45_28_0	clk_core_c	clk	confirmed		BLOCK_INPUT_MUX, select 4	0 (confirmed)
+u_clkbuf_out_0_45_33_0	clk_core_d	clk	confirmed		BLOCK_INPUT_MUX, select 4	0 (confirmed)	used as async clear net of ~28k FFs in the netlist (aclr)
+u_clkbuf_out_57_91_28_0	clk_core_e	clk	confirmed		BLOCK_INPUT_MUX, select 4	0 (confirmed)
+u_clkbuf_out_57_91_31_0	clk_core_f	clk	confirmed		BLOCK_INPUT_MUX, select 4	0 (confirmed)
+u_clkbuf_out_57_91_32_0	clk_core_g	clk	confirmed		BLOCK_INPUT_MUX, select 4	0 (confirmed)
+PLL_2	pll2	pll	confirmed		M=14 N=1 K(post)=2 C0 counter 50+50 (/100), others bypassed	-	input clock and clock-buffer link not decoded; NOT re-verified this pass (no PLL-param recheck script run)
+PLL_8	pll8	pll	confirmed		M=20 N=1 K(post)=2 C0 4+4 (/8), C3 8+8 (/16)	-	input clock and clock-buffer link not decoded; Fin unknown so no MHz; NOT re-verified this pass
+lc_24_56_7	fx3_dq_oe	ctrl	confirmed		shared OE of 8 top-side bidir pads	-	LUT of 4 signals, INIT F7FF; consistent with the 8 CONFIRMED-uniform FX3 DQ pads in pins_corrected.tsv
+lc_12_87_3	b14_serial_oe	ctrl	confirmed		OE of AF3 bidir	-	consistent with AF3's CONFIRMED bidir role in pins_corrected.tsv
