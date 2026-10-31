@@ -12,8 +12,9 @@ Pipeline per image (all decoders are the sibling modules; nothing here is fitted
   IO           io_fields.py site decode; input pad = IO_DATAIN (x, y, 0, SUB_LOC); output data = BLOCK_INPUT_MUX of a VIO pad (bim.py)
   PLL / M9K / MAC  pll.py / m9k.py / mac.py parameters and content
 NOT decoded (emitted as `// UNDECODED:` lines and counted, never guessed): FF enable / async clear / sync clear / sync load / clock polarity
-(modelled idle, flagged on every FF), carry chains entering a LAB, HIO pad data, bidirectional OE, clock-buffer and PLL sources, M9K / MAC port
-connectivity and widths, MAC mode.
+(modelled idle, flagged on every FF), carry chains entering a LAB, HIO pad data, bidirectional OE, clock-buffer core-signal sources, M9K / MAC port
+connectivity and widths, MAC mode.  PLL_CLKIN source IS traced (pll.clkin_source, ledger P-011/P-014/P-015, #176/#181 point 2); counted
+undecoded only when the trace finds no programmed parent.
 """
 import collections
 import json
@@ -900,14 +901,35 @@ class Builder:
         for k, bt, p in pm.used(cff):
             nl.pll.append(dict(k=k, params=pm.params(cff, bt, p)))
         nl.counts["pll_enabled"] = len(nl.pll)
-        # output counters c# with a programmed PLL_BUFFER -> CLKBUF_IN edge (clkbuf.py); the input clock source (PLL_CLKIN mux) is not decoded (#175)
+        # output counters c# with a programmed PLL_BUFFER -> CLKBUF_IN edge (clkbuf.py)
         icd = {v[2]: k for k, v in pll.pll_tiles().items()}
         sp = cx.st.esrc[np.asarray(edges, np.int64)].astype(np.int64)
         for r in sp[cx.enum[sp] == names.enum_of("PLL_BUFFER")].tolist():
             for pl in nl.pll:
                 if pl["k"] == icd[(int(cx.rt.x[r]), int(cx.rt.y[r]))]:
                     pl.setdefault("to_clkbuf", set()).add(int(cx.rt.element(r)[4]))
-        nl.und["PLL: input clock source"] += len(nl.pll)
+        # PLL_CLKIN source: same forest walk as scripts/cycloneiv_clean_image_pll_pads.py (ledger P-011/P-014/P-015, #176/#181 point 2).
+        # `edges` already carries the CFF-tagged select (P-011) and value-00 (P-014) edges: Extras.apply / pll.Wires / pll.Inputs
+        # wire them into the fired set before _hard runs, so the trace needs no extra decode, only the forest parent map.
+        ea = np.asarray(edges, np.int64)
+        clkin_parent = {}
+        for s, d in zip(cx.st.esrc[ea].tolist(), cx.st.edst[ea].tolist()):
+            clkin_parent.setdefault(d, []).append(s)
+
+        def element(r):
+            return cx.rt.element(r)
+
+        def tn(r):
+            return cx.desc(r)[0]
+        pads = cx.pads_of(nl.package_pins)
+        for pl in nl.pll:
+            found = pll.clkin_source(cx.rt, cx.enum, clkin_parent, pl["k"], pads, tn, element)
+            if found:
+                pl["clkin_ball"] = found[0][0]                 # unique in every image observed so far (ledger P-015); multiple balls flagged below
+                if len({b for b, _ in found}) > 1:
+                    pl["clkin_ball_ambiguous"] = sorted({b for b, _ in found})
+            else:
+                nl.und["PLL: input clock source"] += 1
         # M9K: used = an M4K_BUFFER with programmed fan-out or a programmed edge into an M9K-column BLOCK_INPUT_MUX / M4K_LEFT_CONTROL_INPUT
         rt = cx.rt
         st = cx.st
@@ -1030,7 +1052,10 @@ def verilog(nl, module="cyc4_top"):
     for p in nl.pll:
         w(f"// PLL_{p['k']}: " + " ".join(f"{k}={list(v) if isinstance(v, tuple) else v}" for k, v in p["params"].items()))
         w(f"// PLL_{p['k']} counters feeding clock buffers: " + (" ".join(f"c{c}" for c in sorted(p.get("to_clkbuf", ()))) or "none"))
-        w(f"// UNDECODED: PLL_{p['k']} input clock source")
+        if p.get("clkin_ball"):
+            w(f"// PLL_{p['k']} input clock source: ball {p['clkin_ball']}" + (f" // AMBIGUOUS: also {p['clkin_ball_ambiguous']}" if p.get("clkin_ball_ambiguous") else ""))
+        else:
+            w(f"// UNDECODED: PLL_{p['k']} input clock source")
     for m in nl.m9k:
         if m.get("modelled"):
             n = f"m9k_{m['x']}_{m['y']}"

@@ -84,6 +84,30 @@ def test_clock_buffer_tiles_derived_from_dirt_runs():
     assert [src[g] for g in range(0, 30, 6)] == [1, 8, 4, 2, 3]
 
 
+def test_clkin_source_traced_in_emit_not_just_the_standalone_tracer():
+    """emit.Builder._hard reports PLL_CLKIN source via pll.clkin_source (#181 point 2): both enabled PLLs on the DJI image resolve to
+    ball B14 (ledger P-011/P-014/P-015), and the netlist's own undecoded count for this cause is 0, not unconditionally len(nl.pll)."""
+    import os
+    import pytest
+    image = os.environ.get("PLURIBUS_DJI_IMAGE", "")
+    if not image or not os.path.isfile(image):
+        pytest.skip("PLURIBUS_DJI_IMAGE not set or file absent")
+    import sys
+    from conftest import REPO
+    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    import cycloneiv_clean_image as IMG
+    from lifters.cycloneiv_clean import emit
+    rbf, _, _ = IMG.container(open(image, "rb").read())
+    open(IMG.PLANE, "wb").write(rbf)
+    try:
+        nl = emit.Builder(emit.Ctx(), IMG.PLANE, "dji_pll_test").run()
+    finally:
+        os.remove(IMG.PLANE)
+    assert {p["k"] for p in nl.pll} == {2, 8}
+    assert all(p.get("clkin_ball") == "B14" for p in nl.pll), nl.pll
+    assert nl.und.get("PLL: input clock source", 0) == 0
+
+
 def test_fin_interval_formula_contains_actual_inputs():
     """Fout = Fin * M / (N * C), VCO = Fin * M * post / N: Fin of every altpll build (20 / 25 / 50 MHz) lies in the interval from the vendor limits."""
     _need_quartus()

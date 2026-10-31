@@ -20,7 +20,6 @@ import cycloneiv_clean_image as IMG  # noqa: E402
 from lifters.cycloneiv_clean import emit as E, names, pll, tracer as T  # noqa: E402
 
 log = logging.getLogger("image_pll_pads")
-PADS = ("IO_RAW_DATAIN", "IO_DATAIN", "CLK_BUFFER")      # source: emit.PAD_SOURCES
 
 
 def main():
@@ -47,40 +46,13 @@ def main():
     tiles = pll.pll_tiles()
     e_clk = names.enum_of("PLL_CLKIN")
     log.info("enabled PLLs: %s", sorted(en))
+
     def desc(r):
         t, x, y, z, i = cx.tn(r), *cx.rt.element(r)[1:]
         return f"{t}@X{x}Y{y}S{z}I{i}"
 
-    by_xyz = {}
-    for r in np.flatnonzero(cx.enum == names.enum_of("CLKBUF_IN")).tolist():
-        el = cx.rt.element(r)
-        by_xyz.setdefault((el[1], el[2], el[3]), []).append(r)
-    xy_icd = {v[2]: k for k, v in tiles.items()}
-
-    def walk(r, path, depth, found):
-        """every programmed-parent chain from `r` up to a source (pad / PLL output / core input); a CLKBUF_OUT root continues at the CLKBUF_IN of the same site."""
-        if depth > 24:
-            return
-        t = cx.tn(r)
-        if t in PADS:
-            p = pads.get(("CLK" if t == "CLK_BUFFER" else "IO", int(cx.rt.x[r]), int(cx.rt.y[r]), int(cx.rt.element(r)[3])))
-            found.append((path + [desc(r)], "ball " + (p[1] if p else "unmapped")))
-            return
-        if t == "PLL_BUFFER":
-            found.append((path + [desc(r)], f"PLL_{xy_icd.get((int(cx.rt.x[r]), int(cx.rt.y[r])), '?')} output counter c{int(cx.rt.element(r)[4])}"))
-            return
-        if t == "BLOCK_INPUT_MUX":
-            found.append((path + [desc(r)], "core signal"))
-            return
-        nxt = list(parent.get(r, []))
-        if t == "CLKBUF_OUT" and not nxt:
-            el = cx.rt.element(r)
-            nxt = [q for q in by_xyz.get((el[1], el[2], el[3]), []) if parent.get(q)]
-            if not nxt:
-                found.append((path + [desc(r)], "clock buffer input not programmed"))
-                return
-        for q in nxt:
-            walk(q, path + [desc(r)], depth + 1, found)
+    def element(r):
+        return cx.rt.element(r)
 
     for icd, (_, _, (x, y)) in sorted(tiles.items()):
         if icd not in en:
@@ -93,11 +65,11 @@ def main():
                 xc = st.xcell[st.xrec == q]
                 log.info("   %s graph parents %d, exclusion cells %d set %d; parent cells: %s", desc(q), len(es), len(xc), int(bits[xc].sum()),
                          [(desc(int(st.esrc[e])), int(bits[st.cell[st.estart[e]]]), int(e in fired_set)) for e in es])
-            found = []
-            walk(d, [], 0, found)
-            log.info("   source chains: %d; sources %s", len(found), sorted({b for _, b in found}))
-            for path, b in found[:6]:
-                log.info("   %s via %s", b, " <- ".join(path))
+            # shared with emit.py's own PLL_CLKIN source report (lifters/cycloneiv_clean/pll.py clkin_source, #176/#181 point 2)
+            found = pll.clkin_source(cx.rt, cx.enum, parent, icd, pads, cx.tn, element) if int(cx.rt.element(d)[4]) == 0 else []
+            log.info("   source chains: %d; sources %s", len(found), sorted({b for b, _ in found}))
+            for b, path in found[:6]:
+                log.info("   ball %s via %s", b, " <- ".join(desc(r) for r in path))
 
 
 if __name__ == "__main__":

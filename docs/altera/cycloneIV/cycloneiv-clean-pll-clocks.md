@@ -1,6 +1,6 @@
 # Cyclone IV GX (EP4CGX150) PLL and clock buffers (#175, #165)
 
-Code: `lifters/cycloneiv_clean/{pll,clkbuf,clocks}.py`; tracer hooks in `tracer.Extras`. Scripts: `cycloneiv_clean_pll_gate.py`, `cycloneiv_clean_pll_ports.py`, `cycloneiv_clean_image_clocks.py`, `cycloneiv_clean_hardblocks_build.py {gen|build} pllmp`.
+Code: `lifters/cycloneiv_clean/{pll,clkbuf,clocks}.py`; tracer hooks in `tracer.Extras`; `pll.clkin_source` (forest walk to a pad) called from both `emit.Builder._hard` (netlist build, #181 point 2) and `scripts/cycloneiv_clean_image_pll_pads.py` (diagnostic log), one code path. Scripts: `cycloneiv_clean_pll_gate.py`, `cycloneiv_clean_pll_ports.py`, `cycloneiv_clean_image_clocks.py`, `cycloneiv_clean_image_pll_pads.py`, `cycloneiv_clean_hardblocks_build.py {gen|build} pllmp`.
 Rules: ledger P-002, P-008..P-011, B-010, B-011. Facts: `tests/test_reversing_facts.py` (clkbuf / pll tests), `tests/cycloneiv_clean/test_pll.py`.
 
 ## Decoded from vendor data (no pair fitting)
@@ -17,9 +17,26 @@ Rules: ledger P-002, P-008..P-011, B-010, B-011. Facts: `tests/test_reversing_fa
 - PLL_FBOUT -> PLL_FEEDBACK_IN (empty group): conducts while `PLL_ENABLE_PLL` is set (`pll.Wires`). The second parent (core feedback) is external feedback: not modelled. `PLL_FEEDBACK_SELECT` on PLL_1: value 0 = no compensation, 3 = normal (12 builds); PLL_6 / PLL_7 have no CRAM cells for it (MPLL).
 - Frequency limits: `ddb_stingray4.pll` (EP4CGX150 parts, GPLL / MPLL, grades 6 7 8). Every value is a PERIOD in ps (vco 769..1666 ps = 1300..600 MHz; input 200000..2116 ps = 5..472 MHz). `pll.fin_interval`: VCO = Fin M / N, PFD = Fin / N, Fout = Fin M / (N C). Checked: Fin = 50 MHz inside the interval in 6 of 6 `gxhb_pllsite_*`, Fout = 100 MHz.
 
+## Decoded and traced: PLL_CLKIN source (#176, #181 point 2)
+
+- Select bits are CFF-tagged routing bits (ledger T-007 / P-011); `_build_static` routes tagged addresses to the CFF-extended plane
+  (`tracer.plane_bits`), so the normal fired-edge set already carries the CLKPIN_TO_PLLCLKIN_MUX -> element 666 DEDICATED_BUF -> LAB_CLK
+  -> global clock network chain (P-015) and the value-00 edges (P-014, `pll.Wires.zero_select`).
+- `pll.clkin_source(rt, enum, parent, icd, pads, tn, element)` walks that forest from an enabled PLL's PLL_CLKIN index-0 record to its
+  pad, same walk `scripts/cycloneiv_clean_image_pll_pads.py` used standalone before #181 point 2 integrated it into `emit.Builder._hard`.
+  Previously `emit.py` unconditionally declared the source undecoded (stale #175 comment) regardless of this trace: two analyses that
+  were never joined, not stale bookkeeping (corrected framing, `cycloneiv-clean-gap-audit.md` section 7).
+- Image: PLL_2 and PLL_8 index 0 both resolve to ball **B14** (F672) through clock buffer X57 Y91 and the global clock network; no
+  cascade, index 1 unused; Fin 54.9-83.3 MHz derived from M / N / C and the VCO limits, not measured. `nl.pll[k]["clkin_ball"]` in the
+  emitted netlist; `nl.und["PLL: input clock source"]` now counts only a PLL whose PLL_CLKIN index 0 has no programmed parent at all.
+
 ## Open
 
-- (resolved, ledger T-007 / P-011 / P-014 / P-015: select bits are CFF-tagged routing bits; image PLL_2 and PLL_8 index 0 take the same input, ball B14 (F672) through clock buffer X57 Y91 and the global clock network; Fin 54.9-83.3 MHz derived from M / N / C and the VCO limits, not measured) PLL_CLKIN source (IO_RAW_DATAIN / CLKPIN_TO_PLLCLKIN_MUX / PLLREFCLKMUX -> PLL_CLKIN), ledger P-011: the 2-entry destination group cells are 0 in 12 PLL builds and 33 other designs although the RCF routes differ; PLL_6 / PLL_7 route through PLLREFCLKMUX. 1 missing pip per PLL design (the only PLL fault left in the PLL builds).
+- Ledger P-011: the 2-entry destination group cells are 0 in 12 PLL builds and 33 other designs although the RCF routes differ;
+  PLL_6 / PLL_7 route through PLLREFCLKMUX, not through element 666, so `pll.clkin_source` does not resolve them to a pad (no walk
+  rule for PLLREFCLKMUX yet). 1 missing pip per PLL design in `cycloneiv_clean_pll_gate.py` (`IO_RAW_DATAIN|PLL_CLKIN` / `PLLREFCLKMUX`
+  cases) is unchanged by the emit.py integration — the only PLL fault left in the PLL builds, a separate value-00/PLLREFCLKMUX
+  edge-firing gap, not the source-reporting gap #181 point 2 fixed.
   - Asmdb of this die has no PLL_INPUT_CLOCK_SELECT / PLL_SELECT_REF_CLK group for blocks 43 / 45.
   - CFF diff base vs clkswitch (9 bits): PLL_SO_ENABLE, PLL_SO_CONTROL_MODE, PLL_CLOCK_SWITCH_INVERT, 6 IO pad bits. No clock-input select bit.
 - Scan chain layout (144 bits) and dynamic reconfiguration: the CFF groups are the shadow of the scan chain; order in `ddb_stingray_basic.pll` (not read here). Switchover / lock-detect inputs: lock detect is output only (`PLL_LOCKED_PIN` edges match).
@@ -30,4 +47,4 @@ Rules: ledger P-002, P-008..P-011, B-010, B-011. Facts: `tests/test_reversing_fa
 - 2 PLLs enabled: PLL_2 (M 14, N 1, c0 50 / 50) and PLL_8 (M 20, N 1, c0 4 / 4, c3 8 / 8), VCO post-scale 2.
 - Clock buffer sites: 30 = 3 PLL_BUFFER + 2 CLK_BUFFER (dedicated pad) + 7 BLOCK_INPUT_MUX (core signal) + 18 unused. The 3 formerly undecoded sources are PLL outputs: PLL_8 c0, PLL_8 c3, PLL_2 c0.
 - Clock domains: 6 roots, 34,112 FFs of which 31,495 resolve (PLL_8 c0 20,472; PLL_8 c3 10,530; pad 214; core clocks 141 + 99; PLL_2 c0 39); 2,617 FFs have no clock line.
-- Frequencies for Fin unknown: Fin PLL_2 in [54.9, 119.0] MHz -> c0 = 0.14 Fin = [7.7, 16.7] MHz; Fin PLL_8 in [38.5, 83.3] MHz -> c0 = 2.5 Fin = [96.1, 208.3] MHz, c3 = 1.25 Fin = [48.1, 104.2] MHz. One shared crystal: [54.9, 83.3] MHz. Fin is not determined (PLL_CLKIN source open).
+- Frequencies for Fin unknown: Fin PLL_2 in [54.9, 119.0] MHz -> c0 = 0.14 Fin = [7.7, 16.7] MHz; Fin PLL_8 in [38.5, 83.3] MHz -> c0 = 2.5 Fin = [96.1, 208.3] MHz, c3 = 1.25 Fin = [48.1, 104.2] MHz. One shared crystal: [54.9, 83.3] MHz. Both resolve to ball B14 (source traced, see above); what B14 is on the board (crystal / oscillator / external PLL) is not determined, so Fin itself is still not measured.

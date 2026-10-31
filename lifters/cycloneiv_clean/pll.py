@@ -10,6 +10,9 @@ import numpy as np
 
 from . import fields as F, cycloneiv_io as IO
 
+# source: routing.rcf roots of input ports (PAD_SOURCES in emit.py): element S index = pad SUB_LOC
+CLKIN_PADS = ("IO_RAW_DATAIN", "IO_DATAIN", "CLK_BUFFER")
+
 PLL_BLOCKS = {43: "FAST_PLL", 45: "GENERAL_PLL"}      # source: libdb_asmdb ASMDB_ARCH_GROUP_BLOCK_TYPE (reference/ghidra/globals.tsv)
 DIRT = "ddb_stingray4_asmdb_dirt.ddb"      # source: quartus common/devinfo/cycloneivgx; COORDINATE_MAP_DATA (PLL tiles) + CLKMUX_PLL_SOURCE (per clock buffer)
 BLOCK_NAMES = {"FAST_PLL": 43, "GENERAL_PLL": 45}      # source: dirt ARCH_GROUP_BLOCK_TYPE strings of COORDINATE_MAP_DATA entries; numbers = PLL_BLOCKS
@@ -182,6 +185,47 @@ class Wires:
                 if not bits[st.cell[a:b]].any() and xs == int(bits[st.cell[a:b]][(st.kind[a:b] & 2) != 0].sum()):
                     out.append(e)
         return np.asarray(out, np.int64)
+
+
+def clkin_source(rt, enum, parent, icd, pads, tn, element):
+    """Trace one enabled PLL's PLL_CLKIN index-0 record upstream through the programmed forest (`parent`: dst record -> [src records],
+    built from the same fired edge set `emit.Builder.run` / `cycloneiv_clean_gate.py` use) to its pad(s).
+
+    Walks PLL_CLKIN -> ... -> IO_RAW_DATAIN / IO_DATAIN / CLK_BUFFER (ledger P-011 CFF-tagged select bits, P-014 value-00 edges, P-015
+    CLKPIN_TO_PLLCLKIN_MUX -> element 666 DEDICATED_BUF -> LAB_CLK -> global clock network), same code path as
+    scripts/cycloneiv_clean_image_pll_pads.py.  Returns [(ball, path_records)] sorted by ball name; [] if PLL_CLKIN index 0 has no
+    programmed parent (genuinely unresolved, not walked).  `tn(r)` = type name of record r; `element(r)` = (type, x, y, z, i)."""
+    from . import names as N
+    e_clk = N.enum_of("PLL_CLKIN")
+    x, y = pll_tiles()[icd][2]
+    d = int(next((int(r) for r in np.flatnonzero((enum == e_clk) & (rt.x == x) & (rt.y == y)).tolist() if element(r)[4] == 0), -1))
+    if d < 0:
+        return []
+    by_xyz = {}
+    for r in np.flatnonzero(enum == N.enum_of("CLKBUF_IN")).tolist():
+        el = element(r)
+        by_xyz.setdefault((el[1], el[2], el[3]), []).append(r)
+
+    def walk(r, path, depth, found):
+        if depth > 24:
+            return
+        t = tn(r)
+        if t in CLKIN_PADS:
+            el = element(r)                                     # el = (type, x, y, z, i); pad SUB_LOC = z (emit.PAD_SOURCES convention)
+            p = pads.get(("CLK" if t == "CLK_BUFFER" else "IO", el[1], el[2], el[3]))
+            found.append((path + [r], p[1] if p else None))
+            return
+        if t == "PLL_BUFFER" or t == "BLOCK_INPUT_MUX":
+            return                                             # feedback into another PLL's counter / a core signal: not a pad source
+        nxt = list(parent.get(r, []))
+        if t == "CLKBUF_OUT" and not nxt:
+            el = element(r)
+            nxt = [q for q in by_xyz.get((el[1], el[2], el[3]), []) if parent.get(q)]
+        for q in nxt:
+            walk(q, path + [r], depth + 1, found)
+    found = []
+    walk(d, [], 0, found)
+    return sorted({(b, tuple(p)) for p, b in found if b}, key=lambda t: t[0])
 
 
 # group (gi) -> (element, DB_INPUT_PORT_TYPE, port index) of the vendor block interface PLL<n> (blockiface.py).  Name match for 7 ports, 7 of 7 specimens

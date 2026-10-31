@@ -82,6 +82,7 @@ Status changes fast: numbers are from the run named in each section; evidence li
 ## 10. Clocks
 
 - 2 PLLs enabled: PLL_2 (m14, c0 50/50) and PLL_8 (m20; c0 4/4, c3 8/8; VCO post-scale 2). 6 clock domains; the main one holds ~63 % of FFs. Both PLLs take their first input from ball B14 (dedicated clock pin) through a global clock buffer, the row/LAB clock lines and the dedicated-buffer element (V); same chain for both, no PLL cascade, second inputs unused. N25 (AD9363 data clock) is sampled as data, not used as a PLL input. Fin lies in 54.9-83.3 MHz if the decoded PLL parameters hold (I); what B14 is on the board is U.
+- The B14 trace is now emitted by `emit.py` itself (`nl.pll[k]["clkin_ball"]`, `pll.clkin_source`), not only by the standalone tracer script that first found it: the two analyses (routing tracer vs netlist emit) were unmerged until #181 point 2 (docs/altera/cycloneIV/cycloneiv-clean-pll-clocks.md).
 - Weird: the PLL input select lives in the periphery (CFF) address space, flagged by a fourth routing flag byte that earlier tracers ignored.
 
 ## 11. Odd facts worth remembering
