@@ -1,6 +1,6 @@
 # ECP5 Diamond routing oracle (#109)
 
-Diamond 3.14 placed-and-routed `.ncd` files read with `ncdread` + `ncd2nmc -r -io`; `scripts/ecp5_oracle_compare.py` scores the pluribus decode + lift (`lifters/ecp5_lift.py`) against them. Twin of `docs/machxo2-diamond-oracle.md`.
+Diamond 3.14 placed-and-routed `.ncd` files read with `ncdread` + `ncd2nmc -r -io`; `scripts/ecp5_oracle_compare.py` scores the pluribus decode + lift (`lifters/ecp5_lift.py`) against them. Twin of `docs/lattice/machxo2/machxo2-diamond-oracle.md`.
 Numbers: full run 2026-10-24, Diamond 3.14.0.75.2 NCDs built 2026-07-29/30, lifter and `device-db/` as of the commit adding this file. Findings only: lifter, `native_trellis/`, `device-db/` untouched.
 
 ## Tools (no licence needed)
