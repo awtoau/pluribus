@@ -8,6 +8,7 @@ Code: `lifters/cycloneiv_clean/m9kctl.py`, `emit.py` (`Builder._m9k`, `verilog()
 - Write enable = `RAM_PIA_TO_INPUT_YGR` gi 11 (else gi 9). Clock: `RAM_CLOCK_FAST_MUX` (8-bit mapped-encoded, map [0, 1, X.., 6, 10, 18, 34, 66, 130, 2]): value 12 + j (bit 1 + bit 2+j) = block clock line j, otherwise the LOCAL_INTERCONNECT clock = `RAM_PIA_TO_INPUT_YGR` gi 0 (else gi 1; the fast-mux group follows).
 - Output register: `RAM_REG_DATA_OUT` bit clear. Content: `m9k.read_words` (INIT map decoded earlier).
 - Model: input address / data / enable registered on the clock; write at the edge; output = memory at the registered address (unregistered) or one more register.
+- Write-enable invert (#178, ledger M-028, 2026-10-31): `RAM_WRITE_ENABLE_INVERT` gi 0 (single/first line) raw bit 1 = write enable inverted, applied for all 542 tiles (was never read by `emit.py` before). TDP port association (A=gi9/B=gi11, `m9k_tdp.py`) stays as originally read off hl_ram_6 -- re-confirmed by sim, not swapped; the 2 live TDP tiles' invert bits are applied per the AF3-engine oracle, not a guessed gi-to-port direction. See `docs/altera/cycloneIV/cycloneiv-clean-hardblocks.md` "M9K write-enable invert, TDP port association re-confirmed" for the full derivation.
 - Not modelled (flagged, counted): port B, dual-port / true dual-port / ROM modes, widths 32 / 36, byte enables, clear / clock-enable selects, read-during-write modes other than the default.
 
 ## Results (gxm9k_*: 831 designs; hold-out = crc32 quarter, 229 designs)

@@ -9,6 +9,8 @@ Rules (docs/altera/cycloneIV/cycloneiv-clean-m9k.md; pin map read off the traini
   - write enable = RAM_PIA_TO_INPUT_YGR gi 11; clock: RAM_CLOCK_FAST_MUX gi 0 value 1 (bit 0) = LOCAL_INTERCONNECT clock via RAM_PIA_TO_INPUT_YGR
     gi 0 (else gi 1), values 12..17 (bit 1 + bit 2 + j) = block clock line j (asmdb map of the mux, asmdb_select).
   - output register: RAM_REG_DATA_OUT bit clear (the one-hot rule stores NOT value).
+  - write-enable invert: RAM_WRITE_ENABLE_INVERT gi 0 (single/first line) / gi 1 (second line, true-dual-port only); raw bit 1 = that
+    line's sampled write enable is inverted (#178, ASM_RAM_WRITE_ENABLE_INVERT::process_end_of_phase@0x2df5c).
 Byte enable (16-bit words): PORTABYTEENAMASKS[k] = RAM_MS_BYTE_ENABLE_INPUT gi k, no connected group = all bytes written.
 Not modelled: B port, dual-port / true-dual-port / ROM modes, widths 32 / 36, byte enables, clear / clock-enable selects, read-during-write modes.
 """
@@ -88,6 +90,15 @@ class M9kCtl:
         o["cg"] = np.zeros(n, np.int64)                              # replaced below once pia is known
 
         o["we"] = np.where(w11 >= 0, w11, w9)
+        # source: ASM_RAM_WRITE_ENABLE_INVERT::process_end_of_phase@0x2df5c (one group object per gi = write-enable line index, not a PIA gi):
+        #   gi 0 is always the first / only write-enable line (single-port tiles use gi 0 whichever physical PIA line -- 9 or 11 -- carries it,
+        #   confirmed by cycloneiv_clean_we_invert_gi_check.py: gi0 varies meaningfully over BOTH gi9-only and gi11-only tiles, gi1 is a constant-1
+        #   padding value when unused); gi 1 is the second line, live only on true-dual-port tiles.  Raw bit 1 = that line's enable is inverted --
+        #   same ENCODED-mux no-remap convention already trusted for RAM_CE_INVERT (ffctl B-003/I-001: bit = value, no inversion in the mux itself).
+        o["we_invert"] = bits[self.cols[("RAM_WRITE_ENABLE_INVERT", 0)]][:, 0] == 1
+        o["we_invert_b"] = bits[self.cols[("RAM_WRITE_ENABLE_INVERT", 1)]][:, 0] == 1
+        o["re_invert"] = bits[self.cols[("RAM_READ_ENABLE_INVERT", 0)]][:, 0] == 1
+        o["re_invert_b"] = bits[self.cols[("RAM_READ_ENABLE_INVERT", 1)]][:, 0] == 1
         o["pia"] = np.stack([self.calc[("RAM_PIA_TO_INPUT_YGR", g)].select(bits) for g in (0, 1)], axis=1)
         o["pia_all"] = np.stack([self.calc[("RAM_PIA_TO_INPUT_YGR", g)].select(bits) for g in range(12)], axis=1)
         o["cg"] = np.where(o["pia"][:, 0] >= 0, 0, np.where(o["pia"][:, 1] >= 0, 1, 0))

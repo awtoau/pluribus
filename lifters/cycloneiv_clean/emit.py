@@ -379,6 +379,21 @@ class Builder:
         self.nl.srcs[name] = (t, cause)
         return (name, ("SRC", t, x, y, z, i))
 
+    def _asdata_source(self, lab, le, x, y):
+        """ASDATA (DATAC pin, gi 2) signal + producer + record, or (None, None, None) if undecoded.
+        Same physical mux as the LUT's DATAC input (ASM_LE_LUT_INPUT::process_atom@0x16c464: register-mode LEs read CDB_ATOM iterm type
+        0x20 instead of the comb DATAC iterm 0xe, but `mux_select` writes the identical LE_LUT_INPUT gi 2 bits either way), so an LE whose
+        DATAC is its own register (LE_USE_REGISTER_FEEDBACK, F-010) resolves the same way for ASDATA as it already does for the LUT pin."""
+        if self.lev["LE_USE_REGISTER_FEEDBACK"][lab, le]:
+            return f"ff_{x}_{y}_{le}", ("FF", x, y, le), None     # own-register feedback has no LI/LL record (ASM_LE_USE_REGISTER_FEEDBACK@0x16c294)
+        s = int(self.sel[lab, le, 2])
+        rec = int(self.cx.li_rec[lab, s]) if 0 <= s < LI_PER_LAB else \
+            int(self.cx.ll_rec[lab, s - LI_PER_LAB]) if LI_PER_LAB <= s < LI_PER_LAB + 16 else -1
+        if rec < 0:
+            return None, None, None
+        sig, prod = self.sig(rec)
+        return sig, prod, rec
+
     # ---- logic -------------------------------------------------------------------------------------------------------------------
     def _logic(self, nl):
         cx = self.cx
@@ -449,11 +464,9 @@ class Builder:
                 F["d"] = f"lc_{x}_{y}_{le}"
             else:
                 # sload tied high (LAB_ENABLE_SYNC_SIGNALS state 4 / 5, LE sync bit set): D = ASDATA; FF-only LE (no LUT) is the same path
-                # FF-only LE: D = ASDATA = the LE's DATAC input (gi 2); evidence: rb_000 FF-only LEs, ASDATA net = the LI selected by gi 2
-                s = int(self.sel[lab, le, 2])
-                rec = int(cx.li_rec[lab, s]) if 0 <= s < LI_PER_LAB else int(cx.ll_rec[lab, s - LI_PER_LAB]) if LI_PER_LAB <= s < LI_PER_LAB + 16 else -1
-                if rec >= 0:
-                    F["d"], F["d_prod"] = self.sig(rec)
+                sig, prod, _ = self._asdata_source(lab, le, x, y)
+                if sig is not None:
+                    F["d"], F["d_prod"] = sig, prod
                     nl.counts["ff_d_from_asdata"] += 1
                 else:
                     F["und"].append("d: FF-only LE with no DATAC selection")
@@ -505,11 +518,9 @@ class Builder:
                 nl.counts["ff_sload_vcc"] += 1
             if st in (1, 3):
                 ctl("sload", int(ls["sload_rec"][lab]), "LAB_SYNC_LOAD_FAST_MUX_MAG selection not decoded", not inv[4])
-                s = int(self.sel[lab, le, 2])                         # asdata = the LE's DATAC input
-                rec = int(cx.li_rec[lab, s]) if 0 <= s < LI_PER_LAB else int(cx.ll_rec[lab, s - LI_PER_LAB]) if LI_PER_LAB <= s < LI_PER_LAB + 16 else -1
-                if rec >= 0:
-                    F["asdata"], F["asdata_prod"] = self.sig(rec)
-                    F["asdata_rec"] = rec
+                sig, prod, rec = self._asdata_source(lab, le, F["x"], F["y"])
+                if sig is not None:
+                    F["asdata"], F["asdata_prod"], F["asdata_rec"] = sig, prod, rec
                 else:
                     F["und"].append("asdata")
                     nl.und["FF sync load: ASDATA (DATAC) source"] += 1
@@ -774,7 +785,10 @@ class Builder:
             M["why"] = f"depth {1 << A} (class) != content depth {len(words)} (width {W})"
             nl.und["M9K: class / width depth mismatch"] += 1
             return
-        M.update(modelled=True, ce=ce, be=be, data=data, addr=addr, raddr=raddr, we=("1'b1" if mk["we"][i] < 0 and not M.get("rom") and (mk["data"][i] >= 0).any() else pin(mk["we"][i])), clk=clk,
+        we = "1'b1" if mk["we"][i] < 0 and not M.get("rom") and (mk["data"][i] >= 0).any() else pin(mk["we"][i])
+        if mk["we"][i] >= 0 and bool(mk["we_invert"][i]):   # #178: RAM_WRITE_ENABLE_INVERT gi 0 (single/first line), raw bit 1 = inverted
+            we = f"(!{we})"
+        M.update(modelled=True, ce=ce, be=be, data=data, addr=addr, raddr=raddr, we=we, clk=clk,
                  oreg=bool(mk["oreg_b"][i] if raddr else mk["oreg"][i]),
                  init=[int("".join(str(int(b)) for b in r[::-1]), 2) for r in words])
         nl.counts["m9k_single_port_modelled"] += 1

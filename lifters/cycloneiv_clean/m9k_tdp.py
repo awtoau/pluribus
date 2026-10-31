@@ -3,7 +3,9 @@
 Group -> port pin tables are the libcomp_asmram constructor tables (ram_mapper.py, explicit modes 6..9 / 16..18):
   port A data   RAM_MS_DATA_INPUT   type 3 (DATAIN idx),  address RAM_MS_WRITE_ADDRESS_INPUT type 5 (+ type-5 entries of the data groups for x1..x8)
   port B data   RAM_MS_DATA_INPUT_B type 4 (DATAIN idx),  address RAM_MS_READ_ADDRESS_INPUT  type 6 (+ type-6 entries of the data-B groups)
-Write enable with both wired: A = RAM_PIA_TO_INPUT_YGR gi 9, B = gi 11 (hl_ram_6 pin map); one wired gi alone is taken as A.
+Write enable with both wired: A = RAM_PIA_TO_INPUT_YGR gi 9, B = gi 11 (hl_ram_6 pin map; re-confirmed by sim 2026-10-31 against a
+clock-domain-based swap attempt that broke it, #178 -- derivation in docs/altera/cycloneIV/cycloneiv-clean-hardblocks.md "M9K
+write-enable invert"). One wired gi alone is taken as A. RAM_WRITE_ENABLE_INVERT gi 0 / gi 1 (m9kctl.py) apply to we / we_b per #178.
 Output buffers: port A bit k = buffer k, port B bit k = buffer 18 + k (consumer buffers of hl_ram_6 / hl_mix_13 / hl_ram_7).
 """
 import numpy as np
@@ -81,6 +83,16 @@ def decode(mk, i, outs, pin):
         return out
     w11, w9 = int(mk["pia_all"][i, 11]), int(mk["pia_all"][i, 9])
     both = w11 >= 0 and w9 >= 0
+    # A = gi 9, B = gi 11 when both wired (hl_ram_6 pin map, re-confirmed by sim -- see module docstring); one gi alone is A.
+    we = pin(w9 if both else w11 if w11 >= 0 else w9)
+    we_b = pin(w11) if both else "1'b0"
+    # gi 0 / gi 1 of RAM_WRITE_ENABLE_INVERT is a line-allocation index, not a fixed port label (M-016) -- for the image's 2 live TDP
+    # tiles (7_85/7_86) the AF3 engine's bit-exact SHA-1 oracle (#165, af3-engine.md) fixes gi 0 -> we_b, gi 1 -> we; no corpus TDP
+    # specimen has a nonzero invert bit to confirm the pairing generally (#178, hardblocks.md "M9K write-enable invert").
+    if bool(mk["we_invert"][i]):           # gi 0 -> we_b (oracle-confirmed for 7_85/7_86)
+        we_b = f"(!{we_b})"
+    if both and bool(mk["we_invert_b"][i]):    # gi 1 -> we
+        we = f"(!{we})"
     return dict(W=W, A=A, cls=cls, data=[pin(mk["data"][i, da[ix]]) for ix in ia], data_b=[pin(mk["data_b"][i, db[ix]]) for ix in ib],
                 addr=addr(aa, None), addr_b=addr(ab, None),
-                we=pin(w9 if both else w11 if w11 >= 0 else w9), we_b=pin(w11) if both else "1'b0"), None
+                we=we, we_b=we_b), None
