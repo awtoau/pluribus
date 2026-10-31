@@ -127,10 +127,14 @@ endmodule
 }
 
 
-def build(name, spec):
+def build(name, spec, optimization=None):
+    """optimization: None (Quartus default) or e.g. "AREA" -- #188 AREA-vs-default disambiguation
+    (Dan's hypothesis: DJI's shipped-product build plausibly used AREA; no prior build on this issue
+    ever set OPTIMIZATION_TECHNIQUE at all, so no prior comparison controlled for it)."""
     import cycloneiv_fuzz as fz
     import toolchain
-    d = Path(REPO) / "corpus" / "cycloneiv" / f"real_{name}"
+    out_dir = f"real_{name}_area" if optimization else f"real_{name}"
+    d = Path(REPO) / "corpus" / "cycloneiv" / out_dir
     shutil.rmtree(d, ignore_errors=True)
     (d / "src").mkdir(parents=True)
     q = d / "quartus"
@@ -144,9 +148,12 @@ def build(name, spec):
                "vexiiriscv": ["clk", "reset", "fetch_cmd_valid", "lsu_cmd_valid"]
                              + [f"fetch_cmd_addr[{i}]" for i in range(8)] + [f"lsu_cmd_addr[{i}]" for i in range(8)]}[name]
     qsf = ["set_global_assignment -name AUTO_GLOBAL_CLOCK OFF", "set_global_assignment -name SEED 1"]
+    if optimization:
+        qsf.append(f"set_global_assignment -name OPTIMIZATION_TECHNIQUE {optimization}")
+    opt_suffix = f", OPTIMIZATION_TECHNIQUE {optimization}" if optimization else ""
     (d / "design.toml").write_text(
         f'top = "top"\npurpose = "#188 real-design template match: {spec["core_module"]} ({spec["src"]}), '
-        f'current Quartus install, EP4CGX150DF31C7"\nexercises = ["real_design_match"]\n'
+        f'current Quartus install, EP4CGX150DF31C7{opt_suffix}"\nexercises = ["real_design_match"]\n'
         f'qsf = {json.dumps(qsf)}\ndevice = "{DEVICE}"\nio_pins_used = {len(io_pins)}\n')
     full = ['set_global_assignment -name FAMILY "Cyclone IV GX"', f"set_global_assignment -name DEVICE {DEVICE}",
             "set_global_assignment -name TOP_LEVEL_ENTITY top",
@@ -206,11 +213,13 @@ def lift(rbf, name):
     return nl
 
 
-def run_match(nl, name, d):
+def run_match(nl, name, d, library=None):
     pkl = d / "nl.pkl"
     pickle.dump(nl, open(pkl, "wb"))
     out = d / "match_result.json"
     cmd = [sys.executable, str(Path(REPO) / "scripts" / "cycloneiv_clean_template_match.py"), "--nl", str(pkl)]
+    if library:
+        cmd += ["--library", str(library)]
     log.info("%s: running matcher: %s", name, " ".join(cmd))
     r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, timeout=600)
     log.info("%s: matcher rc=%d", name, r.returncode)
@@ -225,6 +234,11 @@ def run_match(nl, name, d):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=list(WRAPPERS), default=None)
+    ap.add_argument("--optimization", default=None,
+                     help="Quartus OPTIMIZATION_TECHNIQUE (e.g. AREA) for building these 3 specimens -- #188 disambiguation; omitted means Quartus default")
+    ap.add_argument("--library", default=None,
+                     help="template library to match against (default reference/template_library.json; pass an AREA-built library for the matching #188 comparison)")
+    ap.add_argument("--out", default=None, help="override the result JSON path (default tmp/logs/cycloneiv_clean_real_design_match_result.json)")
     a = ap.parse_args()
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
@@ -238,16 +252,16 @@ def main():
             log.error("%s: source %s not found, skipping", name, SRC / spec["src"])
             results[name] = {"error": f"source not found: {spec['src']}"}
             continue
-        log.info("=== %s (%s) ===", name, spec["src"])
-        rbf, d = build(name, spec)
+        log.info("=== %s (%s)%s ===", name, spec["src"], f" [OPTIMIZATION_TECHNIQUE {a.optimization}]" if a.optimization else "")
+        rbf, d = build(name, spec, optimization=a.optimization)
         nl = lift(rbf, name)
         if len(nl.luts) < 50:
             log.error("%s: only %d LUTs post-lift -- Quartus likely optimized the core away; wrapper needs fixing, NOT trusting this result", name, len(nl.luts))
             results[name] = {"error": f"suspiciously small lift: {len(nl.luts)} LUTs, {len(nl.ffs)} FFs -- wrapper let Quartus strip the core"}
             continue
-        match = run_match(nl, name, d)
+        match = run_match(nl, name, d, library=a.library)
         results[name] = dict(luts=len(nl.luts), ffs=len(nl.ffs), match=match)
-    out = Path(REPO) / "tmp" / "logs" / "cycloneiv_clean_real_design_match_result.json"
+    out = Path(a.out) if a.out else Path(REPO) / "tmp" / "logs" / "cycloneiv_clean_real_design_match_result.json"
     json.dump(results, open(out, "w"), indent=1, default=str)
     log.info("DONE -> %s", out)
     print(json.dumps({k: ({**v, "match": {kk: vv for kk, vv in (v.get("match") or {}).items() if kk != "matched_detail"}} if "match" in v else v)

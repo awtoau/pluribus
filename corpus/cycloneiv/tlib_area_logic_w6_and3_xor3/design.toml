@@ -1,0 +1,5 @@
+top = "top"
+purpose = "#188 template library: logic_w6_and3_xor3 (OPTIMIZATION_TECHNIQUE AREA)"
+exercises = ["template_library"]
+qsf = ["set_location_assignment PIN_A11 -to clk", "set_global_assignment -name AUTO_GLOBAL_CLOCK OFF", "set_global_assignment -name SEED 1", "set_global_assignment -name OPTIMIZATION_TECHNIQUE AREA"]
+device = "EP4CGX150DF31C7"

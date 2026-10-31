@@ -185,8 +185,8 @@ def all_specimens():
     return out
 
 
-def already_built_ok(name):
-    d = Path(REPO) / "corpus" / "cycloneiv" / f"tlib_{name}"
+def already_built_ok(name, out_dir=None):
+    d = Path(REPO) / "corpus" / "cycloneiv" / (out_dir or f"tlib_{name}")
     rj = d / "rebuild.json"
     if not rj.exists():
         return False
@@ -196,10 +196,15 @@ def already_built_ok(name):
         return False
 
 
-def build_one(name, rtl):
+def build_one(name, rtl, optimization=None, out_dir=None):
+    """optimization: None (Quartus default, BALANCED) or e.g. "AREA" -- adds OPTIMIZATION_TECHNIQUE to the
+    QSF (#188 AREA-vs-default disambiguation; Dan's hypothesis that DJI's shipped-product build used
+    AREA while this library's specimens never set the assignment at all, so no prior comparison on this
+    issue controlled for it). out_dir: specimen directory name, defaults to tlib_<name> (AREA builds use
+    a SEPARATE directory so the default-settings specimens stay untouched for comparison)."""
     import cycloneiv_fuzz as fz
     import toolchain
-    d = Path(REPO) / "corpus" / "cycloneiv" / f"tlib_{name}"
+    d = Path(REPO) / "corpus" / "cycloneiv" / (out_dir or f"tlib_{name}")
     shutil.rmtree(d, ignore_errors=True)
     (d / "src").mkdir(parents=True)
     q = d / "quartus"
@@ -207,8 +212,11 @@ def build_one(name, rtl):
     (d / "src" / "top.v").write_text(rtl)
     qsf = ['set_location_assignment PIN_A11 -to clk', 'set_global_assignment -name AUTO_GLOBAL_CLOCK OFF',
            'set_global_assignment -name SEED 1']
+    if optimization:
+        qsf.append(f"set_global_assignment -name OPTIMIZATION_TECHNIQUE {optimization}")
+    purpose_suffix = f" (OPTIMIZATION_TECHNIQUE {optimization})" if optimization else ""
     (d / "design.toml").write_text(
-        f'top = "top"\npurpose = "#188 template library: {name}"\n'
+        f'top = "top"\npurpose = "#188 template library: {name}{purpose_suffix}"\n'
         f'exercises = ["template_library"]\nqsf = {json.dumps(qsf)}\ndevice = "{DEVICE}"\n')
     full = ['set_global_assignment -name FAMILY "Cyclone IV GX"', f"set_global_assignment -name DEVICE {DEVICE}",
             "set_global_assignment -name TOP_LEVEL_ENTITY top", "set_global_assignment -name VERILOG_FILE ../src/top.v",
@@ -273,7 +281,13 @@ def main():
                      help="concurrent strip_one/emit.Builder.run() calls (phase 2) -- 6 is the only number actually observed fast in practice; raising this re-risks the 56 GB lease budget ceiling, see module docstring")
     ap.add_argument("--resume", action="store_true",
                      help="skip specimens whose corpus/cycloneiv/tlib_<name>/rebuild.json already says status=ok (strip_one still re-runs on their existing bitstream.rbf, since the library JSON is rebuilt from scratch every run)")
+    ap.add_argument("--optimization", default=None,
+                     help="Quartus OPTIMIZATION_TECHNIQUE (e.g. AREA) -- omitted means Quartus default (BALANCED), the setting none of this issue's prior builds ever controlled for (#188)")
+    ap.add_argument("--out", default=None,
+                     help="override reference/template_library.json output path and corpus/cycloneiv/tlib_<name> directory prefix (default prefix stays 'tlib_'; pass e.g. --out reference/template_library_area.json to build a side-by-side AREA library without touching the default one)")
     a = ap.parse_args()
+    out_path = Path(a.out) if a.out else OUT
+    dir_prefix = "tlib_area_" if a.optimization else "tlib_"
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                          handlers=[logging.StreamHandler(),
@@ -289,12 +303,13 @@ def main():
     # the bug (fusing a cheap-and-fast subprocess phase with an expensive pure-Python phase under one
     # shared concurrency number let phase 2 pile up and hit the lease budget ceiling).
     def build_phase(s):
-        if a.resume and already_built_ok(s["name"]):
-            rbf = Path(REPO) / "corpus" / "cycloneiv" / f"tlib_{s['name']}" / "bitstream.rbf"
+        out_dir = f"{dir_prefix}{s['name']}"
+        if a.resume and already_built_ok(s["name"], out_dir=out_dir):
+            rbf = Path(REPO) / "corpus" / "cycloneiv" / out_dir / "bitstream.rbf"
             log.info("%s: resume -- already built, reusing %s", s["name"], rbf)
             return s["name"], s["kind"], rbf
         heavy_guard.wait_available(log, s["name"], PER_BUILD_GB)
-        rbf = build_one(s["name"], s["rtl"])
+        rbf = build_one(s["name"], s["rtl"], optimization=a.optimization, out_dir=out_dir)
         if rbf is None:
             with failed_lock:
                 failed.append(s["name"])
@@ -341,10 +356,10 @@ def main():
         del t["_sort_tt"]
     result = dict(n_specimens=len(specs), n_failed=len(failed), failed=failed, n_raw_templates=len(library),
                   n_unique_templates=len(dedup), elapsed_s=round(elapsed, 1), templates=dedup)
-    OUT.parent.mkdir(exist_ok=True)
-    json.dump(result, open(OUT, "w"), indent=1)
+    out_path.parent.mkdir(exist_ok=True)
+    json.dump(result, open(out_path, "w"), indent=1)
     log.info("RESULT specimens=%d failed=%d raw_templates=%d unique_templates=%d elapsed=%.0fs -> %s",
-              len(specs), len(failed), len(library), len(dedup), elapsed, OUT)
+              len(specs), len(failed), len(library), len(dedup), elapsed, out_path)
     print(json.dumps({k: v for k, v in result.items() if k != "templates"}, indent=1))
     return 0
 

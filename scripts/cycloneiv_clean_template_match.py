@@ -85,11 +85,11 @@ def cone_has_cycle(D, sig):
     return False
 
 
-def load_library():
+def load_library(lib_path=None):
     """template_library.json carries tt_hex, not the raw int tt (a 16-leaf cone's tt is a 1<<65536-valued
     int whose decimal repr exceeds CPython's int-to-str digit limit; json.dump on the raw int crashes --
     see cycloneiv_clean_template_library_build.py's dedup comment). Reconstruct tt here, once, on load."""
-    lib = json.load(open(LIB))
+    lib = json.load(open(lib_path or LIB))
     by_leaves = {}
     for t in lib["templates"]:
         t["tt"] = int(t["tt_hex"], 16)
@@ -118,21 +118,24 @@ def permutation_tts(tt, k):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--nl", default=str(DEFAULT_NL))
+    ap.add_argument("--library", default=None,
+                     help="override reference/template_library.json (e.g. an AREA-built library, #188 disambiguation)")
     ap.add_argument("--max-leaves-exact", type=int, default=MAX_LEAVES_EXACT)
     ap.add_argument("--workers", type=int, default=min(32, os.cpu_count() or 4),
                      help="threads for the per-FF cone_tt+permutation scan (pure Python, CPU-bound, free-threaded 3.15t)")
     a = ap.parse_args()
+    lib_path = Path(a.library) if a.library else LIB
     os.makedirs(os.path.join(REPO, "tmp", "logs"), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                          handlers=[logging.StreamHandler(),
                                    logging.FileHandler(os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_template_match.log"))])
-    if not LIB.exists():
-        log.error("template library not found at %s -- run cycloneiv_clean_template_library_build.py first", LIB)
+    if not lib_path.exists():
+        log.error("template library not found at %s -- run cycloneiv_clean_template_library_build.py first", lib_path)
         return 2
     if not os.path.exists(a.nl):
         log.error("netlist pickle not found at %s", a.nl)
         return 2
-    lib, by_leaves = load_library()
+    lib, by_leaves = load_library(lib_path)
     log.info("library: %d unique templates, leaf counts %s", len(lib["templates"]), sorted(by_leaves))
 
     import heavy_guard
