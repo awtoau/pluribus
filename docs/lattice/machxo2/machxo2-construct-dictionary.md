@@ -2364,4 +2364,4 @@ Cell = `slices/LUT4/FF/CCU2/EBR` (mapper report); `FAIL` = flow failed; `-` = no
 - nets by verdict: {'MATCH': 5123, 'MISMATCH': 237}
 - gkey branches: {'global_drop:DISAGREE': 341, 'global_drop:INCONCLUSIVE': 987, 'h06e_right_mirror:DISAGREE': 114, 'h06w_left_mirror:DISAGREE': 8, 'h_left_flip:AGREE': 58, 'h_right_flip:AGREE': 374, 'h_right_flip:DISAGREE': 6, 'h_right_flip:INCONCLUSIVE': 10, 'right_stub_drop:DISAGREE': 22, 'vspan_edge_flip:AGREE': 252, 'vspan_edge_flip:INCONCLUSIVE': 14, 'vspan_offdie_flip:AGREE': 39, 'vspan_offdie_flip:INCONCLUSIVE': 1, 'vspan_offdie_over2_walkback:AGREE': 195, 'vspan_offdie_over2_walkback:INCONCLUSIVE': 1}
 - site fields (non-MATCH only): {'FF#.lift.ce:ORACLE_ONLY': 32, 'FF#.lift.clk:ORACLE_ONLY': 735, 'FF#.lift.gsr:MISMATCH': 58, 'FF#.lift.lsr:ORACLE_ONLY': 48, 'FF#.lift:LIFT_MISSING': 2, 'LSRMUX:ORACLE_ONLY': 25}
-- Faults counted: LIFT_MISSING, ORACLE_ONLY, LIFT_ONLY, MISMATCH; see `docs/machxo2-diamond-oracle.md` for definitions.
+- Faults counted: LIFT_MISSING, ORACLE_ONLY, LIFT_ONLY, MISMATCH; see `docs/lattice/machxo2/machxo2-diamond-oracle.md` for definitions.

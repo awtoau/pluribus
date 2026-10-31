@@ -318,7 +318,7 @@ def vendor(kind, w):
     cl = ("input", "clk", 1, False)
     if kind in ("adder", "sub", "counter"):
         # CCU2D chain, 2 bits per CCU2D; INIT values from the LSE mapping of the plain build
-        # (see docs/machxo2-construct-dictionary.md); CIN of the first is tied via INJECT/const.
+        # (see docs/lattice/machxo2/machxo2-construct-dictionary.md); CIN of the first is tied via INJECT/const.
         return carry_chain(kind, w, cl)
     if kind == "mux2":
         ports = [cl, ("input", "a", w, False), ("input", "b", w, False), ("input", "s", 1, False),

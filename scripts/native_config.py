@@ -129,7 +129,7 @@ def joint_center_muxes(cram, tilegrid, db_root, family):
     prjtrellis decodes each tile alone, so a mux half in one tile and half in another (MachXO2
     `G_VPRXCLKI0`: `G_JPCLKT21` = F25B0 in one tile + F0B0 in the next) picks the last alphabetical
     option that fits one half (`G_JTCDIVX1`, `G_PCLKCIBVIQT0`).  Diamond routes `JPCLKT21 ->
-    VPRXCLKI0` (docs/machxo2-diamond-oracle.md).  Joint rule: an option is selected iff its bits
+    VPRXCLKI0` (docs/lattice/machxo2/machxo2-diamond-oracle.md).  Joint rule: an option is selected iff its bits
     match in EVERY tile that lists them; the highest total bit count wins, ties go to the later
     source, as in the per-tile rule.  Only tile TYPES that occur once in the chip take part.
     """

@@ -69,7 +69,7 @@ corpus/machxo2/diamond-fuzz/_batch_summary.json, _compare_summary.json
 ```
 python3.15t scripts/machxo2_diamond_oracle.py   [--workers 16] [--only T ...] [--force]   # ~85 s
 python3.15t scripts/machxo2_oracle_compare.py   [--workers 12] [--only T ...]             # ~80 s
-python3     scripts/machxo2_fuzz_dictionary.py                                            # docs/machxo2-fuzz-dictionary.md
+python3     scripts/machxo2_fuzz_dictionary.py                                            # docs/lattice/machxo2/machxo2-fuzz-dictionary.md
 ```
 
 - Logs: `tmp/logs/machxo2_diamond_oracle.log`, `tmp/logs/machxo2_oracle_compare.log`.
@@ -223,7 +223,7 @@ One commit each; `scripts/machxo2_oracle_compare.py` rerun after each. Fault = e
 
 ## gkey edge rules vs Diamond, 3041 targets (#119, 2026-10-24)
 
-Set: 2779 old fuzz targets + 208 construct builds + 54 coverage designs (docs/machxo2-coverage-designs.md). Driver: `scripts/machxo2_oracle_all.py`; hit counter: `scripts/machxo2_gkey_hits.py`. Fault = every non-MATCH verdict (absent registers counted).
+Set: 2779 old fuzz targets + 208 construct builds + 54 coverage designs (docs/lattice/machxo2/machxo2-coverage-designs.md). Driver: `scripts/machxo2_oracle_all.py`; hit counter: `scripts/machxo2_gkey_hits.py`. Fault = every non-MATCH verdict (absent registers counted).
 
 Removed (DISAGREE in every exercised case, 0 AGREE): `h06e_right_mirror` 187, `right_stub_drop` 71, `h06w_left_mirror` 87. No replacement.
 

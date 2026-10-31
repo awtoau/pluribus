@@ -2,7 +2,7 @@
 """MachXO2 fuzz corpus as a construct dictionary: fuzz.v source -> what Diamond placed.
 
 Reads diamond-fuzz/targets/<t>/fuzz.v and corpus/machxo2/diamond-fuzz/<t>/oracle.json
-(scripts/machxo2_diamond_oracle.py) and writes docs/machxo2-fuzz-dictionary.md.
+(scripts/machxo2_diamond_oracle.py) and writes docs/lattice/machxo2/machxo2-fuzz-dictionary.md.
 Generated facts only; rerun to regenerate.
 
 Usage: python3 scripts/machxo2_fuzz_dictionary.py [--targets-dir D] [--oracle D] [--out F]
@@ -120,7 +120,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--targets-dir", default=os.path.join(REPO, "diamond-fuzz", "targets"))
     ap.add_argument("--oracle", default=os.path.join(REPO, "corpus", "machxo2", "diamond-fuzz"))
-    ap.add_argument("--out", default=os.path.join(REPO, "docs", "machxo2-fuzz-dictionary.md"))
+    ap.add_argument("--out", default=os.path.join(REPO, "docs", "lattice", "machxo2", "machxo2-fuzz-dictionary.md"))
     args = ap.parse_args()
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     rows = defaultdict(list)

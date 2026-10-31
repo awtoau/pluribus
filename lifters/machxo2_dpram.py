@@ -1,7 +1,7 @@
 """MachXO2 distributed RAM -> DPR16X4C primitive record (issue #127).
 
 One RAMW slice (C) + two DPRAM slices (A, B) in a PLC tile are a DPR16X4C.  The pin table below is
-the Diamond oracle's (scripts/dpram_oracle.py, results in docs/machxo2-diamond-oracle.md):
+the Diamond oracle's (scripts/dpram_oracle.py, results in docs/lattice/machxo2/machxo2-diamond-oracle.md):
 
   DI0..DI3  = wires A5..D5      WAD0..WAD3 = wires A4..D4      WRE = LSR2     WCK = CLK2
   RAD0..RAD3 = wires A..D of the DPRAM slices' LUT inputs (A0..D0, A1..D1, A2..D2, A3..D3: one net)

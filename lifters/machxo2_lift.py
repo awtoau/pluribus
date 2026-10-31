@@ -373,7 +373,7 @@ class MachXO2Lift:
 
     # Chip-global clock families upstream never keys (RoutingGraph.cpp:509,
     # get_global_type_from_name: regexes commented out).  Name is unique per chip
-    # -> one node at the CENTER mux tile.  Evidence: docs/machxo2-diamond-oracle.md.
+    # -> one node at the CENTER mux tile.  Evidence: docs/lattice/machxo2/machxo2-diamond-oracle.md.
     _CENTER_FAMILIES = {
         "JLPLLCLK": re.compile(r"G_JLPLLCLK\d"),
         "JTCDIVX": re.compile(r"G_JTCDIVX\d"),
@@ -388,7 +388,7 @@ class MachXO2Lift:
         "SNETCIB": re.compile(r"G_JSNETCIB(?:MID[0-7]|[BLRT][01])"),
     }
 
-    # Secondary network below the spine (LCMXO2-1200 only; docs/machxo2-diamond-oracle.md,
+    # Secondary network below the spine (LCMXO2-1200 only; docs/lattice/machxo2/machxo2-diamond-oracle.md,
     # "Secondary network").  Diamond routes spine VSRX0k00 -> HSSX -> VSTX0200 (k<4) /
     # VSTX0300 (k>=4) -> HSBX0000 / HSBX0400 -> a 4-column group wire (HSBX0001/0201/0401/0601
     # on Diamond-odd columns, HSBX0101/0301/0501/0701 on Diamond-even) -> CE / LSR / fabric.
@@ -448,7 +448,7 @@ class MachXO2Lift:
         valid origin of the same wire.
 
         Horizontal-span edge handling is limited to rules Diamond's own routes
-        confirm (docs/machxo2-diamond-oracle.md, #119)."""
+        confirm (docs/lattice/machxo2/machxo2-diamond-oracle.md, #119)."""
         # NOTE: a bare-name rewrite of V02S0601/0701 -> V02N used to live here.
         # It rewrote only the UNPREFIXED spelling, so a hop-prefixed reference to
         # the same wire canonicalised differently and the net split.  Both halves
@@ -511,7 +511,7 @@ class MachXO2Lift:
             # opposite-direction one (same index+segment) at the mirror column
             # q = -1 - p (left) or 2*max_col + 1 - p (right).  Diamond's turnaround arcs
             # (H06W0000@C1 -> H06E0003@C3, H06E0001 -> H06W0004, ...) fit this for every
-            # off-die distance, H02 and H06 (docs/machxo2-diamond-oracle.md, #119).
+            # off-die distance, H02 and H06 (docs/lattice/machxo2/machxo2-diamond-oracle.md, #119).
             mh = re.match(r'^[EW]\d+_H(\d+)([EW])(\d+)$', name)
             if mh and ((is_east and col + hops > max_col) or (wire[0] == 'W' and col - hops < 0)):
                 p = col + hops if is_east else col - hops
@@ -569,7 +569,7 @@ class MachXO2Lift:
                 if overshoot == 1 and gv.loc.x >= 0 and gv.loc.y >= 0:
                     return (gv.loc.x, gv.loc.y, gv.id)
                 if overshoot == 2:
-                    # Diamond turnaround (docs/machxo2-diamond-oracle.md, #105):
+                    # Diamond turnaround (docs/lattice/machxo2/machxo2-diamond-oracle.md, #105):
                     # the wire reflects at the die edge and continues as the
                     # opposite-letter span, same index+segment, 2 rows inward.
                     prow = row + 2 if is_north else row - 2

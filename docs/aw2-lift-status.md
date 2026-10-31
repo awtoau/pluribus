@@ -119,6 +119,6 @@ Rebuild = `aw2_roundtrip.py` (Diamond LSE + map + PAR + bitgen, compare to the o
 | LSE warnings | 309 | 96 |
 
 - Undriven-and-read nets at start (258): 158 global-spine (1,101 FF.CLK + 144 FF.LSR + 126 FF.CE pins), 55 edge H06 turnaround, 33 edge H06 stub, 12 other. Now 25: 10 clock nets (PLL/DCC roots, hard IP not emitted, 1,105 FF.CLK pins), 15 other (EBR read outputs `JF`/`JQ`, slice `F0`/`HF0W` fast connects).
-- Fixed from oracle evidence (docs/machxo2-diamond-oracle.md): H-span fold at the die edge (88 nets), secondary network CE/LSR/fabric tracks (148 nets), CENTER clock mux joint decode, cross-tile CCU2 carry (`n_luts` 2,637 -> 2,689: 52 more CCU2 half-slices now emit sum/carry logic), FF GSR default.
+- Fixed from oracle evidence (docs/lattice/machxo2/machxo2-diamond-oracle.md): H-span fold at the die edge (88 nets), secondary network CE/LSR/fabric tracks (148 nets), CENTER clock mux joint decode, cross-tile CCU2 carry (`n_luts` 2,637 -> 2,689: 52 more CCU2 half-slices now emit sum/carry logic), FF GSR default.
 - Remaining collapse of the rebuild (LSE keeps 205 of 1,070 registers): logic that only reaches hard IP is pruned. Not emitted: 7 EBR (0 of 7 mapped), PLL (0 of 1), IOLOGIC DDR inputs (15 ADC pads "no load"), output DDR (ADC_ENC, DAC_CLK "no driver"); the EFB is emitted.
 - Counts in the first table are change detectors; `n_luts` above 1,280 still measures lifter faults.

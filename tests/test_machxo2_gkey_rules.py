@@ -1,4 +1,4 @@
-"""gkey() rules derived from Diamond routes (docs/machxo2-diamond-oracle.md).
+"""gkey() rules derived from Diamond routes (docs/lattice/machxo2/machxo2-diamond-oracle.md).
 
 Each assertion is a fact the vendor oracle confirmed (0 DISAGREE over the corpus):
   * H-span fold at the die edge: wire D seg k at off-die column p == opposite direction, same

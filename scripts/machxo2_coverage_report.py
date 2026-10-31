@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Write docs/machxo2-coverage-designs.md from corpus/machxo2/coverage outputs (facts only).
+"""Write docs/lattice/machxo2/machxo2-coverage-designs.md from corpus/machxo2/coverage outputs (facts only).
 
 Sections: builds (ok/failed + exact reasons), placement honoured (requested LOCATE vs ncdread),
 coverage before/after (machxo2_oracle_coverage.py), oracle comparison of the new designs
@@ -22,7 +22,7 @@ SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(SCRIPTS)
 NEW = os.path.join(REPO, "corpus", "machxo2", "coverage")
 OLD = "/mnt/2tb/git/pluribus/corpus/machxo2/diamond-fuzz"
-OUT = os.path.join(REPO, "docs", "machxo2-coverage-designs.md")
+OUT = os.path.join(REPO, "docs", "lattice", "machxo2", "machxo2-coverage-designs.md")
 
 
 def cov(corpora, device):

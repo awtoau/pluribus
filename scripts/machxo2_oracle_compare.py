@@ -8,7 +8,7 @@ impl1/fuzz_impl1.bit, lift with lifters/machxo2_lift.py, compare:
   * nets:  every Diamond net vs the lift's DSU classes (split / merge)
   * gkey:  each config-arc endpoint a gkey() workaround rewrote, vs Diamond
 Verdicts: MATCH / MISMATCH / LIFT_MISSING / ORACLE_ONLY (+ LIFT_ONLY for
-config arcs no Diamond net uses).  Definitions: docs/machxo2-diamond-oracle.md.
+config arcs no Diamond net uses).  Definitions: docs/lattice/machxo2/machxo2-diamond-oracle.md.
 
 Writes <out>/<target>/compare.json and <out>/_compare_summary.json.
 Usage: python3.15t scripts/machxo2_oracle_compare.py [--workers N] [--only T ...]

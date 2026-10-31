@@ -3,7 +3,7 @@
 
 Per target: `ncdread` (placement, configs, pin nets) + `ncd2nmc -r` (routing,
 binary hard macro) -> parsed `oracle.json`.  Format notes:
-docs/machxo2-diamond-oracle.md.
+docs/lattice/machxo2/machxo2-diamond-oracle.md.
 
 Layout (gitignored): corpus/machxo2/diamond-fuzz/<target>/
   ncdread.txt  routing.nmc  routing.ext  ncd2nmc.log  io_keep.txt  oracle.json
@@ -53,7 +53,7 @@ LOG_PATH = os.path.join(REPO, "tmp", "logs", "machxo2_diamond_oracle.log")
 SCHEMA_VERSION = 1
 
 # Waits for one ncdread / ncd2nmc run.  Worst observed 0.80 s (16 workers, full
-# corpus, 3 runs; docs/machxo2-diamond-oracle.md); x3 backstop, rounded up.  The
+# corpus, 3 runs; docs/lattice/machxo2/machxo2-diamond-oracle.md); x3 backstop, rounded up.  The
 # batch logs its max each run.  Expiry: target failed with tool, limit, elapsed.
 TOOL_TIMEOUT_S = 2.5
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Write docs/machxo2-construct-dictionary.md from corpus/machxo2/constructs outputs (facts only).
+"""Write docs/lattice/machxo2/machxo2-construct-dictionary.md from corpus/machxo2/constructs outputs (facts only).
 
 Per build: slices, LUT4s, CCU2 carry slices/chains, registers + modes, EBR, LUT equations,
 routed nets + wire classes (from oracle.json, the .mrp, build.json); per construct a
@@ -18,7 +18,7 @@ from collections import Counter, defaultdict
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DIR = os.path.join(REPO, "corpus", "machxo2", "constructs")
-OUT = os.path.join(REPO, "docs", "machxo2-construct-dictionary.md")
+OUT = os.path.join(REPO, "docs", "lattice", "machxo2", "machxo2-construct-dictionary.md")
 LOG = os.path.join(REPO, "tmp", "logs", "machxo2_construct_report.log")
 
 
@@ -208,7 +208,7 @@ def main():
         w(f"- nets by verdict: {s['net_verdicts']}")
         w(f"- gkey branches: {s['gkey_verdicts']}")
         w(f"- site fields (non-MATCH only): { {k: v for k, v in s['site_field_verdicts'].items() if 'MATCH' not in k.split(':')[-1] or 'MISMATCH' in k} }")
-        w("- Faults counted: LIFT_MISSING, ORACLE_ONLY, LIFT_ONLY, MISMATCH; see `docs/machxo2-diamond-oracle.md` for definitions.")
+        w("- Faults counted: LIFT_MISSING, ORACLE_ONLY, LIFT_ONLY, MISMATCH; see `docs/lattice/machxo2/machxo2-diamond-oracle.md` for definitions.")
     else:
         w("- not run (untested)")
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
