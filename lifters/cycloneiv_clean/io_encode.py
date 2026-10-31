@@ -12,7 +12,7 @@ Only the groups the IO sites use are supported (single mux per path, ENCODED / D
 CFF_TAG = 5                    # top 3 bits of a CFF address (cycloneiv_io.ADDRESS_SPACES)
 # source: asmdb IOST mux bit lists (4th bit of 51 sites, all 4 of the pad-less VIO site) = the PDB list terminator value, a bit that does not exist
 NO_BIT = 0xFFFFFFFB
-ENCODED_CLASS = 15             # ASMDB_ENCODED_MUX in the ddb type table (docs/cycloneiv-clean-io.md)
+ENCODED_CLASS = 15             # ASMDB_ENCODED_MUX in the ddb type table (docs/altera/cycloneIV/cycloneiv-clean-io.md)
 
 
 class Unsupported(ValueError):

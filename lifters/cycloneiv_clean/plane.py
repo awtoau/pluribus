@@ -1,6 +1,6 @@
 """Cyclone IV GX (EP4CGX150) CRAM geometry and the sof -> rbf closed form.  Pure functions only.
 
-Accepted facts: docs/cycloneiv-clean-pipeline.md A4-A6.  `address_to_plane` = sof identity then A5 (#165).
+Accepted facts: docs/altera/cycloneIV/cycloneiv-clean-pipeline.md A4-A6.  `address_to_plane` = sof identity then A5 (#165).
 CANDIDATES keeps the rejected `lut_law_preserved` alongside it for the oracles.
 Plane cell = (r, j, k): CRAM frame r (0..6153), data byte j (1..793), bit k (0..7).
 """
@@ -11,7 +11,7 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TABLES_PATH = os.path.join(REPO, "databases", "cycloneiv", "sof2rbf_mask.npz")
 
-# source: A6 geometry (EP4CGX150) = sof tag-17 section length + pcf/hdr frame_bits (docs/cycloneiv-bitstream.md)
+# source: A6 geometry (EP4CGX150) = sof tag-17 section length + pcf/hdr frame_bits (docs/altera/cycloneIV/cycloneiv-bitstream.md)
 FRAMES = 6154                   # CRAM frames
 ROWS = 793                      # data bytes per frame and lane
 LANES = 8

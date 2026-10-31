@@ -24,7 +24,7 @@ from provenance import evidence_io as E  # noqa: E402
 log = logging.getLogger("cycloneiv_declare_gate")
 
 # TODO(#165): point at the clean P3 gate script once it exists; the old ddb_trace score gate is retired.
-GATE_SCRIPT = "TODO: clean P3 gate (docs/cycloneiv-clean-pipeline.md)"
+GATE_SCRIPT = "TODO: clean P3 gate (docs/altera/cycloneIV/cycloneiv-clean-pipeline.md)"
 
 
 def declare(conn, commit):

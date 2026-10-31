@@ -5,7 +5,7 @@ Schema (source: DYGR_ROUTE_BLOCK_INTERFACE / _NODE / _CONNECTION ::operator<< li
   node      = (element enum, index, subloc, specialized index, tile x offset, timing id: i16/i32 deltas; alias string; connections).
   connection = (element enum i32, port type, driver idx, exact x, exact y, z, index, load pos, sram1, sram2: deltas; is_input bool).
 Pool layout in the inflated body: 28 interface objects back to back, then 983 node objects in registration order (the NEW tags of the interface
-vectors, in interface order).  Deltas run per class over the whole pool (docs/cycloneiv-ddb-format.md stream layer).
+vectors, in interface order).  Deltas run per class over the whole pool (docs/altera/cycloneIV/cycloneiv-ddb-format.md stream layer).
 Type 1 interfaces (VIO_L, VIO_R, HIO, ...) hold BLOCK_INPUT_MUX nodes; a node's connection to element IO is (port type, z = SUB_LOC, index):
 the pad pin the BIM drives.  Port type = DB_INPUT_PORT_TYPE (libdb_dbs.so DB_INPUT_PORT_TYPE_STRING), element enum = DEV_ELEMENT_ENUM
 (reference/ghidra/enums.tsv).  Parsed once, cached as tmp/ddb/<die>_block_interfaces.json.
@@ -20,7 +20,7 @@ import sys
 from . import ddb
 from . import plane as P
 
-# source: PDB stream layer (docs/cycloneiv-ddb-format.md): pointer tag low bits 00 = NEW object, 10 = reference (d << 2 | 2)
+# source: PDB stream layer (docs/altera/cycloneIV/cycloneiv-ddb-format.md): pointer tag low bits 00 = NEW object, 10 = reference (d << 2 | 2)
 TAG_NEW, TAG_REF = 0, 2
 # source: DYGR_ROUTE_BLOCK_INTERFACE_NODE / _CONNECTION operator<< field widths above: node header 5 x i16 + i32, connection 3 x i32 + 7 x i16 + bool
 NODE_HEAD, CONN_SIZE = "<5hi", 27
@@ -143,7 +143,7 @@ def parse(body):
         ifs.append(d)
         p = q
     n_nodes = sum(len(v) for d in ifs for _, v in d["vecs"])
-    if len(ifs) != 28 or n_nodes != 983:           # source: docs/cycloneiv-ddb-format.md type table (28 interfaces, 983 nodes)
+    if len(ifs) != 28 or n_nodes != 983:           # source: docs/altera/cycloneIV/cycloneiv-ddb-format.md type table (28 interfaces, 983 nodes)
         die(f"block interfaces: {len(ifs)} interfaces / {n_nodes} nodes (type table says 28 / 983)")
     st, nodes = dict(head=[0] * 6, conn=[0] * 10), []
     for _ in range(n_nodes):

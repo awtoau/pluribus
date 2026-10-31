@@ -21,7 +21,7 @@ sys.path.insert(0, HERE)
 import cycloneiv_clean_io_pairs as M  # noqa: E402
 
 REPO = M.REPO
-VALUES = ("3.3-V LVCMOS", "3.0-V LVTTL", "3.0-V LVCMOS", "3.0-V PCI")      # standards already built on `out` with IOST 000 (docs/cycloneiv-clean-io.md)
+VALUES = ("3.3-V LVCMOS", "3.0-V LVTTL", "3.0-V LVCMOS", "3.0-V PCI")      # standards already built on `out` with IOST 000 (docs/altera/cycloneIV/cycloneiv-clean-io.md)
 KINDS = ("in", "bidir")
 log = logging.getLogger("io_std")
 

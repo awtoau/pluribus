@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cyclone III / IV (E, GX, LS) compressed .rbf -> uncompressed .rbf, byte-identical to quartus_cpf.
 
-Format (docs/cycloneiv-bitstream.md), offsets relative to the 0x6a sync byte S (S = 32 in Quartus files):
+Format (docs/altera/cycloneIV/cycloneiv-bitstream.md), offsets relative to the 0x6a sync byte S (S = 32 in Quartus files):
 - 0xFF preamble.  Frame 0 = header frame, F bytes: 0x6a, 40 option bytes (8 bit-lanes of 40 bits,
   byte i = bit i of every lane), CRC-16/MODBUS of the 40 bytes (LE), 0xFF fill to S+F.
 - Frames 1..r-1: periphery, raw, no per-frame CRC.  r = 13..49 by die.

@@ -2,7 +2,7 @@
 
 Data = options_table.json (written by scripts/cycloneiv_clean_options_build.py; every entry carries a `source`: asmdb group / list +
 Ghidra function + pair ids).  Nothing below is a fitted constant: bit positions come from the table, which comes from the asmdb walk.
-Layout (docs/cycloneiv-clean-options.md): sof tag 18 = 160 value bits + 160 flag bits; value bit i is also rbf frame-0 cells `rbf_cells`.
+Layout (docs/altera/cycloneIV/cycloneiv-clean-options.md): sof tag 18 = 160 value bits + 160 flag bits; value bit i is also rbf frame-0 cells `rbf_cells`.
 Classes: group (30 bits, 13 asmdb option groups, function decoded), forced (35), default (95): forced / default have no group and no setting
 that changes them, so their function is unknown (counted as missing).
 """

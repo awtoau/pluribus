@@ -1,4 +1,4 @@
-"""IO configuration lives in the CFF region, not in asm.ddb CRAM (docs/cycloneiv-clean-io.md).  Counts go to the oracle log.
+"""IO configuration lives in the CFF region, not in asm.ddb CRAM (docs/altera/cycloneIV/cycloneiv-clean-io.md).  Counts go to the oracle log.
 
 Vendor-derived checks: address tags, die head, sof section sizes, asm.ddb census, CFF -> rbf table.
 Oracle (Quartus corpus, never an input): replica agreement over rbf files; IO site signatures in CFF space.

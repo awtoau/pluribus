@@ -19,7 +19,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.join(REPO, "corpus", "cycloneiv")
 OUT = os.path.join(REPO, "reference", "corpus_catalog.tsv")
 LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_corpus_catalog.log")
-RUN = 26        # gate run on run 14's member set (docs/cycloneiv-clean-pipeline.md, gate regression hygiene)
+RUN = 26        # gate run on run 14's member set (docs/altera/cycloneIV/cycloneiv-clean-pipeline.md, gate regression hygiene)
 
 
 def family(d):

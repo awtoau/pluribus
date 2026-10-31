@@ -1,9 +1,9 @@
 claim_id	evidence_id	role
-ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareLUT INIT oracle compare (301 designs)docs/cycloneiv-bitstream.md	direct
+ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareLUT INIT oracle compare (301 designs)docs/altera/cycloneIV/cycloneiv-bitstream.md	direct
 ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareLUT INIT specimens: 1,023 sites, 16,368 cells, exact per site (asmdb LE_LUT_FUNCTION)scripts/cycloneiv_clean_lut_specimens.py	confirm
 ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareblkrba LUT cells vs LUT-mask law and .vo read-backscripts/cycloneiv_blkrba_lab.py	confirm
 ref:cycloneivEP4CGX150bitCLASS:1aa2ab12f946ae14d8	ref:cycloneivEP4CGX150oracle-compareclean gate run 21 lut_initscripts/cycloneiv_clean_gate.py	confirm
-ref:cycloneivEP4CGX150bitCLASS:1b8c52afd02b6c7051	ref:cycloneivEP4CGX150auditle-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)docs/cycloneiv-bit-inventory.md	conflict
+ref:cycloneivEP4CGX150bitCLASS:1b8c52afd02b6c7051	ref:cycloneivEP4CGX150auditle-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)docs/altera/cycloneIV/cycloneiv-bit-inventory.md	conflict
 ref:cycloneivEP4CGX150bitCLASS:1c5c3175034fe6ee70	ref:cycloneivEP4CGX150specimen-pairbh_10b86d5dc5_e85ffa53aabit_hunter:B:clk	parent
 ref:cycloneivEP4CGX150bitCLASS:1c5c3175034fe6ee70	ref:cycloneivEP4CGX150specimen-pairbh_17ffbb27a4_be087a70ddbit_hunter:B:clk	parent
 ref:cycloneivEP4CGX150bitCLASS:1c5c3175034fe6ee70	ref:cycloneivEP4CGX150specimen-pairbh_22a69aaad4_811ca8e2f3bit_hunter:B:clk	parent
@@ -7590,7 +7590,7 @@ ref:cycloneivEP4CGX150bitLOCAL_LINE:src8:snk6:DATAC6b417b31e96fb20b	ref:cycl
 ref:cycloneivEP4CGX150bitLOCAL_LINE:src8:snk6:DATAC76d00366023dae90	ref:cycloneivEP4CGX150specimen-pairgxll100x75_08_06evidence/cycloneiv/cycloneiv_forced_lab_100x75.json	direct
 ref:cycloneivEP4CGX150bitLOCAL_LINE:src8:snk6:DATACb6283604ef8a6828	ref:cycloneivEP4CGX150specimen-pairgxll58x30_08_06evidence/cycloneiv/cycloneiv_forced_lab_58x30.json	direct
 ref:cycloneivEP4CGX150bitLOCAL_LINE:src8:snk6:DATACca355fdb5321c53d	ref:cycloneivEP4CGX150specimen-pairgxll_08_06evidence/cycloneiv/cycloneiv_forced_lab.json	direct
-ref:cycloneivEP4CGX150bitLUT:INITab8d77ef7e2a8a24	ref:cycloneivEP4CGX150oracle-compareLUT INIT oracle compare (301 designs)docs/cycloneiv-bitstream.md	direct
+ref:cycloneivEP4CGX150bitLUT:INITab8d77ef7e2a8a24	ref:cycloneivEP4CGX150oracle-compareLUT INIT oracle compare (301 designs)docs/altera/cycloneIV/cycloneiv-bitstream.md	direct
 ref:cycloneivEP4CGX150bittier:gxt0_s0744aa9e37ba2fc8	ref:cycloneivEP4CGX150specimen-pairgxt0_sevidence/cycloneiv/cycloneiv_forced_tier.json	direct
 ref:cycloneivEP4CGX150bittier:gxt1_a_n0_s2f54bba60955c2d6	ref:cycloneivEP4CGX150specimen-pairgxt1_a_n0_sevidence/cycloneiv/cycloneiv_forced_tier.json	direct
 ref:cycloneivEP4CGX150bittier:gxt1_a_n2_s3873c3fa8612db57	ref:cycloneivEP4CGX150specimen-pairgxt1_a_n2_sevidence/cycloneiv/cycloneiv_forced_tier.json	direct

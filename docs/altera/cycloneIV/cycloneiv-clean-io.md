@@ -59,7 +59,7 @@ Table script: `scripts/cycloneiv_clean_cff_tables.py` -> `databases/cycloneiv/cf
 
 ## IV asmdb layout (2026-10-30, static decompile of libdb_asmdb `ASMDB_DIE` / `ASMDB_BLOCK_INFO` / `ASMDB_ARCH_GROUP_*::operator<<`)
 
-- Cyclone V reader (`block_infos`) finds 0 records on IV: IV asmdb is the binary PDB stream (no `a : b : c` space strings, names stripped), same layer as routing.ddb (docs/cycloneiv-ddb-format.md).
+- Cyclone V reader (`block_infos`) finds 0 records on IV: IV asmdb is the binary PDB stream (no `a : b : c` space strings, names stripped), same layer as routing.ddb (docs/altera/cycloneIV/cycloneiv-ddb-format.md).
 - Main stream, walked by `io.asmdb_main_stream` (ends at body offset 38,044 of 5,350,270; rest is deferred per-class object pools):
   - 8 block types in `m_block_info_map` (keys 5, 6, 18, 39, 41, 60, 61, 227).
   - `m_arch_group_list` 6,087 pointers: classes 5 / 6 / 7 / 8 = 277 / 4,893 / 913 / 4 (class id = tag >> 2; ids from the stream, class names not yet bound).

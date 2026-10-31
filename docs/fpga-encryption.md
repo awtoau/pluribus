@@ -12,7 +12,7 @@ Which families can encrypt, how to tell an encrypted stream from a mis-decode, a
 | ECP5 | No encrypted primary image | `docs/ecp5/diamond-mining-findings.md` section 8 |
 | MachXO2, Gowin, Anlogic | Not checked | - |
 
-- So a Cyclone IV stream whose container and frame CRCs validate is cleartext (frame CRCs are over cleartext; `docs/cycloneiv-bitstream.md`). No Cyclone IV stream needs a key to lift.
+- So a Cyclone IV stream whose container and frame CRCs validate is cleartext (frame CRCs are over cleartext; `docs/altera/cycloneIV/cycloneiv-bitstream.md`). No Cyclone IV stream needs a key to lift.
 - On the families that encrypt, the key is never in the file. It is programmed into the device once, over JTAG. A field update only carries the already-encrypted file.
 
 ## Cyclone V: encrypted or mis-decoded?

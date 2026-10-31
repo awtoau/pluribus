@@ -4,7 +4,7 @@
   PLURIBUS_DJI_IMAGE=<path> python3.15t scripts/cycloneiv_clean_hardblock_usage.py     # log tmp/logs/cycloneiv_clean_hardblock_usage.log, json tmp/cycloneiv_clean/hardblock_usage.json
 
 - Cells = the absolute-address groups of each non-LAB/MEAB/MAC/PLL/IO/clock block type of the asmdb walk (hardblocks.absolute_bits rule), CRAM + CFF
-  mapped to rbf plane cells; DPRIO offsets inside the CFF range are reported as a separate alias candidate (docs/cycloneiv-address-spaces.md 2.1).
+  mapped to rbf plane cells; DPRIO offsets inside the CFF range are reported as a separate alias candidate (docs/altera/cycloneIV/cycloneiv-address-spaces.md 2.1).
 - Idle pattern = per-cell majority over the EP4CGX150 gate builds (none instantiates a transceiver / PCIe atom) and over the DF27 (F672) package builds.
 - Per block: cells, set in image, never set in any corpus build (ever_set), image != idle, and the same "!= idle" count for each reference build (spread).
 - Counts only; image path never logged.
@@ -30,7 +30,7 @@ from lifters.cycloneiv_clean import asmdb_walk as W, cycloneiv_io as IO, hardblo
 
 LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_hardblock_usage.log")
 OUT = os.path.join(REPO, "tmp", "cycloneiv_clean", "hardblock_usage.json")
-# source: the block types already decoded or out of scope here (docs/cycloneiv-clean-hardblocks.md: PLL, M9K, MAC; docs/cycloneiv-clean-io.md: HIO, VIO, dedicated clock pads; clock buffers)
+# source: the block types already decoded or out of scope here (docs/altera/cycloneIV/cycloneiv-clean-hardblocks.md: PLL, M9K, MAC; docs/altera/cycloneIV/cycloneiv-clean-io.md: HIO, VIO, dedicated clock pads; clock buffers)
 EXCLUDE = {"LAB", "MEAB", "MAC", "FAST_PLL", "GENERAL_PLL", "HIO", "VIO", "CLKBUF_GCLK", "DEDICATED_CLOCK", "DEDICATED_NEGATIVE_CLOCK"}
 DEVICE = "EP4CGX150DF27C7"        # F672: the package the image is inferred to be (tests/cycloneiv_clean/test_pkginfer.py)
 log = logging.getLogger("hbu")

@@ -14,7 +14,7 @@ Image = the third-party EP4CGX150 image (2,238,126 set bits incl. header/CRC/pre
 - Capacity per tile (die-wide, image independent) = cells of 1a (verified) and 1b, 1c, 3 (evidence).
 - Explorer payload: the class map per tile is deduplicated (68 templates), set bits are packed per tile and deflated (1.27 MB); decoded in the browser with `DecompressionStream`.
 
-Classes 2a / 2b (asm routing attribution) are retired with the coordinate model (#165, `docs/cycloneiv-retired-coordinate-model.md`): their cells fall to the next class, and the 2a / 2b figures from earlier runs are removed from this page.
+Classes 2a / 2b (asm routing attribution) are retired with the coordinate model (#165, `docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`): their cells fall to the next class, and the 2a / 2b figures from earlier runs are removed from this page.
 
 ## Approximations that remain
 

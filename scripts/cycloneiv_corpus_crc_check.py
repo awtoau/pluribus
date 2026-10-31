@@ -21,9 +21,9 @@ import cycloneiv_decompress as cd  # noqa: E402
 
 LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_corpus_crc_check.log")
 BAD = os.path.join(REPO, "tmp", "cycloneiv_corpus_crc_bad.json")
-FRAME = 796                 # source: docs/cycloneiv-bitstream.md EP4CGX150 frame bytes (pad + 793 data + 2 CRC)
-PERIPHERY = 37              # source: docs/cycloneiv-bitstream.md periphery frames before the CRAM
-CRAM_FRAMES = 6154          # source: docs/cycloneiv-bitstream.md EP4CGX150 CRAM frames
+FRAME = 796                 # source: docs/altera/cycloneIV/cycloneiv-bitstream.md EP4CGX150 frame bytes (pad + 793 data + 2 CRC)
+PERIPHERY = 37              # source: docs/altera/cycloneIV/cycloneiv-bitstream.md periphery frames before the CRAM
+CRAM_FRAMES = 6154          # source: docs/altera/cycloneIV/cycloneiv-bitstream.md EP4CGX150 CRAM frames
 STALL_S = 60
 
 

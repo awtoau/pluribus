@@ -1,6 +1,6 @@
 """Full object walk of the Cyclone IV GX asmdb ddb body and the per-site IO CFF bits.  Vendor-derived only (#165, #168).
 
-Pool format (source: libdb_pdb PDB_SEGMENT_READER::xfr_ptr / finish_reading_all, static decompile; docs/cycloneiv-clean-io.md):
+Pool format (source: libdb_pdb PDB_SEGMENT_READER::xfr_ptr / finish_reading_all, static decompile; docs/altera/cycloneIV/cycloneiv-clean-io.md):
   - pointer tag u32: 0 null; bit1 set = back-reference (id += tag >> 2); else new object of class tag >> 2, appended to the
     declared pointer type's list; the type is pushed on a stack on first use.
   - after the main stream: pop the top type, read all its objects in creation order (nested new types go on the stack).
@@ -103,7 +103,7 @@ class Walk:
             self.ptr("BI")
         for st in ("AG", "DG"):
             self.ptr_vec(st)
-        self.default_bits, self.forced_bits = [], []          # default / forced bit lists: i32 deltas, running sum (docs/cycloneiv-address-spaces.md 3.1)
+        self.default_bits, self.forced_bits = [], []          # default / forced bit lists: i32 deltas, running sum (docs/altera/cycloneIV/cycloneiv-address-spaces.md 3.1)
         for lst in (self.default_bits, self.forced_bits):
             a = 0
             for _ in range(self.u32()):

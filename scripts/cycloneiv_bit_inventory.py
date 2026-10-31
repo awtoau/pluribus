@@ -32,7 +32,7 @@ log = logging.getLogger("bit_inventory")
 NV = 6368            # bits per frame (796 bytes * 8)
 LANE_V = 6344        # v < LANE_V: lane-model data; 6344..6351 lane tail; 6352.. CRC bytes (CRAM frames)
 DROP_F = 30000
-PRE_POST_BITS = (32 * 8, 59 * 8)      # preamble 0xFF x32, postamble 0xFF x59 (docs/cycloneiv-bitstream.md)
+PRE_POST_BITS = (32 * 8, 59 * 8)      # preamble 0xFF x32, postamble 0xFF x59 (docs/altera/cycloneIV/cycloneiv-bitstream.md)
 # LOCAL_LINE specimen grids: evidence rows in the family DB (PLURIBUS_SQLITE_PATH), keyed by the file they
 # were migrated from (scripts/claims_register.py); the JSON path is only a fallback for a DB without them.
 FORCED = ["evidence/cycloneiv/cycloneiv_forced_lab.json", "evidence/cycloneiv/cycloneiv_forced_lab_58x30.json",
@@ -486,7 +486,7 @@ def run(a):
                      total=sum(PRE_POST_BITS), set=sum(PRE_POST_BITS), pct_die=100 * sum(PRE_POST_BITS) / die_bits))
     T = {r["id"]: r["total"] for r in rows}
     S = {r["id"]: r["set"] for r in rows}
-    # header frame split (docs/cycloneiv-bitstream.md "Format"): sync+CRC16 verified 24; flag/length/family/variant 41
+    # header frame split (docs/altera/cycloneIV/cycloneiv-bitstream.md "Format"): sync+CRC16 verified 24; flag/length/family/variant 41
     # known; lanes 5-7 constant 1 (120) and 0xFF fill (6024) constant; option bits 159 unknown
     HDR_VER, HDR_KNOWN, HDR_UNK = 24, 41 + 120 + 6024, 159
     ever = REPO / "databases" / "cycloneiv" / "ever_set.npy"

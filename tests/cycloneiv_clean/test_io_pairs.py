@@ -1,4 +1,4 @@
-"""IO single-setting pair builds (docs/cycloneiv-clean-io.md, #168).  Skips when the local pair data is missing.
+"""IO single-setting pair builds (docs/altera/cycloneIV/cycloneiv-clean-io.md, #168).  Skips when the local pair data is missing.
 
 Data: databases/cycloneiv/io_pairs.json (local), written by scripts/cycloneiv_clean_io_pairs.py analyse.
 Missing is a fault: pairs with no build and bits that differ from the corpus oracle are reported, not hidden.

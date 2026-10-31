@@ -2,8 +2,8 @@
 libcomp_asm	19101c	ASM_IO_PIN_MODE::process_atom	void process_atom(ASM_IO_PIN_MODE * this, CDB_ATOM_NODE * atom, ASMDB_SETTING_STREAMS * streams)	#168 c1, vtables.tsv (virtual slot +0x18)	this + atom + streams: demangled signature lacked this
 libcomp_asm	183e34	ASM_IO_USE_BUS_HOLD::process_atom	void process_atom(ASM_IO_USE_BUS_HOLD * this, CDB_ATOM_NODE * atom, ASMDB_SETTING_STREAMS * streams)	#168 c4, vtables.tsv	
 libcomp_asm	190e70	ASM_IO_PIN_MODE::handle_ygr_dual_pin_iost	void handle_ygr_dual_pin_iost(ASM_IO_PIN_MODE * this, CDB_ATOM_NODE * atom, ASMDB_SETTING_STREAMS * streams, int variant)	#168 c1	non-virtual member: demangled args + this
-libcomp_asmcc	1a240	ASM_BITFIELD::silent_set_bits	bool silent_set_bits(ASM_BITFIELD * this, void * settings)	docs/cycloneiv-address-spaces.md s2.1	settings = std::vector<DB_BIT_SETTING> (uint32 address, value byte)
-libcomp_asmcc	1aca0	ASM_BITFIELD::set_bits	bool set_bits(ASM_BITFIELD * this, void * settings)	docs/cycloneiv-address-spaces.md s2.1	settings = std::vector<DB_BIT_SETTING>
+libcomp_asmcc	1a240	ASM_BITFIELD::silent_set_bits	bool silent_set_bits(ASM_BITFIELD * this, void * settings)	docs/altera/cycloneIV/cycloneiv-address-spaces.md s2.1	settings = std::vector<DB_BIT_SETTING> (uint32 address, value byte)
+libcomp_asmcc	1aca0	ASM_BITFIELD::set_bits	bool set_bits(ASM_BITFIELD * this, void * settings)	docs/altera/cycloneIV/cycloneiv-address-spaces.md s2.1	settings = std::vector<DB_BIT_SETTING>
 libcomp_asmcc	28526	ASM_ARCH_GROUP::mux_select	void mux_select(ASM_ARCH_GROUP * this, uint site_index, uint value, ASMDB_SETTING_STREAMS * streams)	#168 c1, mangled args (uint, uint, streams&)	parameter roles from IO direction use
 libdb_asmdb	9dbbc	ASMDB_BLOCK_INFO::operator<<	void operator<<(ASMDB_BLOCK_INFO * this, PDB_SEGMENT_TEMPLATE * seg)	serializer:asmdb_ser.c	
 libdb_asmdb	9d8f0	ASMDB_DIE::operator<<	void operator<<(ASMDB_DIE * this, PDB_SEGMENT_TEMPLATE * seg)	serializer:asmdb_ser.c	

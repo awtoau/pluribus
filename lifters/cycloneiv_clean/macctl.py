@@ -1,7 +1,7 @@
 """Cyclone IV GX embedded multiplier (MAC) control decode (#165).  asmdb groups + the LAB-style mapped-mux inverse (ffctl.Calc); written for the
 18 x 18 single-multiplier mode.
 
-Evidence (docs/cycloneiv-clean-mac.md):
+Evidence (docs/altera/cycloneIV/cycloneiv-clean-mac.md):
   - A MAC instance is used iff any bit of its control groups is set: MAC cells are in no default-bit list and read 0 in a build without MACs
     (cells are only ever written by the ASM_MAC_* writers, libcomp_asmmac).  Routing cannot detect it: the MAC output elements are DSP_BUFFER.
   - MAC_ROW_DATA_INPUT gi k (36 groups, mapped mux, 46 inputs): input number = LOCAL_INTERCONNECT index of the MAC tile feeding data pin k
@@ -20,7 +20,7 @@ from . import fields as F
 MAC_BLOCK = mac.MAC
 # source: libdb_asmdb arch-group-type table, MAC block 41 (calc groups with an input map)
 CALC = ("MAC_ROW_DATA_INPUT", "MAC_PIA_TO_CLK", "MAC_PIA_TO_CE", "MAC_PIA_TO_CLR", "MAC_PIA_TO_SIGN")
-# source: libdb_asmdb arch-group-type table, MAC block 41 (one-bit groups, arch_value 1); roles from the gxhb_mac* pair builds (docs/cycloneiv-clean-mac.md)
+# source: libdb_asmdb arch-group-type table, MAC block 41 (one-bit groups, arch_value 1); roles from the gxhb_mac* pair builds (docs/altera/cycloneIV/cycloneiv-clean-mac.md)
 ONE = ("MAC_ROW_DATA_INVERT", "MAC_SIGN_INVERT", "MAC_ROW_IREG_UPPER_DATA", "MAC_ROW_IREG_LOWER_DATA", "MAC_ROW_OREG_UPPER_DATA",
        "MAC_USE_NINE_BIT_DATA_WIDTH_PER_ROW", "MAC_CLK_INVERT", "MAC_CE_INVERT", "MAC_CLR_INVERT", "MAC_IREG_SIGN")
 ROWS = 36                    # source: MAC_ROW_DATA_INPUT has 36 groups (asmdb walk); 18 rows per operand

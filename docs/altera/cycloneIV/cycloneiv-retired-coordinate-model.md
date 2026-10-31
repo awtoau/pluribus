@@ -1,6 +1,6 @@
 # Cyclone IV retired coordinate model (#157, #160, #161, #162, #165)
 
-Retired 2026-10-30; replaced by the clean pipeline (`docs/cycloneiv-clean-pipeline.md`). Old code and full result tables: tag `pre-clean-cycloneiv`, docs `cycloneiv-hop-override.md` and `cycloneiv-relax-active.md` at that tag.
+Retired 2026-10-30; replaced by the clean pipeline (`docs/altera/cycloneIV/cycloneiv-clean-pipeline.md`). Old code and full result tables: tag `pre-clean-cycloneiv`, docs `cycloneiv-hop-override.md` and `cycloneiv-relax-active.md` at that tag.
 
 ## What was tried (asm address -> plane cell, LB -> R4 hops)
 - Hop override (`PLURIBUS_HOP_OVERRIDE`): fixed -70 / -74 frame shift for LB -> R4 groups.

@@ -9,7 +9,7 @@ SFL / SFL-enhanced / PFL `.sof` files shipped in `quartus/common/devinfo/program
 | Layer | Status | Evidence level |
 |---|---|---|
 | Container, header, frame CRC, compression | decoder written | identical to oracle, 70 / 70 pairs |
-| LE LUT mask (EP4CGX150) | see docs/cycloneiv-clean-pipeline.md | gate |
+| LE LUT mask (EP4CGX150) | see docs/altera/cycloneIV/cycloneiv-clean-pipeline.md | gate |
 | FF, LAB controls, routing, IO | not decoded (diff counts only) | none |
 | Lifter / schema | not written (gated on a verified LE model incl. FF and routing) | none |
 
@@ -158,12 +158,12 @@ Files: `quartus/common/devinfo/cycloneivgx/ddb_stingray{1..4}_*.ddb`; E family i
   - lanes 2..3 identical across all six builds.
   - A third-party compressed image has lane 1 = `c0 00 20 0d ff` (first byte differs: option bits; bytes 1..3 = `00 20 0d` as on GX150), so it is the EP4CGX150 variant (full die).
 - stingray4 hdr.ddb payload (107 KB): chip description database (device name "EP4CGX150", family, node-type names such as LE_BUFFER, LAB_LINE, C16, GLOBAL_CLK_H; file names `stingray4.ww19.asm.rba`, `stingray4_dirt.xml`). It carries `frame_bits` (u32 0x18c8 = 6344 for stingray4, at body offset 0x54) and no other .rbf header field.
-- asm / icname decoded (2026-10-26, [cycloneiv-ddb-format.md](cycloneiv-ddb-format.md)): record = one routing wire (icname gives its vendor name), group = one input of a destination mux, entry = (CRAM bit, role): select bit, or one of the two shared second-level bits programmed iff `b1 == -1`. Asm address to plane cell: clean pipeline A3-A5 (`docs/cycloneiv-clean-pipeline.md`); the old FX mirror is retired. Parse ends at EOF; the earlier `u32 c` / `(delta, mask)` reading was the same stream misframed by 4 bytes.
-  - Raw tables: `scripts/cycloneiv_asm_prep.py` (records, groups, blocks; no coordinate model). The learned decoder, `asm_names.json` and its held-out scores are retired (#165, `docs/cycloneiv-retired-coordinate-model.md`).
+- asm / icname decoded (2026-10-26, [cycloneiv-ddb-format.md](cycloneiv-ddb-format.md)): record = one routing wire (icname gives its vendor name), group = one input of a destination mux, entry = (CRAM bit, role): select bit, or one of the two shared second-level bits programmed iff `b1 == -1`. Asm address to plane cell: clean pipeline A3-A5 (`docs/altera/cycloneIV/cycloneiv-clean-pipeline.md`); the old FX mirror is retired. Parse ends at EOF; the earlier `u32 c` / `(delta, mask)` reading was the same stream misframed by 4 bytes.
+  - Raw tables: `scripts/cycloneiv_asm_prep.py` (records, groups, blocks; no coordinate model). The learned decoder, `asm_names.json` and its held-out scores are retired (#165, `docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`).
 
 ## EP4CGX150 routing tables from the corpus (2026-10-26, replaces the 80.6% figure)
 
-- Learned-table scores (pooled X mod 8 / Y mod 4 tables, per-type pip counts) are removed: fitted model, retired (#165, `docs/reversing-errata.md` E-C1). Current numbers: `docs/cycloneiv-clean-pipeline.md` and the gate runs.
+- Learned-table scores (pooled X mod 8 / Y mod 4 tables, per-type pip counts) are removed: fitted model, retired (#165, `docs/reversing-errata.md` E-C1). Current numbers: `docs/altera/cycloneIV/cycloneiv-clean-pipeline.md` and the gate runs.
 - IO sites (`cycloneiv_io_bits.py`, no geometry needed): each used IOOBUF site has a 36-bit configuration signature (set in >= 95% of designs using the site, in <= 3% of the others), in clusters of 4 consecutive v. Top-row (Y91) and bottom-row (Y0) IO config sits in the periphery frames (e.g. X26/X30/X32/X34 -> frames 26..29), v falls by 136 per IO step of 7 in N (N2, N9, N16, N23). The LAB-column anchor model does not apply to IO rows, so IO-row routing tables (IO_DATAIN, BLOCK_INPUT_MUX, IOOBUF.I) need their own anchors.
 - IO input sites: every used IOIBUF site has a 4-bit signature (4 consecutive v in one periphery frame), set in all designs using the site and in <= 3% of the others (249 sites with >= 12 uses; e.g. X26 Y91 N1 frame 26 v 380..383, N8 244..247, N15 108..111: v falls by 136 per N step of 7; left/right IO columns X117 carry the same pattern with frames 20..34). Some sites also show a bit beyond the lane model (v 6344+, the lane-tail columns).
 
@@ -247,4 +247,4 @@ Net-level routing experiments (one race-free held-out design, LE-input traces vs
 - Periphery frames 1..r-1: no CRC found in-frame; how they are protected is unknown.
 - Compressed length-field low bits; header lanes 0 and 3, lane 1 bits 0..23 and 36..37.
 - Compressor not written.
-- Encrypted Cyclone III LS streams: no oracle. Cyclone IV E/GX cannot encrypt ([fpga-encryption.md](fpga-encryption.md)).
+- Encrypted Cyclone III LS streams: no oracle. Cyclone IV E/GX cannot encrypt ([fpga-encryption.md](../../fpga-encryption.md)).

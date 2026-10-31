@@ -2,7 +2,7 @@
 """Cyclone IV GX routing.ddb connectivity: corpus ground truth + expansion-hypothesis harness (#141).
 
 STATUS (2026-10-28): the node -> template assignment and the template-delta semantics are STILL
-OPEN - docs/cycloneiv-ddb-format.md "Open: node -> connectivity expansion" lists every tested and
+OPEN - docs/altera/cycloneIV/cycloneiv-ddb-format.md "Open: node -> connectivity expansion" lists every tested and
 rejected interpretation (this script is the harness that rejected them).  What stands:
 - observe: corpus RCF wire arcs (2,984 designs, 1.6 M arcs) -> tmp/ddb/<die>_obs.npz.
 - gt: LE_BUFFER sources + subset-test machinery (gt/check unavailable: the learned base[I] table is retired, #165).  With
@@ -164,7 +164,7 @@ def observe():
     log.info("observe: %d designs, %d wire arcs -> %s", len(designs), len(arr), out)
 
 
-XMIRROR = 115        # vendor x = XMIRROR - fitter x (docs/cycloneiv-ddb-format.md)
+XMIRROR = 115        # vendor x = XMIRROR - fitter x (docs/altera/cycloneIV/cycloneiv-ddb-format.md)
 DWIN = 2             # a dest record's node tile is within +-DWIN of the RCF driver tile
 
 

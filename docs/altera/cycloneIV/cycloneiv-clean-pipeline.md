@@ -52,11 +52,11 @@ Rebuild of the placement/lift stack from vendor-derived facts only. The layered 
   - `rebuild_all`, `verify_all`, `profile_stages`, `geo_image_overlay`, `perf_pass_verify`, `pip_table`, `ddb_fanout`, `ddb_blockmap`, `declare_gate`, `mem_report` cut; `image_pass` routing / netlist sections removed.
   - `lifted_sim_check` and `ddb_fanout gt|check` exit with "pending clean P2".
   - Gate script name in `declare_gate` is a TODO for the clean P3 gate.
-- Step 4 done: r4 experiments, hop specimens, full/rec/src/sofframe tests, relax analysis, coordv2..v5 removed; summary in `docs/cycloneiv-retired-coordinate-model.md`.
+- Step 4 done: r4 experiments, hop specimens, full/rec/src/sofframe tests, relax analysis, coordv2..v5 removed; summary in `docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`.
 - Step 5 done: `route_learn`, `route_decode`, `route_score`, `phys_trace`, `ddb_trace`, `asm_tables`, `li_map`, `specimens`, `lift_image`, `image_demand`, `asm_decode`, coordv6 / v7 removed.
   - `scripts/cycloneiv_asm_prep.py` keeps the raw record / group / block tables (`prepare`, `icnames`, `programmed`); no coordinate model.
   - `lifters/cycloneiv_lift.py` keeps scan / LUT / FF / Design; routing needs a tracer passed to `lift()` (clean P2 pending).
-  - Docs that mention 2a / 2b / `Dec.active` as history point to `docs/cycloneiv-retired-coordinate-model.md`.
+  - Docs that mention 2a / 2b / `Dec.active` as history point to `docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`.
 - Step 6: learned-map JSONs and derived `tmp/ddb` coordinate-model files removed; env flags and their readers gone. DB rows / claim classes to retire: listed on #165, rebuild happens last.
 
 ## Gate regression hygiene (2026-10-30, #165)

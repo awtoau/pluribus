@@ -375,8 +375,8 @@ def register_class_claims(R, conn, device, geom, commit, lab_axes):
                      .values(pattern_id="blkrba-control-v1"))   # die-wide claim is created before the pattern exists
     ev_miss = [E.record_decode(conn, fam, device, "le-used-vs-lut-use: 14 of 1,018 LEs without the bit (one design)",
                                {"n_les": 1018, "misses": 14, "design": "one corpus design", "meta": {},
-                                "note": "figures from the earlier analysis (docs/cycloneiv-bit-inventory.md 1b); not recomputed in this run"},
-                               commit, "docs/cycloneiv-bit-inventory.md", generator="scripts/cycloneiv_bit_inventory.py",
+                                "note": "figures from the earlier analysis (docs/altera/cycloneIV/cycloneiv-bit-inventory.md 1b); not recomputed in this run"},
+                               commit, "docs/altera/cycloneIV/cycloneiv-bit-inventory.md", generator="scripts/cycloneiv_bit_inventory.py",
                                n_objects=14, kind="audit")]
     class_claim("1b", "pattern-predicted", "le-used-v1", [("conflict", ev_miss)], "LE-used bit at (FX-8, vy-sign)")
     ev_clk = ids(ev.c.kind == "specimen-pair", ev.c.source_ref == "bit_hunter:B:clk")
@@ -699,7 +699,7 @@ def register_cycloneiv(conn, device, commit):
         sid_w = R.scope("mux-input", "formula", {"matcher": "vendor-ddb-v1", "n_objects": n_blocks, "subset": "wire destinations"})
         c_w = R.claim("mux-input", "ddb:block->dest:wires", sid_w, {"rule": "group k == edge k", "npz": "tmp/ddb/stingray4_blockmap.npz"},
                       "vendor-decoded", "confirmed", pattern=pid, evidence=[ev_ddb],
-                      basis="group k == edge k (A1 + A2, docs/cycloneiv-clean-pipeline.md)")
+                      basis="group k == edge k (A1 + A2, docs/altera/cycloneIV/cycloneiv-clean-pipeline.md)")
 
     # ── inventory classes (n_objects from the latest real ledger line) ────────────────────────
     led = _ledger_latest()
@@ -707,7 +707,7 @@ def register_cycloneiv(conn, device, commit):
         cls = {c["id"]: c for c in led["classes"]}
         ev_lut = E.record_decode(conn, "cycloneiv", device, "LUT INIT oracle compare (301 designs)",
                                  {"designs": 301, "bits": 5354496, "matched": 5354496, "missing": 0, "wrong": 0,
-                                  "oracle": "Quartus post-fit .vo lut_mask"}, commit, "docs/cycloneiv-bitstream.md",
+                                  "oracle": "Quartus post-fit .vo lut_mask"}, commit, "docs/altera/cycloneIV/cycloneiv-bitstream.md",
                                  generator="scripts/cycloneiv_lut_check.py", n_objects=5354496, kind="oracle-compare")
         R.matcher("lut-anchor-v1", "deterministic", "LUT INIT anchor law (DK offsets from LE anchor)", 1, "cycloneiv_le_locate:DK")
         p_lut = R.pattern("lut-anchor-v1", "bit", "LUT INIT bits at anchor + DK offsets, every LE of every LAB", {"dims": 2, "axes": LAB_AXES, "DK": "cycloneiv_le_locate.DK"},
@@ -735,7 +735,7 @@ def register_cycloneiv(conn, device, commit):
         R.claim("stream-option", "header:sync+crc16", R.scope("stream-option", "keys", {"keys": ["header:sync", "header:crc16"]}, n=hdr["verified"]),
                 {"meaning": "sync word + CRC-16"}, "measured", "oracle-verified", cls="5a", basis="recomputed")
         R.claim("stream-option", "header:constant", R.scope("stream-option", "keys", {"keys": ["header:flag", "header:length", "header:family", "header:lanes5-7", "header:0xff-fill"]}, n=hdr.get("measured", hdr.get("evidence"))),
-                {"meaning": "flag/length/family/lanes/fill"}, "vendor-decoded", "confirmed", cls="5a", basis="docs/cycloneiv-bitstream.md Format")
+                {"meaning": "flag/length/family/lanes/fill"}, "vendor-decoded", "confirmed", cls="5a", basis="docs/altera/cycloneIV/cycloneiv-bitstream.md Format")
         R.unknown("stream-option", R.scope("stream-option", "keys", {"keys": ["header:option-bits"]}, n=hdr["unknown"]), "unasked",
                   subject="header:option-bits", cls="5a", note="159 option bits set by quartus_cpf; option sweep not done")
         R.claim("bit", "frame:crc16", cls_scope("5b", cls["5b"]["name"]), {"meaning": "CRC-16 per CRAM frame"}, "measured", "oracle-verified",

@@ -47,7 +47,7 @@ EVER = REPO / "databases/cycloneiv/ever_set.npy"
 NV = 6368
 LABS = {"a": (10, 10), "b": (58, 30), "c": (37, 60), "d": (100, 75)}
 SETS = ["clk", "clkpin", "ena", "aclr", "sclr", "sload", "asdata"]
-# measured single features (tile-relative (df, dv)); sources: docs/cycloneiv-bit-hunter.md (round 3/4)
+# measured single features (tile-relative (df, dv)); sources: docs/altera/cycloneIV/cycloneiv-bit-hunter.md (round 3/4)
 MEASURED = {"clkpol(1c)": [(-6, -30)], "ena": [(-8, -30), (-7, -30)],
             "aclr": [(-1, -32), (0, -32), (3, -68)], "sclr": [(2, -32), (4, -1)]}
 WIN_DF, WIN_DV = range(-19, 14), range(-68, 3)     # LAB window (FX-19..FX+13, v phase -68..2)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3.15t
-"""asm.ddb record/group/block tables for Cyclone IV GX (docs/cycloneiv-ddb-format.md).  No coordinate model.
+"""asm.ddb record/group/block tables for Cyclone IV GX (docs/altera/cycloneIV/cycloneiv-ddb-format.md).  No coordinate model.
 
 Record = routing wire (vendor name, icname.ddb); group = destination mux; entry = (address, b0, b1).
-Raw addresses only: asm address -> plane cell is the clean address engine's job (docs/cycloneiv-clean-pipeline.md, A3-A5).
+Raw addresses only: asm address -> plane cell is the clean address engine's job (docs/altera/cycloneIV/cycloneiv-clean-pipeline.md, A3-A5).
 
   python3.15t scripts/cycloneiv_asm_prep.py prepare     # -> tmp/ddb/<die>_dec_*.npy + _dec_names.pkl
 Log tmp/logs/cycloneiv_asm_prep.log.

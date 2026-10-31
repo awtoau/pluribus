@@ -58,16 +58,16 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 - Instance: `mac.instance(x, y)` = column rank * 90 + (Y - 1); 4 MUL columns.
 - Pair builds at two MAC sites (X103_Y87, X43_Y87), 12 features: 32 matched / 3 missing / 2 extra / 0 wrong.
   - Clean one-cell signatures (both columns): `MAC_SIGN_INVERT` gi 0 = signa, gi 1 = signb (unsigned = bit set, signed = cleared); dynamic sign ports set `MAC_PIA_TO_SIGN` gi 0 / 1; 9-bit width sets `MAC_USE_NINE_BIT_DATA_WIDTH_PER_ROW`.
-  - Input / multiplier register: A input register = `MAC_ROW_IREG_*_DATA` gi 0, B = gi 1, output (multiplier) register = `MAC_ROW_OREG_UPPER_DATA` gi 0 + 1 (docs/cycloneiv-clean-mac.md).
+  - Input / multiplier register: A input register = `MAC_ROW_IREG_*_DATA` gi 0, B = gi 1, output (multiplier) register = `MAC_ROW_OREG_UPPER_DATA` gi 0 + 1 (docs/altera/cycloneIV/cycloneiv-clean-mac.md).
   - Output register: `MAC_CLK_FAST_MUX` + `MAC_ROW_OREG_UPPER_DATA`; the second column placed at another instance in the pinned build, so cross-column score is 0 / 3 / 2 / 0.
-- Block 41 has 17 asmdb group types (`scripts/cycloneiv_clean_mac_survey.py`): row data input / invert, PIA to clk / ce / clr / sign, sign invert, IREG / OREG data, nine-bit width, clk / ce / clr invert, clk / clr fast mux, IREG_SIGN. No accumulate / saturation / rounding / shift / chain group exists (E-T4). All 17 group types are now exercised by `gxhb_macx_*` pairs (docs/cycloneiv-clean-mac.md).
-- Nine-bit mode = two 9 x 9 multipliers N0 / N1 (rows, registers, result slices: `macctl.rows`, docs/cycloneiv-clean-mac.md). Control pins CLK / SIGNA / SIGNB reach the MAC pin through DSP_CONTROL_INPUT (`mac_pia.py`).
-- Instance order (column rank * 90 + Y - 1) is scored by `mac_inst` over every corpus design with a MAC tile (docs/cycloneiv-clean-mac.md Results), all four MUL columns.
+- Block 41 has 17 asmdb group types (`scripts/cycloneiv_clean_mac_survey.py`): row data input / invert, PIA to clk / ce / clr / sign, sign invert, IREG / OREG data, nine-bit width, clk / ce / clr invert, clk / clr fast mux, IREG_SIGN. No accumulate / saturation / rounding / shift / chain group exists (E-T4). All 17 group types are now exercised by `gxhb_macx_*` pairs (docs/altera/cycloneIV/cycloneiv-clean-mac.md).
+- Nine-bit mode = two 9 x 9 multipliers N0 / N1 (rows, registers, result slices: `macctl.rows`, docs/altera/cycloneIV/cycloneiv-clean-mac.md). Control pins CLK / SIGNA / SIGNB reach the MAC pin through DSP_CONTROL_INPUT (`mac_pia.py`).
+- Instance order (column rank * 90 + Y - 1) is scored by `mac_inst` over every corpus design with a MAC tile (docs/altera/cycloneIV/cycloneiv-clean-mac.md Results), all four MUL columns.
 
 ## DPRIO / GX / HSSI / other
 
-- No BLOCK_INFO instance list for GX_* / HSSI_* / OCT_CAL / CONTROL / DEVICE blocks (docs/cycloneiv-clean-fields.md). Their group offsets have a CFF or CRAM tag per address; CFF-tagged ones are absolute (same property as PLL) but were not specimen-tested here: documented unknown.
-- DPRIO has no address space of its own (aliases CFF, docs/cycloneiv-address-spaces.md).
+- No BLOCK_INFO instance list for GX_* / HSSI_* / OCT_CAL / CONTROL / DEVICE blocks (docs/altera/cycloneIV/cycloneiv-clean-fields.md). Their group offsets have a CFF or CRAM tag per address; CFF-tagged ones are absolute (same property as PLL) but were not specimen-tested here: documented unknown.
+- DPRIO has no address space of its own (aliases CFF, docs/altera/cycloneIV/cycloneiv-address-spaces.md).
 
 ## Third-party image (counts only, `scripts/cycloneiv_clean_image.py`)
 
@@ -78,7 +78,7 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 | PLL_8 | M 20, N 1, c0 4 / 4, c3 8 / 8, other counters bypass |
 | M9K instances with content bits set | 8 of 720 (12,993 of 6,635,520 content bits set); content address map: 0 unmapped |
 | M9K instances with `RAM_USE_TRUE_DUAL_PORT_MODE` set / `RAM_REG_DATA_OUT` set | 364 / 454 |
-| MAC instances with any set control bit | 87 of 360, all decoded (registers, signs, pins): docs/cycloneiv-clean-mac.md |
+| MAC instances with any set control bit | 87 of 360, all decoded (registers, signs, pins): docs/altera/cycloneIV/cycloneiv-clean-mac.md |
 
 - Port width of an image M9K is not in the config bits (set by wired ports), so content is mapped to mem_init order only; logical (word, bit) needs the width from routing.
 

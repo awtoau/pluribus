@@ -3,7 +3,7 @@
 
 Inputs (all vendor-derived, local): asmdb walk (groups, default / forced lists), vendor sfl sof tag 18, cff2rbf option table, Quartus enum names.
 Hand-curated part = GROUP_SEM below: one row per option group, each row cites the Ghidra function (libcomp_asm) that writes it and the pair
-ids that confirm it.  Pair builds: scripts/cycloneiv_clean_option_pairs.py.  Doc: docs/cycloneiv-clean-options.md.
+ids that confirm it.  Pair builds: scripts/cycloneiv_clean_option_pairs.py.  Doc: docs/altera/cycloneIV/cycloneiv-clean-options.md.
 
   python3.15t scripts/cycloneiv_clean_options_build.py            # log: tmp/logs/cycloneiv_clean_options_build.log
 """
@@ -132,7 +132,7 @@ def pair_evidence():
     return {k: sorted(v) for k, v in ev.items()}, rows
 
 
-# the 15 JTAG classes of libcomp_asm (docs/cycloneiv-address-spaces.md 4) -> asmdb group type name ("" = no group type: class is not a bit writer)
+# the 15 JTAG classes of libcomp_asm (docs/altera/cycloneIV/cycloneiv-address-spaces.md 4) -> asmdb group type name ("" = no group type: class is not a bit writer)
 JTAG_CLASSES = (
     ("ASM_JTAG_PIA", ""), ("ASM_JTAG_PIA_TO_CORE_CTL", "JTAG_PIA_TO_CORECTL"), ("ASM_JTAG_PIA_TO_TCKCORE", "JTAG_PIA_TO_TCKCORE"),
     ("ASM_JTAG_PIA_TO_TDICORE", "JTAG_PIA_TO_TDICORE"), ("ASM_JTAG_PIA_TO_TMSCORE", "JTAG_PIA_TO_TMSCORE"),
@@ -219,7 +219,7 @@ def main():
         n_bits=N, class_counts=cnt, entries=ents, jtag=jtag_section(w, tabs["arch_group_type"]),
         flag_semantics=dict(
             text="sof tag 18 bits 160..319 = ASM_BITFIELD shadow buffer: 1 where the bit was written by set_bits (forced list, option groups), 0 where only silent_set_bits wrote it (default list)",
-            source="libcomp_asmcc ASM_BITFIELD::set_bits @vaddr 0x1aca0 (0x18000 = PLT stub) (value + written mask + shadow) vs silent_set_bits @vaddr 0x1a240 (0x17e50 = PLT stub) (value only), docs/cycloneiv-address-spaces.md 3.2"))
+            source="libcomp_asmcc ASM_BITFIELD::set_bits @vaddr 0x1aca0 (0x18000 = PLT stub) (value + written mask + shadow) vs silent_set_bits @vaddr 0x1a240 (0x17e50 = PLT stub) (value only), docs/altera/cycloneIV/cycloneiv-address-spaces.md 3.2"))
     json.dump(res, open(OUT, "w"), indent=1)
     log.info("wrote %s: %s", OUT, cnt)
 

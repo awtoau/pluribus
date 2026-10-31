@@ -2,7 +2,7 @@
 """RAM clock-enable / clear shared-PIA-line preferences from CODE (#165, #169): constructor of ASM_RAM_CE_FAST_MUX (and CLEAR_FAST_MUX) per group index.
 
 ASM_RAM_CE_FAST_MUX::ASM_RAM_CE_FAST_MUX@0x2f686 stores m_unused_index_preferred (+0x38) / m_unused_index_alternate (+0x3c) = PIA line numbers by
-family / block type / group index; process_end_of_phase selects one of them (docs/cycloneiv-clean-hardblocks.md).  Run in Unicorn (python3.14): the family
+family / block type / group index; process_end_of_phase selects one of them (docs/altera/cycloneIV/cycloneiv-clean-hardblocks.md).  Run in Unicorn (python3.14): the family
 jump table (base_family - 6) is entered at the target of family FAMILY with the group index and block type in the ASMDB_ARCH_GROUP_BASE stub.
   python3.14 scripts/cycloneiv_ram_ce_lines.py [ctor_vaddr [family]]      -> JSON {gi: [preferred, alternate, flags]}
 """

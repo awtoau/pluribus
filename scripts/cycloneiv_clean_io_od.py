@@ -4,7 +4,7 @@
   python3.15t scripts/cycloneiv_clean_io_od.py [--pins AD25,C29,A23]      # log: tmp/logs/cycloneiv_clean_io_od.log
 
 - QSF `AUTO_OPEN_DRAIN_PINS` is a detection switch (default ON), not a per-pin forced mode: a pin is open-drain when its logic is a
-  tri-state with constant-0 data (decompile: ASM_IO_PIN_MODE::process_atom picks mux 3 / 4 from atom bit 0x16, docs/cycloneiv-clean-io.md).
+  tri-state with constant-0 data (decompile: ASM_IO_PIN_MODE::process_atom picks mux 3 / 4 from atom bit 0x16, docs/altera/cycloneIV/cycloneiv-clean-io.md).
 - Builds per pin (STD 2.5 V, pin and aux pins as in cycloneiv_clean_io_pairs.py): tri (data = a & c), od (data = 0), od_off (data = 0, assignment OFF).
 - Result file: tmp/cycloneiv_clean/io_od/result.json (pin -> {build pair -> CFF / CRAM diff counts and IO group names}).
 """

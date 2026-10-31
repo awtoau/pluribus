@@ -394,7 +394,7 @@ class Extras:
         return {v: np.unique(np.concatenate([self.clocks.apply(bits, e), imp, mclk, self.pllw.zero_select(bits, e)])) for v, e in fired.items()}
 
 
-# source: io_decode.json `values` rows with setting 'default' (pair builds, docs/cycloneiv-clean-io.md): pattern of each group per base kind
+# source: io_decode.json `values` rows with setting 'default' (pair builds, docs/altera/cycloneIV/cycloneiv-clean-io.md): pattern of each group per base kind
 IO_KEY_GROUPS = ("MIO_SET_PULLDOWN_STRENGTH", "MIO_SET_PULLUP_STRENGTH", "MIO_SET_SLEW_RATE", "MIO_USE_PCI_DIODE_CLAMP")
 
 

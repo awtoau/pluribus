@@ -66,7 +66,7 @@ def sof_bits(path):
     return b
 
 
-# source: sof trailer CRC16, reflected 0x8408 (= 0x1021 reversed), init 0xFFFF, complemented (vendor sof, docs/cycloneiv-bitstream.md)
+# source: sof trailer CRC16, reflected 0x8408 (= 0x1021 reversed), init 0xFFFF, complemented (vendor sof, docs/altera/cycloneIV/cycloneiv-bitstream.md)
 def _crc_table():
     t = []
     for i in range(256):

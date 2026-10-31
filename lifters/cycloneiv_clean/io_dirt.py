@@ -4,7 +4,7 @@ Source: ddb_stingray4_asmdb_dirt.ddb, root child ARCH_GROUPS (17 groups); each g
 (IO_STANDARD | VOLTAGE_LEVEL string, SETTINGS integer).  The IO groups present: MIO_SELECT_IOST_DIRT (IO standard -> IOST value, per block type) and
 MIO_SET_PULLDOWN_STRENGTH / MIO_SET_PULLUP_STRENGTH (VCCIO level -> strength value, HIO and VIO).
 Integer decode: an INTEGER node's first element is a delta against the previous INTEGER node of the file (pool order = node order), so the absolute
-SETTINGS value is the running sum over all integer nodes (docs/cycloneiv-clean-io.md, dirt pool format; scripts/cycloneiv_clean_dirt.py).
+SETTINGS value is the running sum over all integer nodes (docs/altera/cycloneIV/cycloneiv-clean-io.md, dirt pool format; scripts/cycloneiv_clean_dirt.py).
 The value -> bit pattern law is io_encode.py (element k = value bit k).
 """
 import os

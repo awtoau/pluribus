@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Clean P3 gate: score lifters/cycloneiv_clean/tracer.py against Quartus ground truth (docs/cycloneiv-clean-pipeline.md, #165).
+"""Clean P3 gate: score lifters/cycloneiv_clean/tracer.py against Quartus ground truth (docs/altera/cycloneIV/cycloneiv-clean-pipeline.md, #165).
 
   PLURIBUS_SQLITE_PATH=databases/cycloneiv/gx150.db python3.15t scripts/cycloneiv_clean_gate.py --set rb10 [--record]
   python3.15t scripts/cycloneiv_clean_gate.py --set corpus --root <corpus-rebuild-dir>/cycloneiv-<stamp> [--limit N] [--record]

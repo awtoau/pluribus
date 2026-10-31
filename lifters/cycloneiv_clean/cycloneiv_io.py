@@ -3,7 +3,7 @@
 - Address-space tags (CRAM, CFF, UNVM, option register, DPRIO), die head counts, CFF bit -> rbf periphery cells (`Cff`), asmdb body and
   ddb type-table readers, pair-build table reader (`io_pairs`).
 - IO field layout, value laws and per-site decode live in asmdb_walk.py (groups), io_encode.py (value <-> pattern law from the vendor select code),
-  io_decode.py (pair-build tables), io_fields.py (site decoder); evidence and counts: docs/cycloneiv-clean-io.md.
+  io_decode.py (pair-build tables), io_fields.py (site decoder); evidence and counts: docs/altera/cycloneIV/cycloneiv-clean-io.md.
 - Named cycloneiv_io (not io) so it never shadows the stdlib module when this directory is on sys.path.
 """
 import os
@@ -160,7 +160,7 @@ def asmdb_body(path=None):
 
 
 def asmdb_main_stream(b):
-    """Walk the non-deferred part of the ASMDB_DIE record (PDB layer: docs/cycloneiv-ddb-format.md).
+    """Walk the non-deferred part of the ASMDB_DIE record (PDB layer: docs/altera/cycloneIV/cycloneiv-ddb-format.md).
 
     Containers are `u32 count` + count elements; pointer elements are one u32 tag each (class id = tag >> 2,
     object content is deferred to per-class pools after the main stream); default / forced bit lists are

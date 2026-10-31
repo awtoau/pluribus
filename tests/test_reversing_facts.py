@@ -197,7 +197,7 @@ def walk():
 
 
 def test_asmdb_pool_order_consumes_body(walk):
-    """docs/cycloneiv-clean-io.md pool order: the walk consumes the body exactly and class counts equal the ddb type table."""
+    """docs/altera/cycloneIV/cycloneiv-clean-io.md pool order: the walk consumes the body exactly and class counts equal the ddb type table."""
     from lifters.cycloneiv_clean import cycloneiv_io as IO
     assert walk.end == len(walk.b)
     assert len(walk.groups()) == 6312 and walk.class_counts()[17] == 8567

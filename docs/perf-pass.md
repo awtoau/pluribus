@@ -2,7 +2,7 @@
 
 Python/numpy fixes from `docs/rust-candidates.md` (measured in #144). Rust not used. Outputs bit-identical to before.
 
-The asm decoder (`Dec.active`, `prepare`, `afx_map`), `ddb_trace` and their consumers are retired (#165, `docs/cycloneiv-retired-coordinate-model.md`); their rows are removed from the tables below.
+The asm decoder (`Dec.active`, `prepare`, `afx_map`), `ddb_trace` and their consumers are retired (#165, `docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`); their rows are removed from the tables below.
 
 ## Before / after (2026-10-29, EP4CGX150 poseidon image, one run each, box shared, +-20 %)
 

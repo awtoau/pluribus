@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.15t
 """Option-register pair builds on EP4CGX150: which of the 160 option bits (sof tag 18) does each QSF device option change?  Black box:
-quartus_map/fit/asm/cpf only (#169, docs/cycloneiv-clean-options.md).
+quartus_map/fit/asm/cpf only (#169, docs/altera/cycloneIV/cycloneiv-clean-options.md).
 
 Method (docs/recovery-process.md): a pair = base build + ONE global QSF assignment (or one JTAG primitive for the design pairs).
 Two base designs (comb `min`, registered `reg`, different pin) so a context-dependent option shows up as a base disagreement.
@@ -35,7 +35,7 @@ DEVICE = "EP4CGX150DF31C7"
 # Quartus step backstops = io_pairs pilot (3x worst of 50 builds at 12 parallel jobs); stall guard 60 s in fz.run
 LIMITS = {"quartus_map": 63, "quartus_fit": 75, "quartus_asm": 30, "quartus_cpf": 8}
 JOB_GB_NAME = "quartus_chain_cyc4"
-HEADER_BYTES = 75              # source: docs/cycloneiv-address-spaces.md 2.3, frame 0 = sync + 40 option lane bytes + CRC (rbf bytes 32..74)
+HEADER_BYTES = 75              # source: docs/altera/cycloneIV/cycloneiv-address-spaces.md 2.3, frame 0 = sync + 40 option lane bytes + CRC (rbf bytes 32..74)
 SOF_TAG_OPTION, SOF_TAG_USERCODE, SOF_TAG_CRAM = 18, 19, 17
 log = logging.getLogger("option_pairs")
 
@@ -62,7 +62,7 @@ for _d in (1, 2, 4, 8, 16, 32, 64, 128, 256):
                                     f"defparam crc.oscillator_divider = {_d};\nassign z = ce ^ ro;\n")
 DESIGNS["crcblock_loc"] = ("wire ce, ro; cycloneiv_crcblock crc (.clk(c), .shiftnld(e), .ldsrc(a), .crcerror(ce), .regout(ro));\n"
                            "defparam crc.oscillator_divider = 1;\ndefparam crc.crc_deduce_error_location = \"true\";\nassign z = ce ^ ro;\n")
-# source: libdb_acf.so setting-name strings (ACF names for the option classes in libcomp_asm ASM_OPTION_REG_*, docs/cycloneiv-clean-options.md);
+# source: libdb_acf.so setting-name strings (ACF names for the option classes in libcomp_asm ASM_OPTION_REG_*, docs/altera/cycloneIV/cycloneiv-clean-options.md);
 # (id, qsf assignment name, value).  Names rejected by the fitter / ignored by this family are recorded, not hidden.
 SETTINGS = (
     ("init_done_on", "ENABLE_INIT_DONE_OUTPUT", "ON"),

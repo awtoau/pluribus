@@ -3,7 +3,7 @@
 Design for marking every recovered meaning (bit, mux input, wire driver, cell field) with HOW it was
 obtained, and for feeding contradictions back into everything that shares the same reasoning.
 Companion to [recovery-process.md](recovery-process.md) (method) and
-[cycloneiv-bit-inventory.md](cycloneiv-bit-inventory.md) (coverage metric). Issue #141. Status: IMPLEMENTED
+[cycloneiv-bit-inventory.md](altera/cycloneIV/cycloneiv-bit-inventory.md) (coverage metric). Issue #141. Status: IMPLEMENTED
 (commit b5e1dea13 and after). The real DDL is `schema.py`; table-by-table reference is
 [provenance-schema.md](provenance-schema.md). Section 4 sketches are the original design, superseded by those two.
 
@@ -55,12 +55,12 @@ one of them does not hold.
 |---|---|---|---|
 | fitter honours only legal routes | an RCF forcing an input the fitter considers illegal is rerouted; the question "what does input k mean" cannot be asked directly | reach k from a different source/sink pair; else leave unasked | `unknown` with reason `unforceable`; never infer from neighbours |
 | port permutation | fitter swaps LUT inputs (dataa..datad) and rewrites lut_mask; "one net moved" becomes "net + mask + port" | `dont_touch`, pin the port in post-fit; accept only when post-fit shows the intended port | `measured` only if post-fit confirms the port; else discard the pair |
-| shared select bits | one second-level bit serves up to 12 inputs of a mux, and one block can hold several muxes; the diff shows the bit but not which mux consumed it | diff-of-diffs (vary only the input, only the source); key answers by GROUP (cycloneiv-specimens.md) | `measured` at group granularity; the block->wire attribution stays `vendor-decoded` |
+| shared select bits | one second-level bit serves up to 12 inputs of a mux, and one block can hold several muxes; the diff shows the bit but not which mux consumed it | diff-of-diffs (vary only the input, only the source); key answers by GROUP (altera/cycloneIV/cycloneiv-specimens.md) | `measured` at group granularity; the block->wire attribution stays `vendor-decoded` |
 | context-dependent bits | a bit only changes when a second setting is present (e.g. output-register bit with the register enabled) | 2^k factorial over the k interacting parameters, k small; otherwise single-variable laws | `measured` with `scope.context = {setting: value}`; a claim outside its context tuple is `pattern-predicted` |
 | IP blocks need combinations | M9K mode x width x port x clocking is a product space (~5 x 9 x 2 x 8); DSP similar | measure each axis alone (the checklist), predict the product | axis entries `measured`; cross terms `pattern-predicted` by `m9k-axes-independent` until a factorial sample confirms |
 | options only settable by stream options | header frame 0 option bits (159 unknown), compression flags — set by `quartus_cpf`, not by the design | separate option-sweep specimens (one option per pair) | `measured` with `subject_kind = stream-option` |
 | unobservable bits | bits no legal design sets (redundancy, test, factory) | none; they cannot be measured | `never-exercised` after evidence of absence (next subsection); counted in the inventory, never predicted, never "understood" |
-| coordinate map between sources | asm frame axis != plane frame axis near M9K/DSP columns (the layered coordinate model is retired: `docs/cycloneiv-retired-coordinate-model.md`) | per-column anchor specimen (one LE_BUFFER fan-out per column) | the map itself is a claim: `pattern-predicted` per column until that column has an anchor |
+| coordinate map between sources | asm frame axis != plane frame axis near M9K/DSP columns (the layered coordinate model is retired: `docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`) | per-column anchor specimen (one LE_BUFFER fan-out per column) | the map itself is a claim: `pattern-predicted` per column until that column has an anchor |
 
 ### Never-exercised bits (Dan, 2026-10-29)
 

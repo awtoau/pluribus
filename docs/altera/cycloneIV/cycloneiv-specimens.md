@@ -1,9 +1,9 @@
 # Cyclone IV specimen tests — specification
 
 What the minimal specimen designs are, what question each answers, and the sweep that counts as
-complete. Companion to [recovery-process.md](recovery-process.md) (the method) and #141 (the
+complete. Companion to [recovery-process.md](../../recovery-process.md) (the method) and #141 (the
 pivot). Raw-diff tools (the method): `scripts/cycloneiv_forced.py`.
-The decoder-in-the-loop matcher (`cycloneiv_specimens.py`) is retired (#165, `docs/cycloneiv-retired-coordinate-model.md`); raw diffs stay.
+The decoder-in-the-loop matcher (`cycloneiv_specimens.py`) is retired (#165, `docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`); raw diffs stay.
 
 ## Anatomy of a specimen (LEGACY: decoder-in-the-loop; superseded by the raw-diff tools above)
 
@@ -171,7 +171,7 @@ LAB control-line checklist (`scripts/cycloneiv_ctrl.py`; labs a-d = X10Y10 / X58
 
 ## Raw-diff specimens (forced single-hop)
 
-- Binding rules: [recovery-process.md](recovery-process.md) "Specimen rules for agents".  Tier 0/1 tool: `scripts/cycloneiv_forced.py`.
+- Binding rules: [recovery-process.md](../../recovery-process.md) "Specimen rules for agents".  Tier 0/1 tool: `scripts/cycloneiv_forced.py`.
 
 ## LAB core checklist (item A, #141; tool `scripts/cycloneiv_lab_modes.py`)
 

@@ -365,13 +365,13 @@ def seed_image(eng, image, nl, patterns, clocks, trace_dir):
     for i, g in enumerate(det["lfsr"]):
         tr = find_trace(g["members"], trace_dir)
         match = g["match"][0][0] if g["match"] else "no table match"
-        ev = ";".join(x for x in (tr, f"json:{pjson}", "doc:docs/cycloneiv-clean-patterns.md") if x)
+        ev = ";".join(x for x in (tr, f"json:{pjson}", "doc:docs/altera/cycloneIV/cycloneiv-clean-patterns.md") if x)
         put("SCR", f"PRBS{g['n']}-{i}", f"autonomous {g['form']} LFSR n={g['n']} {g['poly']} ({match}); seed traced; H: on-chip test-pattern / timer source (no pad downstream), whitening use not excluded",
             "V" if tr else "I", ev, g["members"])
     for i, g in enumerate(det["parallel"]):
         if g["match"]:
             tr = find_trace(g["members"], trace_dir)
-            ev = ";".join(x for x in (tr, f"json:{pjson}", "doc:docs/cycloneiv-clean-patterns.md") if x)
+            ev = ";".join(x for x in (tr, f"json:{pjson}", "doc:docs/altera/cycloneIV/cycloneiv-clean-patterns.md") if x)
             put("CRC", f"CRC{g['n']}-{i}", f"serial {g['n']}-stage group matching {g['match'][0][0]}; H: checks a byte stream from an M9K",
                 "V" if tr else "I", ev, g["members"])
         else:
@@ -383,7 +383,7 @@ def seed_image(eng, image, nl, patterns, clocks, trace_dir):
             stats["counter_overlap_skipped"] += 1
             continue
         put("CNT", f"{c['kind']}{c['width']}-{i}", f"{c['kind']} {c['width']} bits (structural detector)", "I",
-            f"json:{pjson};doc:docs/cycloneiv-clean-patterns.md", c["ffs"])
+            f"json:{pjson};doc:docs/altera/cycloneIV/cycloneiv-clean-patterns.md", c["ffs"])
     # 3. PLLs and clock domains
     clk = json.load(open(clocks))
     clog = "log:tmp/logs/cycloneiv_clean_image_clocks.log"
@@ -405,13 +405,13 @@ def seed_image(eng, image, nl, patterns, clocks, trace_dir):
         add_block(eng, image, "MAC", f"MAC-{m['x']}-{m['y']}",
                   f"hard multiplier, {'9x9' if m['nine'] else '18x18'}, output reg {m['oreg']}, M9K operands A/B {r['m9k_a']}/{r['m9k_b']}" if r else
                   f"hard multiplier, {'9x9' if m['nine'] else '18x18'}, output reg {m['oreg']}",
-                  "I", f"ledger:MA-004;doc:docs/cycloneiv-clean-mac.md", [(mac_id(m), None)])
+                  "I", f"ledger:MA-004;doc:docs/altera/cycloneIV/cycloneiv-clean-mac.md", [(mac_id(m), None)])
         stats["mac"] += 1
     unmod = []
     for m in nl.m9k:
         if m["modelled"]:
             add_block(eng, image, "MEM", f"M9K-{m['x']}-{m['y']}", f"M9K, {m['W']}-bit words x 2^{m['A']}, address class {m['cls']}; content decoded",
-                      "I", "ledger:M-019;doc:docs/cycloneiv-clean-m9k.md", [(m9k_id(m), None)])
+                      "I", "ledger:M-019;doc:docs/altera/cycloneIV/cycloneiv-clean-m9k.md", [(m9k_id(m), None)])
             stats["m9k_modelled"] += 1
         else:
             unmod.append((m9k_id(m), None))

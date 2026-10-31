@@ -1,4 +1,4 @@
-"""Configuration facts from the vendor pcf device payload (docs/cycloneiv-manual-review.md F6).  Skips without the local payload.
+"""Configuration facts from the vendor pcf device payload (docs/altera/cycloneIV/cycloneiv-manual-review.md F6).  Skips without the local payload.
 
 source: vendor-analysis/altera/analysis/ep4cgx150_pcf_payload.bin (extracted EP4CGX150 pcf record, local); handbook Table 10-2 IDCODE.
 """

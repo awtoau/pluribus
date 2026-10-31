@@ -1,4 +1,4 @@
-"""Option register decode (docs/cycloneiv-clean-options.md, #169).  Skips when the local vendor / pair data is missing.
+"""Option register decode (docs/altera/cycloneIV/cycloneiv-clean-options.md, #169).  Skips when the local vendor / pair data is missing.
 
 Counts (matched / missing / extra / wrong) per bit class are reported to tmp/logs/cycloneiv_clean_oracles.log.
 Missing is a fault: the 130 listed bits without a group have no decoded function and are counted, not hidden.

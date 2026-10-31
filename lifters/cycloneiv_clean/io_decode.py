@@ -20,7 +20,7 @@ DECODE_PATH = os.path.join(P.REPO, "databases", "cycloneiv", "io_decode.json")
 BUILDS = os.path.join(P.REPO, "tmp", "cycloneiv_clean", "io_pairs", "builds")
 CFF_TAG = 5                    # top bits of a CFF-tagged asm address (cycloneiv_io.ADDRESS_SPACES: 0b101)
 # source: asmdb group types of the IO blocks (reference/ghidra/structs.tsv serializers + libdb_asmdb enum tables) bound to the pair
-# setting by the libcomp_asm process_atom decompiles (docs/cycloneiv-clean-io.md: pin mode, standard, pull / bus-hold, slew, drive)
+# setting by the libcomp_asm process_atom decompiles (docs/altera/cycloneIV/cycloneiv-clean-io.md: pin mode, standard, pull / bus-hold, slew, drive)
 FIELD_GROUPS = {
     "standard": ("MIO_SELECT_IOST_DIRT",),
     "drive": ("MIO_SET_PULLUP_STRENGTH", "MIO_SET_PULLDOWN_STRENGTH"),

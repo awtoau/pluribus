@@ -4,7 +4,7 @@ Code: `lifters/cycloneiv_clean/ffctl.py` (FfCtl), used by `emit.py` (`Builder._f
 Conditions: EP4CGX150, Quartus 25.1 asmdb, corpus `corpus/cycloneiv`, static analysis (libcomp_asm decompile via snapshot `ctl_decode`) + existing builds only (0 new builds).
 
 ## Value law
-- `ASMDB_ARCH_GROUP_STD::select`: every bit of a mux entry is inverted when its `arch_value` is 0 (law from `docs/cycloneiv-clean-io.md`; `asmdb_select.std_select`).
+- `ASMDB_ARCH_GROUP_STD::select`: every bit of a mux entry is inverted when its `arch_value` is 0 (law from `docs/altera/cycloneIV/cycloneiv-clean-io.md`; `asmdb_select.std_select`).
 - `arch_value` 0 groups of the LAB: `LE_CLOCK_SELECT`, `LE_CLEAR_SELECT`, `LE_USE_CARRY`, `LAB_ENABLE_CE` gi 0/1, `LAB_CLR_INVERT_PAIR`, `LAB_INVERT` gi 5. Vendor value = NOT bit.
 - Explains three earlier empirical facts: LE_CLOCK_SELECT bit 1 = mux gi 0, LE_USE_CARRY bit clear = carry, ENABLE_CE bit 0 = enable used.
 

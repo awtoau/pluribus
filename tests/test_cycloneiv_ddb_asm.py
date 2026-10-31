@@ -1,4 +1,4 @@
-"""Cyclone IV GX asm.ddb semantics (docs/cycloneiv-ddb-format.md) on synthetic data: no Quartus install needed."""
+"""Cyclone IV GX asm.ddb semantics (docs/altera/cycloneIV/cycloneiv-ddb-format.md) on synthetic data: no Quartus install needed."""
 import os
 import sys
 

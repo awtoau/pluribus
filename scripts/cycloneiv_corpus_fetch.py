@@ -4,7 +4,7 @@
 Purpose: independent gates for the Cyclone IV decoder (docs/recovery-process.md Phase 1).  Images are
 other people's binaries: downloaded for interop testing, never committed.  Committed:
 sources/cycloneiv-corpus/manifest.json (URL, commit/tag, licence, SHA-256, size, analysis) and
-docs/cycloneiv-corpus.md.  Model: scripts/ecp5_corpus_fetch.py.
+docs/altera/cycloneIV/cycloneiv-corpus.md.  Model: scripts/ecp5_corpus_fetch.py.
 
   python3.15t scripts/cycloneiv_corpus_fetch.py --fetch      # download CANDIDATES (gh), hash, write manifest
   python3.15t scripts/cycloneiv_corpus_fetch.py --analyze    # .sof -> .rbf (quartus_cpf), decode, fill manifest

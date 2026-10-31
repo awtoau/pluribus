@@ -4,7 +4,7 @@
   python3.15t scripts/cycloneiv_clean_unclaimed_map.py     # log tmp/logs/cycloneiv_clean_unclaimed_map.log, json tmp/cycloneiv_clean/unclaimed_map.json
 
 Claim sources (vendor only): asm.ddb routing, asmdb LAB / MEAB / MAC calc groups (fields.py), default-bit list, and the std / dumb
-groups of every other block type (their mux bits are absolute addresses: calc groups alone carry a BLOCK_INFO, docs/cycloneiv-clean-hardblocks-reversing.md).
+groups of every other block type (their mux bits are absolute addresses: calc groups alone carry a BLOCK_INFO, docs/altera/cycloneIV/cycloneiv-clean-hardblocks-reversing.md).
 Regions: geometry file column kinds (FX = first frame of each column), tile rows v 23..6322, IO bands elsewhere.
 """
 import collections

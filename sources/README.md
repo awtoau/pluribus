@@ -60,4 +60,4 @@ maintainer, not published anywhere by Altera.
 
 - `sources/prior-art/14sea-cyclone-cram-mapper/`: clone of https://github.com/14sea/Cyclone_CRAM_Mapper at `221f790286eda0bb47e03080c6f7ab0e72377bb6` (2026-09-30).
 - Good copy: `git log -1` shows that hash; `fuzz/config.py` has `COLUMN_BASE` with 28 entries; ~160 MB.
-- GPL-3.0-or-later code, CC BY-SA 4.0 docs. Read and import-for-comparison only; nothing copied into this tree. Use: `scripts/cycloneiv_prior_art_xcheck.py`, `docs/cycloneiv-prior-art.md`.
+- GPL-3.0-or-later code, CC BY-SA 4.0 docs. Read and import-for-comparison only; nothing copied into this tree. Use: `scripts/cycloneiv_prior_art_xcheck.py`, `docs/altera/cycloneIV/cycloneiv-prior-art.md`.

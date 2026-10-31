@@ -14,7 +14,7 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TABLE_PATH = os.path.join(HERE, "class_groups_table.json")
-# source: libdb_asmdb ASMDB_BLOCK_INFO::calculate_bits_traditional @0x8e8a4 (tag tests), docs/cycloneiv-address-spaces.md 2.1
+# source: libdb_asmdb ASMDB_BLOCK_INFO::calculate_bits_traditional @0x8e8a4 (tag tests), docs/altera/cycloneIV/cycloneiv-address-spaces.md 2.1
 SPACE_OF_TAG = {0x0: "cram", 0xA: "cff", 0x8: "option_dprio", 0xC: "marker", 0xF: "marker"}
 _rows = []
 

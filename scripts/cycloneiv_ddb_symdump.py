@@ -3,7 +3,7 @@
 
 Extracts, per operator<</serializer_fn, the sequence of PDB stream ops with the
 field-name string each call registers (seg+0x30) - i.e. the exact on-disk schema.
-Vtable map (libdb_pdb.so PDB_SEGMENT_READER): see docs/cycloneiv-ddb-format.md.
+Vtable map (libdb_pdb.so PDB_SEGMENT_READER): see docs/altera/cycloneIV/cycloneiv-ddb-format.md.
 
 Usage: python3 scripts/cycloneiv_ddb_symdump.py [symbol-substring ...]
 Logs to tmp/logs/cycloneiv_ddb_symdump.log and prints the schemas.

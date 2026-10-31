@@ -10,7 +10,7 @@ import re
 from . import io_decode as ID
 from . import pkgpad as K
 
-# source: asmdb block types of the IV die (docs/cycloneiv-clean-io.md: 60 DEDICATED_CLOCK, 61 DEDICATED_NEGATIVE_CLOCK; 10 sites each = 20 Dedicated Clock pads)
+# source: asmdb block types of the IV die (docs/altera/cycloneIV/cycloneiv-clean-io.md: 60 DEDICATED_CLOCK, 61 DEDICATED_NEGATIVE_CLOCK; 10 sites each = 20 Dedicated Clock pads)
 CLK_BLOCKS = (60, 61)
 # source: pad function strings of the 20 `Dedicated Clock` pads ("DIFFCLK_6p" / "DIFFCLK_6n"): p pads -> block 60, n pads -> block 61, each in pad-table order
 CLK_POLARITY = re.compile(r"DIFFCLK_\d+([pn])")

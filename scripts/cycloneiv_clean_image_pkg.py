@@ -2,7 +2,7 @@
 """Which package is the third-party EP4CGX150 image built for? (#172)  IO-site classes of the image against each package's bonded-pad set.
 
   PLURIBUS_DJI_IMAGE=<image> python3.15t scripts/cycloneiv_clean_image_pkg.py
-Evidence (experiment tmp/pkgtest, docs/cycloneiv-clean-io.md): a pad with no ball in the build's package is written as the "driving ground = unspecified" state
+Evidence (experiment tmp/pkgtest, docs/altera/cycloneIV/cycloneiv-clean-io.md): a pad with no ball in the build's package is written as the "driving ground = unspecified" state
 (strengths all ones, CRAM MIO_DATA_INVERT 11 / MIO_OE_INVERT 0); a bonded unused pad gets the RESERVE_ALL_UNUSED_PINS option state (weak pull-up / tri-state).
 Per package: image sites in the ground state that are bonded (contradiction), unbonded pads whose image state is not ground (contradiction), used sites on unbonded pads.
 Counts only in the log (no path, name or hash): tmp/logs/cycloneiv_clean_image_pkg.log; local per-site table tmp/cycloneiv_clean/image_pkg_sites.tsv.

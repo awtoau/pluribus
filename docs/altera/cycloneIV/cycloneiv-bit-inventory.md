@@ -31,7 +31,7 @@ Names are the Glossary of provenance-and-feedback.md (one definition; this list 
 | 1a | LUT INIT (16 bits x 16 LE x 9360 LAB) | verified | 2,396,160 | 6.08 | 649,507 |
 | 1b | LE-used bit | suspect | 149,760 | 0.38 | 69,023 |
 | 1c | LAB clock-polarity bit | sampled | 9,360 | 0.02 | 174 |
-| 2a, 2b | removed 2026-10-30 (#165): asm routing attribution rode on the retired coordinate model (`docs/cycloneiv-retired-coordinate-model.md`); cells fall to the next class; returns with the clean address engine | | | | |
+| 2a, 2b | removed 2026-10-30 (#165): asm routing attribution rode on the retired coordinate model (`docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`); cells fall to the next class; returns with the clean address engine | | | | |
 | 3 | LOCAL_LINE specimen bits at the 4 specimen LABs (measured) | measured | 1,156 | 0.00 | 36 |
 | 3t | LOCAL_LINE specimen bits translated to all other LABs | predicted | 2,601,554 | 6.60 | 175,915 |
 | 4a | periphery frames 1..36 (IO ring, clocks, PLL, misc) | unknown | 229,248 | 0.58 | 19,920 |
@@ -50,13 +50,13 @@ Names are the Glossary of provenance-and-feedback.md (one definition; this list 
 | 6 | unclassified (LAB-column cells no decoder claims) | unknown | 11,188,995 | 28.38 | 601,552 |
 
 - Die-wide, ledger row 2026-10-29T15:33 (+11:00), 3,448 held GX150 bitstreams: verified 2,494,648 (6.33 %); measured 1,003,319 (2.54 %); sampled 5,412,048 (13.73 %); pattern-predicted 2,605,856 (6.61 %); statistical 0; decoded 7,344,838 (18.63 %); suspect 149,760 (0.38 %); refuted 0; unknown 20,414,547 (51.78 %), of which projected unused 18,569,054 (47.10 %). Class table with basis and sample n: `reports/coverage.html` section 5 and the inventory log.
-  - Header split used: 24 bits verified (sync + CRC-16), 6,185 known/constant (flag, length, family, lanes 5-7, 0xFF fill), 159 option bits unknown (docs/cycloneiv-bitstream.md "Format").
+  - Header split used: 24 bits verified (sync + CRC-16), 6,185 known/constant (flag, length, family, lanes 5-7, 0xFF fill), 159 option bits unknown (docs/altera/cycloneIV/cycloneiv-bitstream.md "Format").
 - Image set bits: verified-class 701,845 (31.4 %); other-evidence 776,464 (34.7 %); unknown-class 752,809 (33.6 %); header/pre/post 7,008.
 - Not in the partition: 1,506,513 asm entries (261,850 distinct asm bits) have no plane cell (outside every column band). Placed asm cells: 7,359,058 of 51.6 M entries.
 
 ## Verification per class
 
-- 1a: LUT mask vs post-fit `.vo` lut_mask, 301 designs, 5,354,496 bits, matched 100 %, missing 0, wrong 0 (`cycloneiv_lut_check.py`, docs/cycloneiv-bitstream.md). Oracle = Quartus post-fit netlist, GX150 corpus builds.
+- 1a: LUT mask vs post-fit `.vo` lut_mask, 301 designs, 5,354,496 bits, matched 100 %, missing 0, wrong 0 (`cycloneiv_lut_check.py`, docs/altera/cycloneIV/cycloneiv-bitstream.md). Oracle = Quartus post-fit netlist, GX150 corpus builds.
 - 1b: "set for 95.8 % of LUT cells"; 14 of 1,018 LEs on one design missed. Partial.
   - Specimen cross-check: the 16 per-LAB "source-LE" bits of the LOCAL_LINE specimens coincide exactly with the 1b positions (149,760 / 149,760 cells). The bit flips when the LE output gets a fanout.
 - 1c: greedy fit, Jaccard 0.85 over 5,442 clock lines, plus isolated polarity cells (bit hunter, calibration) at 6 LABs: `sampled`.
@@ -77,7 +77,7 @@ Names are the Glossary of provenance-and-feedback.md (one definition; this list 
 
 | # | region | unknown | % die | set | next specimen (smallest, raw diff; bit counts are the 2026-10-29 14:18 run) |
 |---|---|---|---|---|---|
-| 1 | M9K columns (8), cells outside data tables + control cells found (4b) | 7,876,924 | 20.0 | 91,171 | M9K ports checklist (docs/cycloneiv-specimens.md): one port pin, one far end per build; data tables and widths are done (4f, 4g) |
+| 1 | M9K columns (8), cells outside data tables + control cells found (4b) | 7,876,924 | 20.0 | 91,171 | M9K ports checklist (docs/altera/cycloneIV/cycloneiv-specimens.md): one port pin, one far end per build; data tables and widths are done (4f, 4g) |
 | 2 | LAB core FX-19..FX-8 (435 / tile) | 4,072,150 | 10.3 | 246,472 | LE modes (normal vs arithmetic, `sum_lutc_input`) and packing flags via `cycloneiv_lab_modes.py`; sink ports DATAA-D are done |
 | 3 | LAB core control stripe, v phase 31..39 (258 / tile) | 2,410,896 | 6.1 | 104,298 | `cycloneiv_ctrl.py` pos / pos2 / idle sets (clk, ena, aclr, sclr, sload, asdata done) |
 | 4 | LAB core FX-7..FX+0 (230 / tile) | 2,155,692 | 5.5 | 0 | one LE, same lut_mask: normal vs arithmetic; then LE with FF vs without |
@@ -95,7 +95,7 @@ Names are the Glossary of provenance-and-feedback.md (one definition; this list 
 
 ## Findings
 
-- Queue order is the priority rule in docs/recovery-process.md: what gates the lift first (latest gate per-hop table), die coverage % ranks only gate-neutral classes; checklists in docs/cycloneiv-specimens.md.
+- Queue order is the priority rule in docs/recovery-process.md: what gates the lift first (latest gate per-hop table), die coverage % ranks only gate-neutral classes; checklists in docs/altera/cycloneIV/cycloneiv-specimens.md.
 - M9K bands are 36 % of the die and gate-neutral today: they rank by bits only among gate-neutral classes, below any gate-touching wire class.
 - Class 6 (28 % of the die, 601 k image set bits) is LAB-column cells with no asm entry, no LUT / used bit, no specimen: the control stripe and the LUT-frame remainder are the biggest pieces.
 - Verified coverage is 6.3 % of the die and 31.4 % of the image's set bits (almost all LUT INIT); routing bits are decoded but unverified.

@@ -25,7 +25,7 @@ LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_image.log")
 OUT = os.path.join(REPO, "tmp", "cycloneiv_clean")
 PLANE = os.path.join(OUT, "image_plane.rbf")
 RESULT = os.path.join(OUT, "image.json")
-DEVICE_LES = 149_760                    # source: docs/cycloneiv-bitstream.md EP4CGX150 (9,360 LABs x 16)
+DEVICE_LES = 149_760                    # source: docs/altera/cycloneIV/cycloneiv-bitstream.md EP4CGX150 (9,360 LABs x 16)
 GEOM = os.path.join(REPO, "lifters", "data", "cycloneiv_ep4cgx150_geom.json")
 CORPUS_REF = os.path.join(REPO, "corpus", "cycloneiv", "gx150_rb_000", "bitstream.rbf")
 
@@ -50,7 +50,7 @@ def container(data):
 def option_bits(lanes):
     """Header option lanes vs the Quartus-built reference rbf (container flag / length / CRC already normalised by decompress)."""
     import cycloneiv_decompress as cd
-    out = {"decoded_fields": 0, "note": "option-bit meaning not decoded (no docs/cycloneiv-clean-options.md): all MISSING"}
+    out = {"decoded_fields": 0, "note": "option-bit meaning not decoded (no docs/altera/cycloneIV/cycloneiv-clean-options.md): all MISSING"}
     if not os.path.exists(CORPUS_REF):
         out["reference"] = "absent"
         return out

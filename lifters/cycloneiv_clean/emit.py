@@ -118,7 +118,7 @@ class Ctx:
         self.pllmap = pll.PllMap(flds)
         from . import io_line
         gt = D.enum_tables()["arch_group_type"]
-        self.hio_data = io_line.Line(w, gt, 5, "MIO_LABLINE_TO_DATA", 0)         # HIO pad data / OE source (docs/cycloneiv-clean-emit.md)
+        self.hio_data = io_line.Line(w, gt, 5, "MIO_LABLINE_TO_DATA", 0)         # HIO pad data / OE source (docs/altera/cycloneIV/cycloneiv-clean-emit.md)
         self.hio_oe = io_line.Line(w, gt, 5, "MIO_LABLINE_TO_OE")
         tab = P.load_tables()
 

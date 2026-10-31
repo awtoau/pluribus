@@ -1,4 +1,4 @@
-"""Banned inputs of the clean Cyclone IV pipeline (docs/cycloneiv-clean-pipeline.md).
+"""Banned inputs of the clean Cyclone IV pipeline (docs/altera/cycloneIV/cycloneiv-clean-pipeline.md).
 
 1. The clean tree (lifters/cycloneiv_clean, tests/cycloneiv_clean, scripts/cycloneiv_clean_*.py) must not mention any banned identifier.
 2. Repo-wide: tracked .py files must not mention them either, except under LEGACY_PATHS (retirement P4 done; old code: tag pre-clean-cycloneiv).

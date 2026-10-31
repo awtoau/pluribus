@@ -162,7 +162,7 @@ The method is the prjtrellis/X-Ray one. Do exactly this, nothing bigger.
 - **Easy and large before hard and small.** Edges, corners and one-off pin cases come AFTER the
   interior class they truncate is fully known: an edge is a deviation from the interior pattern,
   so the pattern must exist first.
-- **Work a block's checklist easiest-box-first** (docs/cycloneiv-specimens.md "Block checklists"):
+- **Work a block's checklist easiest-box-first** (docs/altera/cycloneIV/cycloneiv-specimens.md "Block checklists"):
   each ticked box adds to die coverage on its own, so partial progress counts.
 - **A stuck box does not block the queue.** Two failed attempts → park it as a numbered issue
   with the evidence, move to the next box or block; the inventory keeps it visible.
@@ -208,7 +208,7 @@ Pairs prove a bit SET; the aim is to state what each single cell does. Evidence 
 ## Case study: Cyclone IV (#141)
 
 - The method was documented in four places before the deviation (#108, CLAUDE.md device-db rule,
-  the MachXO2 precedent, docs/cycloneiv-ddb-format.md) — documentation was not the gap.
+  the MachXO2 precedent, docs/altera/cycloneIV/cycloneiv-ddb-format.md) — documentation was not the gap.
 - Failures: no Phase-0 decision (both routes started the same day, attention followed the fast
   numbers); the blocking fan-out decode was parked in a doc sentence, not an issue; the ceiling
   math was never done; the stopping rule compared relatives, never the absolute requirement;

@@ -34,7 +34,7 @@ Conditions: 2026-10-30, Quartus 25.1, static analysis, EP4CGX150. Data: `referen
 - Rejected: `ASM_LAB_ENABLE_SYNC_SIGNALS` at 0x15f628 / 0x15f9e2 (real 0x15feb6).
 - Unverified: CUT_RAM_UTIL family-0xc dispatch to `CDB_ATOM_YGR_EC` (thunk only); "no inversion on any IO group" vs ledger F-001 / O-003.
 - Not conflicts: `DEV_ELEMENT_DESC::operator<<`@0x15afa0 and `DEV_ELEMENT_DESC_BODY::operator<<`@0x168f60 are two classes.
-- Tags still citing the stub addresses (owner files, not edited): `docs/cycloneiv-address-spaces.md`, `docs/cycloneiv-clean-options.md`, `docs/cycloneiv-clean-io.md`, `lifters/cycloneiv_clean/cycloneiv_io.py`, `scripts/cycloneiv_clean_options_build.py`, `options_table.json`.
+- Tags still citing the stub addresses (owner files, not edited): `docs/altera/cycloneIV/cycloneiv-address-spaces.md`, `docs/altera/cycloneIV/cycloneiv-clean-options.md`, `docs/altera/cycloneIV/cycloneiv-clean-io.md`, `lifters/cycloneiv_clean/cycloneiv_io.py`, `scripts/cycloneiv_clean_options_build.py`, `options_table.json`.
 
 ## Top 20 new facts for the open areas
 

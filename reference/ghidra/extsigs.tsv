@@ -1,6 +1,6 @@
 # mangled	signature	source  (generated: ghidra_apply_names.py gen-extsigs from signatures.tsv)
-_ZN12ASM_BITFIELD15silent_set_bitsERSt6vectorI14DB_BIT_SETTINGSaIS1_EE	bool silent_set_bits(ASM_BITFIELD * this, void * settings)	docs/cycloneiv-address-spaces.md s2.1
-_ZN12ASM_BITFIELD8set_bitsERSt6vectorI14DB_BIT_SETTINGSaIS1_EE	bool set_bits(ASM_BITFIELD * this, void * settings)	docs/cycloneiv-address-spaces.md s2.1
+_ZN12ASM_BITFIELD15silent_set_bitsERSt6vectorI14DB_BIT_SETTINGSaIS1_EE	bool silent_set_bits(ASM_BITFIELD * this, void * settings)	docs/altera/cycloneIV/cycloneiv-address-spaces.md s2.1
+_ZN12ASM_BITFIELD8set_bitsERSt6vectorI14DB_BIT_SETTINGSaIS1_EE	bool set_bits(ASM_BITFIELD * this, void * settings)	docs/altera/cycloneIV/cycloneiv-address-spaces.md s2.1
 _ZN14ASM_ARCH_GROUP10mux_selectEjRSt6vectorIjSaIjEER21ASMDB_SETTING_STREAMS	void mux_select(void * this, uint arg1, void * values, ASMDB_SETTING_STREAMS * streams)	#169 nm overload (uint,vector<uint>&,streams&)
 _ZN14ASM_ARCH_GROUP10mux_selectEjjR21ASMDB_SETTING_STREAMS	void mux_select(ASM_ARCH_GROUP * this, uint site_index, uint value, ASMDB_SETTING_STREAMS * streams)	#168 c1, mangled args (uint, uint, streams&)
 _ZN14ASM_ARCH_GROUP10mux_selectEjjbR21ASMDB_SETTING_STREAMS	void mux_select(void * this, uint arg1, uint arg2, bool value, ASMDB_SETTING_STREAMS * streams)	#169 nm overload (uint,uint,bool,streams&)

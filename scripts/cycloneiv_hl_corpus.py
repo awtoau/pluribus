@@ -5,7 +5,7 @@ Each design = parts from a PART LIBRARY (counters, adders, comparators, LFSRs, C
 pipelines, composites, large resource fillers).  Seeded, deterministic.  Written to <root>/hl_<kind>_<seed>/:
   src/top.v, src/hl_truth.json (constructs + parameters + expected recovered counts), src/*.mif, design.toml.
 IO style (--style): min = one clock pad + one output pad (stimulus from on-chip LFSR banks, output = registered XOR-reduction of all
-state); virt = every port a VIRTUAL_PIN (feasibility only; see docs/cycloneiv-clean-hl-corpus.md).
+state); virt = every port a VIRTUAL_PIN (feasibility only; see docs/altera/cycloneIV/cycloneiv-clean-hl-corpus.md).
 
   python3.15t scripts/cycloneiv_hl_corpus.py --feasibility            # 3 designs x 2 styles -> tmp/hlcorpus/
   python3.15t scripts/cycloneiv_hl_corpus.py --generate [--root DIR]  # the corpus (default corpus/cycloneiv)

@@ -15,7 +15,7 @@ from . import plane as P
 DIE = "stingray4"
 TMP = os.path.join(P.REPO, "tmp", "ddb")
 SCRIPTS = os.path.join(P.REPO, "scripts")
-# source: A2 asm.ddb entry = 31-bit absolute address + flag byte (docs/cycloneiv-ddb-format.md)
+# source: A2 asm.ddb entry = 31-bit absolute address + flag byte (docs/altera/cycloneIV/cycloneiv-ddb-format.md)
 ADDR_MASK = 0x7FFFFFFF
 
 

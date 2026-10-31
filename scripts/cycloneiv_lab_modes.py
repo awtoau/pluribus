@@ -6,7 +6,7 @@ only in one plane.  Evidence goes to databases/cycloneiv/gx150.db (kind specimen
 lab_modes:<group>).  Design prefix gxlm_.  Groups (smallest first):
   pprobe   forced LOCAL_LINE I x sink port (A-D) legality probe, 1 sink, X10Y10
   ports    every (source LE, sink LE, port A-D) with the LL/port forced, per LAB
-  (later groups: modes, buf, flags - see docs/cycloneiv-specimens.md "LAB core checklist")
+  (later groups: modes, buf, flags - see docs/altera/cycloneIV/cycloneiv-specimens.md "LAB core checklist")
 
   gen <group> | build <group> | diff <group> | run <group> (= gen+build+diff per pair) | compare <group>
 Log tmp/logs/cycloneiv_lab_modes.log

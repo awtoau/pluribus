@@ -73,7 +73,7 @@ Sequencer-agent ISA findings (`tmp/dji_microcode/`) had not landed; soft-CPU row
 - o-gs wiki says the air FPGA is a Cyclone V; our image is a Cyclone IV GX ground-side bitstream (m2001). "Exactly matches" is the wiki's claim and is not independently supported.
 - Chinese-language sources (EE-China, Sohu) are secondary company statements; the 2013 date is the company's.
 - Blocked or empty: docs.altera.com pages render empty (JS); IEEE contribution S80216d-04_37r1 returned nothing via fetch (not retried via pdf); Basak thesis 403 (earlier); search-engine results are DuckDuckGo only.
-- Hosts: this session `gh search repos|code` and DuckDuckGo via playwrong; GitLab, Codeberg, sr.ht, SourceForge, OpenCores, grep.app were covered earlier (`docs/signature-cores.md`, `docs/cycloneiv-prior-art.md`) and not re-run.
+- Hosts: this session `gh search repos|code` and DuckDuckGo via playwrong; GitLab, Codeberg, sr.ht, SourceForge, OpenCores, grep.app were covered earlier (`docs/signature-cores.md`, `docs/altera/cycloneIV/cycloneiv-prior-art.md`) and not re-run.
 - Local third-party PDFs fetched for reading are under `tmp/prior_art/` (gitignored); nothing else saved to the repo.
 
 ## Ranked, with the test that settles each

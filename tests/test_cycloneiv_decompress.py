@@ -1,5 +1,5 @@
 """Cyclone III/IV compressed .rbf decoder on a synthetic stream built to the derived format
-(docs/cycloneiv-bitstream.md).  Real pairs are vendor-.sof derived (third-party, not committed):
+(docs/altera/cycloneIV/cycloneiv-bitstream.md).  Real pairs are vendor-.sof derived (third-party, not committed):
 scripts/cycloneiv_decompress_check.py checks those, 70/70."""
 import os
 import random

@@ -21,8 +21,8 @@ W = P.FRAMES                         # source: A4 (address = v * 6154 + s)
 PLACED = {18: "LAB", 39: "MEAB", 41: "MAC"}
 BASE_LIST = 1                        # source: BLOCK_INFO m_block_lists key 1 = instance cell list for LAB / MEAB / MAC (asmdb walk)
 ROWS_PER_COLUMN = 90                 # source: 9,360 / 104 = 720 / 8 = 360 / 4; hi steps -70 per row in every list
-DB_ILLEGAL = {0xFFFFFFFD, 0xFFFFFFFC, 0xFFFFFFFE, 0xFFFFFFFA, 0xFFFFFFFB}     # source: silent_set_bits markers (docs/cycloneiv-address-spaces.md 2.1)
-CLASS = {5: "calc", 6: "std", 7: "dumb", 8: "stlmap"}   # source: ddb type table class ids (docs/cycloneiv-clean-io.md)
+DB_ILLEGAL = {0xFFFFFFFD, 0xFFFFFFFC, 0xFFFFFFFE, 0xFFFFFFFA, 0xFFFFFFFB}     # source: silent_set_bits markers (docs/altera/cycloneIV/cycloneiv-address-spaces.md 2.1)
+CLASS = {5: "calc", 6: "std", 7: "dumb", 8: "stlmap"}   # source: ddb type table class ids (docs/altera/cycloneIV/cycloneiv-clean-io.md)
 
 # source: libdb_asmdb arch-group-type names (prefix match); the role words are our labels, not vendor data
 ROLES = (

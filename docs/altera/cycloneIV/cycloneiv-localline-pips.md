@@ -1,7 +1,7 @@
 # Cyclone IV GX150 LOCAL_LINE pips from specimens
 
 Tool: `scripts/cycloneiv_pip_table.py` (`table` / `validate` / `image`); tracer option `cycloneiv_lift_image.py --ddb --localline full|pq`.
-Evidence: 4 same-LAB LOCAL_LINE grids (X10Y10, X58Y30, X37Y60, X100Y75), evidence rows kind `specimen-pair` (`cycloneiv_forced.py`). Method: [recovery-process.md](recovery-process.md).
+Evidence: 4 same-LAB LOCAL_LINE grids (X10Y10, X58Y30, X37Y60, X100Y75), evidence rows kind `specimen-pair` (`cycloneiv_forced.py`). Method: [recovery-process.md](../../recovery-process.md).
 
 ## Table
 

@@ -18,7 +18,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import cycloneiv_pkgtest_diff as D  # noqa: E402
 
 log = logging.getLogger("pkgtest_pkgbits")
-IO_BLOCKS = (5, 6, 60, 61)      # source: asmdb block types of the IO sites (docs/cycloneiv-clean-io.md)
+IO_BLOCKS = (5, 6, 60, 61)      # source: asmdb block types of the IO sites (docs/altera/cycloneIV/cycloneiv-clean-io.md)
 
 
 def main():

@@ -56,7 +56,7 @@ def residue_cells(path, log=None):
                 in_corpus=ever[flat[idx]], fx=fx[col[idx]], img_set=int(img.sum()), claimed_set=int((img[flat] & claimed).sum()))
 
 
-# source: docs/cycloneiv-clean-options.md section 5: JTAG groups at frames 6134..6141 (rows 862..865), tdouser mux frames to 6145 in this image
+# source: docs/altera/cycloneIV/cycloneiv-clean-options.md section 5: JTAG groups at frames 6134..6141 (rows 862..865), tdouser mux frames to 6145 in this image
 JTAG_FRAMES = (6134, 6145)
 
 

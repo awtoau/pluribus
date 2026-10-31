@@ -8,7 +8,7 @@ LAB signals (libcomp_asm ASM_LAB_*_FAST_MUX / ASM_LAB_ENABLE_* process_end_of_ph
                       used per LAB_ENABLE_SYNC_SIGNALS value (1 sload, 2 sclr, 3 both, 4 sload=VCC, 5 sload=VCC + sclr; value -> bits via the mux map)
 LE selections: LE_CLOCK_SELECT / LE_CLEAR_SELECT (1 bit: signal index), LE_USE_SYNC_CLEAR / LE_USE_SYNC_LOAD (DECISION mux, value 1 writes the
   one real bit; both groups share it: bit = sclr term connected OR sload term connected).
-Value -> bit law (ASMDB_ARCH_GROUP_STD::select, docs/cycloneiv-clean-io.md): every bit of a mux entry is inverted when its `arch_value` is 0
+Value -> bit law (ASMDB_ARCH_GROUP_STD::select, docs/altera/cycloneIV/cycloneiv-clean-io.md): every bit of a mux entry is inverted when its `arch_value` is 0
 (LE_CLOCK_SELECT, LE_CLEAR_SELECT, LE_USE_CARRY, LAB_ENABLE_CE, LAB_CLR_INVERT_PAIR, LAB_INVERT gi 5); `val()` undoes it.
 Select decode = inverse of the vendor writer: each input i has the bit pattern asmdb_select.select() gives for (first level, value i) and
 (second level, nxt[i]); the input whose constrained bits all match wins, most constrained first (FREE second level = unconstrained).

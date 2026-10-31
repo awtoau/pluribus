@@ -1,6 +1,6 @@
 # cycloneiv_clean
 
-Cyclone IV GX (EP4CGX150) address engine rebuilt from vendor-derived facts only. Spec and plan: `docs/cycloneiv-clean-pipeline.md`. Process: `docs/recovery-process.md`.
+Cyclone IV GX (EP4CGX150) address engine rebuilt from vendor-derived facts only. Spec and plan: `docs/altera/cycloneIV/cycloneiv-clean-pipeline.md`. Process: `docs/recovery-process.md`.
 
 ## Modules
 
@@ -26,7 +26,7 @@ Cyclone IV GX (EP4CGX150) address engine rebuilt from vendor-derived facts only.
 | A7 | name -> element, exact | `names`, oracle O4 |
 | A8 | vendor x = fitter X | tile test in O2 |
 
-Evidence per row: `docs/cycloneiv-clean-pipeline.md`.
+Evidence per row: `docs/altera/cycloneIV/cycloneiv-clean-pipeline.md`.
 
 ## Banned
 

@@ -53,7 +53,7 @@ Goal: names, struct layouts and notes found once stay applied to the Ghidra proj
   - `globals.tsv`: lib, vaddr or symbol, name, type, size, source, comment (EOL comment).
   - `structs.tsv`: lib, struct, size, offset, field, type, comment, source (one row per field; types as Ghidra parses them: `int`, `byte[24]`, `pointer`).
   - `notes.tsv`: lib, vaddr or symbol, kind (`plate` | `eol` | `bookmark`), text, source.
-- `source` = issue / doc / script that proved it (`#168`, `docs/cycloneiv-clean-io.md`, `serializer:asmdb_ser.c`). A row with no source is rejected by `check`.
+- `source` = issue / doc / script that proved it (`#168`, `docs/altera/cycloneIV/cycloneiv-clean-io.md`, `serializer:asmdb_ser.c`). A row with no source is rejected by `check`.
 - Only names, offsets, types, short comments. No decompiled bodies, no binaries, no hashes, no `/mnt` or `/home` paths (`check` rejects those).
 - `python3 scripts/ghidra_apply_names.py check` validates shape without Ghidra; `apply` loads it into the project.
 - Names found interactively in the GUI/headless: `... export` writes user-defined names to `tmp/ghidra/export.tsv`; copy the rows into the TSVs and add the source.

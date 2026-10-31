@@ -14,7 +14,7 @@ import numpy as np
 from . import blockiface, ddb, io_line, muxsel, names, pkgpad
 from . import plane as P
 
-# source: ASMDB_ARCH_GROUP_BLOCK_TYPE HIO / VIO (docs/cycloneiv-clean-io.md)
+# source: ASMDB_ARCH_GROUP_BLOCK_TYPE HIO / VIO (docs/altera/cycloneIV/cycloneiv-clean-io.md)
 HIO, VIO = 5, 6
 # CLR reads the asynchronous reset pin (ALOAD / ACLR atom ports), SCLR reads port 0x4a = SRESET; INREG / OUTREG CE = pin names INCLKENA / OUTCLKENA
 # source: ASMIO_MIO_LABLINE_TO_{DATA,OE,CLR,SCLR}::process_atom (libcomp_asmio, docs/ghidra-readable-index.md): group, gi, DB_INPUT_PORT_TYPE pin name, pin index

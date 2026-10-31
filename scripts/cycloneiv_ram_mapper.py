@@ -78,7 +78,7 @@ def run(start, btype, log=None):
 
 
 # source: family jump tables of the constructors (objdump; table index = base_family - 6, entry = relative offset); family 14 targets
-# (Cyclone IV GX: the only family whose WRITE_ADDRESS gi set {0..7, 12} and DATA low-address gi 12..15 agree, docs/cycloneiv-clean-hardblocks.md)
+# (Cyclone IV GX: the only family whose WRITE_ADDRESS gi set {0..7, 12} and DATA low-address gi 12..15 agree, docs/altera/cycloneIV/cycloneiv-clean-hardblocks.md)
 GROUPS = {"RAM_MS_DATA_INPUT": 0x6b5eb, "RAM_MS_DATA_INPUT_B": 0x75fae, "RAM_MS_WRITE_ADDRESS_INPUT": 0x78c00,
           "RAM_MS_READ_ADDRESS_INPUT": 0x7c2ac, "RAM_MS_BYTE_ENABLE_INPUT": 0x6cf97}
 MEAB = 0x27         # source: ASMDB_ARCH_GROUP_BLOCK_TYPE MEAB

@@ -11,7 +11,7 @@ import collections
 
 from . import io_decode as D
 
-# source: io_decode.json default rows: the groups whose patterns change with standard / drive / direction (pair builds, docs/cycloneiv-clean-io.md)
+# source: io_decode.json default rows: the groups whose patterns change with standard / drive / direction (pair builds, docs/altera/cycloneIV/cycloneiv-clean-io.md)
 JOINT = ("MIO_SELECT_IOST_DIRT", "MIO_SET_PULLDOWN_STRENGTH", "MIO_SET_PULLUP_STRENGTH", "MIO_USE_PCI_DIODE_CLAMP")     # one state per (standard, drive, direction)
 # source: scripts/cycloneiv_clean_io_pairs.py KINDS (pair-build design kinds): CFF-identical kinds share a direction word
 DIRECTION = {"in": "input", "regin": "input", "out": "output", "regout": "output", "bidir": "bidir-or-tristate", "tri": "bidir-or-tristate",

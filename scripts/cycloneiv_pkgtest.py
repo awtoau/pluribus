@@ -40,7 +40,7 @@ def adder_rtl():
     return (f"module top(input [{WIDTH-1}:0] a, input [{WIDTH-1}:0] b, output [{WIDTH}:0] s);\n  assign s = a + b;\nendmodule\n")
 
 
-# source: Quartus RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP option value "AS INPUT TRI-STATED WITH WEAK PULL-UP" (docs/cycloneiv-clean-io.md, unused-pin states)
+# source: Quartus RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP option value "AS INPUT TRI-STATED WITH WEAK PULL-UP" (docs/altera/cycloneIV/cycloneiv-clean-io.md, unused-pin states)
 PULLUP = 'set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-STATED WITH WEAK PULL-UP"'
 MIN_RTL = "module top(input a, output y);\n  assign y = a;\nendmodule\n"
 

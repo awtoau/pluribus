@@ -25,7 +25,7 @@ Measured 2026-10-30, Quartus 25.1 EP4CGX150 asmdb, existing corpus only (0 new b
 | DEDICATED_CLOCK 60 / NEG 61 | 2 / 2 | 50 / 50 | none (lists keys 3..14, base not decoded) | no |
 | CONTROL 8, DEVICE 72, FAST_PLL 43, GENERAL_PLL 45, CLKBUF_GCLK 73, OCT_CAL 98, GX_* 64/67/70/216-219, HSSI_PCIE_HIP 226, HSSI_STRIP 227 | 24, 13, 102, 101, 126, 15, 4/85/17/194/204/168/56, 974, 3,840 | std / dumb: absolute addresses, no instance list | none (HSSI_STRIP key 3 = CFF base) | absolute, see hardblocks doc |
 
-- 605 default objects (597 mux settings + 8 bit-calc); default-bit list 2,518 = 2,319 CRAM + 104 CFF + 95 option (walk now keeps it; matches docs/cycloneiv-address-spaces.md).
+- 605 default objects (597 mux settings + 8 bit-calc); default-bit list 2,518 = 2,319 CRAM + 104 CFF + 95 option (walk now keeps it; matches docs/altera/cycloneIV/cycloneiv-address-spaces.md).
 
 ## Claimed bits (absolute, distinct)
 
@@ -71,8 +71,8 @@ Measured 2026-10-30, Quartus 25.1 EP4CGX150 asmdb, existing corpus only (0 new b
 
 ## Open
 
-- Value to bit pattern for the LAB register-control groups: decoded (`docs/cycloneiv-clean-ffctl.md`); other groups: `Field.values` holds the raw arch values only.
+- Value to bit pattern for the LAB register-control groups: decoded (`docs/altera/cycloneIV/cycloneiv-clean-ffctl.md`); other groups: `Field.values` holds the raw arch values only.
 - Bases for HIO / VIO CRAM bits, clock, PLL, GX, HSSI: BLOCK_INFO lists keys 2..14 not yet interpreted.
 - No MAC, PLL, or carry-chain specimen in the corpus; RAM port input muxes and LE input muxes unvalidated by pair.
 - Sampling-plan builds (4 corners + seeded centre) not started: nothing required a new build to confirm the fields above.
-- PLL (CFF absolute), M9K content map, MAC / M9K control signatures: docs/cycloneiv-clean-hardblocks.md.
+- PLL (CFF absolute), M9K content map, MAC / M9K control signatures: docs/altera/cycloneIV/cycloneiv-clean-hardblocks.md.

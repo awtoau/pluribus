@@ -28,7 +28,7 @@ import cycloneiv_decompress as cd  # noqa: E402
 
 log = logging.getLogger("cycloneiv_le_locate")
 MIN_LUTS = 6
-# per-LAB rule (docs/cycloneiv-bitstream.md "LE address model"): v offset of LE N/2, and per
+# per-LAB rule (docs/altera/cycloneIV/cycloneiv-bitstream.md "LE address model"): v offset of LE N/2, and per
 # mask bit k (frame delta, v delta).  In one bit-lane v == byte.
 DN = [0, -3, -8, -11, -16, -19, -24, -27, -38, -41, -46, -49, -54, -57, -62, -65]
 DK = [(0, 0), (0, -1), (-1, -1), (-1, 0), (-2, 0), (-2, -1), (-3, -1), (-3, 0),

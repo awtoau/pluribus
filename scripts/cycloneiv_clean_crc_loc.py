@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Where the 32-bit whole-stream CRC sits in the rbf (docs/cycloneiv-manual-review.md F3, #169).  Black box: quartus_map/fit/asm/cpf only.
+"""Where the 32-bit whole-stream CRC sits in the rbf (docs/altera/cycloneIV/cycloneiv-manual-review.md F3, #169).  Black box: quartus_map/fit/asm/cpf only.
 
   python3.15t scripts/cycloneiv_clean_crc_loc.py build      # 3 builds: BASE, CRC_ERROR_CHECKING ON, ON + divisor 256 (full rbf kept)
   python3.15t scripts/cycloneiv_clean_crc_loc.py analyse    # rbf byte diffs of the pairs, outside / inside the option cells

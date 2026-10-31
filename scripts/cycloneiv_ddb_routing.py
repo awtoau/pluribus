@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Cyclone IV GX `routing.ddb` readers.  Format: docs/cycloneiv-ddb-format.md "routing.ddb".
+"""Cyclone IV GX `routing.ddb` readers.  Format: docs/altera/cycloneIV/cycloneiv-ddb-format.md "routing.ddb".
 
   python3.15t scripts/cycloneiv_ddb_routing.py fanout [--die stingray4]  # EXACT decode -> <die>_rt_fanout.npz
 
@@ -201,7 +201,7 @@ N_EDGE = {"stingray4": 3612712}          # int / unsigned short payload count (t
 
 def fanout(die):
     """EXACT decode of node -> fan-out from the PDB serializers in libddb_dygr.so
-    (schemas: scripts/cycloneiv_ddb_symdump.py; docs/cycloneiv-ddb-format.md).
+    (schemas: scripts/cycloneiv_ddb_symdump.py; docs/altera/cycloneIV/cycloneiv-ddb-format.md).
 
     - Element row (offset 16, 12 B) = DYGR_ROUTE_ELEMENT: i16 d(m_x), i16 d(m_y),
       i32 d(first fan-out dest id V), i32 ptr tag for m_template

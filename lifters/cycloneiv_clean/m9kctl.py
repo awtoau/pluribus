@@ -1,6 +1,6 @@
 """Cyclone IV GX M9K port decode for the single-port, port-A modes (#165).  asmdb mapped-mux inverse (ffctl.Calc) + specimen-read pin map.
 
-Rules (docs/cycloneiv-clean-m9k.md; pin map read off the training split of the gxm9k_* specimens, a crc32-selected quarter is held out):
+Rules (docs/altera/cycloneIV/cycloneiv-clean-m9k.md; pin map read off the training split of the gxm9k_* specimens, a crc32-selected quarter is held out):
   - word-width class: RAM_DATA_WRITE_MODE is a 6-bit mapped-simple mux, one-hot index 0..4 = by1, by2, by4, by8/9, by16 and wider.
   - port-A data pin k = RAM_MS_DATA_INPUT gi k; port-A address pins: slot s of the 9-entry RAM_MS_WRITE_ADDRESS_INPUT list (gi 12, 0..7) for the
     9 high pins; the (A - 9) low pins of the 10..13-bit address modes share RAM_MS_DATA_INPUT gi 16 - (A - 9) .. 15.
@@ -34,7 +34,7 @@ CE_SELECT_OUTPUT_FLAGS = {0x800: 0, 0x1000: 1}
 INVERT_KIND = {"RAM_CLEAR_INVERT": 0, "RAM_CLOCK_INVERT": 1, "RAM_CE_INVERT": 2, "RAM_READ_ENABLE_INVERT": 8, "RAM_WRITE_ENABLE_INVERT": 0xb}
 
 
-# source: every non-port MEAB control group of the asmdb walk (names in docs/cycloneiv-clean-hardblocks.md); read as raw bit columns, values per m9k.WRITERS / the mode docs
+# source: every non-port MEAB control group of the asmdb walk (names in docs/altera/cycloneIV/cycloneiv-clean-hardblocks.md); read as raw bit columns, values per m9k.WRITERS / the mode docs
 CONTROL_GROUPS = (
     "RAM_DATA_WRITE_MODE", "RAM_DATA_WRITE_MODE_B", "RAM_CLOCK_FAST_MUX", "RAM_CLOCK_INVERT", "RAM_REG_DATA_OUT", "RAM_REG_DATA_OUT_B",
     "RAM_CE_FAST_MUX", "RAM_CE_SELECT_INPUT", "RAM_CE_SELECT_INPUT_B", "RAM_CE_SELECT_CORE", "RAM_CE_SELECT_CORE_B", "RAM_CE_SELECT_OUTPUT",

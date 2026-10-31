@@ -9,7 +9,7 @@ exactly one variable and their cell sets differ by exactly that swap; both cells
 Port is a function of (source, sink) in the specimens, so port-only changes do not exist: port dependence is
 confounded with sink/source and is reported as such. Re-run when more port rows (DATAA/DATAB) land.
 
-  python3.15t scripts/cycloneiv_localline_bits.py     -> docs/cycloneiv-localline-bits.md, tmp/cycloneiv_localline_bits.json
+  python3.15t scripts/cycloneiv_localline_bits.py     -> docs/altera/cycloneIV/cycloneiv-localline-bits.md, tmp/cycloneiv_localline_bits.json
 Log tmp/logs/cycloneiv_localline_bits.log
 """
 import collections
@@ -132,7 +132,7 @@ def main():
     else:
         L.append("- none")
     L += ["", "## Evidence ids", "", "- Each cell's isolating pairs are specimen-pair evidence rows (names `gxll_<src>_<snk>` at X10Y10; `gxll58x30_*`, `gxll37x60_*`, `gxll100x75_*` at the others, same cell sets). Full pair lists: `tmp/cycloneiv_localline_bits.json`."]
-    (REPO / "docs/cycloneiv-localline-bits.md").write_text("\n".join(L) + "\n")
+    (REPO / "docs/altera/cycloneIV/cycloneiv-localline-bits.md").write_text("\n".join(L) + "\n")
     (REPO / "tmp/cycloneiv_localline_bits.json").write_text(json.dumps(
         {f"{c[0]},{c[1]}": {k: v for k, v in info[c].items() if k != "members"} for c in cells}, default=list))
     log.info("queue (no isolating pair) %d", len(queue))

@@ -1,6 +1,6 @@
 """Package inference from a Cyclone IV GX (EP4CGX150) bitstream (#172).  Vendor-derived rule, no fitted constants.
 
-Rule (docs/cycloneiv-clean-io.md "Package"): an IO pad with no ball in the build's package is written as the ground / unspecified unused state
+Rule (docs/altera/cycloneIV/cycloneiv-clean-io.md "Package"): an IO pad with no ball in the build's package is written as the ground / unspecified unused state
 (strengths all ones); bonded pads never are.  Package P is consistent with a bitstream iff
   - no ground-state IO site is bonded in P (contradiction), no used IO site is unbonded in P, and
   - every IO pad unbonded in P is in the ground state (or a MISSING site whose strength groups are closer to the ground vector than to the tri-state vector).

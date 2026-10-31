@@ -1,6 +1,6 @@
 # Reversing lessons and recipes (#165, #168, #169, #171)
 
-Static analysis only (#165). Tools: [ghidra-workflow.md](ghidra-workflow.md); names: `reference/ghidra/*.tsv`; wrong claims: [reversing-errata.md](reversing-errata.md); proven rules: [cycloneiv-rules-ledger.md](cycloneiv-rules-ledger.md) + `reference/rules.tsv`.
+Static analysis only (#165). Tools: [ghidra-workflow.md](ghidra-workflow.md); names: `reference/ghidra/*.tsv`; wrong claims: [reversing-errata.md](reversing-errata.md); proven rules: [cycloneiv-rules-ledger.md](altera/cycloneIV/cycloneiv-rules-ledger.md) + `reference/rules.tsv`.
 
 ## Lessons (what stalled, what fixes it)
 

@@ -2,7 +2,7 @@
 
 Source: `quartus-25.1/quartus/common/devinfo/cycloneivgx/ddb_stingray4_*.ddb` (STINGRAY4 = EP4CGX150, same files serve EP4CGX110; own licensed install, analysed for interoperability, never redistributed or committed).
 Readers: `scripts/cyclonev_ddb_decode.py` (container, shared with Cyclone V), `scripts/cycloneiv_ddb_asm.py` (asm records), `scripts/cycloneiv_asm_prep.py` (raw record / group / block tables).
-Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](altera/cycloneV/cyclonev-ddb-format.md).
+Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](../cycloneV/cyclonev-ddb-format.md).
 
 ## Container
 
@@ -24,7 +24,7 @@ Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](altera/cycloneV
 
 ### Coordinates (asm -> bitstream plane)
 
-Retired: the AFX / per-column mirror model (frame and row mirror formulas) was refuted and removed (#165, `docs/cycloneiv-retired-coordinate-model.md`). Current rule: `docs/cycloneiv-clean-pipeline.md` A3-A5.
+Retired: the AFX / per-column mirror model (frame and row mirror formulas) was refuted and removed (#165, `docs/altera/cycloneIV/cycloneiv-retired-coordinate-model.md`). Current rule: `docs/altera/cycloneIV/cycloneiv-clean-pipeline.md` A3-A5.
 
 - Removed: the AFX / per-column mirror formulas and their evidence (fitted, refuted; E-C2).
 
@@ -163,7 +163,7 @@ Field order from `DYGR_ROUTE_INFO_BODY::operator<<` (run `symdump` for the full 
     (LI 31, 219 blocks) and `6,-1|6,0` / `6,29|6,30` / `6,-13|6,-12` (LI 0 / 9 / 3, 12-23 blocks each)
     where ddb names an H4 / V4 wire or another LI; all tile entries at tile row 0 (block tile clipped
     to the IO row). Not adjudicated: both sides are exact-claimed, they cannot both be right.
-- LI element = `enum 282`, template index 0..37 per LAB tile; (vendor x, y, index) is unique. Vendor x = fitter X (A8, `docs/cycloneiv-clean-pipeline.md`); the earlier "115 - X" mirror and "RCF LI column vs vendor LI tile unresolved" statements are removed (E-C2).
+- LI element = `enum 282`, template index 0..37 per LAB tile; (vendor x, y, index) is unique. Vendor x = fitter X (A8, `docs/altera/cycloneIV/cycloneiv-clean-pipeline.md`); the earlier "115 - X" mirror and "RCF LI column vs vendor LI tile unresolved" statements are removed (E-C2).
 
 ### Open
 
@@ -185,7 +185,7 @@ Same container and stream layer as routing.ddb (type id << 2 = NEW pointer tag, 
 - Die head: total bits 39,040,976, 31,060 cff bits, 160 option bits; 8 block types; 6,087 + 225 group pointers (277 calc / 4,893 + 103 std / 913 + 119 dumb / 4 + 3 map classes); 2,518 + 35 forced-bit words; main stream ends at body offset 0x949c, then pools to EOF.
 - Address model (per block instance, "traditional" style): `addr = (q + hi) * 6154 + (r + lo)` for a block-local bit `q * 6154 + r`; `(hi << 16) | lo` is a per-instance u32 cell in a vector.
   - Bits with top bits `11` are literal flags, `101` are offset by a second per-instance vector (not decoded).
-- Instance cells found: LAB 9,360 (104 columns x 90 rows), M9K 720 (8 x 90), MUL 360 (4 x 90). Row r = Y - 1; LAB columns paired with the instance cell vector ascending with X (rank 0 = lowest X; A3, `docs/cycloneiv-clean-pipeline.md`).
+- Instance cells found: LAB 9,360 (104 columns x 90 rows), M9K 720 (8 x 90), MUL 360 (4 x 90). Row r = Y - 1; LAB columns paired with the instance cell vector ascending with X (rank 0 = lowest X; A3, `docs/altera/cycloneIV/cycloneiv-clean-pipeline.md`).
   - `hi[r] = 6252 - 70 r`.
 - LUT INIT bits: address = `(hi[r] + dx) * 6154 + lo[c] + dy` as the vendor formula reads (`ASMDB_BLOCK_INFO::calculate_bits_traditional` @ libdb_asmdb 0x8e8a4, key 1 cell = `hi << 16 | lo`), `(dx, dy)` = blkrba `(x_cum, y_cum)` of `RBLUT{k}`; 1,023 / 1,023 sites match the oracle with no sign flip and no constant. One local table serves all 9,360 LABs.
   - Earlier local-bit, frame-offset and column-anchor statements are removed (fitted to the retired model; a +3 seen in the first pool extraction does not exist in the clean walk, E-A3 in `docs/reversing-errata.md`).

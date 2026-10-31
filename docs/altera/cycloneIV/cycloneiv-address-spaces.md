@@ -61,7 +61,7 @@ Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, vaddr 0x1
 | periphery 36 frames x 796 B | 28,656 | 229,248 | CFF 124,496 cells; 104,752 not claimed | `cff2rbf` table + oracle rbfs |
 | CRAM 6,154 frames x 796 B: data | 4,880,122 | 39,040,976 | CRAM | tag 17 |
 | CRAM frames: pad byte 0 | 6,154 | 49,232 | none: 0 in 29 / 29 | rbf |
-| CRAM frames: CRC-16 (init 0xFE54) | 12,308 | 98,464 | derived from data | docs/cycloneiv-bitstream.md |
+| CRAM frames: CRC-16 (init 0xFE54) | 12,308 | 98,464 | derived from data | docs/altera/cycloneIV/cycloneiv-bitstream.md |
 | postamble | 59 | 472 | none: 0xFF in 29 / 29; = pcf payload word 25 | pcf word 25 |
 
 - Total check: 256 + 6,368 + 229,248 + 6,154 x 6,368 + 472 = 39,425,016.
@@ -97,7 +97,7 @@ Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, vaddr 0x1
   - lanes 1..4 equal tag-18 bits 0..159 in order (lane = 1 + k div 40, bit = k mod 40), 124 / 160 match; `quartus_cpf` overlays die-variant, length and flag bits (lane 1 bits 19, 20, 22-26; lane 2: 21 positions incl. the length field; lane 3 bits 1-6, 8, 10).
   - lanes 5..7 = 120 constant ones in every file; tag-18 bits 160..319 never reach the rbf.
   - Only 35 of the 160 value bits propagate (bit-plane flip test, 51 header cells, `option` table in `cff2rbf.npz`): indices 0, 2-10, 12-18, 27-34, 38, 71, 91-94, 106, 112, 128, 130. Of these, 28 are in the unclaimed-by-lists set, 4 default (71, 106, 112, 130), 3 forced (7, 38, 94). Unclaimed and not propagated: 11, 129.
-- Function of the option bits: 30 of 160 decoded (`docs/cycloneiv-clean-options.md`).
+- Function of the option bits: 30 of 160 decoded (`docs/altera/cycloneIV/cycloneiv-clean-options.md`).
 
 ## 4. JTAG and USERCODE
 
@@ -106,7 +106,7 @@ Writer for all spaces: `ASM_BITFIELD::silent_set_bits` (libcomp_asmcc, vaddr 0x1
   - JTAG block = one fabric-visible node: `ASM_MODEL::s_jtag_node_index` / `s_jtag_pad_index`; every JTAG class returns at once when the index is -1 (`ASM_JTAG_PIA::process_atom` 0x288b78 checked).
   - 15 JTAG classes (libcomp_asm): `ASM_JTAG_PIA`, `_PIA_TO_CORE_CTL`, `_PIA_TO_TCKCORE`, `_PIA_TO_TDICORE`, `_PIA_TO_TMSCORE`, `_PIA_TO_TDOUSER`, `_PIA_TO_TDOUTAP`, five `_*_INVERT` (TCKCORE, TDICORE, TMSCORE, TDOUSER, TDOUTAP) plus `_CORECTL_INVERT`, `_ENABLE_BST_SUPPORT`, `_WRITE_USER_CODE`. They select the core-side routing of tck / tdi / tms / tdo-user / tdo-tap and polarity through `mux_select`.
   - No option bits: `OPTION_REG_JTAG_CORE_ACCESS` and `OPTION_REG_USE_JTAG_PIN_SHARE` have no asmdb group on this die (E-A1). BST support = field 7 of the 21-field logical register.
-  - Address space of the JTAG interface bits: CRAM, 4 of 15 classes have a group (`docs/cycloneiv-clean-options.md` section 5).
+  - Address space of the JTAG interface bits: CRAM, 4 of 15 classes have a group (`docs/altera/cycloneIV/cycloneiv-clean-options.md` section 5).
   - Also present for fabric-reachable config blocks, same style: CRC (6 classes), remote update RU (12), SPI (8), OSC (4), OPREG (4), TSD (7), UFM (1).
 - Programmer side (host, not config): `ep4cgx150_pcf.ddb` type table lists `PGMIO_PCF_ENTRY`, `PGMIO_PCF_FILE_INFO`, `PGMIO_PCF_FIELD`, `PGMIO_F2P_CONSTANTS`, `PGMIO_JTAG_CONSTANTS` (with two `PGM_BIT_ARRAY`), `PGMIO_DEVICE_CONSTANTS`, `PGMIO_PCF_OPTIONS`, `PGMIO_ERAM_LOCATIONS`, `PGMIO_PRESERVATION_INFO`. Payload (3,160 B inflated, 790 words) tied so far: word 11 = 6,344 (frame bits), 25 = 59 (postamble bytes), 32 = 793 (bytes per lane), 37 = 6,154 (CRAM frames), 38 = 39,040,976 (CRAM bits), 33 = ASCII `EPCS`. Others (e.g. 24 = 6,506; 67 entries of 32 at words 46..112) not matched to fields.
 - USERCODE (JTAG user code, 32 bit):
@@ -195,6 +195,6 @@ Tier names: [cycloneiv-bit-inventory.md](cycloneiv-bit-inventory.md). "Claimed" 
 ## 7. Open
 
 - asmdb group decode (block type per group, instance cell vectors for IO / clock / PLL / transceiver, calc groups) would turn most of the 29 M "unclaimed" into claimed or genuinely unused.
-- Function of the 130 forced / default option bits (`docs/cycloneiv-clean-options.md` section 9).
+- Function of the 130 forced / default option bits (`docs/altera/cycloneIV/cycloneiv-clean-options.md` section 9).
 - Tag 19 constants, tag 17 / 21 header bytes 10..11.
 - Numbers here were produced by throwaway analysis (not committed); regenerate before relying on a count after any decoder change.

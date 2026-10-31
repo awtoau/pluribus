@@ -389,7 +389,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
     # The routing source (learned tables / phys tracer) is retired; the gate returns with the clean P2 tracer.
-    raise SystemExit("cycloneiv_lifted_sim_check: unavailable, pending clean P2 tracer (#165, docs/cycloneiv-clean-pipeline.md)")
+    raise SystemExit("cycloneiv_lifted_sim_check: unavailable, pending clean P2 tracer (#165, docs/altera/cycloneIV/cycloneiv-clean-pipeline.md)")
     names = a.designs or [n for n in cc.designs(a.pattern) if cm.split_of(n, a.split)]
     if a.limit:
         names = names[:a.limit]

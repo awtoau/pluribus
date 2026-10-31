@@ -1,13 +1,13 @@
 # Cyclone IV GX (EP4CGX150, DJI m2001) decode gap audit (2026-10-31)
 
-Documentation/audit only — no new decode work. Compiled from `docs/lightbridge-fpga.md`, `docs/cycloneiv-clean-*.md`, `docs/cycloneiv-manual-review.md`, `docs/cycloneiv-address-spaces.md`, `docs/reversing-errata.md`, `reference/rules.tsv` (159 rows), `tmp/dji_microcode/build/build.json` (machine-measured image counts), and issues #165/#169/#176/#177/#178 (bodies + comments).
+Documentation/audit only — no new decode work. Compiled from `docs/lightbridge-fpga.md`, `docs/altera/cycloneIV/cycloneiv-clean-*.md`, `docs/altera/cycloneIV/cycloneiv-manual-review.md`, `docs/altera/cycloneIV/cycloneiv-address-spaces.md`, `docs/reversing-errata.md`, `reference/rules.tsv` (159 rows), `tmp/dji_microcode/build/build.json` (machine-measured image counts), and issues #165/#169/#176/#177/#178 (bodies + comments).
 Severity key: **A** = blocks the DJI image's own correctness (a real signal/mode in this image is wrong or unmodelled), **B** = blocks general-device / die-generic claims only (image doesn't exercise it, or it's a corpus/gate gap not an image gap), **C** = cosmetic / bookkeeping.
 Tracking key: issue / doc / ledger id, or **UNTRACKED** (flagged in the final section).
 
 ## 0. Cross-check against docs/lightbridge-fpga.md
 
-- Its section 10 and section 12 "Open" list calls PLL input clock source and PLL clock plan open. **Stale**: `docs/cycloneiv-clean-pll-clocks.md` + ledger P-011/P-014/P-015 + errata E-U6/E-U7 show this was resolved 2026-10-30/31 (CFF-space routing bits, not CRAM; image PLL_2/PLL_8 index 0 both trace to ball B14 via tile X57Y91 and element 666). `tmp/dji_microcode/build/build.json` still counts "PLL: input clock source": 2 as undecoded — that counter in `cycloneiv_clean_image_build.py` was not updated after the P-011 fix landed. **Flag**: stale counter, UNTRACKED (see §15).
-- Its AF3 section (8, 11a) matches `docs/cycloneiv-clean-af3-engine.md` exactly (same open items: per-op split, CRC-8/16, engine clock, T367/T369).
+- Its section 10 and section 12 "Open" list calls PLL input clock source and PLL clock plan open. **Stale**: `docs/altera/cycloneIV/cycloneiv-clean-pll-clocks.md` + ledger P-011/P-014/P-015 + errata E-U6/E-U7 show this was resolved 2026-10-30/31 (CFF-space routing bits, not CRAM; image PLL_2/PLL_8 index 0 both trace to ball B14 via tile X57Y91 and element 666). `tmp/dji_microcode/build/build.json` still counts "PLL: input clock source": 2 as undecoded — that counter in `cycloneiv_clean_image_build.py` was not updated after the P-011 fix landed. **Flag**: stale counter, UNTRACKED (see §15).
+- Its AF3 section (8, 11a) matches `docs/altera/cycloneIV/cycloneiv-clean-af3-engine.md` exactly (same open items: per-op split, CRC-8/16, engine clock, T367/T369).
 - Its M9K summary ("8 of 542 hold data... no packed/mixed width/byte enables") is consistent with `cycloneiv-clean-hardblocks.md`/`m9k.md` image counts, but does not mention the specific undecoded-in-use items (output-register CE select 14 tiles, output clear 101 tiles) — those are only in `cycloneiv-clean-m9k.md` line 190 and `build.json`'s absence (build.json has no M9K-control undecoded counters at all, a gap in the counter itself, see §5).
 - Its "Open" section (12) omits the IO standard/termination ambiguity (75/44 instances) entirely — this is the single largest undecoded-item count in the whole image and isn't mentioned in the running summary at all.
 
@@ -15,16 +15,16 @@ Tracking key: issue / doc / ledger id, or **UNTRACKED** (flagged in the final se
 
 | Item | Count | Source | Severity |
 |---|---|---|---|
-| Fast-tier gate (134 designs, run 45/46 per lightbridge; 117 designs per most recent hardblocks run): pips 656,759/2 missing (or 650,510/2 in the hardblocks-doc run) | 2 missing pips, both `IO_RAW_DATAIN -> PLL_CLKIN` | `docs/lightbridge-fpga.md` §2; `docs/cycloneiv-clean-pll-clocks.md` "Open"; issue #176 | B (PLL_2/PLL_8 "value 00, no literal" case — a rule gap, not image-specific; P-014 marks it SPECIMEN_ONLY, not yet CODE-confirmed) — tracked P-011/P-014, #176 |
+| Fast-tier gate (134 designs, run 45/46 per lightbridge; 117 designs per most recent hardblocks run): pips 656,759/2 missing (or 650,510/2 in the hardblocks-doc run) | 2 missing pips, both `IO_RAW_DATAIN -> PLL_CLKIN` | `docs/lightbridge-fpga.md` §2; `docs/altera/cycloneIV/cycloneiv-clean-pll-clocks.md` "Open"; issue #176 | B (PLL_2/PLL_8 "value 00, no literal" case — a rule gap, not image-specific; P-014 marks it SPECIMEN_ONLY, not yet CODE-confirmed) — tracked P-011/P-014, #176 |
 | register_clock missing | 3 (lightbridge headline) vs 0 in the most-current `ffctl.md`/rules R-006 (16,938/0/0/0 fast, 50,514/0/0/0 full) | `docs/lightbridge-fpga.md` §2 vs `reference/rules.tsv` R-006 | C — **stale headline figure**, not re-synced into lightbridge-fpga.md; superseded by R-005/R-006 fixes. UNTRACKED staleness (§15) |
 | Full-tier gate: 193 missing pips / 51 missing nets (#177 item 2) | 193 / 51 | issue #177 | B — not yet root-caused; fast tier is clean so this is corpus-wide, not image-specific |
-| Image fan-in conflicts / undriven nodes / loops | "rerun pending" (3 of 4 sanity checks in `cycloneiv-clean-image.md` marked rerun pending under the vendor tracer rule, after the E-L2 fix) | `docs/cycloneiv-clean-image.md` "Sanity statistics" | C — stale image run predates the T-001/E-L2 tracer fix; needs a rerun to get current image routing-fault numbers. UNTRACKED (§15) |
+| Image fan-in conflicts / undriven nodes / loops | "rerun pending" (3 of 4 sanity checks in `cycloneiv-clean-image.md` marked rerun pending under the vendor tracer rule, after the E-L2 fix) | `docs/altera/cycloneIV/cycloneiv-clean-image.md` "Sanity statistics" | C — stale image run predates the T-001/E-L2 tracer fix; needs a rerun to get current image routing-fault numbers. UNTRACKED (§15) |
 | Image "4.2% fan-in conflicts" cited elsewhere | superseded (errata E-L2): old rule gave 3.7–4.2%, new tracer gives 0/64,375 on rb_000..009 controls; **image-specific rerun pending** | errata E-L2 | B |
 
 ## 2. LUT contents (LUT INIT)
 
-- LAB LUT INIT (`LE_LUT_FUNCTION`): 2,396,160 CRAM bits, **fully claimed and oracle-validated**: 1,023/1,023 specimen sites (16,368 cells), 0 missing/extra/wrong. Fast-tier gate `lut_init` 0 missing in every cited run. — No gap. (`docs/cycloneiv-clean-fields.md` coverage table; ledger D-001/D-002.)
-- Image: 89,280 of 149,760 LEs non-zero INIT (59.6%); 19 all-ones. No gap in the decode of this; the count itself is just the design's fill rate. (`docs/cycloneiv-clean-image.md`)
+- LAB LUT INIT (`LE_LUT_FUNCTION`): 2,396,160 CRAM bits, **fully claimed and oracle-validated**: 1,023/1,023 specimen sites (16,368 cells), 0 missing/extra/wrong. Fast-tier gate `lut_init` 0 missing in every cited run. — No gap. (`docs/altera/cycloneIV/cycloneiv-clean-fields.md` coverage table; ledger D-001/D-002.)
+- Image: 89,280 of 149,760 LEs non-zero INIT (59.6%); 19 all-ones. No gap in the decode of this; the count itself is just the design's fill rate. (`docs/altera/cycloneIV/cycloneiv-clean-image.md`)
 - Arithmetic-mode sum/carry mask combination not independently re-derived from code — decompile control flow partly broken (try/catch artefacts). Ledger D-002 notes "not independently re-derived." Severity **B** (gate scores 100% so it's empirically right; the *code-level* derivation is incomplete). Tracked: ledger D-002.
 
 ## 3. Register / FF controls
@@ -47,16 +47,16 @@ Other FF-control facts (all CONFIRMED_BY_CODE, no gap):
 
 - Cross-LAB carry (LE0 <- LE15 of LAB at Y+1): CONFIRMED_BY_CODE + 3 specimen builds (6/6 links); no cross-LAB carry use anywhere in the 16,297-design corpus or (implicitly) checked against the image. Not a gap.
 - LAB_INVERT table: CUDA 9-line table identifies 6 real LAB_INVERT lines (clk0/ce0/clk1/ce1/sload/sclr); lines 6–8 (aclr pair + second sload) are *not* LAB_INVERT lines for this die (aclr polarity lives in `LAB_CLR_INVERT_PAIR` instead) — resolved, not a gap (F-012, errata E-T1).
-- LAB non-LUT, non-control residue: **12.0 M CRAM bits** in LAB tiles have no vendor record naming them at all (not even an address). This is the single largest unclaimed region in the whole device. `docs/cycloneiv-clean-hardblocks-reversing.md` §3/§4. Severity **B** (general-device/completeness; image-specific effect unknown — these bits may be entirely reserved/unused, per the "ever-set" check showing only 126 of 5.89M LAB-tile residue bits are *ever* set across 3,448 designs). Tracked: `docs/cycloneiv-clean-hardblocks-reversing.md`, part of #169.
-- Value-to-bit-pattern maps for most *other* LAB groups beyond register control (LE_LUT_INPUT 6.59M bits, LAB_PIA_TO_INPUT 411,840 bits, LE_USE_CARRY/REGISTER_FEEDBACK/REG_CASCADE_ARM 149,760 bits each): address known, group selection mechanics known generically (asmdb_select classes), but not individually pair-validated beyond the LUT-input/carry/feedback rules already in ffctl.md/emit.md. Severity **C** (emit already consumes these correctly per the 100% pip/net gate scores — this is a "not independently re-verified by specimen" gap, not a functional gap). Tracked: `docs/cycloneiv-clean-hardblocks-reversing.md` §3.
+- LAB non-LUT, non-control residue: **12.0 M CRAM bits** in LAB tiles have no vendor record naming them at all (not even an address). This is the single largest unclaimed region in the whole device. `docs/altera/cycloneIV/cycloneiv-clean-hardblocks-reversing.md` §3/§4. Severity **B** (general-device/completeness; image-specific effect unknown — these bits may be entirely reserved/unused, per the "ever-set" check showing only 126 of 5.89M LAB-tile residue bits are *ever* set across 3,448 designs). Tracked: `docs/altera/cycloneIV/cycloneiv-clean-hardblocks-reversing.md`, part of #169.
+- Value-to-bit-pattern maps for most *other* LAB groups beyond register control (LE_LUT_INPUT 6.59M bits, LAB_PIA_TO_INPUT 411,840 bits, LE_USE_CARRY/REGISTER_FEEDBACK/REG_CASCADE_ARM 149,760 bits each): address known, group selection mechanics known generically (asmdb_select classes), but not individually pair-validated beyond the LUT-input/carry/feedback rules already in ffctl.md/emit.md. Severity **C** (emit already consumes these correctly per the 100% pip/net gate scores — this is a "not independently re-verified by specimen" gap, not a functional gap). Tracked: `docs/altera/cycloneIV/cycloneiv-clean-hardblocks-reversing.md` §3.
 
 ## 5. M9K (block RAM)
 
-Image-wide, from `docs/cycloneiv-clean-m9k.md` (2026-10-30 "M9K simple/true dual port" section) and `build.json` (build.json has **no explicit M9K-control undecoded counters** — this is itself a gap, see §15):
+Image-wide, from `docs/altera/cycloneIV/cycloneiv-clean-m9k.md` (2026-10-30 "M9K simple/true dual port" section) and `build.json` (build.json has **no explicit M9K-control undecoded counters** — this is itself a gap, see §15):
 
 | Item | Count | Severity | Tracked |
 |---|---|---|---|
-| Output-register CE select, undecoded, in use | **14 tiles** | A | UNTRACKED as its own issue; recorded only in `docs/cycloneiv-clean-m9k.md` line 190. |
+| Output-register CE select, undecoded, in use | **14 tiles** | A | UNTRACKED as its own issue; recorded only in `docs/altera/cycloneIV/cycloneiv-clean-m9k.md` line 190. |
 | Output clear (aclr), undecoded, in use | **101 tiles** | A | UNTRACKED as its own issue; same line. |
 | Read enable | undecoded (no count given) | A/B | UNTRACKED |
 | Address stall | undecoded (no count given) | A/B | UNTRACKED |
@@ -66,7 +66,7 @@ Image-wide, from `docs/cycloneiv-clean-m9k.md` (2026-10-30 "M9K simple/true dual
 | Packed mode (two half-size RAMs/block) | 0 of 8 populated image blocks; specimen-only in general (M-007/B9) | B | ledger M-007 |
 | Port-B wiring/width in the 8 content-bearing dump blocks | not decoded | A (these are the 8 blocks that actually hold data in the image, including the AF3 engine's own tiles) | UNTRACKED specifically for port-B of the dump set; general gap is M9K agent's open item in `cycloneiv-clean-hardblocks.md` §M9K content dump |
 | Which port reads which half in the 2 TDP dual-port-view blocks (x36 word vs 2×x18 view) | not decoded | A (one of these pairs is 7_85/7_86, the AF3 RAM — see §13) | same as above |
-| Image non-content-content MEAB residue | **14,047,344 bits** (tile) + 102,970 (bands) unclaimed by any vendor record | B | `docs/cycloneiv-address-spaces.md` §5 |
+| Image non-content-content MEAB residue | **14,047,344 bits** (tile) + 102,970 (bands) unclaimed by any vendor record | B | `docs/altera/cycloneIV/cycloneiv-address-spaces.md` §5 |
 | Mode breakdown (from CRAM, image, all decoded structurally): single port 359 (267 w1, 44 w2, 20 w4, 23 w8, 25 w9, 6 w16, 7 w18, 149 w36-class... — note the hardblocks-doc figures (359/178/3/2) and the newer m9k_modes.py figures differ slightly in categorization language but agree on totals) | 359 single / 178 SDP / 3 ROM / 2 TDP | — | not a gap, well-covered |
 
 Manual-review cross-check: B4 (byte-enable old/new-data output rule) and B9 (packed mode legality) are **GAP** status in the handbook-comparison table — the manual *defines* the behaviour but pluribus hasn't implemented it; ranked #1 in the manual-review's own "GAPs ranked for the DJI lift" list, but **0 image tiles use byte enables or packed mode**, so severity is **B only**, not A.
@@ -126,7 +126,7 @@ Exact image counts from `build.json`:
 
 ## 10. Option/config bits
 
-From `docs/cycloneiv-clean-options.md` + `docs/cycloneiv-address-spaces.md`:
+From `docs/altera/cycloneIV/cycloneiv-clean-options.md` + `docs/altera/cycloneIV/cycloneiv-address-spaces.md`:
 
 | Item | Count | Severity | Tracked |
 |---|---|---|---|
@@ -137,22 +137,22 @@ From `docs/cycloneiv-clean-options.md` + `docs/cycloneiv-address-spaces.md`:
 
 ## 11. JTAG / remote update / other periphery (CFF)
 
-- TAP state machine, IR/DR shift mechanics: **no address space, no sof tag, no rbf region exists for them at all** — confirmed absent (not a decode gap; it's hardened logic outside the assembler's config model). `docs/cycloneiv-address-spaces.md` §4.
+- TAP state machine, IR/DR shift mechanics: **no address space, no sof tag, no rbf region exists for them at all** — confirmed absent (not a decode gap; it's hardened logic outside the assembler's config model). `docs/altera/cycloneIV/cycloneiv-address-spaces.md` §4.
 - 15 `ASM_JTAG_*` classes: 4 of 15 have an asmdb group on this die (2 groups × 16 CRAM bits = core-side TDOUSER/TDOUTAP routing muxes; TDOUTAP is fitter-rejected if driven); the other 11 have **no group at all** (core-side TCK/TDI/TMS/CORECTL routing + 5 `_INVERT` classes + `ENABLE_BST_SUPPORT`) — confirmed not configurable on this die, not undecoded. options.md §5.
 - Remote update (RSU): AN "Remote system upgrade fails to revert on GX" errata item exists (manual-review errata table) but RSU option ids in the option table are **untested** ("not needed for a plain lift"). Severity **B**, likely **not applicable** — lightbridge-fpga.md infers remote update is "in use (I)" from hardblock survey but this was never confirmed against actual option-bit evidence. **Flag**: the "remote update in use" claim in lightbridge-fpga.md §1 is **I (inferred)**, not verified — worth downgrading or checking against the option-bit decode. UNTRACKED discrepancy.
-- Image JTAG tile frames 6134-6145: 66 residue set-bits, 29/23/14 split (set-in-all / set-in-none / varies) — unexplained but tiny; `docs/cycloneiv-clean-image.md` "Residue set bits by region". Severity **C**.
+- Image JTAG tile frames 6134-6145: 66 residue set-bits, 29/23/14 split (set-in-all / set-in-none / varies) — unexplained but tiny; `docs/altera/cycloneIV/cycloneiv-clean-image.md` "Residue set bits by region". Severity **C**.
 - CFF: 31,060 bits total; 104 default-list addresses decoded, **0 of 31,060 field values decoded by function** (only by pair-diff/anchor-offset table, which covers IO fields specifically — non-IO CFF content, if any exists beyond IO/PLL/clock-buffer/JTAG, is unaccounted). Address-spaces.md §5.5 / §6 coverage table.
 
 ## 12. Transceiver / PCIe / other hard IP
 
 - Confirmed **absent from use** (not merely unchecked): lightbridge-fpga.md §11 states "no transceiver or PCIe cells differ from idle (positive control missing)" — but this is explicitly flagged in the same line as "positive control missing," meaning it's an **absence-of-evidence**, not a vendor-confirmed absence.
-- GX transceiver settings (604 `GX_*` group names across RX_PCS/TX_PCS/RX_PMA/CMU/TX_PMA/CALIBRATION, plus HSSI_PCIE_HIP/HSSI_STRIP): written by generic `ASMGX_*` CGA classes (143 group types), model class `ASMGX_HCXIV_MODEL`; the per-group CGA-enum -> setting-name table and the "other 3,460 asmgx cases" walk are **not decoded** — `docs/cycloneiv-clean-hardblocks-reversing.md` §1/§3.
+- GX transceiver settings (604 `GX_*` group names across RX_PCS/TX_PCS/RX_PMA/CMU/TX_PMA/CALIBRATION, plus HSSI_PCIE_HIP/HSSI_STRIP): written by generic `ASMGX_*` CGA classes (143 group types), model class `ASMGX_HCXIV_MODEL`; the per-group CGA-enum -> setting-name table and the "other 3,460 asmgx cases" walk are **not decoded** — `docs/altera/cycloneIV/cycloneiv-clean-hardblocks-reversing.md` §1/§3.
 - Absolute-address GX/HSSI CRAM claimed-but-undecoded: GX_TX_PCS 5,948 + GX_RX_PCS 1,852 + GX_CMU 984 + GX_RX_PMA 896 + GX_CALIBRATION 55 + HSSI_STRIP 10,275 + HSSI_PCIE_HIP 11,550 bits = **~31,560 bits claimed (address known) but field-undecoded**. hardblocks-reversing.md §2.
 - **Conclusion**: transceiver/PCIe hard IP is "**not checked**" for this image, not "verified absent." Severity **B** for the general claim; **A if wrong** for the image (if the image silently uses a transceiver feature DJI relies on, that's currently invisible to the lift). This distinction (verified-absent vs not-checked) is NOT clearly drawn anywhere in the existing docs — `lightbridge-fpga.md`'s phrasing ("no ... cells differ from idle") undersells how little was actually checked. **UNTRACKED finding**: recommend an explicit issue to either (a) run the CGA-class walk against the image's GX/HSSI claimed bits to get a real used/unused count, or (b) soften the lightbridge-fpga.md claim.
 
 ## 13. AF3 / SHA-1 engine
 
-Per `docs/cycloneiv-clean-af3-engine.md` "Open" + lightbridge-fpga.md §11a:
+Per `docs/altera/cycloneIV/cycloneiv-clean-af3-engine.md` "Open" + lightbridge-fpga.md §11a:
 
 | Item | Status | Severity | Tracked |
 |---|---|---|---|
@@ -172,7 +172,7 @@ Per `docs/cycloneiv-clean-af3-engine.md` "Open" + lightbridge-fpga.md §11a:
 
 ## 15. Readable RTL lift: 418 remaining flat LUTs
 
-From `docs/cycloneiv-clean-rtl.md` "Third-party image" table (HEAD a080869a1, "after" column):
+From `docs/altera/cycloneIV/cycloneiv-clean-rtl.md` "Third-party image" table (HEAD a080869a1, "after" column):
 
 - 418 of 89,282 LUTs remain `FLAT_LUT` (0.47%), down from 10,178 before the mixed-polarity/dead-flop/head-ambiguity fixes.
 - Breakdown given: **"40 chains, all `no_operand_form`"** — the doc names exactly 3 categories inline: *"multi-LE result tails after the adder bits, AND-gated operand incrementers, bits whose second operand repeats one signal."* No per-category count is recorded anywhere (the task's "~3 categories, exact count per category if recorded" — **not recorded**, only the chain total of 40 chains / categories named, not split). Severity **C** (these are leftover flat LUTs in an already-96%+ lifted netlist; cosmetic for RTL readability, not a correctness gap — `rtl_check` chain verification shows 0 mismatches over 2,061 recognized chains). UNTRACKED as a numbered issue but fully described in the doc; filing would only be to track the per-category split, not the existence of the gap.

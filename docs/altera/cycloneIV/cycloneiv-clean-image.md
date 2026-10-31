@@ -8,7 +8,7 @@
 
 ## Mapping to the plane
 
-- Container: compressed Cyclone III/IV rbf stream (32 x 0xFF + sync + stream), decompressed by `scripts/cycloneiv_decompress.py` (byte-identical to `quartus_cpf` layout, docs/cycloneiv-bitstream.md).
+- Container: compressed Cyclone III/IV rbf stream (32 x 0xFF + sync + stream), decompressed by `scripts/cycloneiv_decompress.py` (byte-identical to `quartus_cpf` layout, docs/altera/cycloneIV/cycloneiv-bitstream.md).
 - The decompressed file is in rbf layout (796-byte frames, 37 periphery frames, CRAM frames after): `plane.py` A4 / A5 (sof -> rbf cell tables, mirror blocks) apply as for Quartus-built rbf files.
 - Sections: CRAM = frames 37.. (39,040,976 bits); CFF = periphery frames 1..36 (31,060 bits, 4 replicas); option = header frame 0 (8 lanes x 40 bits).
 
@@ -41,7 +41,7 @@
 | Option bits | 14 of 320 differ from a Quartus-built reference (lanes 0, 1, 3); meaning not decoded: all MISSING |
 
 - M9K mode / width / init, MAC mode / coefficients, PLL, transceiver: not decoded (MISSING). Block-input mux for M9K sits at a coordinate not mapped to the M9K column, so input edges are not attributed.
-- IO field decode (docs/cycloneiv-clean-io.md, last section): a site is classified only when its joint IOST / strength / clamp groups equal a pair-build or unused-pin state exactly; otherwise MISSING with raw patterns. MISSING sites: 0 (the 6 earlier ones were frame-end check cells read as data, E-R8). Package: F672 (inferred, exact).
+- IO field decode (docs/altera/cycloneIV/cycloneiv-clean-io.md, last section): a site is classified only when its joint IOST / strength / clamp groups equal a pair-build or unused-pin state exactly; otherwise MISSING with raw patterns. MISSING sites: 0 (the 6 earlier ones were frame-end check cells read as data, E-R8). Package: F672 (inferred, exact).
 - Detailed per-site table: local `tmp/cycloneiv_clean/image_io_table.json` (not committed).
 
 ## Sanity statistics
@@ -55,7 +55,7 @@
 
 - Conflicts and undriven nodes are tracer faults (a node cannot have two drivers); the controls show the same rate on designs with known ground truth, so the image sits at the tracer's own error level, not above it.
 
-## Old stack (labelled old, not an oracle; docs/cycloneiv-bitstream.md)
+## Old stack (labelled old, not an oracle; docs/altera/cycloneIV/cycloneiv-bitstream.md)
 
 - Used LEs 89,283 (mask != 0 or LE-used bit), LUTs 89,283, FFs 25,835, active LABs 7,077.
 - Clean count: LUTs 89,280, LABs 7,077 (equal), FFs 34,112 (register-used decode differs from the old lifter's FF trace).

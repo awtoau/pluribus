@@ -5,7 +5,7 @@
 
 - Classes = nm symbols `ASM_X::process_atom | process_end_of_phase | process_beginning_of_phase` in libcomp_asm / asm2 / asmgx / asmcc dumps
   (vendor-analysis/altera/analysis/nm_*.txt).  Class ASM_X is bound to the arch group type named X (class name == libdb_asmdb group name;
-  source: docs/cycloneiv-clean-io.md, ASM_IO_USE_BUS_HOLD <-> IO_USE_BUS_HOLD enum 165; the match rate is the first output line).
+  source: docs/altera/cycloneIV/cycloneiv-clean-io.md, ASM_IO_USE_BUS_HOLD <-> IO_USE_BUS_HOLD enum 165; the match rate is the first output line).
 - Bits per group name over every walk group of that type: calc = distinct offsets x instances (BLOCK_INFO list length),
   std / dumb / stlmap = distinct stored addresses by tag (CRAM 0, CFF 0xA, option 0x88, DPRIO 0x84, markers 0xC/0xF dropped).
 - Status: pair (a pair build confirmed the field: options_table.json, io_decode FIELD_GROUPS, fields doc), placed (addresses known, no value
@@ -30,7 +30,7 @@ OUT = os.path.join(REPO, "tmp", "cycloneiv_clean", "asm_classes.json")
 NMS = {"libcomp_asm": "nm_full_comp_asm.txt", "libcomp_asm2": "nm_full_comp_asm2.txt", "libcomp_asmgx": "nm_comp_asmgx.txt",
        "libcomp_asmcc": "nm_comp_asmcc.txt"}
 HOOKS = ("process_atom", "process_end_of_phase", "process_beginning_of_phase")
-# source: docs/cycloneiv-clean-fields.md "Field labels confirmed by pair diff" (LAB / M9K groups a pair build isolated)
+# source: docs/altera/cycloneIV/cycloneiv-clean-fields.md "Field labels confirmed by pair diff" (LAB / M9K groups a pair build isolated)
 FIELD_PAIR = {"LE_CLEAR_SELECT", "LAB_CLEAR_FAST_MUX", "LAB_CLR_INVERT_PAIR", "LE_REG_OUT_YGR", "LE_USE_SYNC_CLEAR", "LE_USE_SYNC_LOAD",
               "LAB_ENABLE_SYNC_SIGNALS", "LAB_CE_FAST_MUX", "LAB_ENABLE_CE", "LAB_INVERT", "LE_CLOCK_SELECT", "LAB_CLOCK_FAST_MUX",
               "LAB_SYNC_LOAD_FAST_MUX_MAG", "LE_LUT_FUNCTION", "RAM_REG_DATA_OUT", "RAM_REG_DATA_OUT_B", "RAM_SELECT_CLK_DATA_OUT",

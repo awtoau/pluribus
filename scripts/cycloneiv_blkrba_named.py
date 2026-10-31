@@ -3,7 +3,7 @@
 measured control cells?  Position law (TEST 1, cycloneiv_blkrba_lab.py): frame = FX[X] + dy - 15,
 v = vy0 + 70*Y + 2 - dx.  Names come from the local csv (vendor-analysis, gitignored; never committed).
 
-PREDICTION (written before the run, from the cells listed in docs/cycloneiv-bit-hunter.md)
+PREDICTION (written before the run, from the cells listed in docs/altera/cycloneIV/cycloneiv-bit-hunter.md)
 - P1: LE-used cell (df -8, dv -1 + LE mirror) = RBCTL_OUT1 of that LE, all 16 LEs.
 - P2: clock polarity (df -6, dv -30) = tile (dx 32, dy 9): NOT a named bit (no name at (32, 9)).
 - P3: control-port cells ena (-8,-30) (-7,-30), aclr (-1,-32) (0,-32) (3,-68), sclr (2,-32) (4,-1) are not

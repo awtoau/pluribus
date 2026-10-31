@@ -19,7 +19,7 @@ from . import plane as P
 
 GROUP = "CLKBUF_CLK_INPUT_SELECT_CYCLONEII"      # source: libdb_asmdb arch-group-type table, block type 73
 COREIN = "CLKBUF_INTERFACE_COREIN"                # source: same table; 30 groups (gi = site), one site each, value = LOCAL_INTERCONNECT index feeding the core input
-BLOCK = 73                                        # source: ASMDB_ARCH_GROUP_BLOCK_TYPE CLKBUF_GCLK (docs/cycloneiv-clean-fields.md)
+BLOCK = 73                                        # source: ASMDB_ARCH_GROUP_BLOCK_TYPE CLKBUF_GCLK (docs/altera/cycloneIV/cycloneiv-clean-fields.md)
 VALUES = 16                                       # source: group mux = 4 encoded bits (asmdb mux class 15, 4 bits)
 NONE = 7                                          # source: ASM_CLKBUF_CLK_INPUT_SELECT_CYCLONEII::process_atom@0x2fd9f8 (tied-off input)
 DB_ILLEGAL = 0xFFFFFFFA                           # source: cycloneiv_io.ADDRESS_SPACES comment: 0xfffffffa..e = DB_ILLEGAL_* markers
