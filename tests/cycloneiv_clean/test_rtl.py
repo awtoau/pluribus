@@ -78,6 +78,45 @@ def test_dead_flop_sum_is_not_read():
     assert L.unread("lc_0_0_1") and L.unread("lc_0_0_0")
 
 
+def test_multi_le_tail_strip():
+    """A 3-bit adder followed by a 2-LE non-adder tail (a result LUT XORed with an extra flag, then a plain carry buffer): real LE shapes
+    from the third-party image's chain #1835 (docs/altera/cycloneIV/cycloneiv-clean-rtl.md multi-LE result tail category, #165).  The
+    existing single-LE tail_free only strips LE[-1]; this chain needs both of the last two LEs stripped before the first 3 bits fit ADD."""
+    one = "1'b1"
+    nl = _chain_nl([(0x0055, ["s0", one, one, one]), (0xA5AF, ["s1", one, "co_0_0_0", one]), (0x5A05, ["s2", one, "co_0_0_1", one]),
+                    (0xE10E, ["s3", "flag", "co_0_0_2", one]),       # real tail LE: sum = ~(a^b^c), cout = ~c & (a|b) -- not maj()
+                    (0x0F0F, [one, one, "co_0_0_3", one])])          # real collector LE: sum = cout = ~c
+    L = rtl.Lift(nl)
+    L.index()
+    L.chains()
+    ch = L.chain_list[0]
+    assert ch["ok"] and ch["W"] == 3
+    assert ch.get("tail_free") and [t["name"] for t in ch["tail"]] == ["lc_0_0_3", "lc_0_0_4"]
+    assert L.tail_free == {"lc_0_0_3", "lc_0_0_4"}
+    assert not L.opaque                                             # tail LEs are ordinary logic, not unresolved carry-in
+
+
+def test_multi_le_tail_chained_carry_out():
+    """Regression: a tail_free LE's own co_* can be read by name by the NEXT tail LE (not just by a cone elsewhere).  self.cone only ever
+    holds sum outputs, so without need_tail_co the second tail LE's cin reference to the first tail LE's co_* has no declaration -- caught
+    by a verilator build of the full image after the multi-LE tail-strip patch (chain #5, real LE shapes, #165)."""
+    one = "1'b1"
+    nl = _chain_nl([(0x0055, ["s0", one, one, one]), (0xA5AF, ["s1", one, "co_0_0_0", one]), (0x5A05, ["s2", one, "co_0_0_1", one]),
+                    (0xE1EF, ["s3", "flag", "co_0_0_2", one]),          # real tail LE 1: result LUT (reads two more real signals)
+                    (0xF00F, [one, one, "co_0_0_3", one]),              # real tail LE 2: sum = cin, cout = ~cin (pure buffer/inverter)
+                    (0x0F0F, [one, one, "co_0_0_4", one])])             # real collector LE: reads tail LE 2's co_* by name
+    L = rtl.Lift(nl)
+    L.index()
+    L.chains()
+    ch = L.chain_list[0]
+    assert ch["ok"] and ch.get("tail_free") and len(ch["tail"]) == 3
+    fm = {}
+    text, rep = rtl.lift(nl, ffmap=fm)
+    assert rep["flat_lut_left"] == 2                        # LE 3's sum reduces to a real SOP (not flat); LEs 4/5 are pure carry buffers
+    assert "wire co_0_0_3;" in text                         # the bug: co_0_0_3 was read by LE 4's cin pin but never declared
+    assert "co_0_0_4 = (16'hF00F >> {1'b0, co_0_0_3," in text   # LE 4's co_* expression reads LE 3's co_* by name, not left dangling
+
+
 def test_constant_output_pad_and_ffmap():
     one = "1'b1"
     nl = _chain_nl([(0x0055, ["s0", one, one, one]), (0xA5AF, ["s1", one, "co_0_0_0", one]), (0x0F0F, [one, one, "co_0_0_1", one])])

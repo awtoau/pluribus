@@ -367,7 +367,7 @@ class Lift:
             for i, L_ in enumerate(ch["luts"]):
                 self.chain_of[L_["name"]] = (ch, i)
             if ch.get("tail_free"):
-                self.tail_free.add(ch["tail"]["name"])
+                self.tail_free.update(L_["name"] for L_ in ch["tail"])
         # cin-mode LUTs not in a chain with a head (unresolved carry-in, loops): opaque
         self.opaque = set()
         for L in nl.luts:
@@ -393,20 +393,33 @@ class Lift:
 
     def analyse_chain(self, ch):
         """Try the whole chain; if the last LE fits no adder form (a comparator's result LUT, or an adder's final gating LUT), analyse the chain
-        without it: its carry-in is then the chain's carry out and the LE is ordinary logic (`tail_free`)."""
+        without it: its carry-in is then the chain's carry out and the LE is ordinary logic (`tail_free`).  A result LUT can itself sit on a
+        fresh carry-in read by one more ordinary LE above it (e.g. a flag XORed into the final compare bit, or a collector read by a second
+        gate): retry with 2, 3, ... trailing LEs stripped, stopping at the first count whose remaining prefix fits a whole adder (source:
+        #165 flat-LUT audit, chains 5/948/1289/1835/1895/1972/1982/2050 -- each fits only after stripping 2-5 LEs, not 1)."""
         full = list(ch["luts"])
         ch["tail_free"] = False
         self._analyse(ch, len(full), True)
-        if not ch["ok"] and len(full) >= 3 and ch.get("why") == "no_operand_form" and ch.get("fail_at") == len(full) - 1:
+        if ch["ok"] or len(full) < 4 or ch.get("why") != "no_operand_form":
+            return
+        fail_at = ch.get("fail_at")
+        if fail_at is None:
+            return
+        # strip lengths 1 .. (n - fail_at): the first LE that could not fit, and every LE after it.
+        for strip in range(1, len(full) - fail_at + 1):
+            remain = len(full) - strip
+            if remain < 3:
+                break
             for k in ("why", "fail_at"):
                 ch.pop(k, None)
-            ch["luts"] = full[:-1]
-            self._analyse(ch, len(full) - 1, False)
+            ch["luts"] = full[:remain]
+            self._analyse(ch, remain, False)
             if ch["ok"]:
                 ch["tail_free"] = True
-                ch["tail"] = full[-1]
-            else:
-                ch["luts"] = full
+                ch["tail"] = full[remain:]
+                return
+        ch["luts"] = full
+        ch["ok"] = False
 
     def _analyse(self, ch, n_eff, exempt_last):
         """Head forms can be ambiguous (carry polarity, constant carry-in): try each until the whole chain fits."""
@@ -1202,6 +1215,7 @@ class Lift:
         """Leaves reachable from the emitted roots: materialised LUT nodes, chains (with the sum / carry bits used), opaque LUTs."""
         nl = self.nl
         self.need_w, self.need_chain, self.need_opaque = set(), collections.defaultdict(lambda: dict(sum=set(), co=set())), set()
+        self.need_tail_co = set()          # co_* of a tail_free LE read by name: not a chain, not opaque, no self.cone entry (sum-only)
         stack = []
         fsm_ff = {F["name"] for f in self.fsms for F in f["S"]}
         for b in self.bundles:
@@ -1247,6 +1261,14 @@ class Lift:
                     stack += list(L["pins"])
                     seen.add(L["name"])
                     seen.add(f"co_{L['x']}_{L['y']}_{L['le']}")
+                continue
+            if s in self.co_of and self.normal(self.co_of[s]["name"]):
+                # carry-out of an ordinary (tail_free) cin-mode LE read by name: not a chain, not opaque, no cone entry of its own
+                # (self.cone only ever holds sum outputs) -- materialise directly from its own INIT, same formula as the FLAT_LUT co line.
+                L = self.co_of[s]
+                self.need_tail_co.add(L["name"])
+                stack += list(L["pins"])
+                stack.append(L["name"])
                 continue
             if self.normal(s) and s in self.cone:
                 self.need_w.add(s)
@@ -1497,6 +1519,14 @@ class Lift:
             logic.append(f"localparam [15:0] I_{n} = 16'h{L['init']:04X};")
             logic.append(f"assign `LUT_DELAY {n} = I_{n}[{{{d}, {c}, {b}, {a}}}]; // [R:FLAT_LUT]")
             logic.append(f"assign `LUT_DELAY {co} = I_{n}[{{1'b0, {c if L['mode'] == 'cin' else chr(49) + chr(39) + 'b0'}, {b}, {a}}}];")
+            st["rule:FLAT_LUT"] += 1
+        # ---- carry-out of a tail_free LE read by name (the LE itself is ordinary logic via self.cone / need_w; its co_* has no cone entry)
+        for n in sorted(self.need_tail_co):
+            L = self.lut[n]
+            a, b, c, _d = [self.ref(p) for p in L["pins"]]
+            co = f"co_{L['x']}_{L['y']}_{L['le']}"
+            decl.append(f"wire {co};")
+            logic.append(f"assign `LUT_DELAY {co} = (16'h{L['init']:04X} >> {{1'b0, {c}, {b}, {a}}}) & 16'd1; // [R:FLAT_LUT] tail_free carry-out")
             st["rule:FLAT_LUT"] += 1
         # ---- wires (materialised cones)
         for n in sorted(self.need_w):

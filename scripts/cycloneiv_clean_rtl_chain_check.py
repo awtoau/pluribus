@@ -1,9 +1,12 @@
 #!/usr/bin/env python3.15t
 """Chain-level check of the RTL lift (#165): every recognised carry chain vs the LUT-level chain, random operand assignments.
 
-  python3.15t scripts/cycloneiv_clean_rtl_chain_check.py [--cache tmp/rtl/image_nl.pkl | --hl NAME,...] [--vectors 64]
+  python3.15t scripts/cycloneiv_clean_rtl_chain_check.py [--cache tmp/rtl/image_nl.pkl | --hl NAME,...] [--vectors 64] [--negative-control]
 Per chain: operand literals (ch["A"], ch["B"], polarity, constant carry-in) give A + B + c0; the LUT-level model (sum = INIT[{d,c,b,a}],
 cout = INIT[{0,c,b,a}], carry signal polarity po per stage) must agree on every read sum bit and every carry signal.  Counts only.
+--negative-control flips ch["c0"] (the chain's constant carry-in) on a copy of every chain before checking: this must raise the LUT-level
+model's expected sum/carry at bit 0 against the (now-wrong) operand reconstruction, so a flipped chain must fail; 0 "bad" under this flag
+means the check cannot distinguish a right answer from a wrong one and the real score above is not trustworthy.
 Log tmp/logs/cycloneiv_clean_rtl_chain_check.log.
 """
 import argparse
@@ -65,6 +68,7 @@ def main():
     ap.add_argument("--cache", default=os.path.join(REPO, "tmp", "rtl", "image_nl.pkl"))
     ap.add_argument("--hl")
     ap.add_argument("--vectors", type=int, default=64)
+    ap.add_argument("--negative-control", action="store_true", help="flip ch['c0'] on every chain first; every chain must then fail")
     a = ap.parse_args()
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=[logging.StreamHandler(), logging.FileHandler(LOG)])
@@ -78,11 +82,18 @@ def main():
         L = rtl.Lift(nl)
         L.index()
         L.chains()
+        if a.negative_control:
+            for ch in L.chain_list:
+                if ch["ok"]:
+                    ch["c0"] ^= 1
         ok, bad, mixed, _ = check(L, a.vectors, rnd)
-        log.info("%s chains ok %d bad %d (mixed-polarity %d)", os.path.basename(s), ok, bad, mixed)
+        tag = " [NEGATIVE CONTROL: c0 flipped, every chain MUST be bad]" if a.negative_control else ""
+        log.info("%s chains ok %d bad %d (mixed-polarity %d)%s", os.path.basename(s), ok, bad, mixed, tag)
         for k, v in enumerate((ok, bad, mixed)):
             tot[k] += v
     log.info("TOTAL chains ok %d bad %d mixed %d", *tot)
+    if a.negative_control and tot[0]:
+        raise SystemExit(f"negative control FAILED: {tot[0]} chains still passed after c0 was flipped -- the check cannot detect wrongness")
 
 
 if __name__ == "__main__":
