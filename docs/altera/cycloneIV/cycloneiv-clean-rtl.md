@@ -28,6 +28,7 @@ Input is the emit `Netlist` (read-only); no decoder or emit hunk is touched. Str
 - (iii) lines and constructs, RTL vs flat.
 - (iv) `scripts/cycloneiv_clean_rtl_chain_check.py`: every recognised chain vs the LUT-level chain on random operand assignments (sums read, carry signals with polarity); negative control (flipped carry-in) fails every chain.
 - Flat-LUT classification: `scripts/cycloneiv_clean_rtl_left.py` (chain failure reason, chain length histogram).
+- (v) `scripts/cycloneiv_clean_pattern_corpus_check.py` (#186): known-truth specimens independent of the DJI image -- one small behavioral-Verilog construct per rule tag (adder, subtractor, comparator, counter, shift register), built fresh with Quartus each run, lifted, checked that `rtl.lift()`'s report tags it correctly and leaves `flat_lut_left == 0`. Closes the gap F-021 exposed: a recognizer rule can regress with nothing catching it if no corpus specimen exercises that exact construct (previously only the DJI image's own behavioral test did). 2026-10-31: 5/5 pass, each specimen tags only its own construct (no cross-contamination). Not run in the fast/full gate (real Quartus builds, ~2-3 min); run on demand or when touching `rtl.py`'s rule set.
 - Results: issue #165 comments (numbers with date and sample).
 
 ## hl corpus score (2026-10-30, 153 designs, matched / missing / extra / wrong; `scripts/cycloneiv_hl_score.py`, split by seed parity)
