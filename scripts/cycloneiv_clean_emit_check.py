@@ -104,11 +104,15 @@ def gt_producer(net, lc_name, ff_name, qnet, pins, lcs_=(), ffs_=()):
     if nm.endswith("~input") and nm[:-6] in pins:
         return ("PAD", pins[nm[:-6]][0])
     if net["roots"]:
+        # same-LAB fan-out (e.g. a DATAC/ASDATA tap) roots at both LOCAL_LINE (the LAB-internal copy) and LE_BUFFER (the general-routing
+        # copy) of the same LE output (emit.py.Builder._source treats them identically via _le_out); try LOCAL_LINE / LE_BUFFER roots in
+        # order before falling back to the first root's raw SRC tuple, so the one carrying the real LC/FF producer is not shadowed by the other
+        for r in net["roots"]:
+            if r[0] in ("LE_BUFFER", "LOCAL_LINE"):
+                k = (r[1], r[2], r[4] // 2)
+                if (k in lcs_) != (k in ffs_):
+                    return ("LC" if k in lcs_ else "FF",) + k
         r = net["roots"][0]
-        if r[0] == "LE_BUFFER":                  # unnamed net: the buffer's LE is a LUT-only or a FF-only site -> that producer; both -> left as SRC
-            k = (r[1], r[2], r[4] // 2)
-            if (k in lcs_) != (k in ffs_):
-                return ("LC" if k in lcs_ else "FF",) + k
         return ("SRC", r[0], r[1], r[2], r[3], r[4])
     return None
 

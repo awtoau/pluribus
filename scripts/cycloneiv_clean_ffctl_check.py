@@ -45,6 +45,7 @@ def score_design(cx, d, workers):
     b = emit.Builder(cx, os.path.join(d, "bitstream.rbf"), os.path.basename(d), workers)
     nl = b.run()
     lcs, lc_name, ffs, ff_name, qnet = EC.parse_gt(d)
+    pins = EC.parse_pin(os.path.join(d, "build.pin"))
     nets = T.parse_rcf(os.path.join(d, "routing.rcf"))
     allnames = sorted({r for n in nets for r in n["roots"]})
     rec, _why = cx.res.resolve(allnames)
@@ -111,14 +112,16 @@ def score_design(cx, d, workers):
                 scope["ff_clk_pol"]["wrong:gt_inv=%s" % con.get("clk", "").startswith("!")] += 1
         if con.get("sload") not in (None, "gnd", "vcc") and "ASDATA" in ports and con.get("d", "").lstrip("\\").strip() != "gnd":
             c = out["ff_asdata"]
-            roots = ports["ASDATA"][0]
-            if F.get("asdata_rec") is None:
+            asd_net = ports["ASDATA"][1]
+            gt_prod = EC.gt_producer(asd_net, lc_name, ff_name, qnet, pins, lcs, ffs) if asd_net is not None else None
+            if F.get("asdata_prod") is None:
                 c["missing"] += 1
                 scope["ff_asdata"]["missing:not_emitted"] += 1
-            elif not roots:
+            elif gt_prod is None:
                 c["missing"] += 1
                 scope["ff_asdata"]["missing:no_gt_root"] += 1
-            elif root(F["asdata_rec"]) in roots:
+            # own-register feedback (LE_USE_REGISTER_FEEDBACK, F-010) has no routing record: compare by producer tuple, like ff_d / lut_pin
+            elif tuple(F["asdata_prod"]) == tuple(gt_prod):
                 c["matched"] += 1
             else:
                 c["wrong"] += 1

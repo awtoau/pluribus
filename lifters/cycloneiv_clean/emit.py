@@ -380,13 +380,20 @@ class Builder:
         return (name, ("SRC", t, x, y, z, i))
 
     def _asdata_source(self, lab, le, x, y):
-        """ASDATA (DATAC pin, gi 2) signal + producer + record, or (None, None, None) if undecoded.
-        Same physical mux as the LUT's DATAC input (ASM_LE_LUT_INPUT::process_atom@0x16c464: register-mode LEs read CDB_ATOM iterm type
-        0x20 instead of the comb DATAC iterm 0xe, but `mux_select` writes the identical LE_LUT_INPUT gi 2 bits either way), so an LE whose
-        DATAC is its own register (LE_USE_REGISTER_FEEDBACK, F-010) resolves the same way for ASDATA as it already does for the LUT pin."""
+        """ASDATA (DATAC pin, gi 2) signal + producer + record; (UNCONNECTED, None, None) when the mux is genuinely unselected (vendor
+        convention, F-020); (None, None, None) only for the two cases the LUT's own DATAC pin also counts as undecoded (ambiguous table
+        entry, or a selection resolving to a record absent from the graph). Carry mode does NOT exclude ASDATA: the image has sload FFs
+        whose LE is simultaneously carry mode (gi 2 = cin for the comb function) and has a resolvable, non-carry ASDATA value on the same
+        LE_LUT_INPUT gi 2 mux bits (register-mode read of CDB_ATOM iterm 0x20 vs comb iterm 0xe -- two different logical uses of one mux).
+        Same physical mux as the LUT's DATAC input (ASM_LE_LUT_INPUT::process_atom@0x16c464), so an LE whose DATAC is its own register
+        (LE_USE_REGISTER_FEEDBACK, F-010) resolves the same way for ASDATA as it already does for the LUT pin."""
         if self.lev["LE_USE_REGISTER_FEEDBACK"][lab, le]:
             return f"ff_{x}_{y}_{le}", ("FF", x, y, le), None     # own-register feedback has no LI/LL record (ASM_LE_USE_REGISTER_FEEDBACK@0x16c294)
         s = int(self.sel[lab, le, 2])
+        if s == -1 or self.sel_only[lab, le]:
+            return UNCONNECTED, None, None        # no first-level selection: same "tie high" convention as the LUT's own DATAC pin (lut_pin_unconnected)
+        if s < 0:
+            return None, None, None               # ambiguous table entry (-2): genuinely undecoded, same as the LUT pin
         rec = int(self.cx.li_rec[lab, s]) if 0 <= s < LI_PER_LAB else \
             int(self.cx.ll_rec[lab, s - LI_PER_LAB]) if LI_PER_LAB <= s < LI_PER_LAB + 16 else -1
         if rec < 0:
@@ -467,7 +474,7 @@ class Builder:
                 sig, prod, _ = self._asdata_source(lab, le, x, y)
                 if sig is not None:
                     F["d"], F["d_prod"] = sig, prod
-                    nl.counts["ff_d_from_asdata"] += 1
+                    nl.counts["ff_d_from_asdata_unconnected" if sig == UNCONNECTED else "ff_d_from_asdata"] += 1
                 else:
                     F["und"].append("d: FF-only LE with no DATAC selection")
                     nl.und["FF-only LE: ASDATA source"] += 1
@@ -521,6 +528,7 @@ class Builder:
                 sig, prod, rec = self._asdata_source(lab, le, F["x"], F["y"])
                 if sig is not None:
                     F["asdata"], F["asdata_prod"], F["asdata_rec"] = sig, prod, rec
+                    nl.counts["ff_asdata_unconnected" if sig == UNCONNECTED else "ff_asdata_used"] += 1
                 else:
                     F["und"].append("asdata")
                     nl.und["FF sync load: ASDATA (DATAC) source"] += 1
