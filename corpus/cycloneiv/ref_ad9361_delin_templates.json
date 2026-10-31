@@ -1,0 +1,335 @@
+[
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_40_90_2",
+  "n_leaves": 5,
+  "tt": 1679882832,
+  "tt_hex": "6420fa50",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_40_90_4",
+  "n_leaves": 5,
+  "tt": 3586,
+  "tt_hex": "e02",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_40_90_7",
+  "n_leaves": 5,
+  "tt": 740342664,
+  "tt_hex": "2c20bb88",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_40_90_8",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_40_90_9",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_89_1",
+  "n_leaves": 5,
+  "tt": 3586,
+  "tt_hex": "e02",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_89_2",
+  "n_leaves": 5,
+  "tt": 940109346,
+  "tt_hex": "3808ee22",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_89_4",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_89_5",
+  "n_leaves": 5,
+  "tt": 740342664,
+  "tt_hex": "2c20bb88",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_89_7",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_89_8",
+  "n_leaves": 5,
+  "tt": 2824,
+  "tt_hex": "b08",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_89_12",
+  "n_leaves": 5,
+  "tt": 940109346,
+  "tt_hex": "3808ee22",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_89_15",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_0",
+  "n_leaves": 5,
+  "tt": 2824,
+  "tt_hex": "b08",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_6",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_9",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_10",
+  "n_leaves": 5,
+  "tt": 3276816,
+  "tt_hex": "320010",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_11",
+  "n_leaves": 5,
+  "tt": 12576,
+  "tt_hex": "3120",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_12",
+  "n_leaves": 3,
+  "tt": 99,
+  "tt_hex": "63",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_13",
+  "n_leaves": 5,
+  "tt": 12576,
+  "tt_hex": "3120",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_14",
+  "n_leaves": 5,
+  "tt": 1660240032,
+  "tt_hex": "62f540a0",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_44_90_15",
+  "n_leaves": 5,
+  "tt": 1679882832,
+  "tt_hex": "6420fa50",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_89_2",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_89_7",
+  "n_leaves": 5,
+  "tt": 583055544,
+  "tt_hex": "22c0b8b8",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_89_8",
+  "n_leaves": 5,
+  "tt": 12816,
+  "tt_hex": "3210",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_89_10",
+  "n_leaves": 5,
+  "tt": 172,
+  "tt_hex": "ac",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_89_11",
+  "n_leaves": 5,
+  "tt": 226,
+  "tt_hex": "e2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_89_12",
+  "n_leaves": 5,
+  "tt": 211864266,
+  "tt_hex": "ca0caca",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_89_13",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_90_0",
+  "n_leaves": 5,
+  "tt": 1648424352,
+  "tt_hex": "6240f5a0",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_90_1",
+  "n_leaves": 5,
+  "tt": 12816,
+  "tt_hex": "3210",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_90_2",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_90_4",
+  "n_leaves": 5,
+  "tt": 12816,
+  "tt_hex": "3210",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_90_7",
+  "n_leaves": 5,
+  "tt": 1648424352,
+  "tt_hex": "6240f5a0",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_90_8",
+  "n_leaves": 5,
+  "tt": 1648424352,
+  "tt_hex": "6240f5a0",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_90_13",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ },
+ {
+  "source": "ref_ad9361_delin",
+  "kind": "ad9361_delineation",
+  "ff": "ff_45_90_15",
+  "n_leaves": 1,
+  "tt": 2,
+  "tt_hex": "2",
+  "hops": 0
+ }
+]
