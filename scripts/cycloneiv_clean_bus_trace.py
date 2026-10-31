@@ -74,18 +74,57 @@ def _capture_ff(D, pad_sig, seen=None):
     return None
 
 
-def pad_signature(D, FT, fanout, pad_name, max_hops=3):
-    """(clock domain, consumer-cone shape) for the pad's capture FF, via functrace's own
-    trace_sinks -- sorted (kind, hops) multiset, capped at max_hops so two bus members with
-    slightly different downstream depth still cluster if their near structure matches, while a
-    genuinely different consumer shape (a different hard-block kind, a much shorter/longer path)
-    does not."""
-    ff = _capture_ff(D, f"pad_{pad_name}") or _capture_ff(D, pad_name)
-    if ff is None:
+def _io_row(D, pad_name):
+    for io in D.nl.ios:
+        if io.get("ball") == pad_name:
+            return io
+    return None
+
+
+def _driver_signature(D, pad_name, max_depth=3):
+    """Backward cone signature for an OUTPUT pad: walk back from io['drv'] through comb logic,
+    recording (kind, depth) of each leaf -- const/pad/ff/m9k/mac, same vocabulary as patterns.kind.
+    This is the TX-side equivalent of pad_signature's forward RX walk; an output pad has no
+    capturing FF (that check always correctly returns None for it -- it is not itself a sign of
+    disconnection, see #177: a driven-from-fabric output pad is connected by construction, this
+    function is what actually tells two such pads apart or confirms they match)."""
+    io = _io_row(D, pad_name)
+    if io is None or not io.get("drv"):
         return None
-    sinks = FT.trace_sinks(D, fanout, ff["name"], ff_hops=max_hops)
-    shape = tuple(sorted((s["kind"], min(s["hops"], max_hops)) for s in sinks))
-    return (ff.get("clk"), shape)
+    leaves = []
+    seen = set()
+
+    def walk(sig, depth):
+        if sig in seen or depth > max_depth:
+            if depth > max_depth:
+                leaves.append(("deep", max_depth))
+            return
+        seen.add(sig)
+        cb = D.comb(sig)
+        if cb is None:
+            leaves.append((D.kind(sig), depth))
+        else:
+            for u in cb[2]:
+                walk(u, depth + 1)
+
+    walk(io["drv"], 0)
+    return tuple(sorted(leaves))
+
+
+def pad_signature(D, FT, fanout, pad_name, max_hops=3):
+    """(clock domain, consumer-cone shape) for an INPUT pad's capture FF (functrace's trace_sinks,
+    sorted (kind, hops) multiset), or a backward driver-cone signature for an OUTPUT pad
+    (_driver_signature) -- direction decides which check applies; an output pad correctly has no
+    capture FF, that is not itself evidence of anything, see _driver_signature's docstring."""
+    ff = _capture_ff(D, f"pad_{pad_name}") or _capture_ff(D, pad_name)
+    if ff is not None:
+        sinks = FT.trace_sinks(D, fanout, ff["name"], ff_hops=max_hops)
+        shape = tuple(sorted((s["kind"], min(s["hops"], max_hops)) for s in sinks))
+        return ("rx", ff.get("clk"), shape)
+    drv_sig = _driver_signature(D, pad_name)
+    if drv_sig is not None:
+        return ("tx", drv_sig)
+    return None
 
 
 def main():
