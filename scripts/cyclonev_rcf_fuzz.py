@@ -10,7 +10,7 @@ Modes:
   After each exclude variant the exported RCF is re-imported alone (REPLAY): accepted if the
   re-export is identical and the bitstream equals the variant's.
 
-Mechanism (docs/cyclonev-rcf-oracle.md): the .qsf carries ROUTING_BACK_ANNOTATION_FILE build.rcf
+Mechanism (docs/altera/cycloneV/cyclonev-rcf-oracle.md): the .qsf carries ROUTING_BACK_ANNOTATION_FILE build.rcf
 (written by quartus_cdb --write_settings_files=on, with every LOCATION), so quartus_fit imports
 the RCF as soft routing constraints.  A variant is ACCEPTED when the re-exported RCF of the edited
 net equals the edited text; otherwise the fitter dropped the constraint and rerouted (REROUTED).

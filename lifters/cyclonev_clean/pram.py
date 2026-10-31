@@ -1,7 +1,7 @@
 """Cyclone V PRAM claim map from vendor tables.
 
 CFF address space A = 0 .. num_cff_bits-1 (asmdb DIE header). Extent bit b sits at A_high - b.
-A -> (strip, position) needs the per-strip sizes: NOT derived from vendor files yet (docs/cyclonev-clean-pram.md).
+A -> (strip, position) needs the per-strip sizes: NOT derived from vendor files yet (docs/altera/cycloneV/cyclonev-clean-pram.md).
 With strip sizes given, serial position L = N-1-A, strips concatenated in order.
 """
 import os

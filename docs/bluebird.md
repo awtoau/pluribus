@@ -100,7 +100,7 @@ Measured 2026-10-24 on the Quartus 25.1 corpus design `adder12`
 - **CRAM fold round trip**: `unpack(pack(cram_bits)) == cram_bits`, bit-exact over all positions.
 - **Nibble codec round trip**: `decompress(compress(decompress(original))) == decompress(original)`, bit-exact.
 - Both checks run in `cargo test` (`corpus_bitstream_roundtrip`; skips when the corpus file or DB is absent).
-- These are transform-losslessness checks. Whether the unpacked bits are the design's configuration is judged by the Quartus post-fit oracle (`docs/cyclonev-postfit-oracle.md`), not by density or round trip.
+- These are transform-losslessness checks. Whether the unpacked bits are the design's configuration is judged by the Quartus post-fit oracle (`docs/altera/cycloneV/cyclonev-postfit-oracle.md`), not by density or round trip.
 
 Not proven: byte-identical re-encoding of the *original* compressed region
 (our re-compress only encodes the CRAM-fold bits this module models, not

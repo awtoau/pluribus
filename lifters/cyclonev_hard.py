@@ -3,7 +3,7 @@
 - A record is {name, kind, params, pins}: `kind` is the Quartus atom (cyclonev_ram_block ...),
   `params` its decoded parameters, `pins` {port: [net | "1'b0" | "1'b1", ...]} LSB first (outputs: nets).
 - verilog.py instantiates the vendor model with these; the sim gate runs both sides on the same model.
-- Every rule is a corpus differential against build.vo (docs/cyclonev-postfit-oracle.md "RAM and MLAB");
+- Every rule is a corpus differential against build.vo (docs/altera/cycloneV/cyclonev-postfit-oracle.md "RAM and MLAB");
   a block outside the rules is returned with `unmodelled` set, never guessed.
 """
 import re
@@ -267,7 +267,7 @@ def fpll_cell(tile, kv, nets=None):
 # ---- DSP (cyclonev_mac) -------------------------------------------------------------------------
 # Mistral DSP pins: DATAIN.<n> of bank bi (9 bits per bank), RESULT.<k>, CLKIN.<c>.  Which atom port bit
 # a (bank, n) is depends on the operation mode; learned from the corpus by pad correlation (build.vo
-# port bit -> pad -> lifted pin), docs/cyclonev-postfit-oracle.md "DSP".
+# port bit -> pad -> lifted pin), docs/altera/cycloneV/cyclonev-postfit-oracle.md "DSP".
 #   m9x9        : ax[n] = bank0.n   bx[n] = bank1.n   ay[n] = bank2.n   by[n] = bank3.n   (lane 0 only)
 #   m27x27      : ax[0:9]=bank0 ax[9:18]=bank6 ax[18:27]=bank7; ay: banks 2, 8, 9
 #   m18x18_sumof2 (Mistral M18X19_COMBINED): ax/ay as m18x18_full, bx = banks 6,7, by = banks 8,9; by[18] = bank11.8

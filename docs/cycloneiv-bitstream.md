@@ -65,7 +65,7 @@ Offsets relative to the `0x6a` sync byte `S` (`S = 32` in every Quartus file).
   - lane 3 bits 16..39: not all 1s only on III LS (a design-security part). Varies per design and is the same in a compressed/uncompressed pair. Meaning not derived.
 - **F** = header-frame length = the offset of the first non-`0xFF` byte after the header, minus `S`.
 - **r** comes from the CRC chain: the first frame `k >= 2` where frames `k` and `k+1` pass.
-- **Coding** (frame `r` to EOF): the Cyclone V nibble scheme (`docs/cyclonev-compressed-rbf.md`).
+- **Coding** (frame `r` to EOF): the Cyclone V nibble scheme (`docs/altera/cycloneV/cyclonev-compressed-rbf.md`).
   - Low nibble first.
   - Per 2 output bytes: key `k`, then the nibbles `k` marks (bit0/1 = byte0 lo/hi, bit2/3 = byte1 lo/hi). Unmarked nibbles are 0.
   - Odd tail: the last byte is `f` + 2 nibbles, and the byte-1 nibbles are never supplied. So the 59-byte `0xFF` postamble codes to exactly 74 `0xFF` bytes.

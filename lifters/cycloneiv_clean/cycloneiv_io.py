@@ -200,7 +200,7 @@ def asmdb_main_stream(b):
 def ddb_types(path):
     """Type table of a devinfo .ddb (trailer after the body): [(class_id, sizeof, count, name)].
 
-    Layout from docs/cyclonev-ddb-format.md: u16 n, per type u16 id, u32 sizeof, u32 crc, u32 count, u32 version,
+    Layout from docs/altera/cycloneV/cyclonev-ddb-format.md: u16 n, per type u16 id, u32 sizeof, u32 crc, u32 count, u32 version,
     u32 namelen (incl. NUL), name.  A pointer tag's class id (tag >> 2) indexes this table.
     """
     import struct

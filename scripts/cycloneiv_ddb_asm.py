@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.15t
 """Cyclone IV GX `asm.ddb` (Quartus route-assembler database) reader.
 
-Same record family as Cyclone V (docs/cyclonev-ddb-format.md; type table DYGR_ROUTE_ASM_NODE /
+Same record family as Cyclone V (docs/altera/cycloneV/cyclonev-ddb-format.md; type table DYGR_ROUTE_ASM_NODE /
 unsigned short / DYGR_ROUTE_ASM_BIT, identical layout crcs).  Format: docs/cycloneiv-ddb-format.md.
 
   python3.15t scripts/cycloneiv_ddb_asm.py parse [--die stingray4]   # asm.ddb -> tmp/ddb/<die>_asm_*.npy

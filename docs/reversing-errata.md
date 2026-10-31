@@ -74,13 +74,13 @@ Conditions: 2026-10-30, EP4CGX150, Quartus 25.1. Static analysis only.
 
 | ID | Claim | Where stated | Status | Evidence | Open | Reversing |
 |---|---|---|---|---|---|---|
-| V-G1 | PRAM address reversal `A = N-1-L` | `docs/cyclonev-clean-pram.md` Open | PARKED | found against the Mistral oracle, not vendor code; `PGMIO_F2P::make_cff_frame` decompile failed (thunk through a GOT pointer, `analysis/cv/pgmio_cff.c`) | derive from vendor code | `PGMIO_F2P::make_cff_frame` libpgm_pgmio 0x14a900 (unresolved) |
-| V-G2 | Strip sizes / order / `fs` | `docs/cyclonev-pram.md` geometry, `docs/cyclonev-clean-pram.md` | PARKED | from Mistral `cvd` tables and `scripts/cyclonev_native_tables.py`; not in any vendor file read | derive from vendor code | as V-G1 |
-| V-G3 | Die 0x13 geometry | `docs/cyclonev-pram.md` | PARKED (UNVERIFIED) | CRC- and claim-validated only; no Quartus pair | | |
-| V-G4 | IO fields (GPIO, LVDS) name / position | `docs/cyclonev-pram.md` | PARKED | CSV names a subset (27 % / 12 %); no proven BINDEX -> bit map | | |
-| V-G5 | devxml models | `docs/cyclonev-clean-pram.md` | PARKED | encrypted wrappers (`acef0100`); no key work | | |
-| V-G6 | Every statement of `docs/cyclonev-pram.md` and `docs/cyclonev-native-decoder.md` field positions | those files | PARKED, label: ORACLE-ONLY (Mistral-derived) | tables are Mistral-sourced (`docs/cyclonev-native-decoder.md` line 10, 117) | relabel when work resumes | |
-| V-F1 | "Cyclone V `.enc` files are encrypted" | none stands (`docs/cyclonev-vendor-data.md` states plain zlib after an 8-byte header) | CORRECTED (docs only) | `78 9c` after `ac0f010000000000`, `zlib.decompress(data[8:])` | | |
+| V-G1 | PRAM address reversal `A = N-1-L` | `docs/altera/cycloneV/cyclonev-clean-pram.md` Open | PARKED | found against the Mistral oracle, not vendor code; `PGMIO_F2P::make_cff_frame` decompile failed (thunk through a GOT pointer, `analysis/cv/pgmio_cff.c`) | derive from vendor code | `PGMIO_F2P::make_cff_frame` libpgm_pgmio 0x14a900 (unresolved) |
+| V-G2 | Strip sizes / order / `fs` | `docs/altera/cycloneV/cyclonev-pram.md` geometry, `docs/altera/cycloneV/cyclonev-clean-pram.md` | PARKED | from Mistral `cvd` tables and `scripts/cyclonev_native_tables.py`; not in any vendor file read | derive from vendor code | as V-G1 |
+| V-G3 | Die 0x13 geometry | `docs/altera/cycloneV/cyclonev-pram.md` | PARKED (UNVERIFIED) | CRC- and claim-validated only; no Quartus pair | | |
+| V-G4 | IO fields (GPIO, LVDS) name / position | `docs/altera/cycloneV/cyclonev-pram.md` | PARKED | CSV names a subset (27 % / 12 %); no proven BINDEX -> bit map | | |
+| V-G5 | devxml models | `docs/altera/cycloneV/cyclonev-clean-pram.md` | PARKED | encrypted wrappers (`acef0100`); no key work | | |
+| V-G6 | Every statement of `docs/altera/cycloneV/cyclonev-pram.md` and `docs/altera/cycloneV/cyclonev-native-decoder.md` field positions | those files | PARKED, label: ORACLE-ONLY (Mistral-derived) | tables are Mistral-sourced (`docs/altera/cycloneV/cyclonev-native-decoder.md` line 10, 117) | relabel when work resumes | |
+| V-F1 | "Cyclone V `.enc` files are encrypted" | none stands (`docs/altera/cycloneV/cyclonev-vendor-data.md` states plain zlib after an 8-byte header) | CORRECTED (docs only) | `78 9c` after `ac0f010000000000`, `zlib.decompress(data[8:])` | | |
 
 ## Banned patterns
 

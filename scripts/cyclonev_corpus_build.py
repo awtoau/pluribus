@@ -53,7 +53,7 @@ KEEP = {"src", "design.toml"}
 PY = shutil.which("python3.15t") or sys.executable
 
 # Host-process guard (agent-rules): stall = no output line for 60 s -> kill + fail.
-# Overall = 3x the measured cold worst case per step (docs/cyclonev-postfit-oracle.md).
+# Overall = 3x the measured cold worst case per step (docs/altera/cycloneV/cyclonev-postfit-oracle.md).
 STALL_S = 60
 OVERALL_S = {"quartus_map": 12, "quartus_fit": 23, "quartus_asm": 6,
              "quartus_eda": 3, "quartus_cpf": 2, "quartus_sta": 4, "quartus_cdb": 4, "decomp": 4,

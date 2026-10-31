@@ -1,6 +1,6 @@
 """Quartus .ddb container reader (body only).
 
-source: file header of every devinfo .ddb, layout read from the files (docs/cyclonev-ddb-format.md).
+source: file header of every devinfo .ddb, layout read from the files (docs/altera/cycloneV/cyclonev-ddb-format.md).
 """
 import lzma
 import struct

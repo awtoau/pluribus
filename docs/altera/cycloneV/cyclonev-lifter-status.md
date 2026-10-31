@@ -1,6 +1,6 @@
 # Cyclone V lifter — status
 
-> #106 (2026-10-24): LUT/FF recovery was rewritten against the Quartus post-fit oracle. The LUT5 / Q-net-only statements below describe the pre-#106 lifter and are superseded by `docs/cyclonev-postfit-oracle.md`.
+> #106 (2026-10-24): LUT/FF recovery was rewritten against the Quartus post-fit oracle. The LUT5 / Q-net-only statements below describe the pre-#106 lifter and are superseded by `docs/altera/cycloneV/cyclonev-postfit-oracle.md`.
 
 First slice of a fifth pluribus family: Altera/Intel Cyclone V. Not a
 Lattice-trellis family — different vendor, different fabric (ALM/LAB,
@@ -9,7 +9,7 @@ not PFU/slice). Code: `lifters/cyclonev_lift.py`. Selftest:
 
 ## Scope: one die, e50f (5CEBA4U19C8)
 
-The die the Quartus corpus targets (`corpus/cyclonev/`, docs/cyclonev-postfit-oracle.md).
+The die the Quartus corpus targets (`corpus/cyclonev/`, docs/altera/cycloneV/cyclonev-postfit-oracle.md).
 Validated only on corpus designs built by Quartus for this part.
 `CycloneVLift.__init__` hard-rejects any other device string —
 extending to another Cyclone V die needs its own ALM/LAB geometry check
@@ -38,7 +38,7 @@ against Mistral, not assumed from e50f.
 
 ## Verified
 
-- Lifter output is judged against the Quartus post-fit oracle on the corpus: `docs/cyclonev-postfit-oracle.md`.
+- Lifter output is judged against the Quartus post-fit oracle on the corpus: `docs/altera/cycloneV/cyclonev-postfit-oracle.md`.
 - `scripts/cyclonev_verify_all.py` (stages 3-4) re-checks LUT/FF/net/arc/pad counts on corpus design `regbank16`; baseline in `EXPECTED_LIFTER` / `EXPECTED_PADMAP`.
 - `scripts/cyclonev_lift_selftest.py <decomp.bt>` does not touch the database (see "No board").
 - A route count or a "decoded" `.bt` is not a quality check: a non-Cyclone-V input also produces a large `.bt` (#114).
@@ -94,7 +94,7 @@ with a different package convention — see `bga_pin_to_int()`'s docstring.
 - **DSP block config** — Mistral decompiles DSP tiles to named `s DSP.*`
   settings (MODE etc) but does not itself say what they mean operationally.
   A separate fuzz campaign maps Quartus-known DSP operations to those
-  settings as ground truth — see `docs/cyclonev-dsp-fuzz-status.md`
+  settings as ground truth — see `docs/altera/cycloneV/cyclonev-dsp-fuzz-status.md`
   (multiplier modes M9X9/M18X18/M27X27 confirmed; accumulate/systolic modes
   still open). Not wired into this lifter yet.
 - **HPS** (hard processor system), **PLLs/FPLL**, **HMC/DQS16** (hard
@@ -263,4 +263,4 @@ pin, which only a real board.toml could carry. A real Cyclone V
 - `config` in `[bitstreams.<label>]` is the `.bt` (regenerable, keep under `tmp/`); `bin` is the flash image or `.rbf`.
 - `pins.tsv` is optional annotation: column 1 is the BGA ball (`AA10`), cols 7/8 function/confidence, 9-11 chip_ref/chip_pin/chip_signal; applied to `pad_map` by `label == ball` (`si_function` carries `"<function> [conf N]"`).
 - `scripts/cyclonev_io_report.py` dumps per-pad features (bank, ports, settings, HMC/DQS16 links, LUT-consumer counts) to a TSV.
-- Output limits: `docs/cyclonev-postfit-oracle.md`.
+- Output limits: `docs/altera/cycloneV/cyclonev-postfit-oracle.md`.

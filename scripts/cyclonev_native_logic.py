@@ -4,7 +4,7 @@
 Per field: matched / missing / extra / wrong. Headline = matched / (matched + missing + extra + wrong).
 Quartus side: postfit_atoms / postfit_conns (corpus.db, read-only). Native side: Model.settings() / Model.routes().
 Mapping rules used here (ALM address function, T/B halves, FF slot numbering) are the ones proven in
-docs/cyclonev-postfit-oracle.md; their re-derivation from split A only is scripts/cyclonev_native_verify.py lutmap.
+docs/altera/cycloneV/cyclonev-postfit-oracle.md; their re-derivation from split A only is scripts/cyclonev_native_verify.py lutmap.
 """
 import collections
 import json

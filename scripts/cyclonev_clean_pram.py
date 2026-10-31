@@ -3,7 +3,7 @@
 
   tables   per die: asmdb header, extent count, tiling check (coverage / overlap)   [vendor only]
   compare  vendor extents vs Mistral pram.txt (ORACLE, run after the derivation)   [oracle]
-Log: tmp/logs/cyclonev_clean_pram.log. Doc: docs/cyclonev-clean-pram.md
+Log: tmp/logs/cyclonev_clean_pram.log. Doc: docs/altera/cycloneV/cyclonev-clean-pram.md
 """
 import argparse
 import collections

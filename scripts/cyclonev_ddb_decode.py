@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Cyclone V `.ddb` container decoder (Quartus devinfo files). Format: docs/cyclonev-ddb-format.md.
+"""Cyclone V `.ddb` container decoder (Quartus devinfo files). Format: docs/altera/cycloneV/cyclonev-ddb-format.md.
 
 Streams the body (never holds more than one 1 MiB block of inflated output plus the compressed file);
 peak RSS is the file size + a few MB, independent of the 268 MB+ inflated size.

@@ -7,15 +7,15 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
   - Tracked: `src/` and `design.toml`.
   - Gitignored: build outputs, `bitstream.rbf`, `bitstream.compressed.rbf`, `postfit.vo`, `rcf`, `decomp.bt`, `corpus.db`.
   - Builder: `scripts/cyclonev_corpus_build.py`. Generator: `scripts/cyclonev_construct_gen.py`. Report: `scripts/cyclonev_construct_report.py`.
-- **Decoder (native, default):** `scripts/cyclonev_decode.py` (`.rbf` -> `.bt`, and `encode_rbf` back). Tables in `scripts/cyclonev_native_tables.py`, corrections in `scripts/cyclonev_native_overrides.py`. Doc: `docs/cyclonev-native-decoder.md`.
-- **Compressed streams:** `scripts/cyclonev_decompress.py`, validated 236/236 against Quartus. Doc: `docs/cyclonev-compressed-rbf.md`.
+- **Decoder (native, default):** `scripts/cyclonev_decode.py` (`.rbf` -> `.bt`, and `encode_rbf` back). Tables in `scripts/cyclonev_native_tables.py`, corrections in `scripts/cyclonev_native_overrides.py`. Doc: `docs/altera/cycloneV/cyclonev-native-decoder.md`.
+- **Compressed streams:** `scripts/cyclonev_decompress.py`, validated 236/236 against Quartus. Doc: `docs/altera/cycloneV/cyclonev-compressed-rbf.md`.
 - **Unpack:** `scripts/cyclonev_unpack.py` (`--decoder native|mistral`, `--crosscheck`). Mistral is cross-check only.
 - **Lifter:** `lifters/cyclonev_lift.py`. Sibling of ECP5 and MachXO2; no shared flags.
 - **Oracles:**
   - post-fit netlist: `scripts/cyclonev_vo_parse.py`, `scripts/cyclonev_postfit_compare.py`
   - routing (RCF): `scripts/cyclonev_rcf_parse.py`, `scripts/cyclonev_rcf_crosscheck.py`
   - clock tree: `scripts/cyclonev_clock_tree_extract.py` (data in `lifters/data/cyclonev_e50f_clocks.json`)
-  - docs: `docs/cyclonev-postfit-oracle.md`, `docs/cyclonev-rcf-oracle.md`
+  - docs: `docs/altera/cycloneV/cyclonev-postfit-oracle.md`, `docs/altera/cycloneV/cyclonev-rcf-oracle.md`
 - **Scorecard:** `scripts/cyclonev_lift_scorecard.py`.
 
 ## Status (measured 2026-10-26)
@@ -40,7 +40,7 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
   - RAM: 18 M10K + 4 MLAB designs from before and 7 added (init contents, ROM, single port, dual clock) pass. Contents, widths, clocks, modes are decoded from the bitstream. `c_rom_vnd_mlab_8` was placed in an M10K by Quartus (counted under M10K).
   - DSP: own `cyclonev_mac` model (vendor atom is encrypted), validated: `build.vo` on it vs source RTL, 11 / 11 designs (`scripts/cyclonev_dsp_model_check.py`). Lifted vs source RTL 1416611 / 1416611.
   - DSP model vs the encrypted vendor atom (`scripts/cyclonev_dsp_vendor_check.py`, Questa): 267 / 267 configs, 51264000 / 51264000 bits after fixing `m9x9` bits above 17 (#121).
-  - PLL: netlist lifted (refclk pad, reset, lock, output counter -> clock net) on our model `lifters/data/cyclonev_fpll_model.v`, measured against the vendor atoms; 3 / 3 PASS, decode 4 / 4 counters. Refclk pad table: 13 / 13 FPLL pin-site combinations evidenced (`CLKIN_0_SRC` = 4 + index in the FPLL `clkin` pad list; 12 `c_pllpin_*` designs + the H10 ones, all PASS on Questa). Detail: `docs/cyclonev-postfit-oracle.md` "PLL".
+  - PLL: netlist lifted (refclk pad, reset, lock, output counter -> clock net) on our model `lifters/data/cyclonev_fpll_model.v`, measured against the vendor atoms; 3 / 3 PASS, decode 4 / 4 counters. Refclk pad table: 13 / 13 FPLL pin-site combinations evidenced (`CLKIN_0_SRC` = 4 + index in the FPLL `clkin` pad list; 12 `c_pllpin_*` designs + the H10 ones, all PASS on Questa). Detail: `docs/altera/cycloneV/cyclonev-postfit-oracle.md` "PLL".
   - Model check (Quartus netlist + models vs `src/`): `model=ok` on every simulated design with a comparable sample, 0 wrong.
 - **Structural (lifter fields vs Quartus post-fit, `scripts/cyclonev_lift_scorecard.py`), matched / total:**
   - The compare applies Quartus's `!` flags, so LUT masks and output buffers are scored as functions of
@@ -59,7 +59,7 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
 - **Gate notes:** self-feeding LUTs (Cyclone V) are emitted as `reg _fb_<z> = 1'b0; always @* _fb_<z> = lut[..{_fb_<z>}..]`: the vendor `cyclonev_lcell_comb` has `combout_tmp = 0` at t=0, so a hold latch powers up at 0, not X (Questa 0 missing on `c_latch_v95_1`). A zero-delay inverting self-loop (`c_latch_v95_1` q3) has no reference in Quartus either; the gate holds its enable input at 0. Step limits: stall (no CPU progress 60 s) + 3x measured backstop (#121).
 
 ## Still open
-1. ~~`_lut_self_latch()`~~ closed 2026-10-24: removed. `c_latch_v95_1` (Quartus-built) showed it wrong (q1 never sets, q2 refused, oscillator emitted as a latch). Detail: `docs/cyclonev-postfit-oracle.md` "Self-feeding LUT latch".
+1. ~~`_lut_self_latch()`~~ closed 2026-10-24: removed. `c_latch_v95_1` (Quartus-built) showed it wrong (q1 never sets, q2 refused, oscillator emitted as a latch). Detail: `docs/altera/cycloneV/cyclonev-postfit-oracle.md` "Self-feeding LUT latch".
    - Item 9 below (port-space masks, pad inverters): closed.
 2. **Memory LABs (MLAB):** RAM halves are lifted (gate passes). Still open: in the four `c_ram_vnd_mlab_*` designs 8 CRAM bits are unclaimed and 224 frames fail their EDCRC.
 3. **Clock tree:** validated on two corpus pads (K17, L17) only. PLL inputs, HR/VR muxes and other clock paths have no evidence.
@@ -70,7 +70,7 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
    - Not closed: CRAM option bit 6.3 and the CvP bit. `OPT_B` is `ffffff40.2dffffff` in all 237 designs, so the corpus cannot name either bit; naming needs a knob build.
 6. **Re-encode check:** first step done 2026-10-26 (`scripts/cyclonev_reencode.py`, #112), see "Re-encode round trip" below. A one-LUT-bit Verilog-change rebuild is still not done.
 7. **Dies:** e50f (die byte 0x05) and, since 2026-10-26, the gt150f die = 5CEBA7 / 5CEFA7 (die byte 0x13), see "Second die" below. sx50f, sx120f and any HPS die are refused.
-9. ~~**lifted.v polarity**~~ closed 2026-10-24: LUT tables are over the nets, pad output inverters are NOT rows (rule: `docs/cyclonev-postfit-oracle.md` "Polarity"). Gate: `scripts/cyclonev_lifted_sim_check.py --all`, stage 5 of `cyclonev_verify_all.py`.
+9. ~~**lifted.v polarity**~~ closed 2026-10-24: LUT tables are over the nets, pad output inverters are NOT rows (rule: `docs/altera/cycloneV/cyclonev-postfit-oracle.md` "Polarity"). Gate: `scripts/cyclonev_lifted_sim_check.py --all`, stage 5 of `cyclonev_verify_all.py`.
 10. ~~**Register controls in lifted.v**~~ closed 2026-10-24: emitted from `ffs.d/clk/ce/lsr` + `ffs.dtype` flags (no schema change). Gate: registered 87 / 87.
 11. ~~**Sim gate not covered (RAM, DSP)**~~ closed 2026-10-24: RAM on the plain vendor models, DSP on our own model. Remaining gaps:
     - **PLL:** closed 2026-10-26 (3 / 3 PASS on Questa). Refclk pad closed 2026-10-26 (see PLL). Open: `CLKIN_0_SRC` = 0 (core / PLL-cascade refclk from the clock network) is detected, not lifted; phase shift, presets, bypass, fractional mode, cascade, switchover are NOT LIFTED.
@@ -105,7 +105,7 @@ Parked 2026-10-24 until we know whether a Cyclone V part is needed. Everything b
 - Both are in the default full run (flags only skip them); default `--compile-workers` is now 2.
 
 ## Vendor database (.ddb), 2026-10-26
-- Container fully decoded (all 2,708 files; format `docs/cyclonev-ddb-format.md`): `scripts/cyclonev_ddb_decode.py`, tests `tests/test_cyclonev_ddb.py`.
+- Container fully decoded (all 2,708 files; format `docs/altera/cycloneV/cyclonev-ddb-format.md`): `scripts/cyclonev_ddb_decode.py`, tests `tests/test_cyclonev_ddb.py`.
 - Die map from `device.db` + hdr: 0x05 = `cyclonev_e50f` (5CEBA4/5CEFA4), 0x13 = `cyclonev_d6_gtf150` (5CEBA7/5CEFA7, 56,480 ALM). Die byte = option-RAM strip 6 bits 19..26 (`cyclonev_decode.die_byte`).
 - `asm.ddb` decoded to records of (source node -> destination-mux select bits): `scripts/cyclonev_ddb_asm.py`. Routing CRAM position set identical to the native tables on both dies (6,072,456 and 17,012,500 positions, 0 extra, 0 missing).
 - (mux, code) pairs vs native: e50f 11,764,244 matched, 1,794,432 missing, 597,698 extra (all-bits-set code), 0 wrong = 83.1 %; gt150f 33,061,705 / 5,091,215 / 1,679,292 / 0 = 83.0 %. Missing ~98 % = sources in the die-edge tile ring. Detail in the format doc.

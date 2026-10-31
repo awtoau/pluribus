@@ -7,7 +7,7 @@ Stages (log: tmp/logs/cyclonev_pram_decode.log; local output: vendor-analysis/al
   images   decode the images named in a local {label: path} config; tiers, unmapped counts, pair diffs
   all      cff + oracle + images
 
-Predictions (written before the runs; results in docs/cyclonev-pram.md):
+Predictions (written before the runs; results in docs/altera/cycloneV/cyclonev-pram.md):
   P1 cff:    every IO-cell group is 4 pads x 38 bits (BIT_SEQ 0..37 per pad); the 4 PLL groups share one
              identical (BINDEX, field) list; the CSV covers a strict subset of the PRAM bits (fewer rows
              than PRAM bits of the die).
@@ -19,7 +19,7 @@ Predictions (written before the runs; results in docs/cyclonev-pram.md):
 Evidence tiers per field:
   V  varies across the Quartus oracle builds and always matched (position-discriminating)
   C  matched but constant across builds (consistent; does not pin the bit position)
-  G  GPIO fields covered by the #103 Quartus fuzz (docs/cyclonev-blockmux-fuzz-status.md), die 0x05 only
+  G  GPIO fields covered by the #103 Quartus fuzz (docs/altera/cycloneV/cyclonev-blockmux-fuzz-status.md), die 0x05 only
   T  table only (Mistral-derived mux table, no Quartus value check on this die)
   U  unmapped: set PRAM bit claimed by no mux
 Usage: python3.15t scripts/cyclonev_pram_decode.py {cff,oracle,images,all} [--config images.json]
@@ -76,7 +76,7 @@ CNT_MAP = {
     "c_cnt_prst": ("cnt_preset", "int"), "c_cnt_ph_mux_prst": ("cnt_ph_mux_preset", "int"),
 }
 
-# Fields with Quartus-fuzz evidence on die 0x05 (docs/cyclonev-blockmux-fuzz-status.md, cyclonev-native-decoder.md).
+# Fields with Quartus-fuzz evidence on die 0x05 (docs/altera/cycloneV/cyclonev-blockmux-fuzz-status.md, cyclonev-native-decoder.md).
 GPIO_VALIDATED = {"DRIVE_STRENGTH", "USE_BUS_HOLD", "USE_OPEN_DRAIN"}
 
 

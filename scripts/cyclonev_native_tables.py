@@ -2,7 +2,7 @@
 """Cyclone V native decoder: device tables (bit positions, routing muxes, geometry).
 
 Bootstrap source = Mistral's plain-text `data/` tree + `libmistral/cv-rpats.cc` + `cvd-<die>.cc`
-(no mistral-cv binary). Verification against Quartus oracles: docs/cyclonev-native-decoder.md.
+(no mistral-cv binary). Verification against Quartus oracles: docs/altera/cycloneV/cyclonev-native-decoder.md.
 Derived cache: tmp/cyclonev_native/<die>.pkl (rebuilt when TABLES_VERSION or a source mtime changes).
 
 Env: PLURIBUS_MISTRAL_ROOT (default /mnt/2tb/git/mistral).

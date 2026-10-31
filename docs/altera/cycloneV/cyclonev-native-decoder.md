@@ -12,7 +12,7 @@ Measured 2026-10-24, Quartus 25.1std.0 Lite, die e50f (`5CEBA4U19C8`), corpus = 
 - `scripts/cyclonev_native_overrides.py`: oracle-backed corrections (data, applied at decode time).
 - `scripts/cyclonev_unpack.py --decoder native|mistral` (default native), `--crosscheck` runs Mistral and logs the diff.
 - Native refuses non-`.rbf` containers (`ContainerError`; `--force` overrides). Dies with an HPS (sx50f, sx120f) are not supported.
-- e50f exercised on the full corpus; second die gt150f (5CEBA7, die byte 0x13) on 18 designs, see docs/cyclonev-status.md. `--device auto` selects by die byte.
+- e50f exercised on the full corpus; second die gt150f (5CEBA7, die byte 0x13) on 18 designs, see docs/altera/cycloneV/cyclonev-status.md. `--device auto` selects by die byte.
 
 ## Verification (three strengths kept apart)
 

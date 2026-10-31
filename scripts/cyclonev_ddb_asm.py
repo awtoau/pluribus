@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.15t
 """Cyclone V `asm.ddb` (Quartus route-assembler database) reader + comparison with the native routing tables.
 
-Format: docs/cyclonev-ddb-format.md "asm". Body header = u32 4, u32 N, u32 N, u16 max_n, u16 max_nb. Body = one record per routing SOURCE node; a record lists, for each
+Format: docs/altera/cycloneV/cyclonev-ddb-format.md "asm". Body header = u32 4, u32 N, u32 N, u16 max_n, u16 max_nb. Body = one record per routing SOURCE node; a record lists, for each
 destination mux the source fans out to, the CRAM bits that select it (2-hot / 1-hot code positions).
 
   python3.15t scripts/cyclonev_ddb_asm.py stats  --die e50f|gt150f

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare a Quartus post-fit netlist (postfit_* tables) with our lift of the same bitstream.
 
-Per placed atom, at the same physical location (docs/cyclonev-postfit-oracle.md):
+Per placed atom, at the same physical location (docs/altera/cycloneV/cyclonev-postfit-oracle.md):
   lut_mask / lut_mask_arith  Quartus lut_mask vs Mistral LUT_MASK under the proven ALM mapping
   ff.present, ff.<port>      register exists; driver of d/clk/clrn/ena/sclr/sload
   conn.<port>                LUT data input / obuf input: driving atom, Quartus vs lifted nets
@@ -44,7 +44,7 @@ def lab_pin(half, mode, port):
     """LAB source of lcell input data<port>: LAB pin (A B C D E0 E1 F0 F1), "FB"
     (same-half register feedback) or None (constant).  Mode = <d src>_<e src>:
     D/C = that pin, E = E pin, F = feedback; e src 0/1 = constant.  Evidence: conn.*
-    MATCH counts, and the feedback register is the FEEDBACK_SEL slot (docs/cyclonev-postfit-oracle.md)."""
+    MATCH counts, and the feedback register is the FEEDBACK_SEL slot (docs/altera/cycloneV/cyclonev-postfit-oracle.md)."""
     h = "0" if half == "T" else "1"
     if port in "ab":
         return port.upper()

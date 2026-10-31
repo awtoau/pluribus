@@ -1,4 +1,4 @@
-"""Cyclone V .ddb container decoder + option-RAM die byte (docs/cyclonev-ddb-format.md).
+"""Cyclone V .ddb container decoder + option-RAM die byte (docs/altera/cycloneV/cyclonev-ddb-format.md).
 
 The ddb tests need the Quartus devinfo tree and skip without it; the die-byte tests are self-contained.
 """

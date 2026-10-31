@@ -63,7 +63,7 @@ def main():
     ap.add_argument("--device", default="5CEBA4U19C8", help="model name, or 'auto' = pick the die from the option-RAM die byte")
     ap.add_argument("--rbf", help="where to keep the stripped .rbf (default: <bt>.rbf)")
     ap.add_argument("--decoder", choices=("native", "mistral"), default="native",
-                    help="native: scripts/cyclonev_decode.py (docs/cyclonev-native-decoder.md); mistral: mistral-cv")
+                    help="native: scripts/cyclonev_decode.py (docs/altera/cycloneV/cyclonev-native-decoder.md); mistral: mistral-cv")
     ap.add_argument("--allow-invalid", action="store_true",
                     help="DIAGNOSTIC ONLY: decode even if sync/CRC/frame checks fail (e.g. opaque CRAM); "
                          "statistics only, the result is not a netlist of a real design")

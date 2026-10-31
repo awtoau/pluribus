@@ -76,7 +76,7 @@ PIN RECOVERY — PACKAGE PIN NAMES FROM `.bt` TRAILING COMMENTS
 --------------------------------------------------------------
 - Mistral appends `; <pin>` (BGA coordinate, e.g. `AA10`) to a GPIO-touching r/s/i line when its pinout table covers the ball.
 - `_trailing_pin()` reads the tail the line regexes leave; `recover_pads()` builds `Design.pads`.
-- Evidence: the Quartus corpus `decomp.bt` files (corpus/README.md), method in docs/cyclonev-postfit-oracle.md.
+- Evidence: the Quartus corpus `decomp.bt` files (corpus/README.md), method in docs/altera/cycloneV/cyclonev-postfit-oracle.md.
 - Verified on the corpus:
   - pin identity is (GPIO tile, bi): one-to-one with pin name, no conflicts; enforced live by `_record_pin_annotation`.
   - DATAIN is always the arc source, DATAOUT always the sink.
@@ -98,8 +98,8 @@ SCHEMA FIT — ALM-HALF LUT (a-f), UNIFIED INTO `luts`
   (Quartus data port order); `e`/`f` columns are NULL for the 4-input families.
 - `init` is the function of the NETS: Quartus `lut_mask` indexes the complemented data inputs
   (`_complement_inputs`).  A pad output inverter (`i ...DATAOUT 1`) is an explicit NOT row
-  (`io_inverter`), the pad's net_out its output.  Rule + evidence: docs/cyclonev-postfit-oracle.md "Polarity".
-- Letter -> source per half mode: docs/cyclonev-postfit-oracle.md, `_port_pins()`.
+  (`io_inverter`), the pad's net_out its output.  Rule + evidence: docs/altera/cycloneV/cyclonev-postfit-oracle.md "Polarity".
+- Letter -> source per half mode: docs/altera/cycloneV/cyclonev-postfit-oracle.md, `_port_pins()`.
   Constant/unrouted letters are "1'b0" and the table is folded so it does not depend on them.
 - Registers: one `ffs` row per physical register (half, slot); control sources are kept in
   `Design.ffs[i]["ctl"]` (oracle-checked, see `_ff_controls()`); `d/clk/ce` are written to the
@@ -131,7 +131,7 @@ _M_LINE_RE = re.compile(r"^m\s+(\S+)")
 # The .bt lists a clock-mux input only as `s CMUX*:INPUT_SEL.<i>` and omits an SCLK mux at its
 # default value (mistral cv-rmux.cc route_all_active_links), so the pad -> spine connection is
 # not an `r` arc.  Data: lifters/data/cyclonev_e50f_clocks.json (scripts/cyclonev_clock_tree_extract.py).
-# Evidence + scoring: docs/cyclonev-postfit-oracle.md "Clock tree".
+# Evidence + scoring: docs/altera/cycloneV/cyclonev-postfit-oracle.md "Clock tree".
 _CLOCK_DATA = {}
 _DIE_BY_DEVICE = {"5CEBA4U19C8": "e50f", "5CEBA7U19C8": "gt150f"}
 _CMUX_G = ("HG", "VG")                 # global muxes: gclk[i] = output of instance i
@@ -321,7 +321,7 @@ def _strip_comment(rest):
 
 
 # Package-pin-name comment: BGA row letters + column number ("AA10"). Every pin
-# comment in the corpus decomp.bt files matches (docs/cyclonev-postfit-oracle.md).
+# comment in the corpus decomp.bt files matches (docs/altera/cycloneV/cyclonev-postfit-oracle.md).
 _PIN_RE = re.compile(r"^[A-Z]+[0-9]+$")
 
 
@@ -530,7 +530,7 @@ def _port_pins(half, mode):
     Tokens: LAB input pin (A B C D E0 E1 F0 F1), "FB" (register feedback), "0"/"1" (constant).
     Mode name = <d source>_<e source>: D/C = that pin, E = E pin, F = same-half register
     feedback; e source 0/1 = constant (5-input modes).
-    Evidence: docs/cyclonev-postfit-oracle.md (conn.* rows, feedback register = FEEDBACK_SEL slot).
+    Evidence: docs/altera/cycloneV/cyclonev-postfit-oracle.md (conn.* rows, feedback register = FEEDBACK_SEL slot).
     """
     i = "0" if half == "T" else "1"
     d_src = {"D": "D", "C": "C", "E": "E" + i, "F": "FB"}
@@ -554,7 +554,7 @@ def _ff_controls(block, tile_key, kv, alm_idx, h, slot, lut_fed, sink_nodes):
     source = ("node", CVNode, inverted) | ("lut", (x,y,alm,half)) | ("const", 0|1).
     `inverted` = the register sees NOT(node), the sense of the Quartus post-fit conn flag.
     Every rule below is backed by a corpus differential, 0 exceptions, and fuzz doc items 6-8
-    (docs/cyclonev-postfit-oracle.md "Register controls"):
+    (docs/altera/cycloneV/cyclonev-postfit-oracle.md "Register controls"):
       clk   : {T,B}CLK_SEL names the register PAIR {T0,B1} / {T1,B0} (crossed, not the half);
               source = CLK<n>_INV bit (1 = clkb, else clka; Mistral label swapped, fuzz item 6),
               clka = CLKIN.0 (CLKA_SEL DIN0 -> DATAIN.0), clkb = CLKIN.1 (CLKB_SEL DIN1 -> DATAIN.1);
@@ -630,7 +630,7 @@ def _complement_inputs(tt, inv):
     """Table over the nets from a table over their complements: bit v -> bit v ^ inv.
 
     Every routed LUT data input (a..f) sees NOT(net): Quartus marks 11093/11093 routed
-    lcell data ports `!` (scripts/cyclonev_polarity_evidence.py, docs/cyclonev-postfit-oracle.md
+    lcell data ports `!` (scripts/cyclonev_polarity_evidence.py, docs/altera/cycloneV/cyclonev-postfit-oracle.md
     "Polarity"); cin / sharein are never inverted.
     """
     return sum(((tt >> (v ^ inv)) & 1) << v for v in range(64))
@@ -862,7 +862,7 @@ class CycloneVLift:
             return net_of(node)
 
         # ---- ALM halves: LUT function, LUT inputs, registers (LAB/MLAB only) ----
-        # Mapping evidence: docs/cyclonev-postfit-oracle.md, scripts/cyclonev_lut_pinmap_proof.py.
+        # Mapping evidence: docs/altera/cycloneV/cyclonev-postfit-oracle.md, scripts/cyclonev_lut_pinmap_proof.py.
         sink_nodes = {dst for (_src, dst) in pc.arcs}
         alm_nodes = defaultdict(set)         # (block,x,y) -> ALM indexes touched by routing
         for (src, dst) in pc.arcs:

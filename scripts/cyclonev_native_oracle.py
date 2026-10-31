@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Native Cyclone V decode vs Quartus oracles (claim 1 of docs/cyclonev-native-decoder.md).
+"""Native Cyclone V decode vs Quartus oracles (claim 1 of docs/altera/cycloneV/cyclonev-native-decoder.md).
 
 Oracles (read-only, corpus/cyclonev/corpus.db): postfit atoms/conns (`.vo`), RCF routes (`quartus_cdb` back-annotation).
 Every field reports matched / missing / extra / wrong; the headline is matched / (matched + missing + extra + wrong).

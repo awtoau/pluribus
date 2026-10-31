@@ -4,7 +4,7 @@
 Candidate family: 6 index bits; bit 5 is either a variable letter or the constant given by the mode suffix (E_0/E_1/F_0/F_1);
 optionally bits 2 and 3 swap when index bit 5 is 1; B half optionally swaps letters c/d first. A candidate is consistent
 when, for every sample and every reachable input vector v, raw[j(v)] == NOT q_mask[v].
-Learning uses split A samples only; scoring on B uses the frozen winner (docs/cyclonev-native-decoder.md).
+Learning uses split A samples only; scoring on B uses the frozen winner (docs/altera/cycloneV/cyclonev-native-decoder.md).
 """
 import collections
 import itertools

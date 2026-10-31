@@ -4,10 +4,10 @@
 Re-derives every Mistral-dependent claim this project makes about Cyclone V
 from scratch, against whatever Quartus install is on this machine RIGHT NOW,
 and checks the result against the numbers already documented in
-docs/cyclonev-lifter-status.md / docs/cyclonev-dsp-fuzz-status.md -- not just
+docs/altera/cycloneV/cyclonev-lifter-status.md / docs/altera/cycloneV/cyclonev-dsp-fuzz-status.md -- not just
 "did it run", but "does it still say what we published". Re-run this after a
 Quartus upgrade (or with $PLURIBUS_QUARTUS_BIN pointed at an older install) to
-confirm nothing drifted. See docs/cyclonev-verification.md.
+confirm nothing drifted. See docs/altera/cycloneV/cyclonev-verification.md.
 
 Stages
 ------
@@ -95,13 +95,13 @@ from lifters.cyclonev_lift import CycloneVLift
 
 LOG_PATH = REPO / "tmp" / "logs" / "cyclonev_verify_all.log"
 
-# ── documented ground truth (docs/cyclonev-lifter-status.md,
-#    docs/cyclonev-dsp-fuzz-status.md) -- a mismatch against these is the
+# ── documented ground truth (docs/altera/cycloneV/cyclonev-lifter-status.md,
+#    docs/altera/cycloneV/cyclonev-dsp-fuzz-status.md) -- a mismatch against these is the
 #    actual point of this script, not just "did Quartus/Mistral crash". ──
 EXPECTED_LIFTER = {
     "device": "5CEBA4U19C8", "die": "e50f",
     # Counts for REFERENCE_BT (corpus regbank16); lifter correctness is judged by the
-    # Quartus oracle (docs/cyclonev-postfit-oracle.md), these only catch drift.
+    # Quartus oracle (docs/altera/cycloneV/cyclonev-postfit-oracle.md), these only catch drift.
     # n_nets 140 = 61 LUT outputs + 64 FF Q + 15 input pads (the clkena output is the clock pad net).
     "n_luts": 61, "n_ffs": 64, "n_nets": 140, "n_arcs": 608,
     "n_unparsed_lines": 0,
@@ -111,7 +111,7 @@ EXPECTED_PADMAP = {
     "n_dup_pins": 0,
     "direction_breakdown": {"in": 15, "out": 4},
 }
-# DSP mode mapping (docs/cyclonev-dsp-fuzz-status.md): a design either gets
+# DSP mode mapping (docs/altera/cycloneV/cyclonev-dsp-fuzz-status.md): a design either gets
 # an explicit MODE string, or (mult18x18/multacc18x18) NO MODE line at all
 # because the chip's all-zero default IS that mode -- "none" is itself the
 # documented, confirmed result for those two, not a missing measurement.

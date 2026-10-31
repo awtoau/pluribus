@@ -1528,7 +1528,7 @@ def emit_ffs(data: dict) -> list[str]:
         for clk_expr, cells in sorted(stuck_groups.items()):
             if clk_expr == _NO_CLK:
                 # No resolved clock (Cyclone V: CLK_SEL mux decode not done
-                # yet, see docs/cyclonev-lifter-status.md) -- `posedge` on a
+                # yet, see docs/altera/cycloneV/cyclonev-lifter-status.md) -- `posedge` on a
                 # comment is not valid Verilog.  Recording "undriven", not
                 # fabricating an edge, is the same under-connect-don't-guess
                 # convention as the rest of this lifter.
@@ -1621,7 +1621,7 @@ def emit_ffs(data: dict) -> list[str]:
                 ctl += f"  LSR={lsr_key}"
             if clk_expr == _NO_CLK:
                 # No resolved clock (Cyclone V CLK_SEL mux decode is a
-                # documented gap, see docs/cyclonev-lifter-status.md) --
+                # documented gap, see docs/altera/cycloneV/cyclonev-lifter-status.md) --
                 # `posedge` on a comment is not valid Verilog.  Leaving the
                 # register undriven is the honest representation; the D
                 # expression is reported in a comment, not fabricated into
@@ -2609,7 +2609,7 @@ def emit_fplls(data: dict) -> list[str]:
 
     First IP-recognition emitter in pluribus -- no family had one before.
     `cyclonev_lift.py` does not populate `data["fpll_tiles"]` today (FPLL is
-    explicitly unmodelled there, docs/cyclonev-lifter-status.md); this
+    explicitly unmodelled there, docs/altera/cycloneV/cyclonev-lifter-status.md); this
     function is a no-op (returns []) when that key is absent, so every
     existing pipeline run is unaffected. It is wired in so the day a lifter
     starts populating `fpll_tiles` (tile -> {FIELD: hex_value} straight from
@@ -2619,7 +2619,7 @@ def emit_fplls(data: dict) -> list[str]:
 
     Decode is imported from scripts/cyclonev_fpll_fuzz.py rather than
     duplicated -- one calibrated M/N-counter decode, used by both the fuzz
-    harness and the emitter. See docs/cyclonev-fpll-fuzz-status.md for what
+    harness and the emitter. See docs/altera/cycloneV/cyclonev-fpll-fuzz-status.md for what
     is and is not calibrated: M divide is confirmed for symmetric (50%
     duty, hi==lo) non-bypassed cases and for the bypass case; a configuration
     with hi != lo (any non-50%-duty or odd-division M/N) decodes to
@@ -2647,7 +2647,7 @@ def emit_fplls(data: dict) -> list[str]:
         "    // per-tile; HIGH/MEDIUM means the M/N decode matched the",
         "    // calibration arithmetic, UNKNOWN means the tile's fields fell",
         "    // outside every calibrated case and NO parameter is guessed.",
-        "    // See docs/cyclonev-fpll-fuzz-status.md.",
+        "    // See docs/altera/cycloneV/cyclonev-fpll-fuzz-status.md.",
         "    //",
     ]
 

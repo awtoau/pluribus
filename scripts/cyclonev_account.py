@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Whole-bitstream accounting for the native Cyclone V decoder (claim 3 of docs/cyclonev-native-decoder.md).
+"""Whole-bitstream accounting for the native Cyclone V decoder (claim 3 of docs/altera/cycloneV/cyclonev-native-decoder.md).
 
 Every set configuration bit is either claimed by a named feature (a table entry that reads it) or listed as unclaimed.
 Frame overhead (headers, EDCRC, CRC-16, option/PRAM page checksums) is verified, not counted as a feature.

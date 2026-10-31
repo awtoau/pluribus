@@ -2,7 +2,7 @@
 
 Source: `quartus-25.1/quartus/common/devinfo/cycloneivgx/ddb_stingray4_*.ddb` (STINGRAY4 = EP4CGX150, same files serve EP4CGX110; own licensed install, analysed for interoperability, never redistributed or committed).
 Readers: `scripts/cyclonev_ddb_decode.py` (container, shared with Cyclone V), `scripts/cycloneiv_ddb_asm.py` (asm records), `scripts/cycloneiv_asm_prep.py` (raw record / group / block tables).
-Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](cyclonev-ddb-format.md).
+Measured 2026-10-26. Cyclone V sibling: [cyclonev-ddb-format.md](altera/cycloneV/cyclonev-ddb-format.md).
 
 ## Container
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Parse a Quartus .rcf (quartus_cdb --back_annotate=routing) into rcf_routes.
 
-Grammar (docs/cyclonev-rcf-oracle.md):
+Grammar (docs/altera/cycloneV/cyclonev-rcf-oracle.md):
   signal_name = <net> { <stmt>* }
   stmt: TYPE:X<x>Y<y>S<n>I<idx>;            routing element
         TYPE:X<x>Y<y>S<n>B:<port path>;     block-port element (IO/HMC/clock buffers)

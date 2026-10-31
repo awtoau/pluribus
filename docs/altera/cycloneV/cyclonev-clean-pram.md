@@ -53,6 +53,6 @@ Env: `PLURIBUS_QUARTUS_DEVINFO` = `quartus/common/devinfo/cyclonev` of a Quartus
 
 - Strip sizes / strip order / frame size (`fs`): not in V1-V3. Searched `*_pcf.ddb`, `*_npcf.ddb`; the image container fixes `mpram`, not per-strip sizes. `to_strip_pos` therefore takes strip sizes as an argument.
 - `A = N-1-L` (reversal): found against the oracle, not yet derived from vendor code. `PGMIO_F2P::make_cff_frame` decompile failed (exception-table noise).
-- In-block field positions (PLL M/N/C, GPIO drive, DQS16 internals): the parameter records are present in the same asmdb body (`ASMDB_PARAM_MASTER_*`, `ASMDB_ARCH_GROUP_*`, `m_export_port_to_bit_map`, 656 `pl_fpll_ip_*` names) but their object-reference serialization is not parsed. Field decode and image decode (cleartext PRAM, `docs/cyclonev-pram.md`) are not redone here.
+- In-block field positions (PLL M/N/C, GPIO drive, DQS16 internals): the parameter records are present in the same asmdb body (`ASMDB_PARAM_MASTER_*`, `ASMDB_ARCH_GROUP_*`, `m_export_port_to_bit_map`, 656 `pl_fpll_ip_*` names) but their object-reference serialization is not parsed. Field decode and image decode (cleartext PRAM, `docs/altera/cycloneV/cyclonev-pram.md`) are not redone here.
 - `devxml` block models are encrypted; the unencrypted CSVs (`zb8/zb16`) have no proven BINDEX-to-bit map (`cyclonev-pram.md`).
 - Instance order in the vendor lists is not positional (fPLL list order = strips 0, 10, 3, 7); instance identity to tile coordinates is not derived.

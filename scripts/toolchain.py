@@ -285,7 +285,7 @@ def quartus_bin(required=True):
     this machine is picked up with no code change, which is the whole
     point of the Cyclone V verification harness being able to re-run
     against "whatever Quartus is here right now" (see
-    docs/cyclonev-verification.md).  Never hardcodes one version path.
+    docs/altera/cycloneV/cyclonev-verification.md).  Never hardcodes one version path.
     """
     env = os.environ.get("PLURIBUS_QUARTUS_BIN")
     if env:

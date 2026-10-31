@@ -279,7 +279,7 @@ def decode_m_or_n_counter(hi_div_hex: str, lo_div_hex: str, bypass_en: str,
 
     CALIBRATED empirically this session (NOT the AN 661 "divide = hi+lo"
     model this script started from -- that model was WRONG for this field,
-    see docs/cyclonev-fpll-fuzz-status.md "What did NOT work" section):
+    see docs/altera/cycloneV/cyclonev-fpll-fuzz-status.md "What did NOT work" section):
 
     divide = hi_div alone (== lo_div for the 50%-duty cases fuzzed; a 50%
     duty cycle splits an even divide equally into hi/lo halves, so

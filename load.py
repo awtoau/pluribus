@@ -482,7 +482,7 @@ def load_cyclonev(label, config_path, device, pins_tsv=None, package=None):
 
     Same shape as load_anlogic(): the cyclonev backend recovers LUT5 cells,
     registers (Q net only — D/CLK/CE/LSR unresolved, see
-    docs/cyclonev-lifter-status.md), and real routing arcs/nets via DSU, but
+    docs/altera/cycloneV/cyclonev-lifter-status.md), and real routing arcs/nets via DSU, but
     has no pin/pad/EFB layer (no board.toml exists for any Cyclone V board —
     CLAUDE.md: pluribus stores no board data without one).  So this inserts
     exactly what is recovered — bitstream row, nets, LUTs, FFs, net_fanout,

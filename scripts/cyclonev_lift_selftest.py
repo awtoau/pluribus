@@ -14,7 +14,7 @@ Design.alm_luts (the schema fit this selftest used to work around).
 
 Also reports package-pin recovery (Design.pads) -- real BGA pin names
 recovered from Mistral's trailing `; <pin>` comments, see cyclonev_lift.py's
-module docstring PIN RECOVERY section and docs/cyclonev-lifter-status.md.
+module docstring PIN RECOVERY section and docs/altera/cycloneV/cyclonev-lifter-status.md.
 
 Usage:
     python3 scripts/cyclonev_lift_selftest.py <path/to/sample.bt>

@@ -729,7 +729,7 @@ Index("idx_cv_p2p_dst", cv_p2p.c.die, cv_p2p.c.dst_block_type, cv_p2p.c.dst_bloc
 # cv_route_muxes (see that table's comment): useful today, not meant to be
 # pluribus's permanent source of Cyclone V block-mux truth long-term. A
 # Quartus-fuzzing campaign covering LAB/M10K/DSP/GPIO/PLL/HSSI muxes is real
-# future work (docs/cyclonev-blockmux-status.md), not attempted this session.
+# future work (docs/altera/cycloneV/cyclonev-blockmux-status.md), not attempted this session.
 #
 # TABLE SHAPE: one row per mux_to_source.py `nm` dict (one dict per non-
 # indented line in a *-mux.txt file, AFTER lab_expand() for lab/mlab's 'i'

@@ -4,7 +4,7 @@
 No mistral-cv. Tables come from scripts/cyclonev_native_tables.py (Mistral `data/` text as bootstrap
 source). Output grammar is the one lifters/cyclonev_lift.py reads (m/o/r/s/i lines).
 Oracle-backed corrections to the bootstrap tables: scripts/cyclonev_native_overrides.py.
-Format, verification and gaps: docs/cyclonev-native-decoder.md.
+Format, verification and gaps: docs/altera/cycloneV/cyclonev-native-decoder.md.
 
   python3.15t scripts/cyclonev_decode.py IN.rbf OUT.bt [--device 5CEBA4U19C8] [--no-overrides] [--claims OUT.json]
 """
@@ -206,7 +206,7 @@ def cd_crc16(buf):
 
 
 # Option-RAM die byte: strip 6, bits 19..26, LSB first (= low byte of the Mistral variant idcode).
-# Evidence: 0x05 in every e50f corpus .rbf, 0x13 in the 5CEBA7 builds (docs/cyclonev-ddb-format.md "Die map").
+# Evidence: 0x05 in every e50f corpus .rbf, 0x13 in the 5CEBA7 builds (docs/altera/cycloneV/cyclonev-ddb-format.md "Die map").
 DIE_BYTE_STRIP, DIE_BYTE_BIT0 = 6, 19
 DEVICE_BY_DIE_BYTE = {0x05: "5CEBA4U19C8", 0x13: "5CEBA7U19C8"}
 

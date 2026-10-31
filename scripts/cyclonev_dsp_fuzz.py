@@ -15,7 +15,7 @@ Same proven flow as scripts/cyclonev_die_probe.py:
 then new for this script:
     mistral-cv decomp <model> <rbf> <bt>  -> extract `s DSP.*` lines
 
-Device: 5CEBA4U19C8 (e50f/e50b), the die the lifter targets (docs/cyclonev-lifter-status.md).
+Device: 5CEBA4U19C8 (e50f/e50b), the die the lifter targets (docs/altera/cycloneV/cyclonev-lifter-status.md).
 
 Usage:
     python3 scripts/cyclonev_dsp_fuzz.py              # all designs
@@ -43,7 +43,7 @@ import toolchain
 # Resolved via the shared toolchain module (env var, then conventional
 # install globs, newest version wins) rather than a hardcoded path -- see
 # scripts/toolchain.py:quartus_bin()/mistral_cv() and
-# docs/cyclonev-verification.md for re-running against a different install.
+# docs/altera/cycloneV/cyclonev-verification.md for re-running against a different install.
 QUARTUS_BIN = Path(toolchain.quartus_bin())
 MISTRAL_CV = Path(toolchain.mistral_cv())
 DEVICE = "5CEBA4U19C8"          # e50f/e50b, same as cyclonev_die_probe.py

@@ -35,7 +35,7 @@ Corpus `corpus/cyclonev` (die 0x05, 15 builds with one enabled PLL), `defparam`s
 - Field tiers (computed): V = 5 fields whose value varies across builds and always matched (M hi / lo, output-counter hi / lo / odd-duty); C = 37 matched but constant.
 - Position-pinned bits (both 0 and 1 seen, always equal): 14 of 493 compared bit positions. The corpus varies PLL settings little; the claim is "consistent", not "every bit pinned".
 - PLL counter formula `fout = fref * M / (N * C)` with `M = hi + lo`, `C = hi + lo` of the used counter (checked on the 75 MHz build: M=12, N=2, C=4).
-- Other Quartus evidence for die 0x05 (not re-run here): GPIO `drive_strength` 51 names MATCH, 0 MISMATCH (`docs/cyclonev-blockmux-fuzz-status.md`); pin used / direction / bus_hold / open_drain 100% over 236 designs (`docs/cyclonev-native-decoder.md`).
+- Other Quartus evidence for die 0x05 (not re-run here): GPIO `drive_strength` 51 names MATCH, 0 MISMATCH (`docs/altera/cycloneV/cyclonev-blockmux-fuzz-status.md`); pin used / direction / bus_hold / open_drain 100% over 236 designs (`docs/altera/cycloneV/cyclonev-native-decoder.md`).
 - Not covered by any Quartus pair on any die: IO-standard variants beyond the fuzzed set, OCT termination names, DLL, DQS16 internals, clock-mux selects (presence only), HMC, HSSI, HIP, PMA3.
 
 ## Tiers for decoded images

@@ -100,7 +100,7 @@ RESULTS_PATH = WORK_DIR / "results.json"
 
 # Overall limits = 2-4x the measured one-design time on this host (quartus_map
 # ~4s, quartus_fit ~8s, quartus_asm ~1-2s, cpf <1s, mistral-cv decomp ~1.5s;
-# whole chain 12-14s, docs/cyclonev-blockmux-fuzz-status.md).  Expiry is logged
+# whole chain 12-14s, docs/altera/cycloneV/cyclonev-blockmux-fuzz-status.md).  Expiry is logged
 # with the limit and the command, and the check is INCONCLUSIVE.
 TIMEOUT_QUARTUS_FAST = 30
 TIMEOUT_QUARTUS_FIT = 60
@@ -136,7 +136,7 @@ GPIO_KNOBS = {"drive_strength": _LVCMOS_TTL_KNOBS + _SSTL_HSTL_KNOBS}
 # default build has none).  "knob"/"default": the RAW value the mux name
 # predicts for each build.  None = no expectation (observed only).
 # Sources: data/opt-mux.txt defaults; assignment_defaults*.qdf names; the
-# knob builds listed in docs/cyclonev-blockmux-fuzz-status.md.
+# knob builds listed in docs/altera/cycloneV/cyclonev-blockmux-fuzz-status.md.
 OPT_KNOBS = {
     "jtag_id": {"qsf": ["USE_CHECKSUM_AS_USERCODE Off"], "kind": "usercode"},
     "retry_config_on_error_en": {"qsf": ["AUTO_RESTART_CONFIGURATION Off"],

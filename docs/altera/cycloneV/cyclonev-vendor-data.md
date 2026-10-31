@@ -15,7 +15,7 @@ Facts about files Quartus Prime Lite 25.1std ships for Cyclone V, and what we kn
 
 ## Device `.ddb` files
 
-- Routing, asm, icname, place, timing: see [cyclonev-ddb-format.md](cyclonev-ddb-format.md) and the sizes/decompression notes in [fpga-map-tools-survey.md](fpga-map-tools-survey.md) (zlib after a 0x73-byte header; `asmdb`/`asmdb_dirt` use a different layout) [V].
+- Routing, asm, icname, place, timing: see [cyclonev-ddb-format.md](cyclonev-ddb-format.md) and the sizes/decompression notes in [fpga-map-tools-survey.md](../../fpga-map-tools-survey.md) (zlib after a 0x73-byte header; `asmdb`/`asmdb_dirt` use a different layout) [V].
 
 ## Routing oracle
 

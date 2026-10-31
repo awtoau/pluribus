@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Native Cyclone V decoder verification stages (docs/cyclonev-native-decoder.md).
+"""Native Cyclone V decoder verification stages (docs/altera/cycloneV/cyclonev-native-decoder.md).
 
   account   claimed / unclaimed set bits + frame CRC/EDCRC verification per design (claim 3)
   routes    per-pip / per-net routing vs RCF; element-type map learned on split A, scored on A (in-sample) and B (held out)
@@ -33,7 +33,7 @@ DEVICE = "5CEBA4U19C8"
 WORK = os.path.join(REPO, "tmp", "cyclonev_native")
 RES = os.path.join(WORK, "results")
 log = logging.getLogger("cyclonev_native_verify")
-# mistral-cv decomp of a 2 MB rbf: 1.4-2.7 s measured 2026-10-24 (docs/cyclonev-postfit-oracle.md); limit 15 s.
+# mistral-cv decomp of a 2 MB rbf: 1.4-2.7 s measured 2026-10-24 (docs/altera/cycloneV/cyclonev-postfit-oracle.md); limit 15 s.
 DECOMP_LIMIT_S = 15
 
 

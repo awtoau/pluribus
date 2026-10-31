@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cyclone V compressed .rbf -> uncompressed .rbf, byte-identical to quartus_cpf's own output.
 
-Format (docs/cyclonev-compressed-rbf.md), offsets relative to the 'jjjj' sync S:
+Format (docs/altera/cycloneV/cyclonev-compressed-rbf.md), offsets relative to the 'jjjj' sync S:
 - S-0x80..S   0xFF preamble.  S+4..S+0xa4 option RAM (32 strips x 40 bits, bit-transposed),
               S+0xa6 CRC16 of S+4..S+0xa6, then 0xFF fill.  Raw in both modes.
 - PRAM frames (F bytes, CRC16 last 2) start at S+F-24; the last starts 2a c5 01.  Raw.

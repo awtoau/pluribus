@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""Re-run the Quartus knob/probe builds that back the oracle corrections (docs/cyclonev-blockmux-fuzz-status.md
+"""Re-run the Quartus knob/probe builds that back the oracle corrections (docs/altera/cycloneV/cyclonev-blockmux-fuzz-status.md
 "Mismatch resolution": opt, LAB clock/enable/clear, DSP, CMUX), one build at a time under heavy_lock.
 
 Outputs: tmp/cyclonev_blockmux_fuzz/<build>/<build>.rbf (+ Mistral .bt for cross-reference) and results.json.

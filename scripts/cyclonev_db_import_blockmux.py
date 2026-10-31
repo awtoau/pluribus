@@ -58,7 +58,7 @@ one declared bit-row becomes 10 span rows (5 "top" half-LUT instances at
 MLAB-specific branch when the row is 64 bits wide (lut_mask) that splits the
 row into two 32-bit halves with different offsets for the two boundary rows.
 Reproduced verbatim below, not re-derived, and spot-checked against a live
-run of the real generator (see docs/cyclonev-blockmux-status.md).
+run of the real generator (see docs/altera/cycloneV/cyclonev-blockmux-status.md).
 
 NOT PER-DIE (see schema.py's cv_block_muxes comment) -- confirmed by reading
 the loader: load_mux_data() takes no chip/die parameter, mux_to_source.py's

@@ -10,7 +10,7 @@ Images are named by label in a local, untracked JSON config {label: path}; paths
 Controls run first (uniform random; Quartus-compressed CRAM) so the checks are shown to discriminate.
 
 Usage: python3.15t scripts/cyclonev_aes_conformance.py --config <images.json> [--label L ...]
-Format facts and open points: docs/cyclonev-aes-conformance.md
+Format facts and open points: docs/altera/cycloneV/cyclonev-aes-conformance.md
 """
 import argparse
 import itertools
@@ -30,7 +30,7 @@ LOG = REPO / "tmp" / "logs" / "cyclonev_aes_conformance.log"
 FIXTURE = REPO / "tests" / "fixtures" / "cv_fixture.compressed.rbf"
 log = logging.getLogger("aesconf")
 Z_LIMIT = 5.0          # |z| under uniform-random; 5 sigma = 6e-7 false-fail rate per statistic
-HDR_LEN_CONST = 1428   # compressed streams: 4*len - field (docs/cyclonev-compressed-rbf.md)
+HDR_LEN_CONST = 1428   # compressed streams: 4*len - field (docs/altera/cycloneV/cyclonev-compressed-rbf.md)
 
 # Option bits constant in all 254 Quartus 25.1 streams + 5 older-toolchain streams
 # (docs/fpga-encryption.md): (strip, bit) -> value.  Length field and jtag_id excluded.
@@ -155,7 +155,7 @@ def check_image(label, im):
     pram0 = h["cram_start"] - h["pram_frame"] * h["pram_frames"]
     orig = {"cipher_start": ln % 16, "sync": (im["ext"] - s) % 16, "file_start": im["ext"] % 16,
             "pram_start": (im["ext"] - pram0) % 16}
-    # Quartus' encryptor pads its input to 128-bit blocks (docs/cyclonev-aes-conformance.md): the
+    # Quartus' encryptor pads its input to 128-bit blocks (docs/altera/cycloneV/cyclonev-aes-conformance.md): the
     # encrypted run should be a 16 B multiple.  Aligned at cipher_start = weak PASS (1/16 by chance).
     ok = orig["cipher_start"] == 0
     res.add("len.block16", "PASS" if ok else "FAIL",

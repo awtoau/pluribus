@@ -1,4 +1,4 @@
-"""Cyclone V lifter: LUT mapping and register-control rules (docs/cyclonev-postfit-oracle.md)."""
+"""Cyclone V lifter: LUT mapping and register-control rules (docs/altera/cycloneV/cyclonev-postfit-oracle.md)."""
 import sys
 from pathlib import Path
 

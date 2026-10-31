@@ -1,7 +1,7 @@
 # Cyclone V DSP mode fuzz — status
 
 Ground-truth mapping of Quartus DSP operations to Mistral's decompiled
-`DSP.*` settings. Follow-on to `docs/cyclonev-lifter-status.md`'s explicit
+`DSP.*` settings. Follow-on to `docs/altera/cycloneV/cyclonev-lifter-status.md`'s explicit
 gap: Mistral itself does not decode DSP mux usage/port mapping ("TODO:
 everything" in its own source) — this maps MODE strings to known operations
 by compiling designs where the operation is controlled, not assumed.
@@ -103,7 +103,7 @@ task's stated priority order.
   e50f — 27x27 turned out not to need this, so no ganged-block case has
   been exercised yet at all.
 - M10K block-RAM contents — explicitly out of scope for this task, listed
-  in `docs/cyclonev-lifter-status.md` as a separate follow-on.
+  in `docs/altera/cycloneV/cyclonev-lifter-status.md` as a separate follow-on.
 - LAB-common-logic and peripheral mux decoding — separate follow-on, not
   touched.
 - No lifter integration attempted (`lifters/cyclonev_lift.py` has no DSP

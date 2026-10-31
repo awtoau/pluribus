@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Corpus evidence for the Cyclone V signal-polarity rules (docs/cyclonev-postfit-oracle.md "Polarity").
+"""Corpus evidence for the Cyclone V signal-polarity rules (docs/altera/cycloneV/cyclonev-postfit-oracle.md "Polarity").
 
 1. LUT data inputs: every routed cyclonev_lcell_comb data{a..f} port in build.vo, `!` or not.
 2. Pad outputs: per output pin, Quartus obuf `.i(!...)` vs a `.bt` inverter line

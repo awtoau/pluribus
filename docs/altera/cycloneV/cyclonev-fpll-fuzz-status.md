@@ -155,7 +155,7 @@ whose decode came back UNKNOWN.
 `sections` list — but NOT plumbed through `cyclonev_lift.py` or `load.py`.
 `data["fpll_tiles"]` is never populated by any current lifter
 (`cyclonev_lift.py` does not model FPLL, confirmed in
-`docs/cyclonev-lifter-status.md`'s "explicitly out of scope" list),
+`docs/altera/cycloneV/cyclonev-lifter-status.md`'s "explicitly out of scope" list),
 so `emit_fplls()` is a no-op (`return []`) on every real pipeline run
 today, including the Hantek/MachXO2 regression (not MachXO2 anyway) and
 any Cyclone V lift. This matches the task's own stated acceptable scope:
@@ -174,7 +174,7 @@ raw `.bt` settings is real follow-on work, not attempted this session.
   0 conflicting-driver, 0 loops.** Observed fabric counts:
   `2636/1280 (205%) LUTs, 1090 FFs, 4393 nets` — this does NOT match the
   documented baseline `2611/1280 (203%) LUTs, 1108 FFs, 4341 nets`
-  (`docs/cyclonev-lifter-status.md`, `docs/cyclonev-blockmux-status.md`).
+  (`docs/altera/cycloneV/cyclonev-lifter-status.md`, `docs/altera/cycloneV/cyclonev-blockmux-status.md`).
   **Confirmed this mismatch pre-exists this session's work**: checked out
   the commit immediately before this session's changes
   (`d0a8162fc`, before `scripts/cyclonev_fpll_fuzz.py`/`emit_fplls()`
@@ -183,7 +183,7 @@ raw `.bt` settings is real follow-on work, not attempted this session.
   was already stale on `main` before this session touched anything; this
   session's `verilog.py` change (a pure no-op addition gated on an absent
   key) cannot be the cause. Flagged here per the project's own mismatch
-  convention (`docs/cyclonev-verification.md`); not investigated further
+  convention (`docs/altera/cycloneV/cyclonev-verification.md`); not investigated further
   — out of scope for issue #104, and not introduced by this work.
 
 ## Reproducing

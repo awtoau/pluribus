@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write docs/cyclonev-construct-dictionary.md from the corpus DB (issue #104).
+"""Write docs/altera/cycloneV/cyclonev-construct-dictionary.md from the corpus DB (issue #104).
 
 Reads corpus_builds / postfit_atoms / postfit_conns / gate_verdicts / route_hops for every
 design whose design.toml has a `construct` field (made by scripts/cyclonev_construct_gen.py).
@@ -19,7 +19,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 os.environ.setdefault("PLURIBUS_SQLITE_PATH", str(REPO / "corpus" / "cyclonev" / "corpus.db"))
 sys.path.insert(0, str(REPO))
-OUT = REPO / "docs" / "cyclonev-construct-dictionary.md"
+OUT = REPO / "docs" / "altera" / "cycloneV" / "cyclonev-construct-dictionary.md"
 LOG = REPO / "tmp" / "logs" / "cyclonev_construct_report.log"
 log = logging.getLogger("construct_report")
 

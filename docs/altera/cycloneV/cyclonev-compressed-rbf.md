@@ -33,7 +33,7 @@ Offsets relative to the `jjjj` sync `S` (`S = 0x80` in every Quartus file).
 - **Die fingerprint without a device table**: strip 6 bits 19..26 = IDCODE byte (`0x02BXX0DD` -> `XX`), plus PRAM geometry (`F` x frame count) and CRAM frame count.
 - Frame sizes are found from the CRC16 chain, so the decoder needs no per-die table.
 - A stream shifted by whole bits (e.g. one extra leading `0xF` nibble from a container) is detected from the sync and realigned (`--realign-only` to do only that).
-- Encrypted streams: header and PRAM parse, CRAM does not. The decoder reports the coded-CRAM byte entropy (encrypted ≈ 8.0; Quartus-compressed CRAM ≤ 2.5 here). Evidence and open questions: [fpga-encryption.md](fpga-encryption.md).
+- Encrypted streams: header and PRAM parse, CRAM does not. The decoder reports the coded-CRAM byte entropy (encrypted ≈ 8.0; Quartus-compressed CRAM ≤ 2.5 here). Evidence and open questions: [fpga-encryption.md](../../fpga-encryption.md).
 
 ## Per-die geometry (Quartus SFL `.sof` per die, `quartus_cpf` only)
 
@@ -70,10 +70,10 @@ Measured 2026-10-24 on base commit `b7d1ce7f0`, Quartus 25.1std.0 Lite (`scripts
 
 - Compressed-side length field low bit (1427 vs 1428 above) not derived; the decoder never needs it.
 - Compressor not written; Quartus' explicit-zero-nibble choices not modelled.
-- Encrypted (AES) streams: no oracle — Quartus 25.1 Lite refuses `--key` (`Error 213052: Design security feature is not enabled`). Which option bits mean "encrypted" is unconfirmed: see [fpga-encryption.md](fpga-encryption.md).
+- Encrypted (AES) streams: no oracle — Quartus 25.1 Lite refuses `--key` (`Error 213052: Design security feature is not enabled`). Which option bits mean "encrypted" is unconfirmed: see [fpga-encryption.md](../../fpga-encryption.md).
 - Container `0xFF` padding beyond 1024 bytes is treated as padding and trimmed to a 32-bit boundary; the length field then follows the trimmed length, not the original Quartus file.
 - `scripts/cyclonev_unpack.py` keeps the 0xFF preamble + sync, validates with this decoder and dies on a failed check (#114). Check: `scripts/cyclonev_unpack_check.py` -> 236/236 `.bt` identical to the stored `decomp.bt`.
 
 ## Encrypted bitstreams
 
-Moved to [fpga-encryption.md](fpga-encryption.md) (all families, detection evidence, open questions).
+Moved to [fpga-encryption.md](../../fpga-encryption.md) (all families, detection evidence, open questions).

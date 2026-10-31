@@ -42,7 +42,7 @@ from sqlalchemy import select, insert
 # Resolved via the shared toolchain module (#90-style convention: env var,
 # then conventional install globs, newest version wins) rather than a
 # hardcoded path -- see scripts/toolchain.py:quartus_bin() and
-# docs/cyclonev-verification.md for re-running against a different install.
+# docs/altera/cycloneV/cyclonev-verification.md for re-running against a different install.
 QUARTUS_BIN = Path(toolchain.quartus_bin())
 
 
