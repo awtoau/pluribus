@@ -1,0 +1,6 @@
+top = "top"
+purpose = "#188 real-design template match: picorv32 (picorv32.v), current Quartus install, EP4CGX150DF31C7"
+exercises = ["real_design_match"]
+qsf = ["set_global_assignment -name AUTO_GLOBAL_CLOCK OFF", "set_global_assignment -name SEED 1"]
+device = "EP4CGX150DF31C7"
+io_pins_used = 15

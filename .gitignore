@@ -71,6 +71,13 @@ corpus/cyclonev_e150/corpus.db
 corpus/cycloneiv/*/*
 !corpus/cycloneiv/*/src/
 !corpus/cycloneiv/*/design.toml
+# real_* specimens (#188) wrap third-party RTL from sources/real-designs/ (own manifest/licence
+# there): the wrapper top.v we wrote is ours to track, but the vendored core itself must stay
+# out of the tree even though it landed inside a tracked src/ dir -- same no-third-party-source
+# rule as sources/real-designs/* itself, just reapplied here since src/ is otherwise re-included.
+corpus/cycloneiv/real_*/src/sha_v2004.v
+corpus/cycloneiv/real_*/src/picorv32.v
+corpus/cycloneiv/real_*/src/vexiiriscv_minimal.v
 # Commercial-product firmware, and the bitstreams carved out of it by
 # scripts/ecp5_carve.py.  Same rule as corpus/ecp5/, and it matters more here:
 # these are vendor update files downloaded for decoder interoperability testing.
