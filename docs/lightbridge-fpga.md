@@ -63,6 +63,9 @@ Status changes fast: numbers are from the run named in each section; evidence li
   - The FPGA id/version word the MCU checks was not found as a constant (U).
 - ID registers: the MCU writes five ID bytes to registers 3..7 (ground). Three 8-bit equality trees compare registers 3, 4, 5 with three 8-bit groups of FFs (24 FFs) loaded from the demodulated path; registers 6 and 7 feed muxes and carry chains, not comparators (V). The combiner LUT also uses a flag FF.
 - Frequency words and ID are both 5 bytes, in different register ranges (0xB0..0xBE vs 3..7); no sign they are the same thing.
+- ID comparator inputs resolved (V, cell-traced, `scripts/cycloneiv_clean_duml_entry_trace.py`, #177): the other side of the three equality trees is a 24-FF register at (33-34, 89-90) (enable `lc_34_90_1`) latched from an 11-bit bit-serial deserialiser at (31,65) (enable `lc_37_67_15`) whose input is demod bit `ff_21_65_0` XOR descrambler bit `ff_29_65_0`. The combiner `lc_37_90_12` (match) enables a 24-bit carry-chain counter at (37,88)/(37,89) (23 cin LEs) feeding MAC (43,84): the ID match resynchronises the frame timer, so regs 3..5 are the RX address filter. Reg 3 (first copy) also enters, through LUTs at (31,64)/(33,64), the read address of the six 2048x4 tables (36,57..62) that feed MACs (14,53..64)/(43,62..65) (V structure, purpose I). Reg 6 copy 2 reaches only readback; reg 7 copy 2 reaches the (29,87)/(28,90) control logic. The m1400's 2 x 256 boot writes fill both register copies, one pass per reg0-bit7 value (I).
+- Uplink record regs 0x44..0x7B (the 56-byte per-frame record m1400 writes, `FUN_0001698a`) are read field-wise in parallel: 0x44-0x4E -> (66,78), 0x4F-0x51 -> (67,83), 0x52-0x53 -> (87,75), 0x54-0x55 -> (69,80), 0x56-0x58 -> (67,81); sinks within 4 FF stages are MAC a-operands (74,78)/(74,79)/(74,85)/(43,73), M9K data (81,77)/(65,77) and the (94,65..70) address port; within 8 stages the (52,*), (110,62..73), (23,67..71), (36,73..87) M9K banks (V). The record never reaches the TX sample RAMs within 8 stages: its path to the TX samples runs through the baseband arithmetic and is not cell-traced.
+- Nothing DUML-shaped returns over SPI0: the ~140 snapshot FFs are the single-byte status reads the firmware does (0x00/08/09/0C/10, 0x8B..0x8E, 0x9D/0x9F, 0xC0..0xCF, 0xD0/D1, 0xD9/DA, 0xE0..0xEF; m1400 side, #177). Air->ground DUML leaves on pad AC11 (section 9).
 
 ## 7. Scramblers, CRC, restarts
 
@@ -82,7 +85,11 @@ Status changes fast: numbers are from the run named in each section; evidence li
 ## 9. FX3 side
 
 - FPGA is the master of an 8-bit slave-FIFO (GPIF II): 8 bidirectional data pads with a shared OE, 7 outputs, PCLK from a toggle FF on PLL_8 (V/I), 2 flags.
-- Stream: raw Annex-B H.264 (1280x720@25, High L5.0), SPS+PPS every 60 AUs, 9-AU intra-refresh sweep, 0 IDR, PKTEND after each AUD; FX3 wraps `55 CC <type><len>`. DUML never rides this port (FX3 UART).
+- Stream: raw Annex-B H.264 (1280x720@25, High L5.0), SPS+PPS every 60 AUs, 9-AU intra-refresh sweep, 0 IDR, PKTEND after each AUD; FX3 wraps `55 CC <type><len>`. DUML never rides this port FPGA->FX3; the FX3->FPGA direction does carry bytes (below).
+- Video/DUML split, cell-traced (V, `scripts/cycloneiv_clean_duml_entry_trace.py`, #177): the decoded byte register (13,25) (reads M9K (7,9)/(23,8)/(23,9)/(36,8)/(36,9), the bottom baseband array) writes two destinations under a demux at (11,45)/(12,47) (select FFs `ff_11_45_3/6`, `ff_12_47_4`, fed by a 16-FF field register (17,45)): 64 tiles of 8192x1 in 8 groups of 8 (we `lc_19_45_0/3/5/6/7/11/14/15`) = the 64 KB video buffer the FX3 DQ drivers read, and the 2048-byte FIFO (7,32)+(7,33) (2 x 2048x4, we `!lc_12_47_12`, write pointer (9,33), read pointer (6,32)) serialised on pad **AC11**. The FX3 DQ pads captured as inputs land in FIFO M9K (7,46) (we from the FX3 control LAB (21,53)), serialised on pad **AC10**.
+- AC10 and AC11 are two copies of one UART transmitter: 16-bit carry-chain divider ((3,45) / (9,34), active-low sync clear at count 390 -> 391 clk_main per bit), 4-bit bit counter, 8:1 bit mux into one output FF. 391 clocks is 256000 baud at 100.1 MHz, which is PLL_8 c0 (2.5 x Fin) with Fin = 40 MHz (the radio Fref): consistent with the m1400's UART2 (256000, peer unknown on the MCU side). 115200 would need 45 MHz, which no PLL output gives from a 40 MHz Fin. So air->ground DUML leaves the FPGA on AC11 and FX3-sourced bytes (app->MCU, I) on AC10; neither crosses SPI0 (I: the DUML/app identification of the two streams; V: the structures and ratios).
+- Frame-timing outputs: AC8 (`ff_40_88_10`, the TX burst gate ANDed into all 12 TXD drivers) and AB12 (`ff_40_88_11`) come from the frame FSM (38,86)/(39,86) over the 21-FF frame counter (32,89)/(32,90), moded by reg 0x2 bits [1:0] and reg 0 bits [2:0]: candidates for the m1400's P2.3 frame-sync IRQ or AD9363 ENABLE/TXNRX. U22 is an MCU-written reg-0x20 bit on a pad, not a flag.
+- TX sample path correction to section 5: the two TX RAMs (23,62)/(23,63) use 16 words x (18+6) distinct bits (upper 4 address bits tied high, word halves duplicated), read by a 4-bit counter (26,63) cleared by `ff_27_63_6`; pad = gate `ff_40_88_10` AND a RAM-bit mux, reg 0x20 bit 7 selects a one-clock delayed copy. RAM data arrives through a ~9-stage pipeline at (13-20, 58-64) from the 2048x4 bank (23,55)/(23,58)/(23,61)/(36,54)/(36,55) (written from x=102 arithmetic); regs 0x8/0x9 contribute single bits; write strobe `lc_15_62_13` and write pointer (34,61) come from the frame sequencer, not from an SPI write.
 
 ## 10. Clocks
 
@@ -118,7 +125,9 @@ Status changes fast: numbers are from the run named in each section; evidence li
 ## 12. Open
 
 - Receive pipeline (RX pads to demodulation), TX RAM write path and I/Q order, PLL clock plan, SPI frame register mapping.
-- Peer-ID readback source, lock bit, FPGA id word, ID comparator inputs.
+- Lock bit, FPGA id word. (ID comparator inputs and the readback snapshot source: resolved, section 6.)
+- Which MCU UART pins AC10/AC11 land on, and the (17,45) field value that steers the demux (video vs DUML): MCU-side / value-level, not structural.
+- The uplink record's path from the baseband arithmetic to the TX sample RAMs.
 - What the microcode-like ROMs run, and any prior art (open-source or vendor) behind the tables and control.
 - Data modulation and coding on the air interface (needs a two-channel capture or the FPGA pipeline).
 
