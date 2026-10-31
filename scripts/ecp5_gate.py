@@ -42,7 +42,7 @@ VERDICT_KIND = {"MATCH": "matched", "LIFT_MISSING": "missing", "ORACLE_ONLY": "m
 DEFAULT_BASELINE = os.path.join(REPO, "tests", "baselines", "ecp5_oracle.json")
 
 # Stall = no CPU progress for 60 s (project rule for host processes).
-# Overall = 3x measured cold worst: oracle batch 70 s (docs/ecp5-diamond-oracle.md),
+# Overall = 3x measured cold worst: oracle batch 70 s (docs/lattice/ecp5/ecp5-diamond-oracle.md),
 # compare ~15 min with 85F sequential (same doc).  Expiry: step killed, logged, exit 2.
 STALL_S = 60
 ORACLE_OVERALL_S = 3 * 70

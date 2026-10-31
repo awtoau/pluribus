@@ -12,7 +12,7 @@ The interesting rows are where 1-3 hold and 4 does not: the data exists and the
 place-and-route tool cannot use it.  Those are implementable gaps, not research
 problems.
 
-Writes a markdown matrix to docs/ecp5-gap-matrix.md and logs to tmp/logs/.
+Writes a markdown matrix to docs/lattice/ecp5/ecp5-gap-matrix.md and logs to tmp/logs/.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ _NEXTPNR = toolchain.sibling_repo("nextpnr", "NEXTPNR_ROOT",
 NEXTPNR_ECP5 = Path(_NEXTPNR) / "ecp5" if _NEXTPNR else None
 
 LOG_DIR = REPO / "tmp/logs"
-OUT_DOC = REPO / "docs/ecp5-gap-matrix.md"
+OUT_DOC = REPO / "docs/lattice/ecp5/ecp5-gap-matrix.md"
 OUT_JSON = REPO / "tmp/ecp5_gap_matrix.json"
 
 # Pure combinational / soft primitives that Yosys implements natively via

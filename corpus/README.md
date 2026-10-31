@@ -1,7 +1,7 @@
 # corpus/
 
-- `manifest.json`, `commercial-manifest.json` — ECP5 third-party bitstream manifests (see `docs/ecp5-corpus.md`).
-- `cyclonev/` — Cyclone V post-fit oracle corpus (below). Method and results: `docs/cyclonev-postfit-oracle.md`.
+- `manifest.json`, `commercial-manifest.json` — ECP5 third-party bitstream manifests (see `docs/lattice/ecp5/ecp5-corpus.md`).
+- `cyclonev/` — Cyclone V post-fit oracle corpus (below). Method and results: `docs/altera/cycloneV/cyclonev-postfit-oracle.md`.
 
 ## cyclonev/ layout
 
@@ -19,7 +19,7 @@ corpus/cyclonev/
     bitstream.rbf           quartus_cpf raw bitstream
     map.rpt fit.rpt asm.rpt eda.rpt build.pin   Quartus reports
     route_report.txt        quartus_sta report_timing -show_routing (script: quartus/route.tcl)
-    build.rcf               quartus_cdb --back_annotate=routing: every net's full routing tree (docs/cyclonev-rcf-oracle.md)
+    build.rcf               quartus_cdb --back_annotate=routing: every net's full routing tree (docs/altera/cycloneV/cyclonev-rcf-oracle.md)
     decomp.bt               mistral-cv decomp of bitstream.rbf
     lifted.v                our lift: load.py (cyclonev lifter) + verilog.py
     compare.json            per-field verdict counts (same data as gate_verdicts)
@@ -55,7 +55,7 @@ Builder options: `--match 'c_*'` (glob), `--missing` (no DB row yet), `--jobs N`
 
 - 242 designs written by `scripts/cyclonev_construct_gen.py` (incl. RAM init / ROM / single-port / dual-clock, DSP and PLL designs) (tracked `src/` + `design.toml`); variants `v95` / `vnd` (Quartus-specific) / `sv`.
 - Extra `design.toml` fields: `construct`, `variant`, `width` (ignored by the builder).
-- Report: `python3.15t scripts/cyclonev_construct_report.py` -> `docs/cyclonev-construct-dictionary.md`.
+- Report: `python3.15t scripts/cyclonev_construct_report.py` -> `docs/altera/cycloneV/cyclonev-construct-dictionary.md`.
 
 ## Tables (schema.py)
 

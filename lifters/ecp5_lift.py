@@ -264,7 +264,7 @@ class ECP5Lift:
 
     # ---- clock tree (#116) -------------------------------------------------
     # prjtrellis parks/positions these per referencing tile, so the tree never joins.
-    # Canonical node per physical wire; evidence: docs/ecp5-diamond-oracle.md "Clock tree".
+    # Canonical node per physical wire; evidence: docs/lattice/ecp5/ecp5-diamond-oracle.md "Clock tree".
     _CK_UNIQUE = re.compile(
         r"^G_(JPCLKT\d+|[TLR]DCC\d+CLKI|CLKI_[TLR]DCC\d+|CLKO_[TLR]DCC\d+"
         r"|VPFS\d+|HPFE\d+|HPFW\d+)$")

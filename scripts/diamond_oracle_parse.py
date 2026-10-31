@@ -1,6 +1,6 @@
 """Parsers for Diamond `ncdread` text and `ncd2nmc -r` binary hard macros (#105).
 
-Format notes: docs/machxo2-diamond-oracle.md.
+Format notes: docs/lattice/machxo2/machxo2-diamond-oracle.md.
 """
 import re
 
@@ -141,7 +141,7 @@ NMC_REC_MAGIC = (0xF0F00132, 0xB65D)
 
 
 def parse_nmc(data, trace=None):
-    """Parse an `ncd2nmc -r` hard macro.  -> dict, see docs/machxo2-diamond-oracle.md.
+    """Parse an `ncd2nmc -r` hard macro.  -> dict, see docs/lattice/machxo2/machxo2-diamond-oracle.md.
 
     trace: optional list; (section, offset) pairs are appended for debugging."""
     r = _Rd(data)
@@ -252,7 +252,7 @@ def parse_nmc(data, trace=None):
 
 
 # Diamond's placement grid: y = (max_row - row) * site_slots + site_index.
-# MachXO2 uses 14 slots per row, ECP5 20 (docs/ecp5-diamond-oracle.md).
+# MachXO2 uses 14 slots per row, ECP5 20 (docs/lattice/ecp5/ecp5-diamond-oracle.md).
 SITE_SLOTS = 14
 _WIRE_RE = re.compile(r"^R(-?\d+)C(-?\d+)_(\S+)$")
 _SITE_RE = re.compile(r"^R(\d+)C(\d+)([A-D])$")

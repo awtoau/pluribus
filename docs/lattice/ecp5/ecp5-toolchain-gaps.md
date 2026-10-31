@@ -158,7 +158,7 @@ recording: nothing downstream can be reading meaningful MachXO tile data.
 
 ## Finding 3 — the four-layer presence matrix
 
-Run: `scripts/ecp5_gap_matrix.py` → `docs/ecp5-gap-matrix.md`, `tmp/ecp5_gap_matrix.json`.
+Run: `scripts/ecp5_gap_matrix.py` → `docs/lattice/ecp5/ecp5-gap-matrix.md`, `tmp/ecp5_gap_matrix.json`.
 All 171 Diamond `ecp5u` primitives, no sampling. Soft primitives (AND/OR/LUT/
 FD1*/ROM*, techmapped to LUTs) and IO buffers (modelled as `TRELLIS_IO`) are
 classified out as non-gaps, leaving the hard blocks.

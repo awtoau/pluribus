@@ -16,7 +16,7 @@ anyone's binary.
 
 WHAT IS AND IS NOT COMMITTED
 ----------------------------
-  * The manifest (this script's `--manifest` output, and docs/ecp5-corpus.md)
+  * The manifest (this script's `--manifest` output, and docs/lattice/ecp5/ecp5-corpus.md)
     IS committed: URL, project, licence, device, SHA-256, retrieval date.
   * The `.bit` files are NOT committed.  corpus/ is gitignored.  Anyone can
     reconstruct the corpus by re-running this script against the manifest, and

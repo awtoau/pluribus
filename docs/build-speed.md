@@ -278,7 +278,7 @@ where skew is the measurement, those results are suspect.
 instantiates an `ECLKBRIDGECS` (`CLK0`=`clk_hr_fast`, `CLK1`/`SEL` tied off; a
 die-crossing bridge, not a mux).  Confirmed available: `ECLKBRIDGECS0`/`1` are in
 the 25F tilegrid, nextpnr supports the primitive (`ecp5/pack.cc:2488`), and
-`docs/ecp5-gap-matrix.md` lists it as *covered*.
+`docs/lattice/ecp5/ecp5-gap-matrix.md` lists it as *covered*.
 
 The handover package (`b71655b`, cut 2026-08-09 23:32) **predates the fix** —
 its `top.il` contains zero `ECLKBRIDGECS` instances, which is why every

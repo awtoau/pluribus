@@ -41,7 +41,7 @@ nextpnr's `ecp5/bitstream.cc` has no `id_SEDGA` branch and hits
 emission is missing.
 
 The yosys blackbox needs `(* keep *)` or the optimiser sweeps the primitive away.
-Both patches are written out in `pluribus/docs/ecp5-sedga.md`.
+Both patches are written out in `pluribus/docs/lattice/ecp5/ecp5-sedga.md`.
 
 ## Diamond contradicts its own documentation
 

@@ -3,7 +3,7 @@
 
 Per target: `ncdread` (placement, configs, pin nets) + `ncd2nmc -r -io` (routing,
 binary hard macro) -> parsed `oracle.json`.  No licence needed: only the NCD
-readers run, never synthesis / PAR.  Format notes: docs/ecp5-diamond-oracle.md.
+readers run, never synthesis / PAR.  Format notes: docs/lattice/ecp5/ecp5-diamond-oracle.md.
 
 Targets (Diamond 3.14 builds already on disk, read-only):
   corpus/diamond/<T>/impl1/<name>_impl1.ncd (+ .bit)       Diamond builds
@@ -39,10 +39,10 @@ from machxo2_diamond_oracle import ToolError, diamond_env, _repo  # noqa: E402
 REPO = _repo()
 LOG_PATH = os.path.join(REPO, "tmp", "logs", "ecp5_diamond_oracle.log")
 SCHEMA_VERSION = 1
-SITE_SLOTS = 20          # ECP5 placement grid slots per row (docs/ecp5-diamond-oracle.md)
+SITE_SLOTS = 20          # ECP5 placement grid slots per row (docs/lattice/ecp5/ecp5-diamond-oracle.md)
 
 # Waits for one ncdread / ncd2nmc run.  Worst observed 6.3 s (ncd2nmc, 85F,
-# 12 workers; docs/ecp5-diamond-oracle.md); x3 backstop, rounded up.
+# 12 workers; docs/lattice/ecp5/ecp5-diamond-oracle.md); x3 backstop, rounded up.
 # Expiry: target failed with tool, limit, elapsed.
 TOOL_TIMEOUT_S = 20.0
 MEM_GATE_PCT = 85.0

@@ -1,7 +1,7 @@
 """ECP5 clock-tree node identity and CCU2 alias arcs (#116).
 
 No routing graph is built: clock_key() needs only device-db/ECP5/<dev>/globals.json.
-Positions come from the 25F Diamond oracle routes (docs/ecp5-diamond-oracle.md).
+Positions come from the 25F Diamond oracle routes (docs/lattice/ecp5/ecp5-diamond-oracle.md).
 """
 import os
 import sys

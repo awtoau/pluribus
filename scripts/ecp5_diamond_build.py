@@ -58,7 +58,7 @@ from ecp5_diamond_oracle import data_root  # noqa: E402
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD_ROOT = os.path.join(data_root(), "corpus", "diamond")
 
-# Parts of the existing corpus (docs/ecp5-diamond-oracle.md), one per die.
+# Parts of the existing corpus (docs/lattice/ecp5/ecp5-diamond-oracle.md), one per die.
 DEVICES = {"25F": "LFE5U-25F-6MG285I", "45F": "LFE5U-45F-6BG554C",
            "85F": "LFE5U-85F-7BG554C"}
 

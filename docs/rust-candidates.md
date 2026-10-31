@@ -38,7 +38,7 @@ rustc 1.97, other agents active (take walls as +-20%).
 - cProfile inflates pure-Python phases ~2x and makes the ECP5 init look like 138 s (threads); the
   unprofiled numbers above are the real ones.
 - Nothing fails to fit: largest RSS seen 3.7 GB (tracer). The known 30 GB case (8 concurrent 85F ECP5
-  lifts, `docs/ecp5-corpus.md`) is Python object graphs in `native_trellis/rgraph.py`; a Rust port of
+  lifts, `docs/lattice/ecp5/ecp5-corpus.md`) is Python object graphs in `native_trellis/rgraph.py`; a Rust port of
   the routing graph would cut it but is a port of the whole graph builder, not a hot loop.
 
 ## Spike results (`tmp/rust-spike/ffi_check`, PyO3 0.30.1 + numpy 0.30, 151 lines)

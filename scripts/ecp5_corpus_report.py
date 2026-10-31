@@ -12,7 +12,7 @@ three claims the test harness distinguishes:
 
 Usage:
     python3.15t scripts/ecp5_corpus_report.py [--results tmp/ecp5_corpus_results.json]
-                                              [--out docs/ecp5-corpus.md]
+                                              [--out docs/lattice/ecp5/ecp5-corpus.md]
 """
 import argparse
 import json
@@ -79,8 +79,8 @@ def main():
                     help="results from a --no-lift pass; supplies decode and "
                          "oracle status for files the lift pass has not "
                          "reached, so those claims cover the whole corpus")
-    ap.add_argument("--out", default=os.path.join(REPO, "docs",
-                                                  "ecp5-corpus.md"))
+    ap.add_argument("--out", default=os.path.join(REPO, "docs", "lattice",
+                                                  "ecp5", "ecp5-corpus.md"))
     args = ap.parse_args()
 
     man = json.load(open(MANIFEST)) if os.path.exists(MANIFEST) else {"entries": []}

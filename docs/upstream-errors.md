@@ -160,7 +160,7 @@ family-agnostic detector. More likely a detector bug than a real asymmetry (#96)
 Synthesis fails outright with `ERROR: Module '\SEDGA' is not part of the design`.
 A **9-line blackbox** declaration fixes it; verified to synthesise cleanly and emit
 `1 SEDGA` cell. Needs `(* keep *)` or the optimiser sweeps the primitive away.
-Written out in `docs/ecp5-sedga.md` (#88, #96).
+Written out in `docs/lattice/ecp5/ecp5-sedga.md` (#88, #96).
 
 ---
 

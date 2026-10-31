@@ -10,7 +10,7 @@ the matching .bit, lift with lifters/ecp5_lift.py, compare:
   * regclk:  every register's clock pin, with the first broken clock-tree arc
 Verdicts: MATCH / MISMATCH / LIFT_MISSING / ORACLE_ONLY / LIFT_ONLY.  Every
 non-MATCH is a fault (CLAUDE.md "Scoring faults").  Definitions and wire-name
-normalisations: docs/ecp5-diamond-oracle.md.
+normalisations: docs/lattice/ecp5/ecp5-diamond-oracle.md.
 
 Writes <out>/<target>/compare.json and <out>/_compare_summary.json.
 Usage: python3.15t scripts/ecp5_oracle_compare.py [--workers N] [--only T ...]
