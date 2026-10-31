@@ -239,6 +239,15 @@ def cmd_lift_image(extra: list[str]) -> int:
     if rc != 0:
         log("lift-image FAILED at build", "FATAL")
         return rc
+    # rc==0 alone is not proof of success: a transient failure (e.g. a heavy_guard
+    # resource race under concurrent load) can leave the child's exit code looking
+    # clean while flat.v/nl.pkl/build.json were never written - verify the actual
+    # outputs exist and are non-empty before trusting the exit code.
+    missing = [p for p in ("flat.v", "nl.pkl", "build.json") if not (Path(out) / p).is_file() or (Path(out) / p).stat().st_size == 0]
+    if missing:
+        log(f"lift-image FAILED at build: rc=0 but missing/empty output(s): {missing} in {out} "
+            f"(the build subprocess likely died partway through - check tmp/logs/cycloneiv_clean_image_build.log)", "FATAL")
+        return 1
     # cycloneiv_clean_image_build.py reads nl.pkl/flat.v/rtl.v from --out (`out` above);
     # cycloneiv_clean_rtl_image_compare.py must read the SAME directory, not its own
     # default (tmp/image_sim_rtl) - pass --out through to both its subcommands.
