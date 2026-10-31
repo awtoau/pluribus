@@ -77,7 +77,7 @@ Tags: **V** structurally confirmed by the trace, **I** inferred/heuristic, **U**
 - Of the 32 M9K-operand MACs, their operand bits' M9K tiles span **76 distinct (x,y) tile coordinates**
   across the 32 MACs (most MACs read several tiles across their 18-36 operand bits, consistent with a
   word-select mux per bit rather than one dedicated ROM per MAC).
-- **Only 2 of those tiles have any decoded initial content** at all (`7_57`, `7_58`, `36_64` — 3 tiles,
+- **Only 3 of those tiles have any decoded initial content** at all (`7_57`, `7_58`, `36_64` — 3 tiles,
   of which `7_57`/`36_64` are data-buffer-shaped and `7_58` is coefficient-shaped; the other 73 tile
   coordinates referenced by M9K-operand MACs have `content_known=False`): the vast majority of
   M9K-operand MACs read from tiles that are **zero at bitstream load** (`docs/lightbridge-fpga.md`
@@ -108,9 +108,11 @@ Tags: **V** structurally confirmed by the trace, **I** inferred/heuristic, **U**
 - Output-sink kind counts across all 87 MACs' output bits (functrace forward walk, per bit, not
   deduplicated by instance): `m9k` 3,575, `ff_untraced` 6,501 (feeds a register beyond the 1-hop
   budget -- further pipeline stage, not traced deeper here), `mac` 1,272 (the chain edges above, counted
-  per output bit before dedup), `dead_end` 796, `unused` 14. The dominant sink is M9K (a MAC product
-  written back into block RAM), not another MAC -- consistent with "mostly isolated multiplies feeding
-  a RAM-backed accumulator or buffer," not a multi-stage arithmetic pipeline.
+  per output bit before dedup), `dead_end` 796, `unused` 14. The largest single sink is `ff_untraced`
+  (6,501); of the categorised sinks, M9K is the largest at 3,575 (a MAC product written back into block
+  RAM). Read together: mostly isolated multiplies feeding a register stage or a RAM-backed buffer; the
+  6,501 `ff_untraced` bits are unresolved beyond the 1-hop budget, so a deeper arithmetic pipeline is
+  not ruled out here.
 
 ## 5. Cross-family generality: proof within Cyclone IV
 
