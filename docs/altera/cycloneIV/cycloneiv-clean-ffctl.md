@@ -50,7 +50,7 @@ Conditions: EP4CGX150, Quartus 25.1 asmdb, corpus `corpus/cycloneiv`, static ana
 - The LAB model ctor@0x161508 jump table (0x3cd61c) shares one handler for {0xe, 0x30}: Cyclone IV GX uses the Cyclone III (CUDA) LAB model. `ASM_CARRY_CHAIN_MONITOR_BASIC` accepts only 6, 0xe, 0x10, 0x38 (no 0x30), so no monitor class gives a skip flag for IV GX directly; CUDA (0xe) has `m_chain_skip_half_labs` = 0, taken for IV GX (same LAB model). Corpus: LE 8 <- LE 7 in 1,879 of 1,879 carry links.
 - Cross-LAB carry specimens (3 builds, 40-bit adder, `scripts/cycloneiv_clean_carry_specimens.py`): 6 links LE 15 of (x, y+1) -> LE 0 of (x, y), carry-in 120 / 0 / 0 / 0 incl. the 6 cross-LAB links; lut_site 123, lut_pin 240, lut_carry 120 all 100 %.
 
-## ASDATA gap resolved (2026-10-31, F-020, #180)
+## ASDATA gap resolved (2026-10-31, F-020, #182)
 - Gap: `tmp/dji_microcode/build/build.json`'s image-specific undecoded count ("FF sync load: ASDATA (DATAC) source") was 131 of 35,873 FFs; the corpus check's own ASDATA samples above never hit it because the local corpus has no case where either sub-cause below fires on an ASDATA-carrying LE.
 - Two sub-causes, both in `emit.py._asdata_source` (shared by the sload-tied-high D path and the normal-sload ASDATA field), both mirroring a convention the LUT's own DATAC-pin decode in `_logic` already used but ASDATA's decode had not adopted:
   1. **Register feedback** (9 of 131 image instances): `LE_USE_REGISTER_FEEDBACK` (F-010) set <-> the LE's DATAC input is its own register, same as `lut_datac_register_feedback`. Checked first, before the LE_LUT_INPUT mux fallback.
