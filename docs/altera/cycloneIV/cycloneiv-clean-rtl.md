@@ -36,7 +36,7 @@ Input is the emit `Netlist` (read-only); no decoder or emit hunk is touched. Str
 | key | train before | train after | held-out before | held-out after |
 |---|---|---|---|---|
 | reg_bits | 11170/423/114/0 | 11170/423/114/0 | 14515/371/69/0 | 14515/371/69/0 |
-| counters | 0/75/0/0 | 55/20/0/0 | 0/67/0/0 | 47/20/0/0 |The pairing/DUML analysis from earlier in the session.
+| counters | 0/75/0/0 | 55/20/0/0 | 0/67/0/0 | 47/20/0/0 |
 | adders | 13/19/12/2 | 32/1/15/1 | 23/24/15/1 | 45/3/13/0 |
 | subtractors | 0/3/0/0 | 3/0/13/0 | 1/11/0/0 | 9/3/10/0 |
 | comparators | 0/14/0/0 | 12/2/0/0 | 0/24/0/0 | 19/5/0/0 |

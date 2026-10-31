@@ -16,7 +16,7 @@ Status changes fast: numbers are from the run named in each section; evidence li
 - 89,282 LUTs, 35,873 FFs (gate, emit and netlist agree), 85 used IO pads, 542 M9K with routed outputs (8 hold data), 87 MACs (2 in 9-bit mode), 2 PLLs, 6 clock domains.
 - 6,154 of 6,154 frames pass CRC; 0 fan-in conflicts; 0 undriven nets; 99.05 % of set bits explained, 56.47 % validated.
 - Fast gate (134 designs): pips 656,759 / 2 missing; lut_init and pins 0 missing; register_clock 3 missing.
-- Readable lift: 1,377 adders, 198 subtractors, 260 comparators, 226 counters, 21 FSMs, 418 flat LUTs left of 89,282.
+- Readable lift: 1,377 adders, 198 subtractors, 260 comparators, 226 counters, 21 FSMs, 332 flat LUTs left of 89,282 (`docs/altera/cycloneIV/cycloneiv-clean-rtl.md`, multi-LE tail strip, #165).
 - Simulation: Verilator runs both flat emit and RTL (RTL equals flat on idle and SPI programs).
 
 ## 3. Radio chain
