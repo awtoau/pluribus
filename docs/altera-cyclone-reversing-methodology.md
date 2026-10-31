@@ -27,6 +27,27 @@ decode work starts, not during it.
    rule — CPU to regenerate a corpus is cheap; an inherited wrong assumption compounding through
    months of later work is not. This applies at the start of every Phase 2 (specimen generation)
    pass, and to revisiting e50f itself, not only to new Cyclone V ground.
+3. **A vendor fact about one physical resource does not transfer to every logical consumer of
+   it.** Two independently-correct, correctly-code-read findings can combine into a wrong result
+   when one LE control bit or mux is shared by more than one logical function and a rule treats
+   "the fact is true for consumer A" as "therefore true for consumer B". Confirmed twice in the
+   same area of Cyclone IV's logic-element model, both on the gi-2 / DATAC mux: (a) during F-020's
+   own development, an attempt to exclude carry-mode LEs from the ASDATA tie-to-1 rule was wrong
+   and caused a severe regression, caught and reverted before that commit landed — carry mode uses
+   gi 2 for both the comb function's carry-in AND the register's ASDATA, two logical roles sharing
+   one mux, and the exclusion wrongly assumed one role implied the other; (b) F-021 (#183): the
+   vendor-confirmed fact `LE_USE_REGISTER_FEEDBACK` (F-010) is true about the LE's **comb LUT's own
+   DATAC pin** — it says nothing about whether the LE's **independent sload/ASDATA mux**, which
+   physically shares the same gi-2 wiring, resolves to the same signal. A precedence bug that
+   checked the comb-pin fact before the ASDATA mux's own lookup self-looped 5,228 of 5,237 image
+   LEs on their own state forever; only 9 genuinely needed the fallback. Both bugs are the same
+   shape: a real, correctly-sourced vendor fact, attributed to the wrong one of several logical
+   consumers sharing one physical control bit or mux. **Consequence for Cyclone V**: when a vendor
+   constructor/field is read as controlling one named function (a comb pin, a carry chain, a clock
+   select), explicitly check whether the SAME mux or bit is dual-purposed for a second, distinct
+   logical function elsewhere in the LE/block model before assuming the first reading generalizes —
+   this is a modelling question to ask up front in Phase 1 (per-class writer-function pass), not
+   something to discover only once a real design's behavioral test fails.
 
 ## 1. What caused the piecemeal pattern
 
@@ -339,6 +360,11 @@ principle 2 in section 0) as the unexamined origin of a decode rule even when it
   imported — import ALL candidate writer libraries for Cyclone V up front, per
   `docs/reversing-lessons.md` lesson (a), rather than discovering the missing-import gap per class
   as IV did).
+- **Per standing principle 3**: when a writer-function pass identifies what a mux/bit controls,
+  explicitly check for a second, physically-sharing logical consumer (another function reading the
+  same gi/mux slot for a different purpose) before recording the rule as generalizing to every
+  context that mux appears in. Record both consumers' rules as separate rows even if they turn out
+  identical — do not assume identity from a shared address.
 - Apply the constant/CRC/absent-feature checklist (section 3 above) to every class BEFORE queuing
   it for Phase 2 specimens — this is what IV did reactively (E-R10, E-T4, etc. found mid-project)
   and should be front-loaded.
@@ -405,3 +431,4 @@ principle 2 in section 0) as the unexamined origin of a decode rule even when it
 | EP4CGX150 (mid/production-size) tackled directly; impossible real-design counts (V02 203%) the result | Start on 5CEA2 (9,430 ALM, family's smallest real part per the Altera product table, zero hard IP); e50f/d6_gtf150 as later Phase-4 validation |
 | Gaps found by end-of-project audit (`cycloneiv-clean-gap-audit.md`), several UNTRACKED | File every parked class/sub-decode as an issue at Phase-1/2 time, not discovered by a retrospective audit |
 | No principle against trusting inherited data (the fitted coordinate model and the specimen-frequency routing rule both leaned on "this already works") | Standing principle (section 0.2): inherited corpus/table data, including this project's own e50f corpus, is a check, never the origin of a decode rule |
+| A vendor fact correctly read for one logical consumer of a mux (the comb-pin feedback flag, F-010) was wrongly assumed to generalize to a second, physically-sharing consumer (the ASDATA/sload mux) — same shared-resource shape as a carry-mode exclusion bug caught earlier in the same code's own development; both self-looped or mis-decoded real LEs, one of them in the shipped DJI image (F-021, #183), only caught once a real design's behavioral test ran against current code | Standing principle (section 0.3): when a writer-function pass names what a mux/bit controls, explicitly check for a second logical consumer sharing the same physical wiring (Phase 1 action item) before recording the rule as general |
