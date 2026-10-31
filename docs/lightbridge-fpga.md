@@ -41,10 +41,15 @@ Status changes fast: numbers are from the run named in each section; evidence li
 - Data bus pads (I, structure only): 12 TX data, TX frame, TX clock out (clock/2 while TX on, DDR), DATA_CLK in, 12 RX data in 6 complete positive/negative pairs, RX frame guess (H), 9 enable/direction style outputs (H).
 - TX path: each TX pad takes 4 M9K read bits (a 9-bit lane from a 256x36 RAM, a 3-bit lane from a second RAM); a 2-bit counter steps the 4:1 word mux; both RAMs are zero at load, so software fills them (V/I).
 - RX data is captured by one FF per pad every cycle; sinks are M9K ports (now modelled): the receive pipeline is still to be traced.
-- SPI master to the radio exists (V): a 24-bit frame engine, 5-bit bit counter, 19-FF word register, 2-FF phase FSM (no free-running divider: rate unknown without PLL plan), 8-FF MISO capture.
-  - Mode mux on write reg 0x01 bits 1:0: 01 = bridge (MCU pads pass straight to the radio, radio MISO to the MCU), 10 = engine drives the radio pads, 00 and 11 idle.
-  - The 5-byte frequency words (regs 0xB0..0xBE) feed the MOSI serialiser only. A retune = FPGA SPI engine writing PLL words to the AD9363.
-  - No busy flag found; radio MISO reaches readback only at address 0xC4.
+- SPI master to the radio exists (V, cell-traced #177): a 24-bit frame engine. Two counters found in the 131-FF engine cone: a 16-FF counter `ff_56_85_0..15` (enable `lc_55_85_1`, clear `lc_47_88_6`) and a 5-FF counter `ff_58_87_2..6` (enable `lc_58_87_1`, clear `lc_57_87_15`, decoded terminal state `[0,0,1,1,1]` at `lc_58_87_9` — reads as the bit-shift-complete state). 8-FF MISO capture still present; no free-running divider found (rate unknown without a PLL plan).
+  - **Radio-facing pads, both paths, by real driver cell (V):** `R19`=CS, `P20`=SCK, `P19`=MOSI (pads per #177's `38855ede9`/`3947b15c1` correction), `AA7`=MISO (shared/mode-muxed with SPI0's own MISO), `T19`=radio MISO input.
+  - **Mode mux is a 4-way select on write reg 0x01 bits [1:0]**, traced directly off each pad's driver mux (not inferred from naming):
+    - modes `0`, `1`, `3`: `R19`/`P20`/`P19` driven by `ff_38_83_11`/`ff_38_83_15`/`ff_38_83_8` — these are the SAME latched copies of the MCU's own SPI0 pins (`AA9`/`AA8`/`AB11`). This is the bridge/relay path: no separate buffer, the FPGA just re-drives the radio pads from its SPI0 slave register copies.
+    - mode `2`: `R19`/`P20`/`P19` driven instead by `ff_57_87_0`/`ff_58_87_15`/`ff_58_87_10` — the engine's own output FFs, otherwise unconnected to these pads in every other mode. This is the FPGA-autonomous path.
+    - `AA7` (MISO): `lc_38_82_5` (the FPGA's own SPI0 logic) in modes `0`, `2`, `3`; switches to `pad_T19` (radio MISO relayed straight through) only in mode `1`.
+    - This confirms the previously-documented `01`=bridge / `10`=engine numbering at the cell level: mode `1` (`0b01`) is exactly the MISO-relay switch on `AA7`, mode `2` (`0b10`) is exactly the output-driver switch to the engine FFs on `R19`/`P20`/`P19` — both bits independently verified against real driver-mux cells, not inferred from naming.
+  - The 5-byte frequency words (write regs 0xB0..0xBE) plus 0x01/0x12/0x13/0x1b/0xa0/0xa1/0xbf (22 registers total) forward-trace to *only* the master output pads / slave MISO within 10 stages (V) — confirmed write-only into the engine, exactly as previously claimed, now with the complete register list.
+  - No busy flag found; radio MISO (`T19`) reaches readback only at address 0xC4, with register-dependent phase terms (`ff_47_83_14`/`ff_46_83_13`/`ff_44_82_1`) layered on top of the raw capture bits — the 0xC4 read value depends on which sub-phase it's read in, not a flat single latch.
 
 ## 6. MCU interface (SPI slave)
 
