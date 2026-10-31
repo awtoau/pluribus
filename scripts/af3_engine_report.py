@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""AF3 engine report (#165): FF groups, 1-Wire timing, instruction trace, pass / fail run, with a DUMMY secret.  No memory words are printed.
+"""AF3 engine report (#165): FF groups, 1-Wire timing, instruction trace, pass / fail run, with a DUMMY secret.
 
   python3.15t scripts/cycloneiv_clean_af3_engine.py extract && python3.15t scripts/cycloneiv_clean_af3_engine.py build -G OVR=1 --obj obj_ovr
   python3.15t scripts/af3_engine_report.py [--nl NL.pkl]      log tmp/logs/af3_engine_report.log, groups tmp/af3/groups.json
@@ -133,7 +133,7 @@ def main():
         fin[name] = int("".join(m[1].split()), 16)
     bm = json.load(open(os.path.join(OUT, "engine.json")))["ffvec_bit"]
     diff = [n for n, b in bm.items() if ((fin["pass"] ^ fin["fail"]) >> b) & 1]
-    ext_same = open(res["pass"][0]).read().replace("<secret>", "") == open(res["fail"][0]).read().replace("<secret>", "")
+    ext_same = open(res["pass"][0]).read() == open(res["fail"][0]).read()
     # events after the last MAC byte was read (the compare and everything after it): AF3 edges and RAM address / write-enable sequence
     last_rx = max(int(l.split()[1]) for l in slave if "TX done" in l)
 

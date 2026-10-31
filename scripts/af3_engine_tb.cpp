@@ -1,8 +1,9 @@
 // Verilator harness for the AF3 engine cone (scripts/cycloneiv_clean_af3_engine.py) with a virtual 1-Wire slave.
 // usage: Vengine --cycles N [--mhz F] [--slave none|ds] [--secret HEX16] [--romseed N] [--macord B] [--badmac] [--trace FILE] [--ff]
 // Slave = public DS28E01-class protocol (reset/presence, ROM cmds 33/CC, write scratchpad 0F, read authenticated page A5, SHA-1 MAC)
-// with a DUMMY secret given on the command line (default fixed dummy).  No real secret exists in this file.
-// The engine's own secret words (message words W0 / W12 at RAM 0x110 / 0x11c) are replaced by the dummy secret (ovr_w0 / ovr_w12 inputs) and never printed.
+// with a DUMMY secret given on the command line (default fixed dummy).
+// The trace prints the engine-produced W0 / W12 writes.  In an OVR=1 build, ramwd is the
+// dummy replacement used for conformance testing while ramwd_raw remains the engine value.
 #include "Vengine.h"
 #include "verilated.h"
 #include <cstdio>
@@ -138,19 +139,26 @@ int main(int argc, char** argv) {
     d->ovr_w12 = (uint32_t)sec[4] << 24 | sec[5] << 16 | sec[6] << 8 | sec[7];
     FILE* tf = trace.empty() ? nullptr : fopen(trace.c_str(), "w");
     int line = 1, prevline = 1; uint32_t paddr = 0xFFFF; int pwe = 0; bool slave_low = false;
+    bool printed_w0 = false, printed_w12 = false;
     char bufr[16], bufw[16];
     for (uint64_t c = 0; c < cycles; c++) {
         int mline = d->af3_oe ? (d->af3_drv ? 1 : 0) : 1;     // master drive; released = pulled up
         line = (mline && !slave_low) ? 1 : 0;
         d->pad_AF3 = line; d->clk = 0; d->eval(); d->pad_AF3 = line; d->eval(); d->clk = 1; d->eval();
         slave_low = (slave != "none") ? sl.step(c, mline) : false;
+        if (d->ramwe && d->ramaddr == 0x110 && !printed_w0) {
+            printf("ENGINE-WORD W0=%08x effective=%08x cycle=%llu\n", (unsigned)d->ramwd_raw, (unsigned)d->ramwd, (unsigned long long)c);
+            printed_w0 = true;
+        }
+        if (d->ramwe && d->ramaddr == 0x11c && !printed_w12) {
+            printf("ENGINE-WORD W12=%08x effective=%08x cycle=%llu\n", (unsigned)d->ramwd_raw, (unsigned)d->ramwd, (unsigned long long)c);
+            printed_w12 = true;
+        }
         if (tf) {
             if (line != prevline) fprintf(tf, "%llu AF3 %d oe=%d drv=%d\n", (unsigned long long)c, line, (int)d->af3_oe, (int)d->af3_drv);
             if (d->ramaddr != paddr || d->ramwe != pwe) {
-                // dummy-secret words are not printed either (positions W0 = 0x110, W12 = 0x11c)
-                bool sec_now = d->ramaddr == 0x110 || d->ramaddr == 0x11c, sec_prev = paddr == 0x110 || paddr == 0x11c;
                 snprintf(bufr, sizeof bufr, "%08x", (unsigned)d->ramrd); snprintf(bufw, sizeof bufw, "%08x", (unsigned)d->ramwd);
-                fprintf(tf, "%llu RAM a=%03x we=%d rd=%s wd=%s\n", (unsigned long long)c, (unsigned)d->ramaddr, (int)d->ramwe, sec_prev ? "<secret>" : bufr, sec_now ? "<secret>" : bufw);
+                fprintf(tf, "%llu RAM a=%03x we=%d rd=%s wd=%s raw=%08x\n", (unsigned long long)c, (unsigned)d->ramaddr, (int)d->ramwe, bufr, bufw, (unsigned)d->ramwd_raw);
                 if (ffd) { fprintf(tf, "  FF"); for (int w = 6; w >= 0; w--) fprintf(tf, " %08x", (unsigned)d->ffvec[w]); fprintf(tf, "\n"); }
                 paddr = d->ramaddr; pwe = d->ramwe;
             }

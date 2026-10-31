@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.15t
-"""AF3 engine vs reference SHA-1 and a virtual 1-Wire slave with a DUMMY secret (#165).  Prints booleans and counts only, never memory words.
+"""AF3 engine vs reference SHA-1 and a virtual 1-Wire slave with a DUMMY secret (#165).
 
   python3.15t scripts/cycloneiv_clean_af3_engine.py extract && python3.15t scripts/cycloneiv_clean_af3_engine.py build -G OVR=1 --obj obj_ovr
   python3.15t scripts/af3_engine_check.py [--nl NL.pkl] [--secret HEX16]     log tmp/logs/af3_engine_check.log
@@ -7,7 +7,8 @@ Checks (V = numerically compared here):
   1. block   engine message block W0..W15 (RAM 0x110..0x11f: initial words + engine writes, W0 / W12 = the dummy secret) assembled from the run trace
   2. sha1    engine state words a..e after the 80-round loop (RAM 0x100..0x104) == reference SHA-1 compression of that block (raw a..e, no final addition; and with it)
   3. slave   which slave MAC byte order makes the 5 words the engine stored (0x10b..0x10f, as received) equal its own state words (0x104..0x100)
-The dummy secret replaces the engine's own W0 / W12 writes (ovr_w0 / ovr_w12); the engine-written values are never printed.
+The dummy secret replaces the engine's own W0 / W12 writes (ovr_w0 / ovr_w12) for
+the conformance comparison.  The harness also prints the unmodified engine writes.
 """
 import argparse
 import json
@@ -66,8 +67,8 @@ def init_words(nl):
     return out
 
 
-def run(macord, secret_hex, cycles, extra=()):
-    exe = os.path.join(OUT, "obj_ovr", "Vengine")
+def run(macord, secret_hex, cycles, extra=(), obj="obj_ovr"):
+    exe = os.path.join(OUT, obj, "Vengine")
     tr = os.path.join(OUT, f"chk_{macord}.trace")
     r = subprocess.run([exe, "--cycles", str(cycles), "--slave", "ds", "--macord", str(macord), "--secret", secret_hex, "--trace", tr, *extra], capture_output=True, text=True)
     return tr, r.stdout
@@ -77,7 +78,7 @@ def parse(tr):
     ev = []
     for ln in open(tr):
         m = re.match(r"(\d+) RAM a=([0-9a-f]+) we=1 rd=(\S+) wd=(\S+)", ln)
-        if m and m[4] != "<secret>":
+        if m:
             ev.append((int(m[1]), int(m[2], 16), int(m[4], 16)))
     return ev
 
