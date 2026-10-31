@@ -1714,10 +1714,13 @@ class Lift:
             rtl_lines=s["lines"], pattern_modules=s["pattern_modules"], adder_widths=sorted(self.adder_widths), fsm_state_bits=s["fsm_state_bits"], rules={k[5:]: v for k, v in s.items() if k.startswith("rule:")})
 
 
-def lift(nl, prefix="io_", module="cyc4_top", ffmap=None):
-    """-> (verilog text, report dict).  ffmap: dict filled with {flat FF name: RTL register bit text} for probing a simulation."""
+def lift(nl, prefix="io_", module="cyc4_top", ffmap=None, homemap=None):
+    """-> (verilog text, report dict).  ffmap: dict filled with {flat FF name: RTL register bit text} for probing a simulation.
+    homemap: dict filled with {flat signal name: (RTL name, bit or None)} for every flat cell the lift gave a home (partition tooling)."""
     L = Lift(nl, prefix, module)
     text = L.run()
     if ffmap is not None:
         ffmap.update(L.ffmap)
+    if homemap is not None:
+        homemap.update(L.home)
     return text, L.report()

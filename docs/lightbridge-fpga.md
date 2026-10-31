@@ -3,6 +3,7 @@
 Third-party EP4CGX150 image = Lightbridge ground-side FPGA, module m2001. It ships inside the P3X (Phantom 3) firmware packages, but it is the only Cyclone IV image in any package: the other ground images (m2000, m2002, m2003) and every air image (m1900) are Cyclone V. m2001 is probably the Inspire 1 RC (GL658) board variant (I: wiki board marking names a Cyclone IV GX; the Inspire RC package has m2000 and m2001 but no m2002). Which hardware variant a P3 ground unit uses is not settled.
 Tags: **V** traced/measured here, **I** inferred, **H** hypothesis, **U** unknown. Structure and counts only; no ROM dumps, no firmware addresses, no ID values.
 Status changes fast: numbers are from the run named in each section; evidence lives in #165 / #169 / #176 comments, `reference/rules.tsv`, `docs/altera/cycloneIV/cycloneiv-clean-*.md`.
+Known-vs-unknown partition of every cell (blocks, coverage, annotated RTL): `docs/altera/cycloneIV/dji-m2001-known-unknown.md`.
 
 ## 1. What it is
 
