@@ -11,7 +11,8 @@ import pytest
 from conftest import REPO, need, report
 
 CORPUS = os.path.join(REPO, "corpus", "cycloneiv")
-DESIGNS = ("gx150_ffc_000", "gx150_ffc_001", "gx150_rb_010", "gxct_a_idle_ff15", "gx150_sp_087")
+DESIGNS = ("gx150_ffc_000", "gx150_ffc_001", "gx150_rb_010", "gxct_a_idle_ff15", "gx150_sp_087",
+           "gxct_e_regfb_sload")  # register feedback + independent ASDATA on one LE (#183, F-021)
 
 
 @pytest.fixture(scope="module")
