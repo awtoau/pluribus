@@ -31,6 +31,17 @@ sources/*
 # third-party prior-art clones (read-only cross-checks; never vendored)
 sources/prior-art/
 
+# Real-design corpus candidates (#183 blind-spot fix): manifest tracked, source
+# files gitignored regardless of license — permissive ones are still kept out
+# of the repo tree (same vendor-sources pattern as above); each with its own
+# licence noted in the manifest so others can re-fetch on their own terms.
+# (sources/* above ignores the whole dir first; re-include the dir itself,
+# then re-exclude everything in it except the manifest — a bare !file
+# negation can't undo a parent-directory exclusion in git.)
+!sources/real-designs/
+sources/real-designs/*
+!sources/real-designs/README.md
+
 # Anlogic eagle_s20 fuse DB — DERIVED from proprietary Tang Dynasty; regenerable
 # via scripts/anlogic_dbdecode.py (see boards/fnirsi-eg4s20/README.md).  Never commit.
 boards/*/eagle_s20_db/
