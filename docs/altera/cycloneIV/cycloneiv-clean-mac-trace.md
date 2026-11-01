@@ -80,7 +80,7 @@ Tags: **V** structurally confirmed by the trace, **I** inferred/heuristic, **U**
 - **Only 3 of those tiles have any decoded initial content** at all (`7_57`, `7_58`, `36_64` — 3 tiles,
   of which `7_57`/`36_64` are data-buffer-shaped and `7_58` is coefficient-shaped; the other 73 tile
   coordinates referenced by M9K-operand MACs have `content_known=False`): the vast majority of
-  M9K-operand MACs read from tiles that are **zero at bitstream load** (`docs/lightbridge-fpga.md`
+  M9K-operand MACs read from tiles that are **zero at bitstream load** (`awto-dji:fpga/m2001/docs/lightbridge-fpga.md`
   section 8: "only 8 tiles hold data... None holds an FFT twiddle... feeding MAC inputs"). Those tiles
   are software-written at runtime (consistent with the existing TX-RAM finding in section 5 of the same
   doc: "both RAMs are zero at load, so software fills them").
@@ -164,7 +164,7 @@ source alone" ask, methodology doc principle 2) — attempted, inconclusive, not
 - Code: `lifters/cycloneiv_clean/functrace.py` (generic walk/chain core), `scripts/cycloneiv_clean_functrace_report.py`
   (CLI + MAC-specific M9K-content plugin). Data: `tmp/functrace/mac.json`, `tmp/functrace/m9k.json` (both
   gitignored, local only).
-- Prior docs this re-verifies/extends: `docs/lightbridge-fpga.md` section 8 (M9K content), `docs/altera/cycloneIV/cycloneiv-clean-mac.md`
+- Prior docs this re-verifies/extends: `awto-dji:fpga/m2001/docs/lightbridge-fpga.md` section 8 (M9K content), `docs/altera/cycloneIV/cycloneiv-clean-mac.md`
   (MAC decode), `docs/altera/cycloneIV/cycloneiv-image-prior-art.md` (FFT-hunt recommendation, Altera WiMAX comparison), `docs/signature-cores.md`
   section 4 (known-core signatures). Cross-family scoping: `docs/functrace-cross-family-adapter.md` (awtoau/pluribus#180).
 - Issue: #177 item 4 ("FFT-in-logic hunt") — this doc is that item's result (negative: no >= 12-MAC

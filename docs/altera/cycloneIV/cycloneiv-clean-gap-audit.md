@@ -1,13 +1,13 @@
 # Cyclone IV GX (EP4CGX150, DJI m2001) decode gap audit (2026-10-31)
 
-Documentation/audit only — no new decode work. Compiled from `docs/lightbridge-fpga.md`, `docs/altera/cycloneIV/cycloneiv-clean-*.md`, `docs/altera/cycloneIV/cycloneiv-manual-review.md`, `docs/altera/cycloneIV/cycloneiv-address-spaces.md`, `docs/reversing-errata.md`, `reference/rules.tsv` (159 rows), `tmp/dji_microcode/build/build.json` (machine-measured image counts), and issues #165/#169/#176/#177/#178 (bodies + comments).
+Documentation/audit only — no new decode work. Compiled from `awto-dji:fpga/m2001/docs/lightbridge-fpga.md`, `docs/altera/cycloneIV/cycloneiv-clean-*.md`, `docs/altera/cycloneIV/cycloneiv-manual-review.md`, `docs/altera/cycloneIV/cycloneiv-address-spaces.md`, `docs/reversing-errata.md`, `reference/rules.tsv` (159 rows), `tmp/dji_microcode/build/build.json` (machine-measured image counts), and issues #165/#169/#176/#177/#178 (bodies + comments).
 Severity key: **A** = blocks the DJI image's own correctness (a real signal/mode in this image is wrong or unmodelled), **B** = blocks general-device / die-generic claims only (image doesn't exercise it, or it's a corpus/gate gap not an image gap), **C** = cosmetic / bookkeeping.
 Tracking key: issue / doc / ledger id, or **UNTRACKED** (flagged in the final section).
 
-## 0. Cross-check against docs/lightbridge-fpga.md
+## 0. Cross-check against awto-dji:fpga/m2001/docs/lightbridge-fpga.md
 
 - Its section 10 and section 12 "Open" list calls PLL input clock source and PLL clock plan open. **Corrected (#181 point 2): this was never a stale counter — it was two unmerged analyses.** `docs/altera/cycloneIV/cycloneiv-clean-pll-clocks.md` + ledger P-011/P-014/P-015 + errata E-U6/E-U7 resolved the routing trace 2026-10-30/31 (CFF-space routing bits, not CRAM; image PLL_2/PLL_8 index 0 both trace to ball B14 via tile X57Y91 and element 666), but that trace lived only in the standalone script `cycloneiv_clean_image_pll_pads.py` — `emit.py`'s own `_hard` method had a separate, unconditional `nl.und["PLL: input clock source"] += len(nl.pll)` (citing #175) that never called the trace and so never saw the result. `tmp/dji_microcode/build/build.json`'s "PLL: input clock source": 2 was not a counter that needed "re-running" against existing results; it was counting correctly for code that never looked. Fixed by integrating the trace (now `pll.clkin_source`, shared by both call sites) into `emit.Builder._hard`: the netlist's own undecoded count for this cause drops to 0 on this image.
-- Its AF3 section (8, 11a) matches `docs/altera/cycloneIV/cycloneiv-clean-af3-engine.md` exactly (same open items: per-op split, CRC-8/16, engine clock, T367/T369).
+- Its AF3 section (8, 11a) matches `awto-dji:fpga/m2001/docs/cycloneiv-clean-af3-engine.md` exactly (same open items: per-op split, CRC-8/16, engine clock, T367/T369).
 - Its M9K summary ("8 of 542 hold data... no packed/mixed width/byte enables") is consistent with `cycloneiv-clean-hardblocks.md`/`m9k.md` image counts, but does not mention the specific undecoded-in-use items (output-register CE select 14 tiles, output clear 101 tiles) — those are only in `cycloneiv-clean-m9k.md` line 190 and `build.json`'s absence (build.json has no M9K-control undecoded counters at all, a gap in the counter itself, see §5).
 - Its "Open" section (12) omits the IO standard/termination ambiguity (75/44 instances) entirely — this is the single largest undecoded-item count in the whole image and isn't mentioned in the running summary at all.
 
@@ -15,8 +15,8 @@ Tracking key: issue / doc / ledger id, or **UNTRACKED** (flagged in the final se
 
 | Item | Count | Source | Severity |
 |---|---|---|---|
-| Fast-tier gate (134 designs, run 45/46 per lightbridge; 117 designs per most recent hardblocks run): pips 656,759/2 missing (or 650,510/2 in the hardblocks-doc run) | 2 missing pips, both `IO_RAW_DATAIN -> PLL_CLKIN` | `docs/lightbridge-fpga.md` §2; `docs/altera/cycloneIV/cycloneiv-clean-pll-clocks.md` "Open"; issue #176 | B (PLL_2/PLL_8 "value 00, no literal" case — a rule gap, not image-specific; P-014 marks it SPECIMEN_ONLY, not yet CODE-confirmed) — tracked P-011/P-014, #176 |
-| register_clock missing | 3 (lightbridge headline) vs 0 in the most-current `ffctl.md`/rules R-006 (16,938/0/0/0 fast, 50,514/0/0/0 full) | `docs/lightbridge-fpga.md` §2 vs `reference/rules.tsv` R-006 | C — **stale headline figure**, not re-synced into lightbridge-fpga.md; superseded by R-005/R-006 fixes. UNTRACKED staleness (§15) |
+| Fast-tier gate (134 designs, run 45/46 per lightbridge; 117 designs per most recent hardblocks run): pips 656,759/2 missing (or 650,510/2 in the hardblocks-doc run) | 2 missing pips, both `IO_RAW_DATAIN -> PLL_CLKIN` | `awto-dji:fpga/m2001/docs/lightbridge-fpga.md` §2; `docs/altera/cycloneIV/cycloneiv-clean-pll-clocks.md` "Open"; issue #176 | B (PLL_2/PLL_8 "value 00, no literal" case — a rule gap, not image-specific; P-014 marks it SPECIMEN_ONLY, not yet CODE-confirmed) — tracked P-011/P-014, #176 |
+| register_clock missing | 3 (lightbridge headline) vs 0 in the most-current `ffctl.md`/rules R-006 (16,938/0/0/0 fast, 50,514/0/0/0 full) | `awto-dji:fpga/m2001/docs/lightbridge-fpga.md` §2 vs `reference/rules.tsv` R-006 | C — **stale headline figure**, not re-synced into lightbridge-fpga.md; superseded by R-005/R-006 fixes. UNTRACKED staleness (§15) |
 | Full-tier gate: 193 missing pips / 51 missing nets (#177 item 2) | 193 / 51 | issue #177 | B — not yet root-caused; fast tier is clean so this is corpus-wide, not image-specific |
 | Image fan-in conflicts / undriven nodes / loops | "rerun pending" (3 of 4 sanity checks in `cycloneiv-clean-image.md` marked rerun pending under the vendor tracer rule, after the E-L2 fix) | `docs/altera/cycloneIV/cycloneiv-clean-image.md` "Sanity statistics" | C — stale image run predates the T-001/E-L2 tracer fix; needs a rerun to get current image routing-fault numbers. UNTRACKED (§15) |
 | Image "4.2% fan-in conflicts" cited elsewhere | superseded (errata E-L2): old rule gave 3.7–4.2%, new tracer gives 0/64,375 on rb_000..009 controls; **image-specific rerun pending** | errata E-L2 | B |
@@ -152,7 +152,7 @@ From `docs/altera/cycloneIV/cycloneiv-clean-options.md` + `docs/altera/cycloneIV
 
 ## 13. AF3 / SHA-1 engine
 
-Per `docs/altera/cycloneIV/cycloneiv-clean-af3-engine.md` "Open" + lightbridge-fpga.md §11a:
+Per `awto-dji:fpga/m2001/docs/cycloneiv-clean-af3-engine.md` "Open" + lightbridge-fpga.md §11a:
 
 | Item | Status | Severity | Tracked |
 |---|---|---|---|

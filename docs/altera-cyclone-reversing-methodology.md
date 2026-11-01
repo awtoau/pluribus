@@ -303,7 +303,7 @@ a larger die where the same class of bug (e.g. the IV 542-tile M9K generalizatio
 4 above) is proportionally more expensive to find and re-check, and where hard-IP bit classes
 (transceiver/PCIe/HPS) would otherwise have to be filtered out of the sweep by hand.
 
-**DJI's actual production Cyclone V part(s)** (`docs/lightbridge-models-fpga-images.md`,
+**DJI's actual production Cyclone V part(s)** (`awto-dji:fpga/m2001/docs/lightbridge-models-fpga-images.md`,
 `docs/altera/cycloneV/cyclonev-status.md`), confirmed as Phase 4 targets, not Phase 3:
 - air side (m1900, all 3 image variants): Cyclone V, **die byte 0x05 = e50f-class** — already
   validated in this project, but that is production-scale confirmation, not the smallest-first
@@ -412,7 +412,7 @@ principle 2 in section 0) as the unexamined origin of a decode rule even when it
 ### Phase 4 — scale to the DJI production parts last
 
 - Air side: validate against **e50f-class** (die byte 0x05) using the designs already compiled for
-  m1900 (3 firmware variants, `docs/lightbridge-models-fpga-images.md`).
+  m1900 (3 firmware variants, `awto-dji:fpga/m2001/docs/lightbridge-models-fpga-images.md`).
 - Ground side: validate against **d6_gtf150** (die byte 0x13, 5CEBA7/5CEFA7) using m2000/m2002/
   m2003.
 - Note this project is ALREADY at this phase for e50f/d6_gtf150 (status docs dated 2026-10-23
