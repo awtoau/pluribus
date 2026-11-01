@@ -31,6 +31,8 @@ Known-vs-unknown partition of every cell (blocks, coverage, annotated RTL): `doc
 
 ## 4. Air interface (public IQ, not this image)
 
+- **Low-confidence source (Dan 2026-11-01): the public SDR captures are vague and messy.** Logic analysis of this image is primary; figures below are corroboration only, never a reason to doubt a netlist finding. The 14 ms frame now has logic support (frame counter wraps at 1,400,001 clk_main = 14.000 ms at 100 MHz, #189).
+
 - 1024-FFT OFDM, 10.9375 kHz spacing, Fs 11.2 MS/s, CP 1/8, symbol 1152 samples (102.86 us), 864 used carriers (k = -432..+432, DC null), 96 pilots (every 9th), ~92-97 symbols per burst, 14 ms frame (V, 19 of 19 bursts fit).
 - Matches the IEEE 802.16e 10 MHz OFDMA profile in numerology (I, from memory); no 802.16e preamble, pilot placement differs, WiMAX lineage stated by public sources without parameters.
 - Weird pilots: two-level amplitude alternating by pilot ordinal, complementary between the two symbols of a pair; unexplained phase steps (90 degrees in a pair, +60/-30/-30 at class boundaries); not a frequency offset (V). Two-transmitter pairing fits (I), no decoding of the data yet.
