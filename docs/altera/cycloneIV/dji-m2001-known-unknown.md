@@ -51,8 +51,8 @@ python3.15t scripts/cycloneiv_clean_partition.py --nl tmp/image_sim_dji_push/nl.
 
 | component | LUT | FF | M9K | MAC | note |
 |---|---|---|---|---|---|
-| unknown_clk_pll_b_1 | 48870 | 12259 | 119 | 0 | clk_pll_b (`u_clkbuf_out_0_46_31_0`), LAB bbox x 11-116, y 1-77 |
-| unknown_clk_main_1 | 33954 | 19654 | 329 | 82 | clk_main (`u_clkbuf_out_0_46_30_0`), whole die |
+| 802.16-rx (was unknown_clk_pll_b_1) | 48857 | 12259 | 119 | 0 | clk_pll_b (`u_clkbuf_out_0_46_31_0`), LAB bbox x 11-116, y 1-77 |
+| 802.16-tx (was unknown_clk_main_1) | 33967 | 19654 | 329 | 82 | clk_main (`u_clkbuf_out_0_46_30_0`), whole die |
 | unknown_clk_main_2 | 377 | 37 | 0 | 0 | |
 | unknown_clk_core_a_1 | 226 | 141 | 0 | 0 | clk_core_a |
 | unknown_clk_core_b_1 | 122 | 82 | 0 | 0 | clk_core_b (B2 output domain) |
@@ -60,6 +60,8 @@ python3.15t scripts/cycloneiv_clean_partition.py --nl tmp/image_sim_dji_push/nl.
 
 - The two big blobs are the OFDM baseband: RX demod/FEC/descrambler and TX modulator (I); every known block touches them at its boundary (RX bus capture -> pll_b blob -> demux; record readers -> main blob -> tx_source_bank -> tx_playback).
 - They are one component each because the baseband is densely connected; splitting them needs functional anchors (next: FFT/Viterbi shapes, MAC chains per `cycloneiv-clean-mac-trace.md`), not more adjacency.
+- Names `802.16-rx` / `802.16-tx` are labels by clock domain (`rename` in `blocks.json`), not proven function. `802.16-tx` (clk_main) also holds RX bit-level logic: the descrambler bit `ff_29_65_0` and demod bit `ff_21_65_0` (both feed `rx_id_comparator`), all 7 PRBS LFSRs (3x x15 = 802.16 randomiser, 4x x11 = 802.16 pilot PRBS) and the CRC-16-CCITT. `802.16-rx` (clk_pll_b) is the sample-rate side: 0 MAC, 395 short (<= 8-bit) carry chains, 256x36 RAM banks with delay lines.
+- Sub-regions: `scripts/cycloneiv_clean_region_carve.py` (#189) -> `tmp/cycloneiv_clean/regions/<blob>/` (fact sheet per region, `index.json` adjacency, `cell_region.json`).
 
 ## RTL
 

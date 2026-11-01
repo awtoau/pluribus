@@ -1,5 +1,9 @@
 {
  "netlist": "tmp/image_sim_dji_push/nl.pkl",
+ "rename": {
+  "unknown_clk_pll_b_1": "802.16-rx",
+  "unknown_clk_main_1": "802.16-tx"
+ },
  "blocks": [
   {
    "name": "clock_infra",

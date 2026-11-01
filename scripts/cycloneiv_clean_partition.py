@@ -648,6 +648,12 @@ def main():
             s[k] = [tuple(t) for t in s.get(k, [])]
     P = Partition(nl, blocks, grow=a.grow, nets_tsv=os.path.join(board_dir, "nets.tsv"))
     unk = P.run()
+    ren = json.load(open(a.blocks)).get("rename", {})          # unknown-component name -> functional name (e.g. 802.16-rx)
+    for b in P.blocks:
+        b["name"] = ren.get(b["name"], b["name"])
+    for c, n in list(P.assign.items()):
+        if n in ren:
+            P.assign[c] = ren[n]
     tot, rows = P.table()
     md = markdown(tot, rows, P.conflicts, P.contested)
     log.info("\n%s", md)
