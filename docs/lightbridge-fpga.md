@@ -125,6 +125,12 @@ Known-vs-unknown partition of every cell (blocks, coverage, annotated RTL): `doc
 - Deduplication therefore leaves one unique observed configuration. A clean lift at revision `18066edf6` reproduces the AF3 oracle from the canonical 8 MiB module: W0 = `0x01118789`, W12 = `0x79465213`; the key comparison across every observed `m2001` package is consequently identical: `0111878979465213` (V). This proves reuse across the listed firmware releases/packages, not across unrecovered factory/service packages, physical units or runtime serial-loader state.
 - Re-confirmed 2026-10-31 after an ASDATA lifter bug (awtoau/pluribus#183, pre-dated F-020 but only surfaced by #181 pt1's fresh-rebuild test) briefly made the unmodified engine's own W0/W12 compute as `00000000`: root cause and fix (F-021) in `docs/altera/cycloneIV/cycloneiv-clean-ffctl.md` / `cycloneiv-clean-af3-engine.md`. Fixed, the engine again writes W0 = `0x01118789`, W12 = `0x79465213`; the key `0111878979465213` stands, unregressed against F-020's own ASDATA fix (485-design corpus, fast/full gates) and independently re-verified (worktree-reproduced before/after on the new regression specimen `gxct_e_regfb_sload`, fast tier 135/135 designs 0 missing/extra/wrong).
 
+## 11c. Simulation (TX-first, #189)
+
+- Full detail: `docs/altera/cycloneIV/dji-m2001-loopback.md`.
+- Regfile accepts the real m1400 boot + uplink-record writes bit-exact; frame counter wraps every 1,400,001 clk_main = 14.000 ms at 100 MHz (V).
+- TX stalls before the playback RAM (data 0); frame FSM parked; forcing RX-sync FF `ff_38_79_4` wakes the ID timer and makes the engine freeze the AGC (AD9363 0x0FA=0xE0, gain reads 0x2B0/0x2B5) (V).
+
 ## 12. Open
 
 - Receive pipeline (RX pads to demodulation), TX RAM write path and I/Q order, PLL clock plan, SPI frame register mapping.
