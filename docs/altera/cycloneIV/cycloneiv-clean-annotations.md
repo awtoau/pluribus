@@ -10,6 +10,7 @@ Counts only. The table, the aliases and the annotated Verilog stay local (commer
 - Layers (`layer` column, default `physical`): `physical` = the disjoint partition over the cells; `functional` = overlapping super-blocks (e.g. DJI-functional names on top of the physical-pattern blocks). The one-block-per-cell rule in `check` is enforced *within* a layer, so a functional block may cover cells already claimed by a physical block. `add --layer`, `list --layer`.
 - Tags: V traced (existing log / trace / ledger reference), I inferred, H hypothesis, U unknown. Coverage "named" = tag V / I / H; U is listed and counted separately.
 - Evidence = `;`-separated `kind:ref`, kinds `log trace ledger json script issue doc`.
+- Cross-repo evidence (functional layer): a functional block's proof lives in the owning repo, so in `layer=functional` a `doc:`/`issue:` citation also satisfies a V claim, the cited file need not exist locally, and no local trace naming an FF is required. The strict V bar (local `log`/`trace`/`ledger` naming an FF) still applies in `layer=physical`.
 
 ## Commands (`scripts/cycloneiv_clean_annotate.py`, log `tmp/logs/cycloneiv_clean_annotate.log`)
 - `add --kind --name --claim --tag --evidence --members ids|file [--block ID]`: members file lines `physical_id[,alias]`.

@@ -34,6 +34,7 @@ TAGS = ("V", "I", "H", "U")
 LAYERS = ("physical", "functional")   # physical = disjoint partition; functional = overlapping super-blocks over the same cells. Disjointness (one block per cell) is enforced within a layer, not across layers.
 EVIDENCE_KINDS = ("log", "trace", "ledger", "json", "script", "issue", "doc")
 TRACE_KINDS = ("log", "trace", "ledger")        # a V claim needs one of these, existing
+XREF_KINDS = ("issue", "doc")                    # cross-repo citations; in a functional block they also satisfy a V claim
 OBJ_KINDS = (("ff_", "ff"), ("lc_", "lut"), ("m9k_", "m9k"), ("mac_", "mac"), ("pll_", "pll"), ("pad_", "pad"), ("u_clkbuf", "clk"))
 LEDGER = os.path.join(REPO, "reference", "rules.tsv")
 DEFAULT_NL = os.path.join(REPO, "tmp", "dji_patterns", "image_nl.pkl")
@@ -71,8 +72,10 @@ def ledger_ids():
     return {l.split("\t", 1)[0] for l in open(LEDGER)}
 
 
-def ref_problem(kind, ref, members):
-    """None when the reference exists (and, for log / trace, mentions an FF member of the block), else the reason."""
+def ref_problem(kind, ref, members, functional=False):
+    """None when the reference exists (and, for log / trace, mentions an FF member of the block), else the reason.
+    functional=True: evidence is a cross-repo citation (proof lives in the owning repo), so a file-based ref need not
+    exist locally and no FF mention is required; issue / ledger ids are still validated."""
     if kind not in EVIDENCE_KINDS:
         return f"unknown evidence kind '{kind}'"
     if not ref:
@@ -81,6 +84,8 @@ def ref_problem(kind, ref, members):
         return None if ref in ledger_ids() else f"ledger row {ref} not in reference/rules.tsv"
     if kind == "issue":
         return None if ref.isdigit() else f"issue ref '{ref}' is not a number"
+    if functional:
+        return None
     path = ref if os.path.isabs(ref) else os.path.join(REPO, ref)
     if not os.path.isfile(path):
         return f"{kind}: file {ref} does not exist"
@@ -92,16 +97,17 @@ def ref_problem(kind, ref, members):
     return None
 
 
-def evidence_problems(tag, ev, members):
+def evidence_problems(tag, ev, members, functional=False):
     refs = parse_evidence(ev)
     if not refs:
         return ["missing evidence"]
     out, good = [], []
     for k, r in refs:
-        p = ref_problem(k, r, members)
+        p = ref_problem(k, r, members, functional)
         (out if p else good).append(p or k)
-    if tag == "V" and not [k for k in good if k in TRACE_KINDS]:
-        out.append("tag V without an existing log / trace / ledger reference")
+    trace_ok = TRACE_KINDS + (XREF_KINDS if functional else ())
+    if tag == "V" and not [k for k in good if k in trace_ok]:
+        out.append("tag V without an existing log / trace / ledger" + (" or issue / doc citation" if functional else "") + " reference")
     return out
 
 
@@ -203,21 +209,21 @@ def check(eng, image, totals=None):
     for b in blocks:
         bid, ms = b["block_id"], mem[b["block_id"]]
         ids = [m["obj_id"] for m in ms]
+        lay = b["layer"] or "physical"
         if b["kind"] not in KINDS or not re.fullmatch(re.escape(b["kind"]) + r"\d{3,}", bid):
             bad.append(f"{bid}: block id does not match kind {b['kind']}")
         if b["tag"] not in TAGS:
             bad.append(f"{bid}: tag {b['tag']} not in {TAGS}")
-        if (b["layer"] or "physical") not in LAYERS:
+        if lay not in LAYERS:
             bad.append(f"{bid}: layer {b['layer']} not in {LAYERS}")
         if not ms:
             bad.append(f"{bid}: no members")
         if b["member_hash"] != member_hash(ids) or b["n_members"] != len(ids):
             bad.append(f"{bid}: member hash / count does not match its members")
-        for p in evidence_problems(b["tag"], b["evidence"] or "", ids):
+        for p in evidence_problems(b["tag"], b["evidence"] or "", ids, functional=(lay == "functional")):
             bad.append(f"{bid}: {p}")
         if not (b["claim"] or "").strip() or not (b["name"] or "").strip():
             bad.append(f"{bid}: empty name or claim")
-        lay = b["layer"] or "physical"
         for m in ms:
             o = m["obj_id"]
             if (lay, o) in owner:

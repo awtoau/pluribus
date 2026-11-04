@@ -148,3 +148,15 @@ def test_functional_layer_overlaps_physical_but_is_disjoint_within_itself(eng):
 def test_add_rejects_unknown_layer(eng):
     with pytest.raises(ValueError):
         A.add_block(eng, IMG, "SCR", "x", "c", "I", "json:schema.py", members("ff_1_1_0"), layer="bogus")
+
+
+def test_functional_V_is_satisfied_by_cross_repo_citation(eng):
+    # a functional V block's proof lives in another repo: issue: / doc: citations satisfy V,
+    # the doc file need not exist locally, and no local trace naming an FF is required.
+    A.add_block(eng, IMG, "FSM", "frame_fsm", "functional", "V", "doc:fpga/m2001/docs/x.md;issue:91",
+                members("ff_1_1_0", "ff_1_1_1"), layer="functional")
+    assert A.check(eng, IMG) == []
+    ev = "doc:fpga/m2001/docs/x.md;issue:91"
+    assert A.evidence_problems("V", ev, ["ff_1_1_0"], functional=True) == []
+    # the same cross-repo evidence on a physical V block is still rejected (no local trace / ledger)
+    assert any("tag V without" in p for p in A.evidence_problems("V", ev, ["ff_1_1_0"], functional=False))
