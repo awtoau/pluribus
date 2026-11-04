@@ -128,3 +128,23 @@ def test_emit_headers_aliases_and_name_map(eng, tmp_path):
     assert "wire [3:0] rom_a_o;" in text and "reg ff_1_1_2;" in text      # unnamed (U) logic stays under its physical id
     names = dict(l.split("\t") for l in (tmp_path / "out.v.names.tsv").read_text().splitlines()[1:])
     assert names == {"cnt_q0": "ff_1_1_0", "cnt_d0": "lc_1_1_0", "rom_a": "m9k_3_4"}
+
+
+def test_functional_layer_overlaps_physical_but_is_disjoint_within_itself(eng):
+    ev = "json:schema.py"
+    # physical disjoint-partition block
+    A.add_block(eng, IMG, "SCR", "prbs", "lfsr", "I", ev, members("ff_1_1_0", "ff_1_1_1"), layer="physical")
+    # functional super-block over the SAME physical cell: allowed across layers
+    bid, _ = A.add_block(eng, IMG, "FSM", "frame_fsm", "functional group", "I", ev, members("ff_1_1_0", "ff_1_1_2"), layer="functional")
+    assert bid.startswith("FSM")
+    assert A.check(eng, IMG) == []                       # cross-layer overlap on ff_1_1_0 is fine
+    # a second functional block re-claiming ff_1_1_0: rejected within the functional layer only
+    A.add_block(eng, IMG, "DAT", "other_fn", "functional group 2", "I", ev, members("ff_1_1_0"), layer="functional")
+    bad = A.check(eng, IMG)
+    assert any("duplicate physical id ff_1_1_0 in layer functional" in b for b in bad)
+    assert not any("layer physical" in b for b in bad)   # the physical layer stays clean
+
+
+def test_add_rejects_unknown_layer(eng):
+    with pytest.raises(ValueError):
+        A.add_block(eng, IMG, "SCR", "x", "c", "I", "json:schema.py", members("ff_1_1_0"), layer="bogus")

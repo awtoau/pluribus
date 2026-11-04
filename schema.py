@@ -1298,6 +1298,7 @@ annotations = Table("annotations", metadata,
     Column("id",            Integer, primary_key=True, autoincrement=True),
     Column("image",         Text, nullable=False),     # netlist label the ids belong to
     Column("block_id",      Text, nullable=False),     # kind-prefixed counter (SCR001); stable while member_hash is unchanged
+    Column("layer",         Text, nullable=False, server_default="physical"),  # physical (disjoint partition) | functional (overlapping super-blocks); disjointness is enforced per-layer
     Column("kind",          Text, nullable=False),     # SCR CRC CNT FSM SPI MEM MAC PLL IO DAT CLK
     Column("name",          Text, nullable=False),
     Column("claim",         Text, nullable=False),

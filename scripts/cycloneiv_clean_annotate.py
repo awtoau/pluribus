@@ -1,12 +1,13 @@
 #!/usr/bin/env python3.15t
 """Image annotation table for the clean Cyclone IV pipeline (#165): named blocks over physical ids.
 
-  cycloneiv_clean_annotate.py add --kind SCR --name N --claim C --tag V --evidence "log:...;ledger:M-019" --members ids.txt|a,b,c
-  cycloneiv_clean_annotate.py list [--kind K] [--tag T]       check [--nl NL.pkl]      names [--out map.tsv]
+  cycloneiv_clean_annotate.py add --kind SCR --name N --claim C --tag V --evidence "log:...;ledger:M-019" --members ids.txt|a,b,c [--layer physical|functional]
+  cycloneiv_clean_annotate.py list [--kind K] [--tag T] [--layer L]       check [--nl NL.pkl]      names [--out map.tsv]
   cycloneiv_clean_annotate.py coverage [--nl NL.pkl] [--no-record]       remove --block ID
   cycloneiv_clean_annotate.py seed-image [--nl NL.pkl] [--patterns P.json] [--clocks C.json]
 DB: PLURIBUS_SQLITE_PATH (default databases/cycloneiv/gx150.db; schema.py owns the tables).  Table stays local; docs get counts only.
-Block id = KIND + 3-digit counter; re-adding the same sorted member set (or the same kind+name) keeps the id.
+Block id = KIND + 3-digit counter; re-adding the same sorted member set (or the same kind+name within a layer) keeps the id.
+Layers: physical (default, disjoint partition over the cells) and functional (overlapping super-blocks, e.g. DJI-functional names on top of physical-pattern blocks). The one-block-per-cell rule is enforced within a layer, not across layers.
 Tags: V traced (a log/trace/ledger reference that exists), I inferred, H hypothesis, U unknown.  Physical ids are never renumbered.
 Members file: one `physical_id[,alias]` per line.  Log: tmp/logs/cycloneiv_clean_annotate.log.
 """
@@ -30,6 +31,7 @@ LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_annotate.log")
 log = logging.getLogger("annotate")
 KINDS = ("SCR", "CRC", "CNT", "FSM", "SPI", "MEM", "MAC", "PLL", "IO", "DAT", "CLK")   # CLK = clock domain (no logic members)
 TAGS = ("V", "I", "H", "U")
+LAYERS = ("physical", "functional")   # physical = disjoint partition; functional = overlapping super-blocks over the same cells. Disjointness (one block per cell) is enforced within a layer, not across layers.
 EVIDENCE_KINDS = ("log", "trace", "ledger", "json", "script", "issue", "doc")
 TRACE_KINDS = ("log", "trace", "ledger")        # a V claim needs one of these, existing
 OBJ_KINDS = (("ff_", "ff"), ("lc_", "lut"), ("m9k_", "m9k"), ("mac_", "mac"), ("pll_", "pll"), ("pad_", "pad"), ("u_clkbuf", "clk"))
@@ -127,14 +129,16 @@ def next_block_id(conn, image, kind):
     return f"{kind}{n + 1:03d}"
 
 
-def add_block(eng, image, kind, name, claim, tag, evidence, members, date=None, block=None):
-    """Upsert. members = [(id, alias|None)]. Same member hash, else same kind+name, else --block keeps the id. -> (block_id, 'new'|'same'|'updated')."""
+def add_block(eng, image, kind, name, claim, tag, evidence, members, date=None, block=None, layer="physical"):
+    """Upsert. members = [(id, alias|None)]. Same member hash, else same kind+name (within the layer), else --block keeps the id. -> (block_id, 'new'|'same'|'updated')."""
     import schema as S
     from sqlalchemy import delete, insert, select, update
     if kind not in KINDS:
         raise ValueError(f"kind {kind} not in {KINDS}")
     if tag not in TAGS:
         raise ValueError(f"tag {tag} not in {TAGS}")
+    if layer not in LAYERS:
+        raise ValueError(f"layer {layer} not in {LAYERS}")
     if not evidence.strip():
         raise ValueError("evidence is required")
     if not members:
@@ -143,10 +147,10 @@ def add_block(eng, image, kind, name, claim, tag, evidence, members, date=None, 
     h = member_hash(ids)
     a = S.annotations
     with eng.begin() as conn:
-        rows = [r for r in block_rows(conn, image) if r["kind"] == kind]
+        rows = [r for r in block_rows(conn, image) if r["kind"] == kind and (r["layer"] or "physical") == layer]
         hit = next((r for r in rows if r["member_hash"] == h), None) or next((r for r in rows if r["name"] == name), None) \
             or next((r for r in rows if block and r["block_id"] == block), None)
-        vals = dict(image=image, kind=kind, name=name, claim=claim, tag=tag, evidence=evidence,
+        vals = dict(image=image, layer=layer, kind=kind, name=name, claim=claim, tag=tag, evidence=evidence,
                     date=date or datetime.date.today().isoformat(), member_hash=h, n_members=len(ids))
         if hit is None:
             bid = block or next_block_id(conn, image, kind)
@@ -203,6 +207,8 @@ def check(eng, image, totals=None):
             bad.append(f"{bid}: block id does not match kind {b['kind']}")
         if b["tag"] not in TAGS:
             bad.append(f"{bid}: tag {b['tag']} not in {TAGS}")
+        if (b["layer"] or "physical") not in LAYERS:
+            bad.append(f"{bid}: layer {b['layer']} not in {LAYERS}")
         if not ms:
             bad.append(f"{bid}: no members")
         if b["member_hash"] != member_hash(ids) or b["n_members"] != len(ids):
@@ -211,18 +217,19 @@ def check(eng, image, totals=None):
             bad.append(f"{bid}: {p}")
         if not (b["claim"] or "").strip() or not (b["name"] or "").strip():
             bad.append(f"{bid}: empty name or claim")
+        lay = b["layer"] or "physical"
         for m in ms:
             o = m["obj_id"]
-            if o in owner:
-                bad.append(f"duplicate physical id {o}: {owner[o]} and {bid}")
-            owner.setdefault(o, bid)
+            if (lay, o) in owner:
+                bad.append(f"duplicate physical id {o} in layer {lay}: {owner[(lay, o)]} and {bid}")
+            owner.setdefault((lay, o), bid)
             if totals is not None and o not in totals["all"]:
                 bad.append(f"{bid}: {o} is not in the netlist")
             if m["alias"]:
                 if not ALIAS_RE.match(m["alias"]):
                     bad.append(f"{bid}: alias '{m['alias']}' is not an identifier")
                 alias_of[m["alias"]].add(o)
-    physical = set(owner)
+    physical = {o for _, o in owner}
     for al, objs in alias_of.items():
         if len(objs) > 1:
             bad.append(f"alias collision '{al}': {sorted(objs)}")
@@ -441,9 +448,11 @@ def main(argv=None):
     s.add_argument("--evidence", required=True)
     s.add_argument("--members", required=True)
     s.add_argument("--block")
+    s.add_argument("--layer", choices=LAYERS, default="physical", help="physical (disjoint partition) or functional (overlapping super-blocks)")
     s = sub.add_parser("list")
     s.add_argument("--kind")
     s.add_argument("--tag")
+    s.add_argument("--layer", choices=LAYERS)
     s = sub.add_parser("check")
     s.add_argument("--nl", help="also require every member to exist in this netlist pickle")
     s = sub.add_parser("coverage")
@@ -466,13 +475,13 @@ def main(argv=None):
         bad = evidence_problems(a.tag, a.evidence, [m for m, _ in read_members(a.members)])
         if bad:
             sys.exit("rejected: " + "; ".join(bad))
-        print(*add_block(eng, a.image, a.kind, a.name, a.claim, a.tag, a.evidence, read_members(a.members), block=a.block))
+        print(*add_block(eng, a.image, a.kind, a.name, a.claim, a.tag, a.evidence, read_members(a.members), block=a.block, layer=a.layer))
     elif a.cmd == "list":
         blocks, _ = load_all(eng, a.image)
         for b in blocks:
-            if (a.kind and b["kind"] != a.kind) or (a.tag and b["tag"] != a.tag):
+            if (a.kind and b["kind"] != a.kind) or (a.tag and b["tag"] != a.tag) or (a.layer and (b["layer"] or "physical") != a.layer):
                 continue
-            print(f"{b['block_id']}\t{b['tag']}\t{b['n_members']}\t{b['name']}\t{b['claim']}\t{b['evidence']}\t{b['date']}")
+            print(f"{b['block_id']}\t{b['layer'] or 'physical'}\t{b['tag']}\t{b['n_members']}\t{b['name']}\t{b['claim']}\t{b['evidence']}\t{b['date']}")
     elif a.cmd == "check":
         bad = check(eng, a.image, netlist_totals(load_nl(a.nl)) if a.nl else None)
         for p in bad:

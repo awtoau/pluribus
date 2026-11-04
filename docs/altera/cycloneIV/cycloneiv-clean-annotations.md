@@ -6,7 +6,8 @@ Counts only. The table, the aliases and the annotated Verilog stay local (commer
 - `schema.py`: `annotations` (one row per named block), `annotation_members` (physical id, kind, optional alias), `annotation_coverage` (counts per `coverage` run, `gate_run_id` of the latest `gate_runs` row).
 - Lives in the family DB (`databases/cycloneiv/gx150.db`, gitignored). Existing DBs gain the tables via `scripts/migrate_family_db.py --apply` (now also creates absent declared tables).
 - Physical ids are primary and never renumbered: `ff_X_Y_N`, `lc_X_Y_N`, `m9k_X_Y`, `mac_X_Y`, `pll_K`, `pad_BALL`, clock root `u_clkbuf_...`.
-- Block id = kind + 3-digit counter. Kinds: SCR CRC CNT FSM SPI MEM MAC PLL IO DAT, plus CLK (clock domain, no logic members). Re-adding the same sorted member set (sha1), or the same kind + name, keeps the id.
+- Block id = kind + 3-digit counter. Kinds: SCR CRC CNT FSM SPI MEM MAC PLL IO DAT, plus CLK (clock domain, no logic members). Re-adding the same sorted member set (sha1), or the same kind + name (within a layer), keeps the id.
+- Layers (`layer` column, default `physical`): `physical` = the disjoint partition over the cells; `functional` = overlapping super-blocks (e.g. DJI-functional names on top of the physical-pattern blocks). The one-block-per-cell rule in `check` is enforced *within* a layer, so a functional block may cover cells already claimed by a physical block. `add --layer`, `list --layer`.
 - Tags: V traced (existing log / trace / ledger reference), I inferred, H hypothesis, U unknown. Coverage "named" = tag V / I / H; U is listed and counted separately.
 - Evidence = `;`-separated `kind:ref`, kinds `log trace ledger json script issue doc`.
 
@@ -20,7 +21,7 @@ Counts only. The table, the aliases and the annotated Verilog stay local (commer
 ## What `check` rejects
 - Missing evidence; unknown evidence kind; reference to a file that does not exist; `ledger:` id not in `reference/rules.tsv`.
 - Tag V without an existing `log` / `trace` / `ledger` reference; a `log` / `trace` that names none of the block's FFs.
-- Same physical id in two blocks (or twice in one); empty block; block id not matching its kind; stale member hash / count.
+- Same physical id in two blocks of the same layer (or twice in one); unknown layer; empty block; block id not matching its kind; stale member hash / count.
 - Alias shared by two objects; alias equal to another object's physical id (or, with `--nl`, to any netlist signal); alias that is not an identifier.
 - With `--nl`: member not in the netlist.
 
