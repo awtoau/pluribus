@@ -635,9 +635,8 @@ class Builder:
             if sel < 0:
                 if sel == -2:
                     nl.und["MAC pin: ambiguous input selection"] += 1
-                # a DATA operand row that is unselected but inverted = inverted GND = const 1 (awto-dji #101).
-                # Only for data a/b; clk/ena/aclr/sign polarity semantics differ, so they keep idle.
-                return "1'b1" if (data and inv) else idle
+                # unselected DATA row: not inverted = const 1, inverted = const 0 (constb specimens, #197). Data a/b only.
+                return ("1'b0" if inv else "1'b1") if data else idle
             rec = int(cx.find(e_li, x, y, 0, int(sel)))
             if rec < 0:
                 nl.und["MAC pin: selects a LOCAL_INTERCONNECT absent from the graph"] += 1

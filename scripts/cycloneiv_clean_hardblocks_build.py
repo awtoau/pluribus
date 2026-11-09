@@ -63,6 +63,8 @@ MACX_SPECS = [   # (name, base name, parameter overrides, connection overrides, 
     ("invda", "plain", {}, {"da": "~da"}, []),
     ("invdb", "plain", {}, {"db": "~db"}, []),
 ]
+# Constant DATAB coefficient (#197): unselected data row, not inverted -> 1 / inverted -> 0; "mix" has both values
+MACCONST = {"mix": "18'h2A5A5", "ones": "18'h3FFFF", "zero": "18'h0"}
 
 
 def macx_design(prm, conn, seed=1):
@@ -203,6 +205,11 @@ def specs(which):
         for nm, ov in (("two_out_reg", {"output_register": "CLOCK0"}), ("two_in_reg", {"input_register_a0": "CLOCK0", "input_register_b0": "CLOCK0"}),
                        ("two_mult_reg", {"multiplier_register0": "CLOCK0"})):
             out.append(("gxhb_mac_two_mult_w9", f"gxhb_mac_{nm}", mac_design(b2), mac_design(dict(b2, **ov)), f"mac {nm}"))
+    elif which == "macconst":
+        vb = macx_design({}, {})
+        for k, val in MACCONST.items():
+            vs = macx_design({}, {"db": val})
+            out.append(("gxhb_macx_plain", f"gxhb_macx_constb_{k}", vb, vs, f"macx constant datab {k} vs plain"))
     elif which == "pllsite":
         for k in range(1, 9):
             out.append(("gxhb_pll_base", f"gxhb_pllsite_{k}", pll_design(PLL_BASE),
@@ -234,7 +241,7 @@ def write_all(which):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("cmd", choices=["gen", "build"])
-    ap.add_argument("set", choices=["mac", "macpin", "macx", "pll", "pllsite", "pllmp"])
+    ap.add_argument("set", choices=["mac", "macpin", "macx", "macconst", "pll", "pllsite", "pllmp"])
     ap.add_argument("--jobs", type=int, default=12)
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)

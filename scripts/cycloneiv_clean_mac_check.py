@@ -7,6 +7,9 @@ Per design (corpus designs whose postfit.vo has cycloneiv_mac_mult), matched / m
   mac_cfg   single-multiplier 18 x 18 / 9-bit designs only: per MAC the items sign A / B (static signed, dynamic), input register A / B, output register,
             nine-bit rows, against the mac_mult / mac_out defparams and sign pins of the .vo.  Dynamic-sign: the sign pin is routed.
   mac_pin   routed MAC pins (DATAA[k], DATAB[k], CLK, SIGNA, SIGNB, ...): decoded LOCAL_INTERCONNECT index = the last LOCAL_INTERCONNECT of the net's route.
+  mac_const unrouted constant data pins (.dataa / .datab bit tied to gnd / vcc in the .vo) of MAC tiles, vs decoded constant (sel < 0: inv -> gnd else vcc, as emit).
+            matched = same constant; missing = GT constant pin on a tile not decoded as used; extra = GT gnd, decoded vcc;
+            wrong = GT vcc decoded gnd, or any GT constant pin decoded as routed (sel >= 0).
   mac_out   result bits: every DSP_BUFFER source in the emitted netlist maps to `mac_<x>_<y>_r[i]` with i = the element index (structural: GT roots).
 The decode rules were read off these same specimen families (macpa / macpb = two MAC columns); no independent MAC design exists in the corpus.
 """
@@ -27,12 +30,23 @@ sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 log = logging.getLogger("cycloneiv_clean_mac_check")
 LOG = os.path.join(REPO, "tmp", "logs", "cycloneiv_clean_mac_check.log")
-CATS = ("mac_inst", "mac_cfg", "mac_pin")
+CATS = ("mac_inst", "mac_cfg", "mac_pin", "mac_const")
 PIN_RCF = {"CLK": ("clk_sel", None), "ENA": ("ena_sel", None), "ACLR": ("aclr_sel", None), "SIGNA": ("sign_sel", 0), "SIGNB": ("sign_sel", 1)}
 
 
 def counts():
     return {"matched": 0, "missing": 0, "extra": 0, "wrong": 0}
+
+
+def parse_const_pins(body):
+    """{`DATAA[k]` / `DATAB[k]`: `gnd` | `vcc`} for bus-style .dataa({..}) / .datab({..}) connections (MSB first; element j of n is bit n-1-j)."""
+    out = {}
+    for p, bus in re.findall(r"\.data([ab])\(\{(.*?)\}\)", body, re.S):
+        els = [e.strip() for e in bus.split(",")]
+        for j, e in enumerate(els):
+            if e in ("gnd", "vcc"):
+                out[f"DATA{p.upper()}[{len(els) - 1 - j}]"] = e
+    return out
 
 
 def parse_vo(d):
@@ -50,7 +64,7 @@ def parse_vo(d):
         if m[1] == "MULT":
             nm = re.match(r"cycloneiv_mac_mult (\S+)", body)
             sign = {p: v.strip() for p, v in re.findall(r"\.(signa|signb)\((.*?)\)", body)}
-            mults.append(dict(xy=(int(m[2]), int(m[3])), n=int(m[4]), name=nm[1] if nm else None, sign=sign, out=(int(m[2]), int(m[3]), int(m[4]) + 2)))
+            mults.append(dict(xy=(int(m[2]), int(m[3])), n=int(m[4]), name=nm[1] if nm else None, sign=sign, const=parse_const_pins(body.split(");", 1)[0] + ")"), out=(int(m[2]), int(m[3]), int(m[4]) + 2)))
     for mu in mults:
         mu["out_name"] = outs.get(mu["out"])
     return text, tiles, mults
@@ -146,6 +160,23 @@ def score_design(cx, d, workers):
             else:
                 out["mac_cfg"]["missing" if g[k] else "extra"] += 1
                 scope["mac_cfg"][f"{k}: gt={g[k]}"] += 1
+    for mu in mults:
+        i = mine.get(mu["xy"])
+        ar, br = macctl.rows(mu["n"], bool(md["nine"][i])) if i is not None else (None, None)
+        for pin, gv in mu["const"].items():
+            c = out["mac_const"]
+            if i is None:
+                c["missing"] += 1
+                scope["mac_const"][f"missing: gt={gv}"] += 1
+                continue
+            row = (ar if pin[4] == "A" else br)[int(pin[6:-1])]
+            dv = "routed" if md["data_sel"][i, row] >= 0 else ("gnd" if md["data_inv"][i, row] else "vcc")
+            if dv == gv:
+                c["matched"] += 1
+            else:
+                k = "extra" if (gv, dv) == ("gnd", "vcc") else "wrong"
+                c[k] += 1
+                scope["mac_const"][f"{k}: gt={gv} dec={dv}"] += 1
     for t, mm in pins.items():
         i = mine.get(t)
         for mname, pm in mm.items():

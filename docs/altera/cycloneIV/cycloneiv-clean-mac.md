@@ -22,3 +22,9 @@ Conditions: EP4CGX150, existing builds only (0 new), 2026-10-30. 18 `gxhb_mac*` 
 - Multiplier output equivalence (iverilog, emit vs post-fit `mac_out`, 300 random cycles, `scripts/cycloneiv_clean_mac_sim.py`): 18 of 18 gxhb_mac* pass, 0 fail, including the two-multiplier nine-bit design (each `mac_out` compared with its 18-bit slice).
 - Pad-level `emit_sim` on the 18 gxhb_mac* designs: 18 pass.
 - Image (counts): 87 MAC instances used, output register 29, input register A 53 / B 29, signed A 64 / B 79, dynamic sign pins 0, 2 tiles in nine-bit mode (N0 registered 2, N1 registered 1).
+
+## Constant-operand specimens (#197 item 1)
+- `gxhb_macx_constb_{mix,ones,zero}` (`cycloneiv_clean_hardblocks_build.py build macconst`, base `gxhb_macx_plain`, site X103_Y87): 18x18 unsigned `altmult_add`, DATAB tied to `18'h2A5A5` / `18'h3FFFF` / `18'h0`. Quartus keeps a `cycloneiv_mac_mult` with `.datab({vcc,gnd,...})`; DATAA stays routed.
+- Result (2026-11-10, 54 DATAB rows): all 54 rows unselected (`data_sel` < 0); decoded `MAC_ROW_DATA_INVERT` = 0 for every `vcc` row, 1 for every `gnd` row. `inv == (const == 0)` on 54 / 54.
+- So an unselected data row reads 1 when NOT inverted and 0 when inverted; the earlier "unselected + inverted = const 1" encoding (0c1f069b7) is the opposite.
+- Other pins (mac_pin) on these designs: 18 / 18 each, 0 missing / extra / wrong.
