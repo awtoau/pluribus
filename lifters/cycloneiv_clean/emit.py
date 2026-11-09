@@ -631,11 +631,13 @@ class Builder:
         cx = self.cx
         e_li = names.enum_of("LOCAL_INTERCONNECT")
 
-        def pin(sel, inv=False, idle="1'b0"):
+        def pin(sel, inv=False, idle="1'b0", data=False):
             if sel < 0:
                 if sel == -2:
                     nl.und["MAC pin: ambiguous input selection"] += 1
-                return idle
+                # a DATA operand row that is unselected but inverted = inverted GND = const 1 (awto-dji #101).
+                # Only for data a/b; clk/ena/aclr/sign polarity semantics differ, so they keep idle.
+                return "1'b1" if (data and inv) else idle
             rec = int(cx.find(e_li, x, y, 0, int(sel)))
             if rec < 0:
                 nl.und["MAC pin: selects a LOCAL_INTERCONNECT absent from the graph"] += 1
@@ -649,8 +651,8 @@ class Builder:
         for n in ((0, 1) if nine else (0,)):
             ar, br = macctl.rows(n, nine)
             M["units"].append(dict(n=n, w=9 if nine else HALF_ROWS,
-                                   a=[pin(md["data_sel"][i, k], md["data_inv"][i, k]) for k in ar],
-                                   b=[pin(md["data_sel"][i, k], md["data_inv"][i, k]) for k in br],
+                                   a=[pin(md["data_sel"][i, k], md["data_inv"][i, k], data=True) for k in ar],
+                                   b=[pin(md["data_sel"][i, k], md["data_inv"][i, k], data=True) for k in br],
                                    ireg=[bool(v) for v in (md["ireg_n"][i, n] if nine else md["ireg"][i])], oreg=bool(md["oreg_n"][i, n] if nine else md["oreg"][i])))
         M["a"], M["b"] = M["units"][0]["a"], M["units"][0]["b"]
         M["sign"] = [pin(md["sign_sel"][i, k], False, "1'b0") if md["sign_sel"][i, k] >= 0 else ("1'b0" if md["unsigned"][i, k] else "1'b1") for k in (0, 1)]
