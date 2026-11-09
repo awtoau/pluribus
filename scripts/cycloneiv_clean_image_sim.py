@@ -164,7 +164,7 @@ def domains(nl, clks):
     return dom
 
 
-def gen_tb(nl, plan, cycles, groups, tag, pre="pad_", probe=True):
+def gen_tb(nl, plan, cycles, groups, tag, pre="pad_", probe=True, force_sigs=(), force_at=500000):
     half, rsts, clks, rcount = clock_plan(nl, plan)
     dom = domains(nl, clks)
     L = ["`timescale 1ps/1ps", "module tb;"]
@@ -290,6 +290,12 @@ def gen_tb(nl, plan, cycles, groups, tag, pre="pad_", probe=True):
         L.append("end")
     outs = sorted(b for b, d in pads.items() if d != "input")
     first = list(dom)[0]
+    # --force: hold internal signals (baked hierarchical names, so flat src) at 1 from cycle force_at -> a
+    # wake/override experiment (e.g. the RX-sync FF). force needs a compile-time name, not a plusarg.
+    if force_sigs:
+        L.append(f"initial begin repeat ({force_at}) @(negedge {first}); "
+                 + " ".join(f"force dut.{s} = 1'b1;" for s in force_sigs)
+                 + f" $display(\"FORCED {' '.join(force_sigs)} at cycle {force_at}\"); end")
     L.append(f"integer fo; initial fo = $fopen(\"{W}/trace_{tag}_out.txt\", \"w\");")
     L.append(f"always @(negedge {first}) $fwrite(fo, \"%0d %h\\n\", ed0, {{" + ", ".join(f"pad_{b}_w" for b in outs) + "});")
     L.append("integer ncyc;")
@@ -340,7 +346,8 @@ def cmd_run(a):
     tag = a.tag or f"{a.src}_{a.sim}"
     gs = groups_from_nl(nl)
     json.dump(gs, open(os.path.join(W, f"groups_{tag}.json"), "w"), indent=0)
-    tb, half, rsts, dom = gen_tb(nl, a.plan, a.cycles, gs, tag, "pad_" if a.src == "flat" else "io_", a.src == "flat")
+    tb, half, rsts, dom = gen_tb(nl, a.plan, a.cycles, gs, tag, "pad_" if a.src == "flat" else "io_", a.src == "flat",
+                                 force_sigs=a.force, force_at=a.force_at)
     tbp = os.path.join(W, f"tb_{tag}.v")
     open(tbp, "w").write(tb)
     src = top_vsrc(a)
@@ -557,6 +564,8 @@ def main():
     ap.add_argument("--src", choices=["flat", "rtl"], default="flat")
     ap.add_argument("--sim", choices=["verilator", "iverilog"], default="verilator")
     ap.add_argument("--cycles", type=int, default=2000)
+    ap.add_argument("--force", action="append", default=[], help="internal signal(s) to force to 1 (flat src; baked name) from --force-at")
+    ap.add_argument("--force-at", type=int, default=500000, help="cycle at which to apply --force")
     ap.add_argument("--plan", choices=["same", "ratio"], default="same")
     ap.add_argument("--tag")
     ap.add_argument("--build-limit", type=int, default=1800)
