@@ -228,6 +228,7 @@ def gen_tb(nl, plan, cycles, groups, tag, pre="pad_", probe=True):
             L.append(f"wire [{tot - 1}:0] vall = {{{allv}}};")
             L.append(f"integer fsn; initial fsn = $fopen(\"{W}/snap_{tag}.txt\", \"w\");")
         L.append("integer csa, q, per, lbl; reg [23:0] mrise, mfall; reg [7:0] hold;")
+        L.append("integer stimfd, nstim; reg [8*512-1:0] stimfn; reg [7:0] sop, srg, sval;")
         if probe:
             ch = "".join(f" $fwrite(fsn, \"%b\", vall[{min(k + 4095, tot - 1)}:{k}]);" for k in range(0, tot, 4096))
             L.append("task snap(input integer l); begin $fwrite(fsn, \"%0d \", l);" + ch + " $fwrite(fsn, \"\\n\"); end endtask")
@@ -258,6 +259,20 @@ def gen_tb(nl, plan, cycles, groups, tag, pre="pad_", probe=True):
         L.append(f"  #{8 * hmax + 200 * 2 * max(half.values())}; snap(99);")
         L.append("  for (lbl = 0; lbl < 256; lbl = lbl + 1) begin spi_xfer(lbl[7:0], 8'h03, (lbl * 37 + 1) & 8'hFF); snap(100 + lbl); end")
         L.append("end")
+        # +stim=<file>: replay real (op reg val) hex triples from a file (one per line, '#' comments skipped), then free-run.
+        # Generic mechanism; the DJI boot+record stimulus is produced by awto-dji fpga/m2001/scripts/cycloneiv_clean_tx_stimulus.py.
+        L.append("initial if ($value$plusargs(\"stim=%s\", stimfn)) begin")
+        L.append("  if (!$value$plusargs(\"cs_active=%d\", csa)) csa = 0;")
+        L.append(f"  per = {2 * max(half.values())}; q = 8 * per;")
+        L.append("  pad_AA9_r = ~csa[0]; pad_AA8_r = 1'b0; pad_AB11_r = 1'b0;")
+        L.append(f"  #{8 * hmax + 200 * 2 * max(half.values())};")
+        L.append("  stimfd = $fopen(stimfn, \"r\"); nstim = 0;")
+        L.append("  if (stimfd == 0) $display(\"STIM open failed: %0s\", stimfn);")
+        L.append("  else begin")                                  # $fscanf skips whitespace/newlines; file must be comment-free hex triples
+        L.append("    while ($fscanf(stimfd, \"%h %h %h\", sop, srg, sval) == 3) begin spi_xfer(sop, srg, sval); nstim = nstim + 1; end")
+        L.append("    $fclose(stimfd); $display(\"STIM done, replayed %0d writes from %0s\", nstim, stimfn);")
+        L.append("  end")
+        L.append("end")
     # forced-strobe experiment (+grp=N): enable forced 1, strobe externals forced to the seed assignment (edges SEED_AT..RUN_AT), then to the run
     # assignment for RUN_CYC clocks; the CRC data external gets a pseudo-random bit per clock.  Control state is internal (no pad in the cones): forced = stimulus, not natural operation.
     L.append("reg dbit = 1'b0; integer gsel, seedv; initial begin if (!$value$plusargs(\"grp=%d\", gsel)) gsel = -1; seedv = 12345; end")
@@ -279,7 +294,8 @@ def gen_tb(nl, plan, cycles, groups, tag, pre="pad_", probe=True):
     L.append(f"always @(negedge {first}) $fwrite(fo, \"%0d %h\\n\", ed0, {{" + ", ".join(f"pad_{b}_w" for b in outs) + "});")
     L.append("integer ncyc;")
     L.append("initial begin")
-    L.append(f"  ncyc = {cycles}; void'($value$plusargs(\"cyc=%d\", ncyc)); #(ncyc * {2 * max(half.values())});")
+    # count clock edges, not a time delay: ncyc * period overflows 32-bit integer for ncyc > ~214k (wrong finish time)
+    L.append(f"  ncyc = {cycles}; void'($value$plusargs(\"cyc=%d\", ncyc)); repeat (ncyc) @(negedge {first});")
     for i, c in enumerate(dom):
         if probe:
             L.append(f"  $display(\"DOMAIN %0d {c} edges=%0d ffs={len(dom[c])} toggles=%0d toggles_after_16=%0d\", {i}, ed{i}, tg{i}, tgw{i});")
