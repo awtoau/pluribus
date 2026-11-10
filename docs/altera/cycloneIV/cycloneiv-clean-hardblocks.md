@@ -215,3 +215,11 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
   - TDP with one const + one routed WE: only one control line wired; `m9k_tdp.py` takes a lone line as A (wrong when B is the routed port: b_c0a, b_c1a, b_c1b decoded `we_b` = 1'b0 over GT vcc). b_c1a / b_c1b raw WE bits identical; the .rbf differ in 15 bytes (unanalysed).
 - Open: which control line carries port A is not in the invert / PIA bits read so far (fitter choice per site); the image tiles 7_85 / 7_86 pairing (#178 oracle) was fitted under the refuted A = gi 9 assumption.
 - Log of the last full run: `tmp/logs/cycloneiv_clean_m9k_we_check.log`; unit test `tests/cycloneiv_clean/test_m9k_we_check.py`.
+- Port-A control line (9 / 11) decided by `RAM_WE_FAST_MUX` (2026-11-10, `scripts/cycloneiv_clean_m9k_we_line_hunt.py`, log `tmp/logs/cycloneiv_clean_m9k_we_line_hunt.log`):
+  - Not a site function: X65_Y7 has A on 11 in 4 specimens and A on 9 in hl_ram_6; x%2, y%2, instance%2, x%4 all have counter-examples; neighbours X65_Y3/Y4/Y5 (hl_mix_9) give 9/11/9.
+  - 8-bit mux column, one per write-enable index (gi 0 = port A, gi 1 = port B): bit 0 clear = default line (A 9, B 11), bit 0 set = alternate (A 11, B 9), bit 1 set (`01000000`) = no routed line (const WE, unused gi).
+  - Both-routed TDP: gi 0 = gi 1 = `00000000` (A 9 / B 11) or `10000000` (A 11 / B 9): perfect separator, 33 / 33 blocks (specimens + hl_ram_6/7, hl_mix_9, hl_mix_13).
+  - One routed: b_c1b (A on 11) gi 0 `10000000`, gi 1 `01000000`; b_c1a (B on 11) gi 0 `01000000`, gi 1 `00000000`. Single / SDP: line 9 -> gi 0 `00000000`, line 11 -> gi 0 `10000000`, gi 1 `01000000`.
+  - b_c1a vs b_c1b: 15 differing bytes = 6 header/CRC bytes (0x29-0x2b, 0x2d, 0x2f, 0x30; 0x49, 0x4a) + 7 data bytes carrying exactly 3 mapped bits, all `RAM_WE_FAST_MUX` (gi 1 bit 1; gi 0 bits 0, 1) of instance 129.
+  - The 11 `we_line` faults (hl_fifo_1..5/7/8, hl_mix_6) are a check-script parser fault: `parse_rcf` misses `label = Label_LOCAL_INTERCONNECT:..., LOCAL_INTERCONNECT:..Ixx` lines and keeps a stale earlier LI; with the label line read, GT LI = decoded (all 11 + 2 previously skipped). Decoder correct there.
+  - hl_mix_9 `we_port`: X65_Y4 has A on 11 / B on 9 (FAST_MUX `10000000` x2); decoder assumed A = 9 -> A / B swapped (2 pins).

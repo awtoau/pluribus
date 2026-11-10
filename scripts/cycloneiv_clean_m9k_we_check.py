@@ -80,7 +80,7 @@ def parse_rcf(text):
     for blk in text.split("signal_name = ")[1:]:
         li, ctl = None, None
         for ln in blk.split("\n"):
-            m = re.match(r"\s*LOCAL_INTERCONNECT:X\d+Y\d+S\d+I(\d+)", ln)
+            m = re.search(r"LOCAL_INTERCONNECT:X\d+Y\d+S\d+I(\d+)", ln) if "branch_point" not in ln else None     # also inside `label = ..., LOCAL_INTERCONNECT:..;` lines
             if m:
                 li = int(m[1])
             m = re.match(r"\s*M4K_LEFT_CONTROL_INPUT:X(\d+)Y(\d+)S\d+I(\d+)", ln)
