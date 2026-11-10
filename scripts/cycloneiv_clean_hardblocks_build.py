@@ -67,6 +67,26 @@ MACX_SPECS = [   # (name, base name, parameter overrides, connection overrides, 
 MACCONST = {"mix": "18'h2A5A5", "ones": "18'h3FFFF", "zero": "18'h0"}
 
 
+# M9K write-enable polarity ground truth (#181 item 7): one wren expression differs per specimen, altsyncram at the default site
+# (name, mode base, {wren_a / wren_b expression}); bases are the same mode with plain wea / web
+M9KWE_SPECS = [
+    ("s_inv", "s", {"a": "~wea"}), ("s_c0", "s", {"a": "1'b0"}), ("s_c1", "s", {"a": "1'b1"}),
+    ("d_inv", "d", {"a": "~wea"}),
+    ("b_inva", "b", {"a": "~wea"}), ("b_invb", "b", {"b": "~web"}), ("b_invab", "b", {"a": "~wea", "b": "~web"}),
+    ("b_c0b", "b", {"b": "1'b0"}), ("b_c1b", "b", {"b": "1'b1"}),
+    ("b_c0a", "b", {"a": "1'b0"}), ("b_c1a", "b", {"a": "1'b1"}),
+]
+# other sites for the TDP invert pairs: the WE line allocation (gi 9 / gi 11 per port) is the fitter's choice
+M9KWE_SITES = ("M9K_X65_Y7_N0", "M9K_X7_Y10_N0", "M9K_X110_Y90_N0", "M9K_X36_Y40_N0", "M9K_X94_Y60_N0")
+
+
+def m9kwe_design(bk, ov, site=m9.SITE):
+    v, q = m9.mode_design(m9.MODE_BASES[bk], site)
+    for p, e in ov.items():
+        v = v.replace(f".wren_{p}(we{p})", f".wren_{p}({e})")
+    return v, q
+
+
 def macx_design(prm, conn, seed=1):
     prm = dict(MAC_BASE, **prm)
     pl = ",\n    ".join(f".{k}({v if isinstance(v, int) else chr(34) + v + chr(34)})" for k, v in prm.items())
@@ -210,6 +230,14 @@ def specs(which):
         for k, val in MACCONST.items():
             vs = macx_design({}, {"db": val})
             out.append(("gxhb_macx_plain", f"gxhb_macx_constb_{k}", vb, vs, f"macx constant datab {k} vs plain"))
+    elif which == "m9kwe":
+        for nm, bk, ov in M9KWE_SPECS:
+            out.append((f"gxhb_m9kwe_base_{bk}", f"gxhb_m9kwe_{nm}", m9kwe_design(bk, {}), m9kwe_design(bk, ov), f"m9k write enable {nm} vs plain"))
+        for st in M9KWE_SITES:
+            t = st.replace("M9K_", "").replace("_N0", "").lower()
+            for nm, bk, ov in M9KWE_SPECS:
+                if nm in ("b_inva", "b_invb", "b_invab"):
+                    out.append((f"gxhb_m9kwe_base_{bk}_{t}", f"gxhb_m9kwe_{nm}_{t}", m9kwe_design(bk, {}, st), m9kwe_design(bk, ov, st), f"m9k write enable {nm} at {st}"))
     elif which == "pllsite":
         for k in range(1, 9):
             out.append(("gxhb_pll_base", f"gxhb_pllsite_{k}", pll_design(PLL_BASE),
@@ -233,7 +261,7 @@ def write_all(which):
     names = []
     for base, sp, vb, vs, purpose in specs(which):
         for nm, (v, q), pu in ((base, vb, purpose + " (base)"), (sp, vs, purpose)):
-            m9.write_design(nm, v, q, pu)
+            m9.write_design(nm, v, q, pu, m9.mode_mif(m9.MODE_BASE) if which == "m9kwe" else None)
             names.append(nm)
     return list(dict.fromkeys(names))
 
@@ -241,7 +269,7 @@ def write_all(which):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("cmd", choices=["gen", "build"])
-    ap.add_argument("set", choices=["mac", "macpin", "macx", "macconst", "pll", "pllsite", "pllmp"])
+    ap.add_argument("set", choices=["mac", "macpin", "macx", "macconst", "m9kwe", "pll", "pllsite", "pllmp"])
     ap.add_argument("--jobs", type=int, default=12)
     a = ap.parse_args()
     (REPO / "tmp" / "logs").mkdir(parents=True, exist_ok=True)

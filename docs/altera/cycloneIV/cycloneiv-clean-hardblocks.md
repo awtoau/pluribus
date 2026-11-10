@@ -200,3 +200,18 @@ Counts are matched / missing / extra / wrong; ambiguous = missing.
 - Of the other 540 tiles: 492 (0,1) and 48 (1,1) raw pairs are all single/SDP-port (gi 1 never live there), so only gi 0's bit matters for them; applying it moves 42 of these 540 tiles' write enable from non-inverted to inverted lifted RTL (34 of the 455 gi11-wired + 8 of the 66 gi9-wired populations reported above), plus the 1 TDP-B-side tile pair (7_85/7_86, counted once as "the pair" since they share the same engine write-enable net) = 44 of 542 M9K tiles total change sense. See raw log `tmp/logs/cycloneiv_clean_we_invert_gi_check.log`.
 - Read-enable (`RAM_READ_ENABLE_INVERT`) is decoded by `m9kctl.py` (`re_invert`/`re_invert_b`) but not yet wired into `emit.py`: read-enable itself has no emit model at all (gap-audit table, "Read enable: undecoded"), out of scope for this write-enable-specific issue.
 
+
+## M9K write-enable polarity ground truth (2026-11-10, #181 item 7)
+
+- Specimens: `python3.15t scripts/cycloneiv_clean_hardblocks_build.py gen|build m9kwe` (34 Quartus 25.1 designs `gxhb_m9kwe_*`, altsyncram at M9K_X23_Y40 plus invert pairs at 5 more sites; only `design.toml` + `src/` tracked).
+- Quartus keeps the inverter in the port: `.portawe(!\wea~input_o )` / `.portbwe(!\web~input_o )`; const WE stays a RAM with `.portawe(gnd|vcc)`.
+- Check: `scripts/cycloneiv_clean_m9k_we_check.py` (all corpus designs with `ram_block`; ROM-mode blocks not scored: GT `vcc` over raw invert 1, write enable inert). Per category matched/missing/extra/wrong, no decoder change.
+- Raw bits vs GT (all specimens; `raw` = `RAM_WRITE_ENABLE_INVERT` gi 0 / gi 1):
+  - Inverted single / SDP / TDP-A: gi 0 = 1 (every specimen); plain: gi 0 = 0. Matches the #178 decode for single/SDP.
+  - TDP port B inverted: gi 1 = 1 (6/6); plain B gi 1 = 0. Unused gi 1 (single / SDP) = 1.
+  - gi 0 = port A, gi 1 = port B at every site, whichever control line (9 / 11) the fitter gave the port: sites X36_Y40 / X94_Y60 have A on line 9, the other 4 have A on line 11 (`routing.rcf` M4K_LEFT_CONTROL_INPUT index).
+  - Refuted: `m9k_tdp.py` gi 0 -> `we_b`, gi 1 -> `we` (b_inva / b_invb at 6 sites: 24 / 24 pins wrong; b_invab matches only because both are inverted), and A = gi 9 / B = gi 11 (wrong on 4 of 6 sites).
+  - Unselected WE (no routed line): const = gnd iff invert bit = 1, vcc iff 0, on the port's own gi (s_c0 gnd inv 1, s_c1 vcc inv 0, TDP A / B const gnd inv 1 / vcc inv 0, 4 / 4). `emit.py` returns `1'b1` for every unselected single-port WE: s_c0 wrong.
+  - TDP with one const + one routed WE: only one control line wired; `m9k_tdp.py` takes a lone line as A (wrong when B is the routed port: b_c0a, b_c1a, b_c1b decoded `we_b` = 1'b0 over GT vcc). b_c1a / b_c1b raw WE bits identical; the .rbf differ in 15 bytes (unanalysed).
+- Open: which control line carries port A is not in the invert / PIA bits read so far (fitter choice per site); the image tiles 7_85 / 7_86 pairing (#178 oracle) was fitted under the refuted A = gi 9 assumption.
+- Log of the last full run: `tmp/logs/cycloneiv_clean_m9k_we_check.log`; unit test `tests/cycloneiv_clean/test_m9k_we_check.py`.

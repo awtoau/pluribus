@@ -798,7 +798,8 @@ class Builder:
             M["why"] = f"depth {1 << A} (class) != content depth {len(words)} (width {W})"
             nl.und["M9K: class / width depth mismatch"] += 1
             return
-        we = "1'b1" if mk["we"][i] < 0 and not M.get("rom") and (mk["data"][i] >= 0).any() else pin(mk["we"][i])
+        # unselected WE (RAM, data wired): const = gnd when RAM_WRITE_ENABLE_INVERT gi0 set, else vcc (gxhb_m9kwe_s_c0/c1, #181)
+        we = ("1'b0" if bool(mk["we_invert"][i]) else "1'b1") if mk["we"][i] < 0 and not M.get("rom") and (mk["data"][i] >= 0).any() else pin(mk["we"][i])
         if mk["we"][i] >= 0 and bool(mk["we_invert"][i]):   # #178: RAM_WRITE_ENABLE_INVERT gi 0 (single/first line), raw bit 1 = inverted
             we = f"(!{we})"
         M.update(modelled=True, ce=ce, be=be, data=data, addr=addr, raddr=raddr, we=we, clk=clk,
