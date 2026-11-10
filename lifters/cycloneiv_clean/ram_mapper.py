@@ -57,6 +57,7 @@ def byte_enable_gi(width):
 # source: explicit RAM modes of the true dual port constructors (ram_mapper_table.json: groups of modes 6..9, 16..18 carry type-4 DATA_INPUT_B and
 #         type-6 READ_ADDRESS entries); mode = width: x1 6, x2 7, x4 8, x8 9, x9 16, x16 17, x18 18
 TDP_MODE = {1: 6, 2: 7, 4: 8, 8: 9, 9: 16, 16: 17, 18: 18}
+# source: entry type codes of ram_mapper_table.json groups (DATA_INPUT 3, DATA_INPUT_B 4, WRITE/READ address 5, 6; see TDP_MODE)
 TYPE_DATA_A, TYPE_DATA_B, TYPE_ADDR_A, TYPE_ADDR_B = 3, 4, 5, 6
 
 

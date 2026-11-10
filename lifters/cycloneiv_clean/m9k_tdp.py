@@ -12,8 +12,10 @@ import numpy as np
 
 from . import m9kctl, ram_mapper as R
 
-CAND = {0: (1,), 1: (2,), 2: (4,), 3: (8, 9), 4: (16, 18)}      # source: RAM_DATA_WRITE_MODE one-hot class (m9kctl) -> word widths
-B_OFFSET = 18       # source: M4K_BUFFER index of port B bit 0 (hl_ram_6 / hl_mix_13 consumers use buffers 0..15 and 18..33)
+# source: RAM_DATA_WRITE_MODE one-hot class (m9kctl) -> word widths
+CAND = {0: (1,), 1: (2,), 2: (4,), 3: (8, 9), 4: (16, 18)}
+# source: M4K_BUFFER index of port B bit 0 (hl_ram_6 / hl_mix_13 consumers use buffers 0..15 and 18..33)
+B_OFFSET = 18
 
 
 def _tables(W):
